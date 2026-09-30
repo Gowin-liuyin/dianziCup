@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 from dataclasses import dataclass, field
-from typing import Protocol
+from collections.abc import Callable, Iterable`nfrom typing import Protocol
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
@@ -58,7 +58,7 @@ class TransportResponse(Protocol):
     status_code: int
     headers: dict[str, str]
 
-    def iter_bytes(self) -> object: ...
+    def iter_bytes(self) -> Iterable[bytes]: ...
 
 
 def is_private_or_local(address: str) -> bool:
@@ -141,8 +141,8 @@ class NetworkPolicy:
 def fetch_with_policy(
     policy: NetworkPolicy,
     url: str,
-    transport: object,
-    resolve_addresses: object,
+    transport: Callable[[str], TransportResponse],
+    resolve_addresses: Callable[[str], list[str]],
     max_redirect_hops: int = MAX_REDIRECT_HOPS,
 ) -> FetchResult:
     """经策略网关抓取: 逐跳重定向校验、连接时刻地址校验、大小/类型限制。"""
@@ -165,7 +165,7 @@ def fetch_with_policy(
         ):
             raise UnsupportedContentTypeError(f"unsupported content type: {content_type}")
         body = b""
-        for chunk in response.iter_bytes():  # type: ignore[union-attr]
+        for chunk in response.iter_bytes():
             body += chunk
             if len(body) > policy.max_response_bytes:
                 raise ResponseTooLargeError(
