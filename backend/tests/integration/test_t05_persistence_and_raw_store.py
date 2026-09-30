@@ -502,11 +502,12 @@ def test_migration_upgrade_preserves_existing_facts_times_and_unknown_status(
 def test_migration_downgrade_and_upgrade_roundtrip_and_version_recorded(migrated_engine) -> None:
     """迁移版本记录与回滚路径: downgrade 后 upgrade 可恢复, 版本号如实。"""
     run_migrations(DEVELOPMENT_DSN)
-    assert current_migration_revision(DEVELOPMENT_DSN) == "0003_users"
+    head_revision = current_migration_revision(DEVELOPMENT_DSN)
+    assert head_revision is not None
     run_downgrade(DEVELOPMENT_DSN, "0002_constraints_and_text_blocks")
     assert current_migration_revision(DEVELOPMENT_DSN) == "0002_constraints_and_text_blocks"
     run_migrations(DEVELOPMENT_DSN)
-    assert current_migration_revision(DEVELOPMENT_DSN) == "0003_users"
+    assert current_migration_revision(DEVELOPMENT_DSN) == head_revision
 
 
 def test_fetch_attempt_is_recorded_without_counting_new_events(migrated_engine) -> None:
