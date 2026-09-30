@@ -1,0 +1,56 @@
+FIX-T01 三方映射一致性核对日志（只读；60 张任务卡「评分/要求」× 00_execution_map.md §8 × task_manifest.requirements）
+工作目录：D:\dianzi ；解释器：E:\miniconda\python.exe（Python 3.13.11，仅标准库）；日期：2026-09-30（+08:00）
+说明：脚本以 E:\miniconda\python.exe -c <内联脚本> 执行，未在仓库内落任何脚本文件；逐任务比对三方的评分/要求集合（顺序无关），
+      任一方缺失或集合不同即记 DIFF。内联脚本正文（与实际执行一致；行内 ` 为反引号字符）：
+
+  import datetime, json, re
+  from pathlib import Path
+  start = datetime.datetime.now()
+  root = Path(r"D:\dianzi")
+  manifest = json.loads((root / "contracts" / "task_manifest.json").read_text(encoding="utf-8"))
+  tasks = manifest["tasks"]
+  section8 = {}
+  lines = (root / "docs" / "plan" / "00_execution_map.md").read_text(encoding="utf-8").splitlines()
+  in_section = False
+  for line in lines:
+      if line.startswith("## 8."):
+          in_section = True
+          continue
+      if in_section and line.startswith("## "):
+          break
+      if in_section:
+          m = re.match(r"^\|\s*`(T\d\d)`\s*\|", line)
+          if m:
+              cells = [c.strip() for c in line.strip().strip("|").split("|")]
+              section8[m.group(1)] = [x for x in re.split(r"[、,，]", cells[3]) if x]
+  cards = {}
+  for path in sorted((root / "docs" / "tasks").glob("T*.md")):
+      tid = path.name.split("_")[0]
+      for line in path.read_text(encoding="utf-8").splitlines():
+          if "评分/要求：" in line:
+              cards[tid] = [x for x in re.split(r"[、,，]", line.split("评分/要求：", 1)[1].strip()) if x]
+              break
+  print("CROSSCHECK_START=%s" % start.strftime("%Y-%m-%d %H:%M:%S.%f"))
+  print("cards=%d section8_rows=%d manifest_tasks=%d" % (len(cards), len(section8), len(tasks)))
+  diffs = []
+  for tid in sorted(tasks):
+      man = sorted(tasks[tid].get("requirements", []))
+      s8 = sorted(section8[tid]) if tid in section8 else None
+      card = sorted(cards[tid]) if tid in cards else None
+      if s8 != man or card != man:
+          diffs.append((tid, man, s8, card))
+  for tid, man, s8, card in diffs:
+      print("DIFF", tid, "manifest=", man, "section8=", s8, "card=", card)
+  print("DIFF_COUNT = %d" % len(diffs))
+  print("CROSSCHECK_END=%s" % datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
+
+开始/结束：2026-09-30 21:34:42.853059 / 2026-09-30 21:34:42.859263
+退出码：0
+实际输出：
+  CROSSCHECK_START=2026-09-30 21:34:42.853059
+  cards=60 section8_rows=60 manifest_tasks=60
+  DIFF_COUNT = 0
+  CROSSCHECK_END=2026-09-30 21:34:42.859263
+
+结论：修复后 60 张任务卡头部「评分/要求」、00_execution_map.md §8 任务表、contracts/task_manifest.json 的
+      tasks.<id>.requirements 三方一致，0 差异（含 T06 = E1、F3、X1）。此前 R-T01 判定的 1 处不一致（T06）已消除。

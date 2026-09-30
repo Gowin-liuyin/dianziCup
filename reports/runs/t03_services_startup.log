@@ -1,0 +1,21 @@
+T03 开发服务启动与健康验证（主控，2026-09-30 23:13:15）
+[1] docker compose --profile core --profile search up -d
+ Container compose-opensearch-1 Starting 
+ Container compose-postgres-1 Starting 
+ Container compose-redis-1 Starting 
+ Container compose-redis-1 Started 
+ Container compose-opensearch-1 Started 
+ Container compose-postgres-1 Started 
+
+exit=0
+[2] 等待健康检查（最多 180s）
+postgres healthy
+redis healthy
+
+healthy=True
+[3] 应用侧访问验证
+pg_isready: /var/run/postgresql:5432 - accepting connections exit=0
+redis ping: PONG exit=0
+opensearch health:  exit=0
+T03 dev.py services 冒烟 (23:50:37): deps-check exit=4; check integration exit=0; check security(未实现) exit=3
+T03 完整态复跑 (23:56:19): 三服务 healthy、deps-check ready、integration exit=0（C01 含 opensearch 应用侧探针）、unit exit=0

@@ -1,0 +1,22 @@
+T03 持久化与关服保卷验证（主控，2026-09-30 23:17:01）
+[1] 写入最小数据（真实 PostgreSQL）
+CREATE TABLE
+INSERT 0 1
+
+[2] 容器重启后读取（T03-C02）
+ Container compose-postgres-1 Restarting 
+ Container compose-postgres-1 Started 
+
+read after restart:  t03-c02-probe 
+[3] docker compose down（不带 -v）后检查卷保留（T03-C06）
+ Container compose-postgres-1 Removed 
+ Network compose_default Removing 
+ Network compose_default Removed 
+
+volumes after down: compose_opensearch_data, compose_postgres_data, compose_redis_data
+[4] 重新 up 后再次读取同一行（强持久化证明）
+ Container compose-redis-1 Started 
+ Container compose-postgres-1 Started 
+ Container compose-opensearch-1 Started 
+
+read after down/up:  t03-c02-probe 

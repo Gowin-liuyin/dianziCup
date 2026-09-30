@@ -1,0 +1,60 @@
+R-T01 独立审查运行记录（审查者：R-T01 独立审查 Agent）
+工作目录：D:\dianzi ；解释器：E:\miniconda\python.exe（Python 3.13.11，仅标准库）
+审查期间被审文件未做任何修改（复跑前后 SHA-256 一致，见报告 §1）。
+
+[1] 合同结构校验（模式一）
+  命令：E:\miniconda\python.exe scripts/verify_plan.py --root D:\dianzi
+  开始/结束：2026-09-30T21:08:15.311 +08:00 / 2026-09-30T21:08:15.486 +08:00
+  退出码：0
+  输出：PLAN_OK: 需求/任务/顺序/案例/状态结构校验通过（不代表产品测试通过）
+        （控制台编码致中文显示乱码，语义经模式二 PYTHONUTF8=1 复核一致）
+
+[2] 合同结构校验（模式二：冻结基线比对）
+  命令：E:\miniconda\python.exe scripts/verify_plan.py --root D:\dianzi --baseline contracts/baselines/plan_baseline_t01.json
+  开始/结束：2026-09-30T21:08:16.524 +08:00 / 2026-09-30T21:08:16.707 +08:00
+  退出码：0
+  输出：PLAN_OK: 需求/任务/顺序/案例/状态结构校验通过（不代表产品测试通过）
+
+[3] 单元/行为测试
+  命令：E:\miniconda\python.exe -m unittest discover -s tests/plan -v   （PYTHONUTF8=1）
+  开始/结束：2026-09-30T21:08:37.383 +08:00 / 2026-09-30T21:08:39.139 +08:00
+  退出码：0；测试数 13（Ran 13 tests in 1.566s）；失败 0；跳过 0
+  13 例全部 ok（test_valid_plan_passes + 12 个负例/边界，清单见报告 §4）。
+
+[4] 官方依据独立复现
+  命令：pdftotext -layout docs/references/competition_brief.pdf %TEMP%\r_t01_review\fresh_extract.txt
+  退出码：0；新提取 165 行；与 reports/runs/t01_pdftotext_extract.txt 逐行 Compare-Object 结果 CONTENT=IDENTICAL；
+  新提取 SHA-256 f8ad85bccaf89d977e3408c4ff215fd8d83b547bfdb4ad6d0cf807f631095a00 = 存档提取 SHA-256（同一值）。
+  docs/references/competition_brief.pdf 与根目录 PDF 副本 SHA-256 均为 37f28bc38db91ec0407551b1254c8bc882432a8488ce896c681e1210814c6cf3，
+  与 requirements.json 中 official_sha256 一致。
+
+[5] 独立结构交叉核对（不依赖 verify_plan.py）
+  脚本：%TEMP%\r_t01_review\independent_crosscheck.py（只读），退出码 0
+  结论摘要：13 要求 ID 唯一；初赛合计 100、决赛合计 100；决赛计分 ID 恰 11 个；
+  baseline.thresholds/invariants/frozen_case_ids 与 requirements.json/pilot_cases.json 完全一致；
+  baseline.source_hashes 三值与当前文件 MATCH；20 案例全部 is_synthetic=true、SYN- 前缀、source_kind=synthetic、review_state=待复核提案、expected_basis 非空；
+  manifest 60 任务唯一、7 阶段、阶段划分=任务表、execution_order 60 项无重复且与任务集合一致、T18<T17、T49<T44、T40—T42∈G3；
+  requirements↔tasks 双向映射无差异；task_state 60 条，枚举全部落在合同词表内。
+
+[6] 任务卡一致性核对
+  脚本：%TEMP%\r_t01_review\compare_task_cards.py（只读），退出码 0
+  60 张任务卡头部（阶段｜前置｜评分/要求）与 manifest 对比：仅 1 处不一致——
+  T06：任务卡与 00_execution_map.md §8 均为「E1、F3、X1」，manifest/requirements.json 为「F1、F3、E1、X1」（多出 F1）。
+  其余 59 张卡的阶段、前置、评分要求映射逐项一致。
+
+[7] 独立负例（9 个，全部在系统临时目录副本上运行；正式 contracts/fixtures/progress 未改动）
+  脚本：%TEMP%\r_t01_review\run_negative_cases.py；执行窗口 2026-09-30T21:10:58.178—21:10:59.172 +08:00
+  N1 删除 X1 决赛分值映射            → exit 1，REQ_FINAL_TOTAL（决赛合计=95）+ REQ_FINAL_MISSING: X1        CAUGHT
+  N2 verification.live=blocked_live → exit 1，STATE_ENUM: T05.verification.live=blocked_live 非合同枚举    CAUGHT
+  N3 删除 SYN-CONF-001 expected_basis→ exit 1，CASE_FIELD: SYN-CONF-001 缺字段 expected_basis              CAUGHT
+  N4 基线副本 P3 决赛 10→8          → exit 1，BASELINE_THRESHOLD_CHANGED: P3 分值 {...8} -> {...10}        CAUGHT
+  N5 删除冻结案例 SYN-VER-003       → exit 1，BASELINE_CASE_DELETED: 已冻结案例 SYN-VER-003 被删除          CAUGHT
+  N6 T24 增加未声明映射 P3          → exit 1，CONSISTENCY_REQ_TASK: 任务 T24 声明映射 P3，但 requirements.json 未列入  CAUGHT
+  N7 P3 增加未声明任务 T50          → exit 1，CONSISTENCY_TASK_REQ: requirements.json 将 T50 列入 P3，但任务表未声明  CAUGHT
+  N8 execution_order 对调 T49/T44   → exit 1，DEP_ORDER + ORDER_RULE: T49 必须在 T44 之前执行               CAUGHT
+  N9 优秀档文字注入「响应≤5s」      → exit 1，INV_VIOLATED: INV-P3-no-5s-in-excellent 不应含 “5s”           CAUGHT
+  汇总：9 例全部被拦截，退出码均非 0，错误信息均指向正确对象（ID/字段/值）。临时目录已删除。
+
+[8] 基线盲区探针（非验收负例，用于定级）
+  N10 同 ID 篡改 SYN-REV-001 的 expected_result 内容（案例集合不变），使用正式基线比对
+      → exit 0，PLAN_OK。证明 compare_baseline 不比对案例内容与 source_hashes（详见报告 §7 P-2）。

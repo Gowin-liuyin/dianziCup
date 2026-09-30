@@ -1,0 +1,97 @@
+R-T02 复跑命令记录（独立审查，非实现者）
+日期：2026-09-30（本地时区）｜工作目录：D:\dianzi｜审查者：R-T02 独立审查 subagent
+本文件为 reports/reviews/R-T02.md 的附件原始记录。除本文件与 R-T02.md 外未写入/修改任何仓库文件。
+工具版本（实测）：uv 0.10.9 (f675560f3 2026-03-06)；node v24.13.1；npm 11.8.0；
+E:\miniconda\python.exe = Python 3.13.11（Anaconda, MSC v.1929，仅用于 scripts/dev.py 与 verify_plan.py 按任务指定）；
+backend/.venv = CPython 3.12.13（pytest 平台行实测）；pytest 8.4.2。
+说明：pwsh 控制台为 GBK，部分中文输出在日志/终端显示为乱码（verify_plan 的 PLAN_OK 文案等），属显示问题，非内容问题。
+
+================================================================
+一、必须复跑项（任务指定 5 组）
+================================================================
+[1] cd backend && uv sync --locked
+    起止 23:02:43.630—23:02:43.716｜退出码 0
+    输出：Resolved 33 packages in 1ms / Audited 33 packages in 2ms
+    注：本条为独立补证 T02.md §5 登记的缺口（主控日志仅留过错误目录 exit=2 记录）。
+
+[2] cd backend && uv run pytest tests/unit -v
+    起止 23:02:57.233—23:02:59.751｜退出码 0
+    collected 9 items；9 passed / 0 failed / 0 skipped，1 warning（StarletteDeprecationWarning）
+    覆盖率：TOTAL 17 stmts / 0 miss / 100%（门槛 cov-fail-under=60 达成）
+    9 个用例逐条 PASSED：
+      test_unimplemented_integration_scope_exits_nonzero_without_pass
+      test_unknown_scope_is_rejected_with_argument_error
+      test_dev_script_repeat_invocation_is_idempotent
+      test_health_live_reports_process_liveness
+      test_health_ready_reports_not_ready_without_external_dependencies
+      test_application_import_does_not_open_network_connections
+      test_source_files_contain_no_secret_values
+      test_pyproject_pins_python_312_and_keeps_type_checks_enabled
+      test_lockfile_exists_for_clean_environment_install
+
+[3] cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy src
+    ruff check：23:03:15.254—23:03:15.429｜exit 0｜All checks passed!
+    ruff format --check：23:03:15.435—23:03:15.526｜exit 0｜6 files already formatted
+    mypy src：23:03:15.527—23:03:15.901｜exit 0｜Success: no issues found in 5 source files
+
+[4] cd frontend && npm run lint && npm run typecheck && npm run test && npm run build
+    npm run lint：23:03:37.370—23:03:38.615｜exit 0｜eslint . 无输出
+    npm run typecheck：23:04:28.273—23:04:29.635｜exit 0｜tsc --noEmit 无输出
+    npm run test：23:04:29.637—23:04:31.974｜exit 0｜vitest run：1 file / 1 test passed，0 failed，0 skipped
+    npm run build：23:04:31.974—23:04:34.066｜exit 0｜tsc -b && vite build：26 modules，
+        dist/index.html 0.36 kB，dist/assets/index-DMf2nLNV.js 143.89 kB，built in 457ms
+
+[5] E:\miniconda\python.exe scripts/dev.py check --scope unit / integration / bogus（三态合同）
+    unit：23:06:10.371—23:06:13.632｜exit 0｜透传 pytest 9 passed（cov 100%）
+    integration：23:06:13.639—23:06:13.744｜exit 3｜stderr: ERROR not_implemented: integration
+        （stdout 无 PASS 字样；与测试断言一致）
+    bogus：23:06:13.745—23:06:13.811｜exit 2｜argparse: invalid choice: 'bogus'
+    三态实测 = 0 / 3+not_implemented / 2，与 docs/plan/06 §2 合同一致；未实现 scope 绝无 PASS。
+
+[6] E:\miniconda\python.exe scripts/verify_plan.py --root D:\dianzi
+    23:06:14.804—23:06:14.974｜exit 0｜PLAN_OK（需求/任务/顺序/案例/状态结构校验通过；不代表产品测试通过）
+[7] E:\miniconda\python.exe scripts/verify_plan.py --root D:\dianzi --baseline contracts/baselines/plan_baseline_t01.json
+    23:06:14.976—23:06:15.054｜exit 0｜PLAN_OK（基线比对无漂移）
+    文档批落盘后复跑（约 23:09）：exit 0｜PLAN_OK —— 冻结文件未被 T02 触碰。
+
+================================================================
+二、附加独立核验（审查项 b/c/d/e/f 的证据）
+================================================================
+[A1] uv lock --check（backend）：exit 0｜Resolved 33 packages —— uv.lock 与 pyproject 一致，非陈旧锁。
+[A2] C02 负例（Python 侧）：uv sync --locked --dry-run --python 3.13
+     exit 2｜error: The requested interpreter resolved to Python 3.13.11, which is incompatible
+     with the project's Python requirement: `==3.12.*` (from `project.requires-python`)
+     —— 错误 Python 版本被明确拒绝，不绕过锁文件（dry-run，未改动 .venv/锁）。
+[A3] C03 负例（真实类型错误）：uv run mypy --config-file <临时ini，镜像项目 mypy 规则> -c "<注入 arg-type 错误>"
+     exit 1｜<string>:4: error: Argument 1 to "add_counts" has incompatible type "str"; expected "int"  [arg-type]
+     对照（同代码正确类型）：exit 0｜Success: no issues found in 1 source file
+     —— 类型错误使类型检查非零退出，行为有效（临时文件在 %TEMP%，未写仓库）。
+     注：主控 t02_gap_closure.log 的 C03 探针注入的是语法错误（Invalid syntax, exit 2），
+     低于任务卡「故意加入类型错误」的要求；本条为严格口径补证。
+[A4] RUF001/002/003 豁免必要性与滥用核查：uv run ruff check --isolated --select RUF001,RUF002,RUF003 .
+     exit 1｜26 处违规（domain/__init__ 4、infrastructure/__init__ 4、test_t02 18），
+     被标记字符集合仅 { ， ； ： （ ） } —— 全部为中文全角标点（docstring/注释），
+     无拉丁/西里尔同形字符借豁免掩盖。豁免理由（中文 docstring 与 RUF 歧义字符规则冲突）实测成立。
+[A5] 锁文件真实性（前端）：干净房（%TEMP% 仅放 package.json+package-lock.json，无 node_modules）
+     npm ci --dry-run：exit 0，按锁完整解析安装树（含 which@2.0.2 等）—— 锁可独立安装，非手写伪锁。
+     npm ls / npm ls --all：exit 0；问题行仅 UNMET OPTIONAL（跨平台可选包，Windows 正常）。
+     结构统计：lockfileVersion 3；packages=358；带 sha512 integrity+resolved=347；
+     10 条目缺 version/resolved/integrity（@types/prop-types、@types/babel__{generator,template,traverse}、
+     cross-spawn、isexe、path-key、shebang-command、shebang-regex、which）—— 见 R-T02 建议项。
+     uv.lock 结构：version=1/revision=3；[[package]]×33；sha256×134；files.pythonhosted.org URL+size+upload-time。
+[A6] npm audit（诚实性核查，未执行任何 fix）：exit 1｜2 moderate：
+     @vitest/mocker 2.1.0—4.1.10（GHSA-82fw-gwwq-j7x9 路径遍历/任意文件读）→ vitest 2.1.0-beta.1—4.1.10；
+     修复需 npm audit fix --force（升 vitest@5，breaking）。仅 devDependencies，不进生产产物。
+[A7] 密钥扫描（全仓正则 api[_-]?key|secret|token|password 赋值长值）：项目文件 0 命中；
+     唯一命中为 node_modules/@testing-library/react/README.md 示例（非本项目文件）。
+     infra/compose/compose.yaml 中 POSTGRES_PASSWORD=dev-only-not-a-secret 为明示占位值（非真实密钥）。
+[A8] 防假数据断言非恒真：App.test.tsx 的 /\d+[\s]*(次|条|个|%)/ 正则实测：
+     「后端 API 未连接（开发骨架阶段）」→ 不命中（当前 UI 通过）；
+     「已处理 12 条情报」「覆盖 8 个来源」「准确率 95.5%」「今日新增 3 条」→ 全部命中（若渲染假统计即失败）。
+[A9] 文件时间线（审查窗口）：docs 批 .github/workflows/ci.yml、README.md、reports/tasks/T02.md 于 23:04:53 落盘
+     （审查开始时不存在，落盘后已纳入本审查）；infra/compose/compose.yaml、config/dev.env.example 于 23:02:00
+     落盘，按 progress/context_handoff.md 归属 T03 轨道（非 T02 交付物）；
+     reports/runs/t02_gap_closure.log（23:06:49）、docs/decisions/cr002_vitest_major_bump.md（23:07:23）
+     为审查窗口内主控补缺口产物，已并入判定。
+[A10] 版本绑定：审查对象 SHA-256 于 23:01—23:02 与 23:09 两次计算一致（详见 R-T02.md §1）；
+     23:20 复核关键文件哈希仍一致 —— 审查期间审查对象未被改动。

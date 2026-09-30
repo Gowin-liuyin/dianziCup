@@ -1,0 +1,42 @@
+FIX-T01 单元/行为测试运行日志
+工作目录：D:\dianzi ；解释器：E:\miniconda\python.exe（Python 3.13.11，仅标准库）；日期：2026-09-30（+08:00）
+
+命令：E:\miniconda\python.exe -m unittest discover -s tests/plan -v   （PYTHONUTF8=1）
+开始/结束：2026-09-30 21:30:17.008 / 2026-09-30 21:30:19.005
+退出码：0
+测试数：16（Ran 16 tests in 1.828s）；失败 0；错误 0；跳过 0（13 原测试 + 3 新增负例/正例，全部通过）
+
+实际输出（unittest -v 全部行）：
+test_baseline_detects_case_content_change_with_same_id (test_verify_plan.VerifyPlanTests.test_baseline_detects_case_content_change_with_same_id) ... ok
+test_baseline_detects_deleted_invariant (test_verify_plan.VerifyPlanTests.test_baseline_detects_deleted_invariant) ... ok
+test_baseline_detects_removed_case (test_verify_plan.VerifyPlanTests.test_baseline_detects_removed_case) ... ok
+test_baseline_detects_task_manifest_change (test_verify_plan.VerifyPlanTests.test_baseline_detects_task_manifest_change) ... ok
+test_baseline_detects_threshold_change (test_verify_plan.VerifyPlanTests.test_baseline_detects_threshold_change) ... ok
+test_baseline_passes_on_unchanged_copy (test_verify_plan.VerifyPlanTests.test_baseline_passes_on_unchanged_copy) ... ok
+test_dependency_cycle_fails (test_verify_plan.VerifyPlanTests.test_dependency_cycle_fails) ... ok
+test_execution_order_violation_fails (test_verify_plan.VerifyPlanTests.test_execution_order_violation_fails) ... ok
+test_missing_case_field_fails (test_verify_plan.VerifyPlanTests.test_missing_case_field_fails) ... ok
+test_missing_dependency_fails (test_verify_plan.VerifyPlanTests.test_missing_dependency_fails) ... ok
+test_missing_requirement_task_mapping_fails (test_verify_plan.VerifyPlanTests.test_missing_requirement_task_mapping_fails) ... ok
+test_passed_without_evidence_fails (test_verify_plan.VerifyPlanTests.test_passed_without_evidence_fails) ... ok
+test_prelim_total_mismatch_fails (test_verify_plan.VerifyPlanTests.test_prelim_total_mismatch_fails) ... ok
+test_unknown_verification_enum_fails (test_verify_plan.VerifyPlanTests.test_unknown_verification_enum_fails) ... ok
+test_unmarked_synthetic_case_fails (test_verify_plan.VerifyPlanTests.test_unmarked_synthetic_case_fails) ... ok
+test_valid_plan_passes (test_verify_plan.VerifyPlanTests.test_valid_plan_passes) ... ok
+
+----------------------------------------------------------------------
+Ran 16 tests in 1.828s
+
+OK
+
+新增测试说明（负例只操作 setUp 复制的临时目录副本，未改动正式 contracts/、fixtures/、baseline）：
+1. test_baseline_detects_case_content_change_with_same_id
+   复现 R-T01 负例 N10：先由未改动副本 --write-baseline 冻结，再把 SYN-REV-001 的 expected_result 改为弱化文本（案例 ID 与集合不变），
+   运行 --baseline → 期望非零退出且输出 BASELINE_SOURCE_HASH_CHANGED + fixtures/synthetic/pilot_cases.json，
+   并断言不含 BASELINE_CASE_DELETED（证明拦截来自内容哈希而非案例集合）。修复前该注入逃逸（R-T01 N10 实测 exit 0），修复后被拦截。
+2. test_baseline_detects_task_manifest_change
+   同法冻结后，把 task_manifest.json 中 T06 的 requirements 改回 ["F1","E1","F3","X1"] → 非零退出且输出
+   BASELINE_SOURCE_HASH_CHANGED + contracts/task_manifest.json。
+3. test_baseline_passes_on_unchanged_copy（正例）
+   未改动副本 + --baseline → 退出码 0、PLAN_OK。
+原有 13 个测试未删除、未放宽任何断言、未改动任何注入案例。

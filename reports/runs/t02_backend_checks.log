@@ -1,0 +1,151 @@
+T02 主控命令批 - 后端（修复后复跑，2026-09-30 22:45:21）
+[0] uv run ruff format .
+   Building ai-intel-backend @ file:///D:/dianzi/backend
+      Built ai-intel-backend @ file:///D:/dianzi/backend
+Uninstalled 1 package in 1ms
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 1 package in 17ms
+1 file reformatted, 5 files left unchanged
+
+exit=0
+[1] uv lock --python 3.12 (verify locked)
+error: No `pyproject.toml` found in current directory or any parent directory
+
+exit=2
+[2] uv sync --locked
+error: No `pyproject.toml` found in current directory or any parent directory
+
+exit=2
+[3] uv run pytest tests/unit -v
+============================= test session starts =============================
+platform win32 -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0 -- D:\dianzi\backend\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: D:\dianzi\backend
+configfile: pyproject.toml
+plugins: anyio-4.15.1, cov-6.3.0
+collecting ... collected 9 items
+
+tests/unit/test_t02_project_skeleton.py::test_unimplemented_integration_scope_exits_nonzero_without_pass PASSED [ 11%]
+tests/unit/test_t02_project_skeleton.py::test_unknown_scope_is_rejected_with_argument_error PASSED [ 22%]
+tests/unit/test_t02_project_skeleton.py::test_dev_script_repeat_invocation_is_idempotent PASSED [ 33%]
+tests/unit/test_t02_project_skeleton.py::test_health_live_reports_process_liveness PASSED [ 44%]
+tests/unit/test_t02_project_skeleton.py::test_health_ready_reports_not_ready_without_external_dependencies PASSED [ 55%]
+tests/unit/test_t02_project_skeleton.py::test_application_import_does_not_open_network_connections PASSED [ 66%]
+tests/unit/test_t02_project_skeleton.py::test_source_files_contain_no_secret_values PASSED [ 77%]
+tests/unit/test_t02_project_skeleton.py::test_pyproject_pins_python_312_and_keeps_type_checks_enabled PASSED [ 88%]
+tests/unit/test_t02_project_skeleton.py::test_lockfile_exists_for_clean_environment_install FAILED [100%]
+
+================================== FAILURES ===================================
+_____________ test_lockfile_exists_for_clean_environment_install ______________
+
+    def test_lockfile_exists_for_clean_environment_install() -> None:
+        """T02-C01 ��Ӧ�ľ�̬���֣���ʵ���ļ����ڣ��ɾ���װ��������������֤���Ǽǣ���"""
+        assert (REPO_ROOT / "backend" / "uv.lock").is_file()
+>       assert (REPO_ROOT / "frontend" / "package-lock.json").is_file()
+E       AssertionError: assert False
+E        +  where False = is_file()
+E        +    where is_file = ((WindowsPath('D:/dianzi') / 'frontend') / 'package-lock.json').is_file
+
+tests\unit\test_t02_project_skeleton.py:110: AssertionError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\dianzi\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.12.13-final-0 _______________
+
+Name                                      Stmts   Miss  Cover   Missing
+-----------------------------------------------------------------------
+src\ai_intel\__init__.py                      0      0   100%
+src\ai_intel\api\__init__.py                  0      0   100%
+src\ai_intel\api\app.py                      17      0   100%
+src\ai_intel\domain\__init__.py               0      0   100%
+src\ai_intel\infrastructure\__init__.py       0      0   100%
+-----------------------------------------------------------------------
+TOTAL                                        17      0   100%
+Required test coverage of 60% reached. Total coverage: 100.00%
+=========================== short test summary info ===========================
+FAILED tests/unit/test_t02_project_skeleton.py::test_lockfile_exists_for_clean_environment_install
+=================== 1 failed, 8 passed, 1 warning in 2.28s ====================
+
+exit=1
+[4] uv run ruff check .
+E501 Line too long (101 > 100)
+  --> src\ai_intel\api\app.py:32:98
+   |
+30 |         readiness = {
+31 |             "status": "not_ready",
+32 |             "reason": "external dependencies not configured (database/cache/search 由 T03/T05 接入)",
+   |                                                                                                     ^
+33 |         }
+34 |         return JSONResponse(status_code=503, content=readiness)
+   |
+
+Found 1 error.
+
+exit=1
+[5] uv run ruff format --check .
+6 files already formatted
+
+exit=0
+[6] uv run mypy src
+Success: no issues found in 5 source files
+
+exit=0
+
+T02 主控命令批 - 后端最终复跑（2026-09-30 22:54:37）
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.12.13-final-0 _______________
+
+Name                                      Stmts   Miss  Cover   Missing
+-----------------------------------------------------------------------
+src\ai_intel\__init__.py                      0      0   100%
+src\ai_intel\api\__init__.py                  0      0   100%
+src\ai_intel\api\app.py                      17      0   100%
+src\ai_intel\domain\__init__.py               0      0   100%
+src\ai_intel\infrastructure\__init__.py       0      0   100%
+-----------------------------------------------------------------------
+TOTAL                                        17      0   100%
+Required test coverage of 60% reached. Total coverage: 100.00%
+======================== 9 passed, 1 warning in 2.24s =========================
+
+pytest exit=0
+All checks passed!
+
+ruff exit=0
+
+1 file would be reformatted, 5 files already formatted
+
+format exit=1
+Success: no issues found in 5 source files
+
+mypy exit=0
+[dev.py] check --scope unit
+TOTAL                                        17      0   100%
+Required test coverage of 60% reached. Total coverage: 100.00%
+======================== 9 passed, 1 warning in 2.22s =========================
+
+exit=0
+[dev.py] check --scope integration (期望 3/not_implemented)
+ERROR not_implemented: integration
+
+exit=3
+[dev.py] check --scope bogus (期望 2)
+usage: dev.py check [-h]
+                    --scope {unit,contract,integration,security,frontend,e2e,all}
+dev.py check: error: argument --scope: invalid choice: 'bogus' (choose from unit, contract, integration, security, frontend, e2e, all)
+
+exit=2
+[verify_plan] --root 与 --baseline（冻结文件未动证明）
+PLAN_OK: ����/����/˳��/����/״̬�ṹУ��ͨ������������Ʒ����ͨ����
+
+exit=0
+PLAN_OK: ����/����/˳��/����/״̬�ṹУ��ͨ������������Ʒ����ͨ����
+
+exit=0
+
+[最终] ruff format 复跑 + format --check exit=0 + pytest exit=0 (22:55:23)

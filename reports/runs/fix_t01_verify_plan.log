@@ -1,0 +1,80 @@
+FIX-T01 复跑日志（T01 独立审查缺陷修复；修复者 Agent，非原实现者/审查者）
+工作目录：D:\dianzi ；解释器：E:\miniconda\python.exe（Python 3.13.11，仅标准库）；日期：2026-09-30（本地时区 +08:00）
+本日志仅记录实际执行的命令与真实输出；中文输出经 PYTHONUTF8=1 捕获，未做人工修改。
+
+[0] 改动清单（本日志对应的代码面改动，旧值 -> 新值）
+  contracts/task_manifest.json（T06 行，原第 32 行）
+    旧："requirements": ["F1", "F3", "E1", "X1"]
+    新："requirements": ["E1", "F3", "X1"]
+  contracts/requirements.json（F1 条目 implementation_tasks，原第 31 行）
+    旧：["T01", "T04", "T05", "T06", "T07", "T08", "T09", "T10", "T11", "T12", "T13", "T14", "T15", "T16", "T17", "T35", "T36", "T37", "T40", "T41", "T44"]（21 项）
+    新：["T01", "T04", "T05", "T07", "T08", "T09", "T10", "T11", "T12", "T13", "T14", "T15", "T16", "T17", "T35", "T36", "T37", "T40", "T41", "T44"]（20 项，仅移除 "T06"；acceptance_tasks ["T52","T54","T58"] 未动）
+  scripts/verify_plan.py（P-2）
+    新增 check_source_hashes(baseline, contract_paths)：逐相对路径重算 SHA-256 并比对 baseline["source_hashes"]；
+      不一致 -> BASELINE_SOURCE_HASH_CHANGED: <path> <旧哈希> -> <新哈希>，需变更单
+      缺失条目/不可读 -> BASELINE_SOURCE_HASH_MISSING: ...
+    compare_baseline 签名增加 contract_paths: dict[str, Path]（最小改动），入口先执行 check_source_hashes；
+    run_all_checks 中调用改为传入 contract_paths。其余检查逻辑未改。
+  tests/plan/test_verify_plan.py
+    新增 3 个测试（13 -> 16）：
+      test_baseline_detects_case_content_change_with_same_id（复现 R-T01 N10：同 ID 篡改 SYN-REV-001.expected_result）
+      test_baseline_detects_task_manifest_change（篡改 task_manifest.json T06 requirements）
+      test_baseline_passes_on_unchanged_copy（正例：未改动副本 + --baseline -> PLAN_OK）
+    原 13 个测试未删改任何用例与断言（仅在文件末尾追加）。
+
+[1] 合同结构校验（修复后、基线刷新前）
+  命令：E:\miniconda\python.exe scripts/verify_plan.py --root D:\dianzi
+  开始/结束：2026-09-30 21:29:09.146 / 2026-09-30 21:29:09.213
+  退出码：0
+  输出：PLAN_OK: 需求/任务/顺序/案例/状态结构校验通过（不代表产品测试通过）
+
+[2] 刷新前基线分节摘要留存（只读，为 [4] 的前后比对留存旧值）
+  命令：E:\miniconda\python.exe -c <只读摘要脚本：对 plan_baseline_t01.json 的各顶层键做规范 JSON 序列化后取 SHA-256>
+  执行窗口：2026-09-30 21:29:1x—21:29:3x（该次未单独打时间戳，严格位于 [1] 21:29:09 与 [3] 21:29:38 之间）
+  退出码：0
+  输出（旧值，刷新前实际读取结果）：
+    OLD_SECTION_SHA256 thresholds = 7b5dfcca7e61f7e22976c9111f006f3213a1f4929298fa72f28d9d7a39d0f1bd
+    OLD_SECTION_SHA256 contract_invariants = 143ce95ac8fba749227d4a3b5d64d6b133c1aa55fd42901cc2822a1ad57812b4
+    OLD_SECTION_SHA256 frozen_case_ids = 644a41a6379bf878b61836d47a227f0fce0a1faab736c9898b83407817919b03
+    OLD_SECTION_SHA256 source_hashes = f2951ac17440c6a3c3183752bcb1d9eec799a93211c6390a5996dc8f87ef3b84
+    OLD_SECTION_SHA256 purpose = 462c11c664351f4881448f5c11b83e2fb4db6dc2001c8fe70baf421dea408021
+    OLD_SECTION_SHA256 schema_version = 6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b
+    OLD_SOURCE_HASHES =
+      contracts/requirements.json            2411f1a4c31c1a78b4011f3e59019412e4ff26b9d52e40e6ebda6fe0159168b9
+      contracts/task_manifest.json           0cb8275e9d1913f293a167e1b8ce3eb1337b6382c36564c8b7f087ab725e6e22
+      fixtures/synthetic/pilot_cases.json    8686ba8db7793e5ac59cab339e61ea8b0bfd4e85ecd65e9f657c2d4ade0b990d
+  说明：旧 source_hashes 三值与 R-T01 报告 §1/§7 记录一致（同一基线文件，未被他人改动）。
+
+[3] 基线刷新（--write-baseline）
+  命令：E:\miniconda\python.exe scripts/verify_plan.py --root D:\dianzi --write-baseline contracts/baselines/plan_baseline_t01.json
+  开始/结束：2026-09-30 21:29:38.765 / 2026-09-30 21:29:38.920
+  退出码：0
+  输出：BASELINE_WRITTEN: contracts\baselines\plan_baseline_t01.json
+
+[4] 基线刷新前后逐节比对（只读；旧摘要见 [2]，脚本把 [2] 的旧摘要作为常量与新文件实测值比对）
+  命令：E:\miniconda\python.exe -c <只读比对脚本>
+  开始/结束：2026-09-30 21:35:33.268145 / 2026-09-30 21:35:33.268578
+  退出码：0
+  输出：
+    top-level keys: ['contract_invariants', 'frozen_case_ids', 'purpose', 'schema_version', 'source_hashes', 'thresholds']
+    UNCHANGED  thresholds: 7b5dfcca7e61f7e22976c9111f006f3213a1f4929298fa72f28d9d7a39d0f1bd -> 7b5dfcca7e61f7e22976c9111f006f3213a1f4929298fa72f28d9d7a39d0f1bd
+    UNCHANGED  contract_invariants: 143ce95ac8fba749227d4a3b5d64d6b133c1aa55fd42901cc2822a1ad57812b4 -> 143ce95ac8fba749227d4a3b5d64d6b133c1aa55fd42901cc2822a1ad57812b4
+    UNCHANGED  frozen_case_ids: 644a41a6379bf878b61836d47a227f0fce0a1faab736c9898b83407817919b03 -> 644a41a6379bf878b61836d47a227f0fce0a1faab736c9898b83407817919b03
+    CHANGED  source_hashes: f2951ac17440c6a3c3183752bcb1d9eec799a93211c6390a5996dc8f87ef3b84 -> 14134e4128822d8048b8a3df72cf97e4185a4c7ab8a65c60c9b0b777763188a4
+    UNCHANGED  purpose: 462c11c664351f4881448f5c11b83e2fb4db6dc2001c8fe70baf421dea408021 -> 462c11c664351f4881448f5c11b83e2fb4db6dc2001c8fe70baf421dea408021
+    UNCHANGED  schema_version: 6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b -> 6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b
+    NEW_SOURCE_HASHES =
+      "contracts/requirements.json": "8757ddc0db3cb219403037f21f7dbe1667e58b91d7be84724b41334ce871ca97"
+      "contracts/task_manifest.json": "cfdc74b188c0ff1e30b975f883847db20bbb15e815880bb6d1a404c678256b99"
+      "fixtures/synthetic/pilot_cases.json": "8686ba8db7793e5ac59cab339e61ea8b0bfd4e85ecd65e9f657c2d4ade0b990d"
+  结论：thresholds / contract_invariants / frozen_case_ids / purpose / schema_version 五项逐字节（规范序列化 SHA-256）未变；
+        仅 source_hashes 变化，且其中 fixtures/synthetic/pilot_cases.json 哈希保持 8686ba8d…（冻结案例文件未改）；
+        --write-baseline 未改动阈值/不变量/案例 ID 之外的任何内容，符合「基线刷新」预期范围。
+
+[5] 冻结基线比对（刷新后，必须 PLAN_OK）
+  命令：E:\miniconda\python.exe scripts/verify_plan.py --root D:\dianzi --baseline contracts/baselines/plan_baseline_t01.json
+  开始/结束：2026-09-30 21:30:08.243 / 2026-09-30 21:30:08.393
+  退出码：0
+  输出：PLAN_OK: 需求/任务/顺序/案例/状态结构校验通过（不代表产品测试通过）
+
+相关日志：reports/runs/fix_t01_unittest.log（测试）、reports/runs/fix_t01_crosscheck.log（三方映射核对）。

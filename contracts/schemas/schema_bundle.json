@@ -1,0 +1,656 @@
+{
+  "generator": "ai_intel.domain.schema_export",
+  "schema_version": 1,
+  "schemas": {
+    "AssessmentRecord": {
+      "$defs": {
+        "AssessmentStatus": {
+          "description": "研判结论: 四态表达, 不等价于已入侵或绝对安全。",
+          "enum": [
+            "supported_applicability",
+            "excluded_with_evidence",
+            "insufficient_evidence",
+            "conflicting_evidence"
+          ],
+          "title": "AssessmentStatus",
+          "type": "string"
+        },
+        "Identifier": {
+          "description": "业务标识: UUID 字符串为默认主键, 公开漏洞标识另存于 external_id。",
+          "properties": {
+            "external_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "External Id"
+            },
+            "value": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Value",
+              "type": "string"
+            }
+          },
+          "required": [
+            "value"
+          ],
+          "title": "Identifier",
+          "type": "object"
+        },
+        "VisibilityScope": {
+          "description": "可见范围: public 记录 tenant_id 必须为空, tenant 记录必须非空。",
+          "properties": {
+            "tenant_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Tenant Id"
+            },
+            "visibility": {
+              "pattern": "^(public|tenant)$",
+              "title": "Visibility",
+              "type": "string"
+            }
+          },
+          "required": [
+            "visibility"
+          ],
+          "title": "VisibilityScope",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "资产研判: 结论与证据包绑定; 四态结论不等于入侵或安全断言。",
+      "properties": {
+        "assessment_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "asset_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "claim_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "decided_at": {
+          "format": "date-time",
+          "title": "Decided At",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          },
+          "minItems": 1,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "schema_version": {
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "scope": {
+          "$ref": "#/$defs/VisibilityScope"
+        },
+        "status": {
+          "$ref": "#/$defs/AssessmentStatus"
+        }
+      },
+      "required": [
+        "assessment_id",
+        "asset_id",
+        "claim_id",
+        "status",
+        "decided_at",
+        "evidence_ids",
+        "scope"
+      ],
+      "title": "AssessmentRecord",
+      "type": "object"
+    },
+    "ClaimRecord": {
+      "$defs": {
+        "ClaimOrigin": {
+          "description": "论断来源等级: 区分原文明确、结构化来源、规则推导、模型假设与人工确认。",
+          "enum": [
+            "source_explicit",
+            "structured_source",
+            "rule_derived",
+            "model_hypothesis",
+            "human_confirmed"
+          ],
+          "title": "ClaimOrigin",
+          "type": "string"
+        },
+        "ClaimStatus": {
+          "description": "事实记录状态; 不与条件真假混用。",
+          "enum": [
+            "supported",
+            "disputed",
+            "unverified",
+            "superseded",
+            "withdrawn"
+          ],
+          "title": "ClaimStatus",
+          "type": "string"
+        },
+        "ConditionValue": {
+          "description": "条件判定值: unknown 与 false 语义不同, 序列化后仍须可区分。",
+          "enum": [
+            "true",
+            "false",
+            "unknown",
+            "conflict"
+          ],
+          "title": "ConditionValue",
+          "type": "string"
+        },
+        "FreshnessStatus": {
+          "description": "时效状态: 缺观察时间不得填 current。",
+          "enum": [
+            "current",
+            "stale",
+            "unknown"
+          ],
+          "title": "FreshnessStatus",
+          "type": "string"
+        },
+        "Identifier": {
+          "description": "业务标识: UUID 字符串为默认主键, 公开漏洞标识另存于 external_id。",
+          "properties": {
+            "external_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "External Id"
+            },
+            "value": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Value",
+              "type": "string"
+            }
+          },
+          "required": [
+            "value"
+          ],
+          "title": "Identifier",
+          "type": "object"
+        },
+        "VisibilityScope": {
+          "description": "可见范围: public 记录 tenant_id 必须为空, tenant 记录必须非空。",
+          "properties": {
+            "tenant_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Tenant Id"
+            },
+            "visibility": {
+              "pattern": "^(public|tenant)$",
+              "title": "Visibility",
+              "type": "string"
+            }
+          },
+          "required": [
+            "visibility"
+          ],
+          "title": "VisibilityScope",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "事实论断: 状态、来源等级与条件判定三分, 不合并为单一 status。",
+      "properties": {
+        "asserted_at": {
+          "format": "date-time",
+          "title": "Asserted At",
+          "type": "string"
+        },
+        "claim_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "claim_origin": {
+          "$ref": "#/$defs/ClaimOrigin"
+        },
+        "claim_status": {
+          "$ref": "#/$defs/ClaimStatus"
+        },
+        "condition_value": {
+          "$ref": "#/$defs/ConditionValue"
+        },
+        "freshness": {
+          "$ref": "#/$defs/FreshnessStatus"
+        },
+        "object_value": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Object Value",
+          "type": "string"
+        },
+        "observed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed At"
+        },
+        "predicate": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Predicate",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "scope": {
+          "$ref": "#/$defs/VisibilityScope"
+        },
+        "subject": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Subject",
+          "type": "string"
+        }
+      },
+      "required": [
+        "claim_id",
+        "subject",
+        "predicate",
+        "object_value",
+        "claim_status",
+        "claim_origin",
+        "condition_value",
+        "freshness",
+        "asserted_at",
+        "scope"
+      ],
+      "title": "ClaimRecord",
+      "type": "object"
+    },
+    "DocumentRecord": {
+      "$defs": {
+        "DocumentKind": {
+          "description": "文档种类: 决定解析与证据定位策略。",
+          "enum": [
+            "advisory",
+            "article",
+            "paper",
+            "repository_record",
+            "standard",
+            "policy",
+            "asset_inventory"
+          ],
+          "title": "DocumentKind",
+          "type": "string"
+        },
+        "Identifier": {
+          "description": "业务标识: UUID 字符串为默认主键, 公开漏洞标识另存于 external_id。",
+          "properties": {
+            "external_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "External Id"
+            },
+            "value": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Value",
+              "type": "string"
+            }
+          },
+          "required": [
+            "value"
+          ],
+          "title": "Identifier",
+          "type": "object"
+        },
+        "VisibilityScope": {
+          "description": "可见范围: public 记录 tenant_id 必须为空, tenant 记录必须非空。",
+          "properties": {
+            "tenant_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Tenant Id"
+            },
+            "visibility": {
+              "pattern": "^(public|tenant)$",
+              "title": "Visibility",
+              "type": "string"
+            }
+          },
+          "required": [
+            "visibility"
+          ],
+          "title": "VisibilityScope",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "文档快照: 修订不覆盖历史, 每个版本独立成记录。",
+      "properties": {
+        "content_hash": {
+          "maxLength": 128,
+          "minLength": 32,
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "document_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "kind": {
+          "$ref": "#/$defs/DocumentKind"
+        },
+        "published_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Published At"
+        },
+        "retrieved_at": {
+          "format": "date-time",
+          "title": "Retrieved At",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "scope": {
+          "$ref": "#/$defs/VisibilityScope"
+        },
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "kind",
+        "title",
+        "retrieved_at",
+        "content_hash",
+        "scope"
+      ],
+      "title": "DocumentRecord",
+      "type": "object"
+    },
+    "EvidenceRecord": {
+      "$defs": {
+        "EvidenceSpan": {
+          "description": "证据定位区间: 保存后规范文本中的 Unicode code point, 左闭右开。",
+          "properties": {
+            "end_offset": {
+              "minimum": 0,
+              "title": "End Offset",
+              "type": "integer"
+            },
+            "locator": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Locator",
+              "type": "string"
+            },
+            "start_offset": {
+              "minimum": 0,
+              "title": "Start Offset",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "start_offset",
+            "end_offset",
+            "locator"
+          ],
+          "title": "EvidenceSpan",
+          "type": "object"
+        },
+        "Identifier": {
+          "description": "业务标识: UUID 字符串为默认主键, 公开漏洞标识另存于 external_id。",
+          "properties": {
+            "external_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "External Id"
+            },
+            "value": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Value",
+              "type": "string"
+            }
+          },
+          "required": [
+            "value"
+          ],
+          "title": "Identifier",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "证据条目: 左闭右开区间 + 定位符 + 支撑/反驳语义。",
+      "properties": {
+        "document_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "evidence_id": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "quote": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "span": {
+          "$ref": "#/$defs/EvidenceSpan"
+        },
+        "supports_claim": {
+          "title": "Supports Claim",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "document_id",
+        "span",
+        "quote",
+        "supports_claim"
+      ],
+      "title": "EvidenceRecord",
+      "type": "object"
+    },
+    "SourceRecord": {
+      "$defs": {
+        "Identifier": {
+          "description": "业务标识: UUID 字符串为默认主键, 公开漏洞标识另存于 external_id。",
+          "properties": {
+            "external_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "External Id"
+            },
+            "value": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Value",
+              "type": "string"
+            }
+          },
+          "required": [
+            "value"
+          ],
+          "title": "Identifier",
+          "type": "object"
+        },
+        "SourceCategory": {
+          "description": "来源类别: 八类建设目标的分类依据。",
+          "enum": [
+            "structured_vulnerability",
+            "vendor_advisory",
+            "security_community",
+            "code_repository",
+            "technical_blog",
+            "academic_paper",
+            "technical_standard",
+            "policy_regulation"
+          ],
+          "title": "SourceCategory",
+          "type": "string"
+        },
+        "VisibilityScope": {
+          "description": "可见范围: public 记录 tenant_id 必须为空, tenant 记录必须非空。",
+          "properties": {
+            "tenant_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Tenant Id"
+            },
+            "visibility": {
+              "pattern": "^(public|tenant)$",
+              "title": "Visibility",
+              "type": "string"
+            }
+          },
+          "required": [
+            "visibility"
+          ],
+          "title": "VisibilityScope",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "来源登记: category 决定连接器族, 不由标题猜测。",
+      "properties": {
+        "base_origin": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Base Origin",
+          "type": "string"
+        },
+        "category": {
+          "$ref": "#/$defs/SourceCategory"
+        },
+        "name": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "scope": {
+          "$ref": "#/$defs/VisibilityScope"
+        },
+        "source_id": {
+          "$ref": "#/$defs/Identifier"
+        }
+      },
+      "required": [
+        "source_id",
+        "name",
+        "category",
+        "base_origin",
+        "scope"
+      ],
+      "title": "SourceRecord",
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,88 @@
+# RV-FIX-T02_runs.log — 独立复查原始命令摘录（收窄范围版）
+# 复查者：RV-FIX-T02；工作目录根：D:\dianzi；未修改仓库文件、未装依赖、无 git 操作。
+# 时间：本机 23:26—23:32 前后（vitest 自报 Start at 23:26:51）。
+
+## [a] cd backend && uv run pytest tests/unit -v
+platform win32 -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0 -- D:\dianzi\backend\.venv\Scripts\python.exe
+collected 9 items
+tests/unit/test_t02_project_skeleton.py .........  [100%]
+TOTAL  17 stmts  0 miss  100% ; Required test coverage of 60% reached.
+======================== 9 passed, 1 warning in 2.69s =========================
+EXITCODE = 0
+
+## [a2] uv run ruff check .
+All checks passed!
+EXITCODE = 0
+
+## [a3] uv run ruff format --check .
+6 files already formatted
+EXITCODE = 0
+
+## [a4] uv run mypy src
+Success: no issues found in 5 source files
+EXITCODE = 0
+
+## [b1] npm run lint   (frontend)
+> eslint .
+EXITCODE = 0
+
+## [b2] npm run typecheck
+> tsc --noEmit
+EXITCODE = 0
+
+## [b3] npm run test
+ RUN  v3.2.7 D:/dianzi/frontend
+ ✓ src/App.test.tsx (1 test) 15ms
+ Test Files  1 passed (1) | Tests  1 passed (1) | Start at  23:26:51
+EXITCODE = 0
+
+## [b4] npm run build
+vite v6.4.3 building for production...
+✓ 26 modules transformed.
+dist/assets/index-DMf2nLNV.js  143.89 kB │ gzip: 46.35 kB
+✓ built in 463ms
+EXITCODE = 0
+
+## [c1] E:\miniconda\python.exe scripts/dev.py check --scope unit   (python 3.13.11)
+9 passed, 1 warning in 2.75s
+EXITCODE = 0   (期望 0)
+
+## [c2] E:\miniconda\python.exe scripts/dev.py check --scope integration
+[stderr] ERROR not_implemented: integration
+stdout 无 "PASS" 字样
+EXITCODE = 3   (期望 3)
+
+## [c3] E:\miniconda\python.exe scripts/dev.py check --scope bogus
+[stderr] dev.py check: error: argument --scope: invalid choice: 'bogus' (choose from unit, contract, integration, security, frontend, e2e, all)
+EXITCODE = 2   (期望 2)
+
+## [d1] E:\miniconda\python.exe scripts/verify_plan.py --root D:\dianzi
+PLAN_OK: <GBK 乱码，含义：计划/依赖/顺序/…结构校验通过；不代表产品测试通过>
+EXITCODE = 0
+
+## [d2] E:\miniconda\python.exe scripts/verify_plan.py --root D:\dianzi --baseline contracts/baselines/plan_baseline_t01.json
+PLAN_OK: 同上
+EXITCODE = 0
+
+## [e] 仓外 mypy 故障注入探针（%TEMP%\rv_fix_t02_mypy_probe，仓库副本，不改仓库）
+副本含 backend/src + backend/pyproject.toml。
+[e1] 注入 fault_probe.py（add_numbers("not-a-number", 3)）后：
+  src\ai_intel\api\fault_probe.py:4: error: Argument 1 to "add_numbers" has incompatible type "str"; expected "int"  [arg-type]
+  Found 1 error in 1 file (checked 8 source files)
+  EXITCODE = 1
+[e2] 删除 fault_probe.py 后：
+  Success: no issues found in 7 source files
+  EXITCODE = 0
+
+## [f] 锁文件结构（真实性）
+backend/uv.lock  47709 B | version = 1, revision = 3, requires-python = "==3.12.*"
+  [[package]] x33 ; name x33 ; version x34 ; url/hash x134 ; source = { editable = "." }
+frontend/package-lock.json  177770 B | lockfileVersion 3 | name ai-intel-workbench
+  packages 358 ; with integrity 347 ; with resolved 347 ; with version 354
+  （T02 报告记 206324B，与实测 177770B 不一致 —— 见报告 P3）
+
+## [g] 密钥扫描（仓库文本全量，6 类模式，排除 node_modules/.git/dist/.venv）
+sk-token=0 ; aws-key=0 ; pem-key=0 ; github-pat=0 ; assign-secret=0 ; bearer-token=0
+config/dev.env.example 仅占位值（dev-only-not-a-secret）；无 .env 入库。
+
+## [h] SHA-256（见报告 §0）

@@ -1,0 +1,74 @@
+# T03 开发依赖服务编排（本机隔离开发，不对外暴露数据服务）
+#
+# 资源限制、健康检查与持久卷按 docs/tasks/T03_development_services.md §4 配置;
+# 数据库/搜索端口仅绑定 127.0.0.1, 不暴露公网。
+services:
+  postgres:
+    image: postgres:16.4
+    profiles: ["core"]
+    environment:
+      POSTGRES_DB: ai_intel
+      POSTGRES_USER: ai_intel
+      POSTGRES_PASSWORD: dev-only-not-a-secret
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_intel -d ai_intel"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "2.0"
+
+  redis:
+    image: redis:7.4
+    profiles: ["core"]
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+
+  opensearch:
+    image: opensearchproject/opensearch:2.17.0
+    profiles: ["search"]
+    environment:
+      discovery.type: single-node
+      plugins.security.disabled: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+      # OpenSearch 2.12+ 的 demo 配置引导要求该变量; 本值为开发占位, 经环境注入, 非真实秘密。
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: Dev-Only-Not-A-Secret-1!
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: "2.0"
+
+volumes:
+  postgres_data:
+  redis_data:
+  opensearch_data:

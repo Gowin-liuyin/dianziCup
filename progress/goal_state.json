@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "goal": {
+    "id": "goal-8d8db448-4702-494d-83f3-7feb5b9ad5f7",
+    "revision": 1,
+    "phase": "active",
+    "rounds_started": 34,
+    "max_goal_rounds": 256
+  },
+  "updated_at": "2026-09-30",
+  "current_stage": "G1",
+  "stage_state": "g1_released_offline_dev",
+  "g0_stage_result": {
+    "report": "reports/stages/G0.md",
+    "sha256": "5E2329DB...E6831",
+    "decision": "附限制允许内部开发",
+    "exit_criteria": [
+      "条件1 资源与范围已确认：有条件通过（范围固化、unknown 如实；资源未齐备 BLK-001/002/004）",
+      "条件2 13 要求 ID 有任务映射：通过（四方审计 DIFF_COUNT=0）",
+      "条件3 无伪造已实现项：通过"
+    ],
+    "released": "G1（T02—T09）离线/内部开发：限代码、单测、合同测试与文档",
+    "limitations": [
+      "blocked_live 不得当通过",
+      "合成案例不得当金标",
+      "PLAN_OK 不得当产品测试",
+      "不得生成任何指标数字",
+      "D2/X1/R2 不得提前判过",
+      "独立审查≠人工审批"
+    ]
+  },
+  "write_ownership": {
+    "progress/*": "主控",
+    "reports/tasks/*、reports/runs/*": "各任务实现者",
+    "reports/reviews/*": "审查者",
+    "reports/stages/*": "阶段检查者",
+    "backend/ frontend/ scripts/dev.py infra/ README.md .github/": "T02-IMPL（本批次唯一实现写者）"
+  },
+  "completed_delegations": [
+    {
+      "id": "R-T00",
+      "verdict": "建议 accepted",
+      "report": "reports/reviews/R-T00.md",
+      "status": "done"
+    },
+    {
+      "id": "R-T01",
+      "verdict": "needs_changes(P-1,P-2)",
+      "report": "reports/reviews/R-T01.md",
+      "status": "done"
+    },
+    {
+      "id": "FIX-T01",
+      "verdict": "修复完成",
+      "report": "docs/decisions/cr001_t06_mapping_and_baseline_hash.md",
+      "status": "done"
+    },
+    {
+      "id": "RV-FIX",
+      "verdict": "accepted（附 2 条件+2 建议）",
+      "report": "reports/reviews/RV-FIX.md",
+      "status": "done"
+    },
+    {
+      "id": "G0-STAGE",
+      "verdict": "附限制允许内部开发",
+      "report": "reports/stages/G0.md",
+      "status": "done",
+      "note": "G0-D1 已由主控修复（open_blockers 补 BLK-006）；G0-D2 随本轮 goal_state 重写同步"
+    }
+  ],
+  "tooling_findings": [
+    {
+      "finding": "subagent 文件写入通道正常（PROBE-WRITE 微探针一轮内落盘 reports/runs/delegation_probe.md，323B）；T02 两次实现委派停滞归因于任务特性（uv/npm 网络长命令卡轮次），非委派通道故障",
+      "mitigation": "拆分委派为纯文件写入 + 主控执行命令；实测 T02-A/T02-B 纯写入委派仍 4—5 轮零字节（第 3、4 次失败）→ 代码生成类委派确认不可靠，T02 实现改由主控承担（T02-IMPL/IMPL-2/A/B 共约 25 轮零字节）；文档/分析/审查类委派交付可靠（PROBE-WRITE、R-T00/R-T01/RV-FIX/G0-STAGE 均交付）→ 文档批 T02-C 与独立审查 R-T02 仍走 subagent，实现/验收分离保持"
+    },
+    {
+      "finding": "T02 主控实现已全绿：pytest 9/9（cov 100%）、ruff/format/mypy 0、dev.py 三态合同（unit=0/integration=3 not_implemented/非法=2）、verify_plan 双模式 PLAN_OK（冻结文件未动）、前端 install/typecheck/test/build 全 0",
+      "real_defects_found_by_gates": ["include_router 类型错误（改 APIRouter）", "RUF002/003 中文 docstring 标点（定点豁免带理由）", "TS2688 隐式类型库缺失（tsconfig types:[]）", "vite6/vitest2 双副本类型冲突（vitest 升 3.x）"]
+    }
+  ],
+  "delegation_swap_log": [
+    {
+      "time": "Goal round 42",
+      "from": "T02-IMPL (aa25eb40-d95a-44a7-991d-f8c400873dda)",
+      "to": "T02-IMPL-2 (7e6751f7-af97-4357-b0c8-2c1a026f924e)",
+      "reason": "首派 8 轮零产物、三次催办无回执（全仓扫描确认无任何 T02 输出）；终止后重派分阶段增量落盘版（阶段 1 骨架+dev.py 立即落盘，再补锁文件/测试/前端/CI/报告）",
+      "evidence": "reports/runs 无 t02_*；backend/frontend/scripts/dev.py/README 全缺"
+    }
+  ],
+  "active_delegations": [
+    {
+      "id": "T02-C",
+      "subagent_id": "616c3a73-e703-4ef2-9710-ebb5c1b465dd",
+      "kind": "documentation",
+      "scope": "CI 配置 + README + reports/tasks/T02.md（输入=主控实测日志，禁跑命令）",
+      "writes": [".github/workflows/ci.yml", "README.md", "reports/tasks/T02.md"],
+      "status": "running"
+    },
+    {
+      "id": "T02-A-stopped",
+      "subagent_id": "80e22195-6858-456e-a0ad-f0b9a8ae53dd",
+      "kind": "implementation_write_only",
+      "scope": "后端骨架纯写入（pyproject/包/app/dev.py/测试，禁跑网络命令）",
+      "writes": ["backend/pyproject.toml", "backend/src/ai_intel/**", "scripts/dev.py", "backend/tests/unit/test_t02_project_skeleton.py", "reports/runs/t02a_write_manifest.md"],
+      "status": "running"
+    },
+    {
+      "id": "T02-IMPL-2-superseded",
+      "subagent_id": "7e6751f7-af97-4357-b0c8-2c1a026f924e",
+      "kind": "implementation",
+      "scope": "T02 项目骨架、依赖锁定与质量命令（T02-C01—C06 + 补充边界/失败/权限/重复用例）",
+      "writes": [
+        "backend/",
+        "frontend/",
+        "scripts/dev.py",
+        "infra/",
+        "README.md",
+        ".github/workflows/ci.yml",
+        "reports/tasks/T02.md",
+        "reports/runs/t02_*.log"
+      ],
+      "status": "running"
+    }
+  ],
+  "tasks_status": {
+    "T00": "accepted",
+    "T01": "accepted",
+    "T02": "in_progress"
+  },
+  "next_action": "T02-IMPL 交付 → 主控集成回归 → 派发 R-T02 独立审查 → 通过后 T02=accepted → 按 G1 顺序推进 T03（Docker 恢复后）/T04",
+  "pending_followups": [
+    "G0-D3/RV-FIX 条件①：CR-001 仍 proposed，需人工追认批准（不得伪造）",
+    "G0-D4/RV-FIX 条件②：20 合成案例人工复核排期（T46 前必须）",
+    "G0-D5/D6/F-2：R-T00 D-1/S-1/S-2、R-T01 S-1..S-6 建议级遗留（汇后续批次）",
+    "BLK-006：原 ZIP 补入后先语义比对再合并"
+  ],
+  "environment_updates": [
+    {
+      "item": "Docker 引擎",
+      "change": "Docker Desktop 已启动（仅启动已安装应用），docker info exit 0，ServerVersion 29.2.0",
+      "effect": "BLK-001 closed；T03/T05 容器集成前置就绪"
+    }
+  ],
+  "real_blockers": [
+    "BLK-002",
+    "BLK-003",
+    "BLK-004",
+    "BLK-005",
+    "BLK-006"
+  ],
+  "evidence_index": {
+    "g0": "reports/stages/G0.md",
+    "reviews": [
+      "reports/reviews/R-T00.md",
+      "reports/reviews/R-T01.md",
+      "reports/reviews/RV-FIX.md"
+    ],
+    "fix": [
+      "docs/decisions/cr001_t06_mapping_and_baseline_hash.md",
+      "docs/decisions/cr001_erratum_f1.md",
+      "reports/runs/fix_t01_*.log"
+    ],
+    "goal_decision": "docs/decisions/dec003_goal_execution_mode.md"
+  }
+}
