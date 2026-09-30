@@ -1,6 +1,19 @@
 # 上下文交接（progress/context_handoff.md）
 
-## 0.6 Goal 第 80 轮增量（最新，恢复锚点）
+## 0.7 Goal 第 93 轮增量（最新，恢复锚点）
+
+- **T05 = accepted**（R-T05→M1-M5修复→R-T05-RECHECK→MF-1/2/3修复→R-T05-RECHECK2 accepted 附条件 C1-C5；C1/C2 台账已入 CR-005、C3/C4/C5 已修，判别用例对旧实现双重实证必败）。
+- **T06**：R-T06 needs_changes(M1-M6)→修复→R-T06-RECHECK needs_changes(N1-N4)→**N1-N4 已修**（正则命名形态+报告如实、会话仅哈希键、created_at、trace_id 强制）；待复核收口。
+- **T07 实现完成全绿**：0004 迁移（job_runs/outbox_events/租约/幂等键）、outbox 同事务+relay 引用发布、workers/jobs.py（唯一键认领/租约恢复/有限重试/永久失败不重试/409/404 先可见性后权限）；T07-C01—C06 真库 6/6；报告 reports/tasks/T07.md。
+- **终态全绿**：integration 27/27（T03 6+T05 15+T07 6）、unit 34/34 cov 69.85%、security 12/12、ruff check+format/mypy(18 文件) 0、verify_plan PLAN_OK。
+- **活动委派**：R-G1B（e5b2bae9，T06-N+T07 批量审查，第 9 轮未交付）+ RV-G1B（35658bae，快审兜底，第 5 轮未交付）——任一交付即闭合 T06/T07 审查关口。
+- **Git**（每轮一提交，push 未授权）：至 60dbbe1/c28dff9 等 13 提交；基线 1ec7efd。
+- **下一动作**：审查交付→T06/T07=accepted→T08（网络与来源）‖T09（文档解析）→G1 阶段检查（核 R-G1A 条件：T03 README/CI §4.6+C03 容器态回归、T04 DTO 补全/G2 留痕/空 validator）→G2（T10—T23，T18 先于 T17）。
+- 节奏模式有效：实现=主控；文档/审查=subagent（收窄+本回合交付+催办+并行兜底快审）；判别性负例；修复附录 §6.9；每轮 commit。
+
+---
+
+## 0.6 Goal 第 80 轮增量（历史）
 
 - **T02 accepted**；**T03/T04 accepted 附条件**（条件清单见 R-G1A.md，G1 阶段检查前闭合：T03 README/CI §4.6 + C03 容器态回归；T04 DTO 补全/G2 对齐留痕/空操作 validator 清理）。
 - **T05**：R-T05 needs_changes(M1-M5)→修复→R-T05-RECHECK needs_changes(MF-1/2/3)→修复（attach 三不变量：块切片==引文/区间在块内/quote_sha256=hash(quote)；4 判别用例；逐段命令日志+数字统一）→ **15/15 真库**；R-T05-RECHECK2（154be9f8）运行中。
