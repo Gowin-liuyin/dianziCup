@@ -16,13 +16,16 @@ from ai_intel.api.authentication import (
     InvalidCredentialsError,
     LoginRateLimitedError,
     SessionExpiredError,
+    cookie_secure_for_environment,
 )
 from ai_intel.domain.access import (
+    MANAGE_PUBLIC_SOURCES,
     WRITE_ASSET,
     AccessScope,
     CrossTenantAccessError,
     PermissionDeniedError,
     Role,
+    filter_visible_rows,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -151,9 +154,39 @@ def test_audit_and_sources_carry_no_secret_values_t06_c06() -> None:
         r"(api[_-]?key|secret|token|password)\s*[:=]\s*['\"][A-Za-z0-9_\-]{16,}['\"]",
         re.IGNORECASE,
     )
-    for source_root in (REPO_ROOT / "backend" / "src", REPO_ROOT / "scripts"):
-        for source_path in source_root.rglob("*.py"):
-            assert not secret_pattern.search(source_path.read_text(encoding="utf-8")), source_path
+    scan_roots = (
+        REPO_ROOT / "backend" / "src",
+        REPO_ROOT / "scripts",
+        REPO_ROOT / "frontend" / "src",
+        REPO_ROOT / "frontend" / "dist",
+        REPO_ROOT / "reports" / "runs",
+    )
+    documented_dev_placeholders = {"dev-only-not-a-secret", "Dev-Only-Not-A-Secret-1!"}
+    secret_value_pattern = re.compile(
+        r"(api[_-]?key|secret|password|passwd|token|jwt)\s*[:=]\s*['\"]([^'\"]{8,})['\"]",
+        re.IGNORECASE,
+    )
+    for source_root in scan_roots:
+        if not source_root.exists():
+            continue
+        for source_path in source_root.rglob("*"):
+            if not source_path.is_file() or source_path.suffix not in {
+                ".py",
+                ".ts",
+                ".tsx",
+                ".js",
+                ".log",
+                ".json",
+                ".html",
+            }:
+                continue
+            content = source_path.read_text(encoding="utf-8", errors="ignore")
+            assert not secret_pattern.search(content), source_path
+            for secret_match in secret_value_pattern.finditer(content):
+                assert secret_match.group(2) in documented_dev_placeholders, (
+                    source_path,
+                    secret_match.group(1),
+                )
 
 
 def test_precreated_users_only_and_no_default_production_account() -> None:
@@ -168,11 +201,17 @@ def test_precreated_users_only_and_no_default_production_account() -> None:
 def test_cookie_policy_requires_secure_in_production() -> None:
     """边界: production Secure Cookie 强制; 非 production 显式为 False 而非默认放行。"""
     production_service = AuthenticationSessionService(
-        InMemoryUserDirectory(), (ALLOWED_ORIGIN,), cookie_secure=True
+        InMemoryUserDirectory(),
+        (ALLOWED_ORIGIN,),
+        cookie_secure=cookie_secure_for_environment("production"),
     )
     development_service = AuthenticationSessionService(
-        InMemoryUserDirectory(), (ALLOWED_ORIGIN,), cookie_secure=False
+        InMemoryUserDirectory(),
+        (ALLOWED_ORIGIN,),
+        cookie_secure=cookie_secure_for_environment("development"),
     )
+    assert cookie_secure_for_environment("production") is True
+    assert cookie_secure_for_environment("development") is False
     production_cookie = production_service.cookie_attributes()
     development_cookie = development_service.cookie_attributes()
     assert production_cookie["secure"] is True
@@ -185,7 +224,52 @@ def test_tenant_admin_permission_table_and_scope_epoch_role_separation() -> None
     """边界: 角色权限来自权限表; tenant_admin 不具备 system_admin 越权能力。"""
     tenant_admin = AccessScope.for_authenticated_user("admin-1", "tenant-alpha", Role.TENANT_ADMIN)
     system_admin = AccessScope.for_authenticated_user("root-1", None, Role.SYSTEM_ADMIN)
-    assert tenant_admin.permissions == system_admin.permissions
+    assert tenant_admin.permissions < system_admin.permissions
+    assert MANAGE_PUBLIC_SOURCES in system_admin.permissions
+    assert MANAGE_PUBLIC_SOURCES not in tenant_admin.permissions
     assert tenant_admin.tenant_id == "tenant-alpha"
     assert system_admin.tenant_id is None
     tenant_admin.requires(WRITE_ASSET)
+
+
+def test_identity_spoof_attempt_is_audited_and_write_gate_checks_expiry() -> None:
+    """M5-4/C1: 伪造身份字段记审计; 过期会话过不了写闸门。"""
+    now_bucket = [datetime(2026, 9, 30, 12, 0, tzinfo=UTC)]
+    service = build_service(now_bucket)
+    service.create_precreated_user(
+        "admin-a", "Str0ng-Passphrase!", "tenant-alpha", Role.TENANT_ADMIN
+    )
+    session_token, session_record = service.login(
+        "admin-a", "Str0ng-Passphrase!", ALLOWED_ORIGIN, "client-1"
+    )
+    service.record_identity_spoof_attempt({"tenant_id": "tenant-beta", "role": "system_admin"})
+    spoof_events = [
+        event for event in service.audit_events() if event["event_type"] == "identity_spoof_attempt"
+    ]
+    assert len(spoof_events) == 1
+    assert "tenant_id" in spoof_events[0]["submitted_keys"]
+    assert "tenant-beta" not in str(spoof_events[0])
+    now_bucket[0] = now_bucket[0] + timedelta(seconds=31 * 60)
+    with pytest.raises(SessionExpiredError):
+        service.validate_write_request(session_token, session_record.csrf_token, ALLOWED_ORIGIN)
+
+
+def test_filter_visible_rows_separates_public_and_private() -> None:
+    """M6: 范围化查询范式——公共证据与私有资产按可见性规则分离, 不可见行不进结果。"""
+    scope = AccessScope.for_authenticated_user("user-1", "tenant-alpha", Role.ANALYST)
+    rows = [
+        ("public", None),
+        ("tenant", "tenant-alpha"),
+        ("tenant", "tenant-beta"),
+        ("public", "tenant-beta"),
+    ]
+    assert filter_visible_rows(scope, rows) == [0, 1, 3]
+
+
+def test_viewer_role_has_read_public_only() -> None:
+    """M5-1: viewer 角色只有 read:public, 不能读资产或写。"""
+    viewer = AccessScope.for_authenticated_user("viewer-1", "tenant-alpha", Role.VIEWER)
+    viewer.requires("read:public")
+    with pytest.raises(PermissionDeniedError):
+        viewer.requires("read:asset")
+    assert viewer.permission_version >= 1

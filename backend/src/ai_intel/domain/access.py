@@ -12,6 +12,7 @@ class Role(StrEnum):
     TENANT_ADMIN = "tenant_admin"
     SYSTEM_ADMIN = "system_admin"
     ANALYST = "analyst"
+    VIEWER = "viewer"
 
 
 READ_ASSET = "read:asset"
@@ -19,11 +20,17 @@ WRITE_ASSET = "write:asset"
 READ_PUBLIC = "read:public"
 MANAGE_USERS = "manage:users"
 READ_AUDIT = "read:audit"
+MANAGE_PUBLIC_SOURCES = "manage:public_sources"
+
+PERMISSION_VERSION = 1
 
 ROLE_PERMISSIONS: dict[Role, frozenset[str]] = {
+    Role.SYSTEM_ADMIN: frozenset(
+        {READ_ASSET, WRITE_ASSET, READ_PUBLIC, MANAGE_USERS, READ_AUDIT, MANAGE_PUBLIC_SOURCES}
+    ),
     Role.TENANT_ADMIN: frozenset({READ_ASSET, WRITE_ASSET, READ_PUBLIC, MANAGE_USERS, READ_AUDIT}),
-    Role.SYSTEM_ADMIN: frozenset({READ_ASSET, WRITE_ASSET, READ_PUBLIC, MANAGE_USERS, READ_AUDIT}),
     Role.ANALYST: frozenset({READ_ASSET, READ_PUBLIC}),
+    Role.VIEWER: frozenset({READ_PUBLIC}),
 }
 
 
@@ -43,6 +50,7 @@ class AccessScope:
     tenant_id: str | None
     role: Role
     permissions: frozenset[str] = field(default_factory=frozenset)
+    permission_version: int = PERMISSION_VERSION
 
     @classmethod
     def for_authenticated_user(cls, user_id: str, tenant_id: str | None, role: Role) -> AccessScope:
@@ -68,3 +76,15 @@ class AccessScope:
         """不可见对象统一 404 语义(由调用方转换), 不泄露对象名称或存在性。"""
         if not self.can_access(record_visibility, record_tenant_id):
             raise CrossTenantAccessError("resource not found")
+
+
+def filter_visible_rows(scope: AccessScope, rows: list[tuple[str, str | None]]) -> list[int]:
+    """范围化查询范式: 返回可见行下标; 公共证据与私有资产按同一可见性规则分离。
+
+    仓储层按返回下标取行, 不可见行不进入结果也不报存在性。
+    """
+    return [
+        index
+        for index, (visibility, tenant_id) in enumerate(rows)
+        if scope.can_access(visibility, tenant_id)
+    ]

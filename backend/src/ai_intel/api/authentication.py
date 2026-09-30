@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import secrets
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -74,6 +75,11 @@ class SessionRecord:
     revoked: bool = False
 
 
+def cookie_secure_for_environment(app_env: str) -> bool:
+    """production 必须 Secure Cookie; 其余环境显式 False, 不默认放行。"""
+    return app_env == "production"
+
+
 class InMemoryUserDirectory:
     """预创建用户目录(管理 CLI 与测试共用的最小实现); 无公共注册入口。"""
 
@@ -96,6 +102,77 @@ class InMemoryUserDirectory:
             if account.user_id == user_id:
                 return account
         return None
+
+
+class DatabaseUserDirectory:
+    """数据库用户目录: 预创建用户持久化到 PostgreSQL, 重启后仍可用。"""
+
+    def __init__(self, engine: object) -> None:
+        self._engine = engine
+
+    def add_precreated_user(self, account: UserAccount) -> None:
+        """持久化预创建用户; 用户名重复由唯一键拒绝。"""
+        from sqlalchemy import insert
+        from sqlalchemy.exc import IntegrityError
+
+        from ai_intel.knowledge.models import users
+
+        try:
+            with self._engine.begin() as connection:  # type: ignore[attr-defined]
+                connection.execute(
+                    insert(users).values(
+                        user_id=account.user_id,
+                        username=account.username,
+                        password_hash=account.password_hash,
+                        tenant_id=account.tenant_id,
+                        role=account.role.value,
+                    )
+                )
+        except IntegrityError as duplicate:
+            raise ValueError("username already exists") from duplicate
+
+    def find_by_username(self, username: str) -> UserAccount | None:
+        """按用户名查找持久化账户。"""
+        from sqlalchemy import select
+
+        from ai_intel.knowledge.models import users
+
+        with self._engine.connect() as connection:  # type: ignore[attr-defined]
+            row = (
+                connection.execute(select(users).where(users.c.username == username))
+                .mappings()
+                .first()
+            )
+        return self._row_to_account(row)
+
+    def find_by_id(self, user_id: str) -> UserAccount | None:
+        """按用户 id 查找持久化账户。"""
+        from sqlalchemy import select
+
+        from ai_intel.knowledge.models import users
+
+        with self._engine.connect() as connection:  # type: ignore[attr-defined]
+            row = (
+                connection.execute(select(users).where(users.c.user_id == user_id))
+                .mappings()
+                .first()
+            )
+        return self._row_to_account(row)
+
+    @staticmethod
+    def _row_to_account(row: Mapping[str, object] | None) -> UserAccount | None:
+        """把数据库行映射回账户对象; 无行返回 None。"""
+        if row is None:
+            return None
+        fields = row
+        tenant_value = fields["tenant_id"]
+        return UserAccount(
+            user_id=str(fields["user_id"]),
+            username=str(fields["username"]),
+            password_hash=str(fields["password_hash"]),
+            tenant_id=str(tenant_value) if tenant_value is not None else None,
+            role=Role(str(fields["role"])),
+        )
 
 
 class AuthenticationSessionService:
@@ -160,7 +237,7 @@ class AuthenticationSessionService:
             expires_at=self._clock() + timedelta(seconds=SESSION_TTL_SECONDS),
             csrf_token=secrets.token_urlsafe(32),
         )
-        self._sessions[session_token] = session_record
+        self._sessions[self._session_key(session_token)] = session_record
         self._login_attempts.pop(client_key, None)
         self._append_audit(
             "login_succeeded", {"user_id": account.user_id, "trace_id": str(uuid.uuid4())}
@@ -169,7 +246,7 @@ class AuthenticationSessionService:
 
     def logout(self, session_token: str) -> None:
         """注销: 立即失效, 重复注销幂等。"""
-        session_record = self._sessions.get(session_token)
+        session_record = self._sessions.get(self._session_key(session_token))
         if session_record is not None:
             session_record.revoked = True
             self._append_audit(
@@ -178,7 +255,7 @@ class AuthenticationSessionService:
 
     def validate_session(self, session_token: str) -> Principal:
         """校验会话得到主体; 过期/注销/未知统一 SessionExpiredError。"""
-        session_record = self._sessions.get(session_token)
+        session_record = self._sessions.get(self._session_key(session_token))
         if (
             session_record is None
             or session_record.revoked
@@ -200,9 +277,13 @@ class AuthenticationSessionService:
     def validate_write_request(
         self, session_token: str, csrf_token: str, origin: str | None
     ) -> None:
-        """写请求必须 CSRF 令牌匹配且 Origin 合法。"""
-        session_record = self._sessions.get(session_token)
-        if session_record is None or session_record.revoked:
+        """写请求必须会话有效、CSRF 令牌匹配且 Origin 合法。"""
+        session_record = self._sessions.get(self._session_key(session_token))
+        if (
+            session_record is None
+            or session_record.revoked
+            or session_record.expires_at <= self._clock()
+        ):
             raise SessionExpiredError("session is not valid")
         if not hmac.compare_digest(session_record.csrf_token, csrf_token):
             raise CsrfRejectionError("csrf token mismatch")
@@ -216,6 +297,18 @@ class AuthenticationSessionService:
     def audit_events(self) -> list[dict[str, str]]:
         """审计事件副本: 供测试与审计接口消费。"""
         return [dict(event) for event in self._audit_events]
+
+    def record_identity_spoof_attempt(self, submitted_fields: dict[str, str]) -> None:
+        """请求体携带自报身份字段时记录安全审计事件(仅记字段名与 trace_id, 不记值)。"""
+        self._append_audit(
+            "identity_spoof_attempt",
+            {"submitted_keys": ",".join(sorted(submitted_fields)), "trace_id": str(uuid.uuid4())},
+        )
+
+    @staticmethod
+    def _session_key(session_token: str) -> str:
+        """会话以服务端哈希为键存储, 落库/内存不保存明文 token(05 §1 合同)。"""
+        return hashlib.sha256(session_token.encode("utf-8")).hexdigest()
 
     def _enforce_login_rate(self, client_key: str) -> None:
         """窗口内超限拒绝; 不确认账号存在性。"""

@@ -111,6 +111,17 @@ evidence = Table(
     CheckConstraint(TENANT_XOR, name="ck_evidence_tenant_xor"),
 )
 
+users = Table(
+    "users",
+    metadata,
+    Column("user_id", Text(), primary_key=True),
+    Column("username", Text(), nullable=False, unique=True),
+    Column("password_hash", Text(), nullable=False),
+    Column("tenant_id", Text(), nullable=True),
+    Column("role", Text(), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
 fetch_attempts = Table(
     "fetch_attempts",
     metadata,

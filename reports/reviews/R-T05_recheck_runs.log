@@ -1,0 +1,88 @@
+R-T05-RECHECK 复核运行原始记录（2026-10-01，工作目录 D:\dianzi，复核者=R-T05 原审查者）
+复核对象版本=commit cb34cd0（feat(T05/T06): R-T05 审查修复 M1-M5 + T06 认证与租户权限实现）
+说明：探针全部在事务内执行并回滚；探针对象文件位于系统临时目录并已清理；开发库无残留；未改任何产品/测试/迁移/文档/进度文件。
+
+[A] 复跑命令（逐段命令 + 工作目录 + 退出码 + 结果）
+[A1] cd backend && uv run pytest tests/integration/test_t05_persistence_and_raw_store.py -q --cov-fail-under=0
+  exit=0  ->  11 passed in 2.59s（真实 PostgreSQL + 真实文件系统，无 skip）
+[A2] cd backend && uv run pytest tests/unit -q
+  exit=0  ->  34 passed, 1 warning in 4.17s；Total coverage 75.99%（门槛 60% reached）
+[A3] cd backend && uv run pytest tests/integration -q --cov-fail-under=0
+  exit=0  ->  17 passed, 1 warning in 12.99s（T03 6 + T05 11）
+[A4] cd backend && uv run ruff check .
+  exit=0  ->  All checks passed!
+[A5] cd backend && uv run ruff format --check .
+  exit=1  ->  1 file would be reformatted: src/ai_intel/domain/access.py:81（T06 并行轨文件，不属本次复核范围）；25 files already formatted（T05 范围内文件全部合规）
+[A6] cd backend && uv run mypy src
+  exit=0  ->  Success: no issues found in 16 source files
+[A7] uv run python scripts/verify_plan.py --baseline contracts/baselines/plan_baseline_t01.json
+  exit=0  ->  PLAN_OK（基线校验通过，无 BASELINE_* 违例）
+
+[B] 数据库结构实测（pg_constraint / pg_indexes / information_schema，连接 127.0.0.1:5432/ai_intel）
+[B1] CHECK 约束实存（10 条新约束，5 表 ×2）：
+  claims | ck_claims_tenant_xor | CHECK ((visibility='public' AND tenant_id IS NULL) OR (visibility='tenant' AND tenant_id IS NOT NULL))
+  claims | ck_claims_visibility | CHECK (visibility IN ('public','tenant'))
+  document_revisions | ck_document_revisions_tenant_xor | （同上 XOR 形态）
+  document_revisions | ck_document_revisions_visibility | CHECK (visibility IN ('public','tenant'))
+  documents | ck_documents_tenant_xor | （同上 XOR 形态）
+  documents | ck_documents_visibility | CHECK (visibility IN ('public','tenant'))
+  evidence | ck_evidence_tenant_xor | （同上 XOR 形态）
+  evidence | ck_evidence_visibility | CHECK (visibility IN ('public','tenant'))
+  sources | ck_sources_tenant_xor | （同上 XOR 形态）
+  sources | ck_sources_visibility | CHECK (visibility IN ('public','tenant'))
+  （另 evidence ck_span_not_inverted / text_blocks ck_block_span_not_inverted 区间不倒置）
+[B2] 索引实存：
+  ix_claims_subject_predicate_status | CREATE INDEX ... ON claims (subject, predicate, claim_status)
+  uq_current_revision_per_document | CREATE UNIQUE INDEX ... ON document_revisions (document_id) WHERE is_current
+[B3] 列实存：
+  text_blocks: block_id, revision_id, ordinal, start_offset, end_offset, text_sha256, block_text
+  evidence: ..., block_id, quote_sha256, verified_at（新增 3 列）
+  document_revisions: revision_id, document_id, revision_number, content_hash, created_at, is_current, previous_revision_id, visibility, tenant_id（命名对齐生效）
+[B4] PROBE A（约束强制力）：INSERT documents (visibility='tenant', tenant_id=NULL)
+  -> REJECTED: new row for relation "documents" violates check constraint "ck_documents_tenant_xor"
+[B5] PROBE B（C-b 判别）：同一 document 连续插入两条 is_current=true 修订
+  -> 第二条 REJECTED: duplicate key value violates unique constraint "uq_current_revision_per_document"
+
+[C] M1/M2/M3 定向探针（事务回滚；输出原样）
+[C1] PROBE1 复现（判别场景：仅 documents.content_hash 引用、无任何 revision 引用、content_objects 行在、文件在）：
+  P1 cleanup returned: False | content_objects row: kept | file exists: True
+  P1 VERDICT: PASS (refused to delete)   <- 修复前实现此场景返回 True 并删文件（原 PROBE1）
+[C2] PROBE2 复现（attach visibility='tenant', tenant_id=None）：
+  P2 RESULT: REJECTED -> tenant evidence requires exactly one tenant_id
+[C3] PROBE2b（public 文档保存 tenant 修订，save 层归属校验）：
+  P2b RESULT: REJECTED -> revision scope does not match document scope
+[C4] PROBE3（03 §3.3 判别：quote 与 block_text[0:8] 完全不同）：
+  P3 RESULT: ACCEPTED evidence e4a8f884-...  -> block.text[start:end]==quote_text 不变量未强制
+[C5] PROBE4（区间合法性：start=1000 end=1200 超出 block 范围）：
+  P4 RESULT: ACCEPTED evidence d69da285-...  -> 范围合法不变量未强制
+[C6] PROBE5（quote_sha256 语义：按 03 §3.3 传 hash(quote_text)）：
+  P5 RESULT: REJECTED -> quote hash does not match source text block
+  -> quote_sha256 实际语义 = hash(block_text)（整块哈希），非合同的 hash(quote_text)
+[C7] PROBE6（block 属他修订）：
+  P6 RESULT: REJECTED -> text block belongs to a different revision（校验存在，但无测试用例覆盖）
+
+[D] 回归测试判别力静态核对（git show 7f5198f:backend/src/ai_intel/knowledge/revisions.py 对照）
+[D1] test_cleanup_refuses_to_delete_referenced_object：用例中 save 后 documents+revisions 同时引用 hash；
+  修复前 cleanup 仅查 document_revisions 亦返回 False -> 该用例对修复无判别力（缺 C1 判别场景）。
+[D2] test_database_failure_after_object_write_leaves_no_dangling_record：断言 MissingDocumentError
+  （修复前为 FK IntegrityError）-> 对“文档存在性校验”有判别力；但“cleanup 删除文件/行”断言在修复前实现下同样通过。
+[D3] test_cross_tenant_evidence_reference_is_rejected 三例（tenant-beta / public / tenant+None，均对 tenant 修订）：
+  修复前实现（revisions.py 旧版两比较）同样全部抛 TenantScopeViolation -> 三例均无判别力；
+  PROBE2 判别场景（public 修订 + tenant/None）未入测试；save 层两分支（revisions.py:90/92）无用例（coverage 显示未执行）。
+
+[E] 复核对象 SHA-256（版本绑定，Get-FileHash SHA256）
+backend/migrations/versions/0002_constraints_and_text_blocks.py | 3561 | DEC2CE6845A85A769D668CE0A6C7776C82120165535241921BD04DA780C5B3B1
+backend/src/ai_intel/knowledge/models.py | 5221 | 72628CE919DCB992B36C79A17E08BE958E89DAEC995FC0D321FAA88CACA0A276
+backend/src/ai_intel/knowledge/revisions.py | 10623 | 388854B18BD360F6825CA95C57B6AD8A16BFAC282221CD232C100D1FE2011520
+backend/src/ai_intel/infrastructure/content_store.py | 3374 | D545FC54CBA783C36389E74C9A1EACF9EBC07A479BFD2D2C7F125E3E7BD55AAF
+backend/tests/integration/test_t05_persistence_and_raw_store.py | 17069 | 36572E0F4CA4A9F294BCA8720C4CAB7B0F637626D8D874EDE5227501A4F42399
+reports/tasks/T05.md | 8521 | 82A138964A98EC03425F1AAA3ACD8EE3A7927A73860F98067AD8CAAC5E9ACB7A
+docs/decisions/cr005_data_contract_alignment.md | 1720 | B57095EB8F4C12BDBCC741DB32E6CCEEFD6236C708B1646AE45A6BF6848A934D
+reports/runs/t05_persistence_check.log | 767 | 9BE63619024C6F3AAC635DFB180C1D7F35C8BE8ED7778993E6B73E946231D880
+
+[F] 其他事实
+[F1] tests/unit 覆盖率复跑 75.99%（529 stmts）vs 所引日志 76.10%（523 stmts）：漂移因 T06 并行轨在复核期间持续改 src
+  （复核两次运行之间 api/authentication.py 由 132 stmts 变为 138 stmts），非 T05 数字造假。
+[F2] reports/runs/t05_persistence_check.log（24 行）逐行核对：含批次时间与四段退出码，无逐段实际命令、无 ruff format --check 段、无工作目录/结束时间/输入版本。
+[F3] 旧命名 grep：revision_index/supersedes_id 仅存于 0001 历史迁移与 0002 的 alter_column 改名对（正确）；
+  supports_claim bool 仍存于 models/revisions（已列入 CR-005 T08 分期，属登记偏差）。

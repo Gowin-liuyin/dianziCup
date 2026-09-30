@@ -1,0 +1,17 @@
+R-T06 独立审查执行日志（工作目录 D:\dianzi；被审 SHA-256 见报告 §0）
+[1] cd backend && uv run pytest tests/security -q --cov-fail-under=0            -> exit 0, 9 passed (1.19s), cov total 31% (gate disabled)
+[2] cd backend && uv run pytest tests/unit -q                                   -> exit 0, 34 passed, coverage 76.15% (gate 60%)
+[3] cd backend && uv run mypy src                                               -> exit 0, Success: no issues found in 16 source files
+[4] cd backend && uv run ruff check .                                           -> exit 1, 7x E501 in knowledge/models.py + migrations/versions/0002 (T05 batch; not counted vs T06)
+[5] cd backend && uv run ruff check <T06 files>                                 -> exit 0, All checks passed!
+[6] cd backend && uv run ruff format --check <T06 files>                        -> exit 1, access.py:48 would be reformatted (M1)
+[7] E:\miniconda\python.exe scripts\dev.py check --scope security               -> exit 0, 9 passed
+[8] E:\miniconda\python.exe scripts\dev.py check --scope e2e                   -> exit 3, stderr "ERROR not_implemented: e2e", stdout 无 PASS
+[9] E:\miniconda\python.exe scripts\verify_plan.py --baseline contracts\baselines\plan_baseline_t01.json -> exit 0, PLAN_OK
+[10] E:\miniconda\python.exe scripts\verify_plan.py                            -> exit 0, PLAN_OK
+[11] 负例抽样（独立进程直接调用服务）: forged csrf -> CsrfRejectionError(csrf token mismatch); wrong origin -> CsrfRejectionError(origin not allowed); cross tenant -> CrossTenantAccessError(resource not found); rate limit -> LoginRateLimitedError(too many login attempts); EXPIRED session + valid csrf + valid origin -> validate_write_request 通过（C1 缺口）; expired session build_access_scope -> SessionExpiredError
+[12] C06 正则抽样: 'api_key = "abcdEFGH1234abcd"' 命中; 'SECRET_KEY = "..."' 未命中; JWT 未命中; 'password = "Str0ng-Passphrase!"' 未命中; 16 字母密码命中（M2 盲区证据）
+[13] Argon2id 抽样: hash_prefix=$argon2id$v=, 明文不在哈希中
+[14] admin CLI: E:\miniconda\python.exe scripts\admin_user.py ... -> ModuleNotFoundError: No module named 'ai_intel'; backend venv 下 uv run python ..\scripts\admin_user.py 连续两次同名用户均 "created user_id=..."（不同 id，重复分支不可达，账号未持久化）(M4)
+[15] 人工抽样 frontend/src、frontend/dist、reports/runs 未见密钥赋值（结论成立但 C06 自动扫描不覆盖这些位置）
+[16] git status: contracts/ 无改动（冻结未动）；tests/integration、knowledge/、migrations/ 变化归 T05 并行批，未计 T06
