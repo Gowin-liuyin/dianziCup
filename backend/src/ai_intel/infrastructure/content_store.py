@@ -44,9 +44,12 @@ class ContentStore:
         object_path = self.object_path_for_hash(content_hash)
         object_path.parent.mkdir(parents=True, exist_ok=True)
         if object_path.exists():
+            existing_size = object_path.stat().st_size
+            if hashlib.sha256(object_path.read_bytes()).hexdigest() != content_hash:
+                raise ValueError(f"existing object corrupted for {content_hash}")
             return StoredObject(
                 content_hash=content_hash,
-                size_bytes=object_path.stat().st_size,
+                size_bytes=existing_size,
                 object_path=object_path,
             )
         file_descriptor, temporary_name = tempfile.mkstemp(dir=object_path.parent, prefix=".tmp-")

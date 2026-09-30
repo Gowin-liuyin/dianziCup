@@ -1,0 +1,44 @@
+# R-T05 复跑与探针原始记录（2026-09-30/10-01, 工作目录 D:\dianzi）
+
+[A1] cd backend && uv run pytest tests/integration/test_t05_persistence_and_raw_store.py -q --cov-fail-under=0
+  -> exit=0 | 9 passed in 2.18s | 真实 PostgreSQL 127.0.0.1:5432 | coverage TOTAL 38% (仅此文件)
+  -> 关键: knowledge/revisions.py 92% 未覆盖行 147, 153-168, 222
+     (153-168 = attach_evidence_span 成功插入路径; 222 = cleanup 拒绝删除路径)
+
+[A2] cd backend && uv run pytest tests/unit -q
+  -> exit=0 | 30 passed, 1 warning in 3.77s | cov 72.73% >= 60 门槛
+  -> warning = StarletteDeprecationWarning: httpx/starlette.testclient (来自 T03 集成测试导入链, 非 T05)
+
+[A3] cd backend && uv run pytest tests/integration -q --cov-fail-under=0
+  -> exit=0 | 15 passed, 1 warning in 11.64s (T03 6 + T05 9)
+
+[A4] cd backend && uv run ruff check .          -> exit=0 | All checks passed!
+[A5] cd backend && uv run ruff format --check . -> exit=0 | 21 files already formatted
+[A6] cd backend && uv run mypy src              -> exit=0 | Success: no issues found in 14 source files
+
+[A7] uv run python scripts/verify_plan.py --baseline contracts/baselines/plan_baseline_t01.json
+  -> exit=0 | PLAN_OK (无 BASELINE_* 违例: source_hashes/阈值/不变量/冻结案例均未动)
+  -> 说明: verify_plan --baseline 需要基线文件参数; 无参数模式同样 PLAN_OK (exit=0)
+
+[A8] 缺陷探针（uv run python -c, 单事务内执行并以异常回滚, 开发库无残留; 原文对象写入临时目录）:
+  PROBE1 cleanup_unreferenced_object 缺陷复现:
+    先登记 content_objects + documents(引用 content_hash), 再 store_bytes 落盘, 调用 cleanup:
+    -> cleanup_returned=True, raw_file_deleted=True, content_objects_rows=1, documents_rows=1
+    -> 即: 原文文件被删, 但 documents 仍引用该 hash 且 content_objects 行未删 = 指向缺失原文的有效记录
+  PROBE2 租户范围漏洞复现:
+    对 visibility=public 的修订调用 attach_evidence_span(visibility="tenant", tenant_id=None):
+    -> ACCEPTED (返回 evidence_id), 未抛 TenantScopeViolation
+    -> 即: tenant 记录携带空 tenant_id 被接受, 违反 03 §1「tenant记录必须非空」
+
+[A9] reports/runs/t05_persistence_check.log 全文（87 字节, 2026/10/1 0:54:13）:
+  T05 主检查 (00:54:13): t05 exit=0、integration 回归 exit=0、unit 回归 exit=1
+  -> 与 reports/tasks/T05.md §4「uv run pytest tests/unit -q | 30 passed, cov 72.73%」矛盾;
+     且该日志不含命令明细/测试数/失败与跳过项, 不满足 AGENTS.md §2.7 记录要求。
+     本审查 [A2] 独立复跑当前态为 30/30 exit=0, 故数字本身可复现, 问题在证据链。
+
+[A10] 依赖版本核对: backend/uv.lock 锁定 alembic 1.20.0 / psycopg 3.3.6 / sqlalchemy 2.1.1,
+  与 CR-003 声明范围 (>=1.14,<2.0 / >=3.2,<4.0 / >=2.0.36,<3.0) 及 T05.md §1 记载一致。
+
+[A11] 写入范围声明: 审查期间仅写 reports/reviews/R-T05.md 与本文件。
+  曾因探针 verify_plan --write-baseline 误生成 contracts/baselines/review_probe_t05.json, 发现后即刻删除,
+  contracts/baselines/ 目录现仅存原有 plan_baseline_t01.json。未修改任何产品/测试/迁移/进度文件。

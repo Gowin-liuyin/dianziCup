@@ -34,10 +34,10 @@ def run_dev_script(scope_argument: str) -> subprocess.CompletedProcess[str]:
 def test_unimplemented_scope_exits_nonzero_without_pass() -> None:
     """T02-C04：未建设 scope 必须非零退出并明示 not_implemented，不得打印 PASS。
 
-    T03 起 integration scope 已建设, 本断言改用仍处未建设状态的 security,
+    T03/T06 起 integration 与 security scope 已建设, 本断言改用仍处未建设状态的 e2e,
     保持原验收意图(未实现=非零+not_implemented+无 PASS)不变。
     """
-    completed = run_dev_script("security")
+    completed = run_dev_script("e2e")
     assert completed.returncode == 3
     assert "not_implemented" in completed.stderr
     assert "PASS" not in completed.stdout

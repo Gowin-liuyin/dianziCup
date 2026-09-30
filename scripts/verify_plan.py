@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import sys
 from pathlib import Path
 
 REQUIREMENT_IDS = ["F1", "F2", "F3", "P1", "P2", "P3", "A1", "E1", "D1", "D2", "X1", "R1", "R2"]

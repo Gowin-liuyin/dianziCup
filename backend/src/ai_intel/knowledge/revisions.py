@@ -1,7 +1,8 @@
-"""不可变文档修订与证据关联: 修订链语义、租户范围与抓取记录。"""
+"""不可变文档修订与证据关联: 修订链语义、租户范围、引文一致性与抓取记录。"""
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,15 +18,24 @@ from ai_intel.knowledge.models import (
     evidence,
     fetch_attempts,
     scope_epochs,
+    text_blocks,
 )
 
 
 class TenantScopeViolation(ValueError):
-    """跨租户证据引用: 拒绝持久化, 不静默改写归属。"""
+    """跨租户或租户字段矛盾: 拒绝持久化, 不静默改写归属。"""
 
 
 class MissingRevisionError(LookupError):
     """修订不存在: 调用方不得假设旧读缓存仍然有效。"""
+
+
+class MissingDocumentError(LookupError):
+    """文档不存在: 修订不得脱离文档父行持久化。"""
+
+
+class QuoteConsistencyError(ValueError):
+    """引文与原文块不一致: 引文存在不等于内容支持, 校验失败必须拒绝。"""
 
 
 @dataclass(frozen=True)
@@ -33,7 +43,7 @@ class SavedRevision:
     """保存结果: reused=True 表示重复末版复用, 未新增修订。"""
 
     revision_id: str
-    revision_index: int
+    revision_number: int
     content_hash: str
     reused: bool
 
@@ -53,6 +63,18 @@ def _insert_content_object(
         )
 
 
+def _load_document_row(session: Session, document_id: str) -> dict[str, object]:
+    """读取文档父行; 不存在即拒绝, 保证修订不脱离文档。"""
+    row = (
+        session.execute(select(documents).where(documents.c.document_id == document_id))
+        .mappings()
+        .first()
+    )
+    if row is None:
+        raise MissingDocumentError(document_id)
+    return dict(row)
+
+
 def save_document_revision(
     session: Session,
     store: ContentStore,
@@ -62,7 +84,12 @@ def save_document_revision(
     tenant_id: str | None,
     created_at: datetime,
 ) -> SavedRevision:
-    """保存文档修订: 与末版同内容则复用; A→B→A 保留三条按时间排列的修订。"""
+    """保存文档修订: 末版同内容复用; A→B→A 保留三修订; 归属与租户必须一致。"""
+    document_row = _load_document_row(session, document_id)
+    if (visibility == "tenant") != (tenant_id is not None):
+        raise TenantScopeViolation("tenant revision requires exactly one tenant_id")
+    if visibility != document_row["visibility"] or tenant_id != document_row["tenant_id"]:
+        raise TenantScopeViolation("revision scope does not match document scope")
     stored = store.store_bytes(payload)
     _insert_content_object(session, stored.content_hash, stored.size_bytes, created_at)
     tip = (
@@ -80,13 +107,13 @@ def save_document_revision(
     if tip is not None and tip["content_hash"] == stored.content_hash:
         return SavedRevision(
             revision_id=str(tip["revision_id"]),
-            revision_index=int(tip["revision_index"]),
+            revision_number=int(tip["revision_number"]),
             content_hash=stored.content_hash,
             reused=True,
         )
-    next_index = (
+    next_number = (
         session.execute(
-            select(func.coalesce(func.max(document_revisions.c.revision_index), 0)).where(
+            select(func.coalesce(func.max(document_revisions.c.revision_number), 0)).where(
                 document_revisions.c.document_id == document_id
             )
         ).scalar_one()
@@ -103,11 +130,11 @@ def save_document_revision(
         document_revisions.insert().values(
             revision_id=revision_id,
             document_id=document_id,
-            revision_index=next_index,
+            revision_number=next_number,
             content_hash=stored.content_hash,
             created_at=created_at,
             is_current=True,
-            supersedes_id=str(tip["revision_id"]) if tip is not None else None,
+            previous_revision_id=str(tip["revision_id"]) if tip is not None else None,
             visibility=visibility,
             tenant_id=tenant_id,
         )
@@ -119,10 +146,41 @@ def save_document_revision(
     )
     return SavedRevision(
         revision_id=revision_id,
-        revision_index=next_index,
+        revision_number=next_number,
         content_hash=stored.content_hash,
         reused=False,
     )
+
+
+def add_text_block(
+    session: Session,
+    revision_id: str,
+    ordinal: int,
+    start_offset: int,
+    end_offset: int,
+    block_text: str,
+) -> str:
+    """登记原文文本块: 记录块哈希, 供引文一致性校验。"""
+    revision = session.execute(
+        select(document_revisions.c.revision_id).where(
+            document_revisions.c.revision_id == revision_id
+        )
+    ).scalar_one_or_none()
+    if revision is None:
+        raise MissingRevisionError(revision_id)
+    block_id = str(uuid.uuid4())
+    session.execute(
+        text_blocks.insert().values(
+            block_id=block_id,
+            revision_id=revision_id,
+            ordinal=ordinal,
+            start_offset=start_offset,
+            end_offset=end_offset,
+            text_sha256=hashlib.sha256(block_text.encode("utf-8")).hexdigest(),
+            block_text=block_text,
+        )
+    )
+    return block_id
 
 
 def attach_evidence_span(
@@ -136,8 +194,13 @@ def attach_evidence_span(
     visibility: str,
     tenant_id: str | None,
     created_at: datetime,
+    block_id: str | None = None,
+    quote_sha256: str | None = None,
+    verified_at: datetime | None = None,
 ) -> str:
-    """把证据区间挂到修订; 跨租户引用拒绝持久化。"""
+    """挂接证据区间: 租户范围校验 + 引文与原文块一致性校验后持久化。"""
+    if (visibility == "tenant") != (tenant_id is not None):
+        raise TenantScopeViolation("tenant evidence requires exactly one tenant_id")
     revision = session.execute(
         select(document_revisions.c.visibility, document_revisions.c.tenant_id).where(
             document_revisions.c.revision_id == revision_id
@@ -150,6 +213,21 @@ def attach_evidence_span(
         raise TenantScopeViolation("evidence tenant does not match revision tenant")
     if visibility == "public" and revision_visibility == "tenant":
         raise TenantScopeViolation("public evidence cannot derive from tenant revision")
+    resolved_quote_sha256 = quote_sha256
+    if block_id is not None:
+        block_row = session.execute(
+            select(text_blocks.c.revision_id, text_blocks.c.block_text).where(
+                text_blocks.c.block_id == block_id
+            )
+        ).first()
+        if block_row is None:
+            raise QuoteConsistencyError("text block does not exist")
+        if block_row[0] != revision_id:
+            raise QuoteConsistencyError("text block belongs to a different revision")
+        block_digest = hashlib.sha256(block_row[1].encode("utf-8")).hexdigest()
+        if quote_sha256 is not None and quote_sha256 != block_digest:
+            raise QuoteConsistencyError("quote hash does not match source text block")
+        resolved_quote_sha256 = block_digest
     evidence_id = str(uuid.uuid4())
     session.execute(
         evidence.insert().values(
@@ -163,6 +241,9 @@ def attach_evidence_span(
             visibility=visibility,
             tenant_id=tenant_id,
             created_at=created_at,
+            block_id=block_id,
+            quote_sha256=resolved_quote_sha256,
+            verified_at=verified_at,
         )
     )
     return evidence_id
@@ -175,7 +256,7 @@ def record_fetch_attempt(
     outcome: str,
     http_status: int | None,
 ) -> str:
-    """保存抓取尝试; new_event_count 恒为 0, 抓取记录不误计为新业务事件。"""
+    """保存抓取尝试; new_event_count 恒为 0, 抓取记录不误计新业务事件。"""
     attempt_id = str(uuid.uuid4())
     session.execute(
         fetch_attempts.insert().values(
@@ -212,13 +293,17 @@ def bump_scope_epoch(session: Session, scope_key: str, updated_at: datetime) -> 
 
 
 def cleanup_unreferenced_object(session: Session, store: ContentStore, content_hash: str) -> bool:
-    """清理无引用原文对象; 写库失败后调用, 不产生指向缺失原文的有效记录。"""
-    referencing_rows = session.execute(
+    """清理无引用原文对象: 文件与登记行同删; 任何引用存在即拒删。"""
+    revision_refs = session.execute(
         select(func.count())
         .select_from(document_revisions)
         .where(document_revisions.c.content_hash == content_hash)
     ).scalar_one()
-    if int(referencing_rows) > 0:
+    document_refs = session.execute(
+        select(func.count()).select_from(documents).where(documents.c.content_hash == content_hash)
+    ).scalar_one()
+    if int(revision_refs) > 0 or int(document_refs) > 0:
         return False
     store.delete_object(content_hash)
+    session.execute(content_objects.delete().where(content_objects.c.content_hash == content_hash))
     return True

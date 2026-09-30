@@ -23,11 +23,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BACKEND_DIR = PROJECT_ROOT / "backend"
 COMPOSE_FILE = PROJECT_ROOT / "infra" / "compose" / "compose.yaml"
 SUPPORTED_SCOPES = ("unit", "contract", "integration", "security", "frontend", "e2e", "all")
-IMPLEMENTED_SCOPES = ("unit", "integration")
+IMPLEMENTED_SCOPES = ("unit", "integration", "security")
 
 SCOPE_CHECK_COMMANDS: dict[str, list[str]] = {
     "unit": ["uv", "run", "pytest", "tests/unit"],
     "integration": ["uv", "run", "pytest", "tests/integration", "--cov-fail-under=0"],
+    "security": ["uv", "run", "pytest", "tests/security", "--cov-fail-under=0"],
 }
 
 REQUIRED_DEPENDENCY_SERVICES = ("postgres", "redis")

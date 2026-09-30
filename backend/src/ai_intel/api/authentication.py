@@ -1,0 +1,248 @@
+"""认证与会话: 预创建用户、Argon2id 哈希、不透明会话、限流与安全策略。"""
+
+from __future__ import annotations
+
+import hmac
+import secrets
+import time
+import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
+
+from ai_intel.domain.access import AccessScope, Role
+
+SESSION_TTL_SECONDS = 30 * 60
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_WINDOW_SECONDS = 15 * 60
+
+
+class InvalidCredentialsError(PermissionError):
+    """凭证无效: 不区分用户不存在与密码错误, 不泄露账户细节。"""
+
+
+class SessionExpiredError(PermissionError):
+    """会话过期或已注销: 与凭证错误分离, 同样不泄露内部状态。"""
+
+
+class CsrfRejectionError(PermissionError):
+    """写请求缺少或不匹配 CSRF 令牌, 或 Origin 不在允许清单。"""
+
+
+class LoginRateLimitedError(PermissionError):
+    """登录尝试超限: 拒绝时不确认账号是否存在。"""
+
+
+class AuditEventError(ValueError):
+    """审计事件携带敏感字段名: 拒绝记录, 防止密码/令牌入日志。"""
+
+
+SENSITIVE_AUDIT_MARKERS = ("password", "cookie", "token", "secret", "authorization")
+
+
+@dataclass(frozen=True)
+class Principal:
+    """已认证主体: 由服务端从有效会话得出。"""
+
+    user_id: str
+    tenant_id: str | None
+    role: Role
+
+
+@dataclass
+class UserAccount:
+    """预创建用户: 仅存哈希, 不存明文密码。"""
+
+    user_id: str
+    username: str
+    password_hash: str
+    tenant_id: str | None
+    role: Role
+
+
+@dataclass
+class SessionRecord:
+    """不透明会话记录: 过期或注销即失效。"""
+
+    session_id: str
+    user_id: str
+    expires_at: datetime
+    csrf_token: str
+    revoked: bool = False
+
+
+class InMemoryUserDirectory:
+    """预创建用户目录(管理 CLI 与测试共用的最小实现); 无公共注册入口。"""
+
+    def __init__(self) -> None:
+        self._accounts_by_username: dict[str, UserAccount] = {}
+
+    def add_precreated_user(self, account: UserAccount) -> None:
+        """仅允许预创建路径; 不提供任何自助注册接口。"""
+        if account.username in self._accounts_by_username:
+            raise ValueError("username already exists")
+        self._accounts_by_username[account.username] = account
+
+    def find_by_username(self, username: str) -> UserAccount | None:
+        """按用户名查找; 不存在返回 None, 调用方不得据此向客户端区分。"""
+        return self._accounts_by_username.get(username)
+
+    def find_by_id(self, user_id: str) -> UserAccount | None:
+        """按用户 id 查找, 服务端会话校验使用。"""
+        for account in self._accounts_by_username.values():
+            if account.user_id == user_id:
+                return account
+        return None
+
+
+class AuthenticationSessionService:
+    """登录/注销/会话校验 + 登录限流 + 审计事件(脱敏)。"""
+
+    def __init__(
+        self,
+        user_directory: InMemoryUserDirectory,
+        allowed_origins: tuple[str, ...],
+        cookie_secure: bool,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._user_directory = user_directory
+        self._allowed_origins = allowed_origins
+        self._cookie_secure = cookie_secure
+        self._clock = clock or (lambda: datetime.now(UTC))
+        self._password_hasher = PasswordHasher()
+        self._sessions: dict[str, SessionRecord] = {}
+        self._login_attempts: dict[str, list[float]] = {}
+        self._audit_events: list[dict[str, str]] = []
+
+    def create_precreated_user(
+        self, username: str, password: str, tenant_id: str | None, role: Role
+    ) -> UserAccount:
+        """管理路径创建用户: 仅存 Argon2id 哈希, 重复用户名拒绝。"""
+        account = UserAccount(
+            user_id=str(uuid.uuid4()),
+            username=username,
+            password_hash=self._password_hasher.hash(password),
+            tenant_id=tenant_id,
+            role=role,
+        )
+        self._user_directory.add_precreated_user(account)
+        return account
+
+    def login(
+        self, username: str, password: str, origin: str | None, client_key: str
+    ) -> tuple[str, SessionRecord]:
+        """登录: 凭证与 Origin 校验后签发不透明会话; 失败统一报错。"""
+        self._enforce_login_rate(client_key)
+        if origin is not None and origin not in self._allowed_origins:
+            raise CsrfRejectionError("origin not allowed")
+        account = self._user_directory.find_by_username(username)
+        if account is None:
+            self._record_login_failure(client_key)
+            self._append_audit(
+                "login_failed", {"reason": "invalid_credentials", "trace_id": str(uuid.uuid4())}
+            )
+            raise InvalidCredentialsError("invalid credentials")
+        try:
+            self._password_hasher.verify(account.password_hash, password)
+        except VerifyMismatchError:
+            self._record_login_failure(client_key)
+            self._append_audit(
+                "login_failed", {"reason": "invalid_credentials", "trace_id": str(uuid.uuid4())}
+            )
+            raise InvalidCredentialsError("invalid credentials") from None
+        session_token = secrets.token_urlsafe(32)
+        session_record = SessionRecord(
+            session_id=session_token,
+            user_id=account.user_id,
+            expires_at=self._clock() + timedelta(seconds=SESSION_TTL_SECONDS),
+            csrf_token=secrets.token_urlsafe(32),
+        )
+        self._sessions[session_token] = session_record
+        self._login_attempts.pop(client_key, None)
+        self._append_audit(
+            "login_succeeded", {"user_id": account.user_id, "trace_id": str(uuid.uuid4())}
+        )
+        return session_token, session_record
+
+    def logout(self, session_token: str) -> None:
+        """注销: 立即失效, 重复注销幂等。"""
+        session_record = self._sessions.get(session_token)
+        if session_record is not None:
+            session_record.revoked = True
+            self._append_audit(
+                "logout", {"user_id": session_record.user_id, "trace_id": str(uuid.uuid4())}
+            )
+
+    def validate_session(self, session_token: str) -> Principal:
+        """校验会话得到主体; 过期/注销/未知统一 SessionExpiredError。"""
+        session_record = self._sessions.get(session_token)
+        if (
+            session_record is None
+            or session_record.revoked
+            or session_record.expires_at <= self._clock()
+        ):
+            raise SessionExpiredError("session is not valid")
+        account = self._user_directory.find_by_id(session_record.user_id)
+        if account is None:
+            raise InvalidCredentialsError("invalid credentials")
+        return Principal(user_id=account.user_id, tenant_id=account.tenant_id, role=account.role)
+
+    def build_access_scope(self, session_token: str) -> AccessScope:
+        """服务端由会话构造 AccessScope; 请求体自报身份在此无入口。"""
+        principal = self.validate_session(session_token)
+        return AccessScope.for_authenticated_user(
+            principal.user_id, principal.tenant_id, principal.role
+        )
+
+    def validate_write_request(
+        self, session_token: str, csrf_token: str, origin: str | None
+    ) -> None:
+        """写请求必须 CSRF 令牌匹配且 Origin 合法。"""
+        session_record = self._sessions.get(session_token)
+        if session_record is None or session_record.revoked:
+            raise SessionExpiredError("session is not valid")
+        if not hmac.compare_digest(session_record.csrf_token, csrf_token):
+            raise CsrfRejectionError("csrf token mismatch")
+        if origin is None or origin not in self._allowed_origins:
+            raise CsrfRejectionError("origin not allowed")
+
+    def cookie_attributes(self) -> dict[str, str | bool]:
+        """Cookie 策略: HttpOnly + SameSite=Strict; production 强制 Secure。"""
+        return {"httponly": True, "samesite": "strict", "secure": self._cookie_secure}
+
+    def audit_events(self) -> list[dict[str, str]]:
+        """审计事件副本: 供测试与审计接口消费。"""
+        return [dict(event) for event in self._audit_events]
+
+    def _enforce_login_rate(self, client_key: str) -> None:
+        """窗口内超限拒绝; 不确认账号存在性。"""
+        now_epoch = time.time()
+        attempts = [
+            stamp
+            for stamp in self._login_attempts.get(client_key, [])
+            if now_epoch - stamp < LOGIN_WINDOW_SECONDS
+        ]
+        if len(attempts) >= MAX_LOGIN_ATTEMPTS:
+            raise LoginRateLimitedError("too many login attempts")
+
+    def _record_login_failure(self, client_key: str) -> None:
+        """记录失败尝试用于限流。"""
+        now_epoch = time.time()
+        attempts = [
+            stamp
+            for stamp in self._login_attempts.get(client_key, [])
+            if now_epoch - stamp < LOGIN_WINDOW_SECONDS
+        ]
+        attempts.append(now_epoch)
+        self._login_attempts[client_key] = attempts
+
+    def _append_audit(self, event_type: str, fields: dict[str, str]) -> None:
+        """写入审计事件: 拒绝敏感字段名, 事件带 trace_id。"""
+        for key in fields:
+            lowered = key.lower()
+            if any(marker in lowered for marker in SENSITIVE_AUDIT_MARKERS):
+                raise AuditEventError(f"sensitive field refused in audit event: {key}")
+        self._audit_events.append({"event_type": event_type, **fields})
