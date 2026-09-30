@@ -224,6 +224,124 @@ def test_cleanup_refuses_to_delete_referenced_object(migrated_engine, tmp_path) 
     assert (tmp_path / "objects" / saved.content_hash[:2] / saved.content_hash).exists()
 
 
+def test_cleanup_refuses_when_only_document_references_object(migrated_engine, tmp_path) -> None:
+    """MF-2 判别用例(PROBE1): 仅 documents 引用时清理必须拒删(旧实现只查 revisions 会误删)。"""
+    store = make_content_store(tmp_path)
+    stored = store.store_bytes(b"document-only-reference")
+    document_id = str(uuid.uuid4())
+    with migrated_engine.begin() as connection:
+        seed_document(connection, document_id, "public", None)
+        connection.execute(
+            text(
+                "INSERT INTO content_objects (content_hash, size_bytes, created_at) "
+                "VALUES (:h, :s, :t) ON CONFLICT DO NOTHING"
+            ),
+            {
+                "h": stored.content_hash,
+                "s": stored.size_bytes,
+                "t": datetime(2026, 9, 30, 12, 0, tzinfo=UTC),
+            },
+        )
+        connection.execute(
+            text("UPDATE documents SET content_hash = :h WHERE document_id = :d"),
+            {"h": stored.content_hash, "d": document_id},
+        )
+        refused = cleanup_unreferenced_object(connection, store, stored.content_hash)
+    assert refused is False
+    assert stored.object_path.exists()
+
+
+def test_save_revision_scope_mismatch_is_rejected(migrated_engine, tmp_path) -> None:
+    """MF-2 判别用例: save 的两处范围校验分支各自被真实触发。"""
+    store = make_content_store(tmp_path)
+    now = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
+    public_doc = str(uuid.uuid4())
+    with migrated_engine.begin() as connection:
+        seed_document(connection, public_doc, "public", None)
+        with pytest.raises(TenantScopeViolation):
+            save_document_revision(connection, store, public_doc, b"x", "tenant", None, now)
+        with pytest.raises(TenantScopeViolation):
+            save_document_revision(
+                connection, store, public_doc, b"y", "public", "tenant-alpha", now
+            )
+        with pytest.raises(TenantScopeViolation):
+            save_document_revision(
+                connection, store, public_doc, b"z", "tenant", "tenant-alpha", now
+            )
+
+
+def test_tenant_none_evidence_on_public_revision_is_rejected(migrated_engine, tmp_path) -> None:
+    """MF-2 判别用例(PROBE2): (tenant, None) 挂 public 修订必须拒绝(旧实现接受)。"""
+    store = make_content_store(tmp_path)
+    now = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
+    document_id = str(uuid.uuid4())
+    with migrated_engine.begin() as connection:
+        seed_document(connection, document_id, "public", None)
+        saved = save_document_revision(
+            connection, store, document_id, b"public-body", "public", None, now
+        )
+        with pytest.raises(TenantScopeViolation):
+            attach_evidence_span(
+                connection, saved.revision_id, 0, 3, "line 1", "pub", True, "tenant", None, now
+            )
+
+
+def test_quote_invariants_reject_tampered_and_out_of_span(migrated_engine, tmp_path) -> None:
+    """MF-1 判别用例(PROBE3/4/5): 篡改引文、越界区间、合同语义引文哈希各被强制。"""
+    store = make_content_store(tmp_path)
+    now = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
+    document_id = str(uuid.uuid4())
+    block_text = "exact source wording here"
+    with migrated_engine.begin() as connection:
+        seed_document(connection, document_id, "public", None)
+        saved = save_document_revision(connection, store, document_id, b"body", "public", None, now)
+        block_id = add_text_block(connection, saved.revision_id, 1, 0, len(block_text), block_text)
+        with pytest.raises(QuoteConsistencyError):
+            attach_evidence_span(
+                connection,
+                saved.revision_id,
+                0,
+                5,
+                "line 1",
+                "EXACT",
+                True,
+                "public",
+                None,
+                now,
+                block_id=block_id,
+            )
+        with pytest.raises(QuoteConsistencyError):
+            attach_evidence_span(
+                connection,
+                saved.revision_id,
+                0,
+                9999,
+                "line 1",
+                block_text,
+                True,
+                "public",
+                None,
+                now,
+                block_id=block_id,
+            )
+        quote = block_text[:5]
+        evidence_id = attach_evidence_span(
+            connection,
+            saved.revision_id,
+            0,
+            5,
+            "line 1",
+            quote,
+            True,
+            "public",
+            None,
+            now,
+            block_id=block_id,
+            quote_sha256=hashlib.sha256(quote.encode("utf-8")).hexdigest(),
+        )
+        assert evidence_id
+
+
 def test_malicious_path_input_cannot_influence_object_location(tmp_path) -> None:
     """T05-C04: 恶意文件路径被拒; 对象路径仅由内容哈希导出。"""
     store = make_content_store(tmp_path)
@@ -330,7 +448,7 @@ def test_evidence_attach_success_and_quote_consistency(migrated_engine, tmp_path
                 evidence_table.c.evidence_id == evidence_id
             ),
         ).scalar_one()
-    assert row == hashlib.sha256(block_text.encode("utf-8")).hexdigest()
+    assert row == hashlib.sha256(block_text[:8].encode("utf-8")).hexdigest()
 
 
 def test_migration_upgrade_preserves_existing_facts_times_and_unknown_status(

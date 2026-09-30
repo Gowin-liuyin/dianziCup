@@ -213,7 +213,10 @@ def attach_evidence_span(
         raise TenantScopeViolation("evidence tenant does not match revision tenant")
     if visibility == "public" and revision_visibility == "tenant":
         raise TenantScopeViolation("public evidence cannot derive from tenant revision")
-    resolved_quote_sha256 = quote_sha256
+    quote_digest = hashlib.sha256(quote.encode("utf-8")).hexdigest()
+    if quote_sha256 is not None and quote_sha256 != quote_digest:
+        raise QuoteConsistencyError("quote hash does not match quote text")
+    resolved_quote_sha256 = quote_digest
     if block_id is not None:
         block_row = session.execute(
             select(text_blocks.c.revision_id, text_blocks.c.block_text).where(
@@ -224,10 +227,11 @@ def attach_evidence_span(
             raise QuoteConsistencyError("text block does not exist")
         if block_row[0] != revision_id:
             raise QuoteConsistencyError("text block belongs to a different revision")
-        block_digest = hashlib.sha256(block_row[1].encode("utf-8")).hexdigest()
-        if quote_sha256 is not None and quote_sha256 != block_digest:
-            raise QuoteConsistencyError("quote hash does not match source text block")
-        resolved_quote_sha256 = block_digest
+        block_text = str(block_row[1])
+        if start_offset < 0 or end_offset > len(block_text) or start_offset > end_offset:
+            raise QuoteConsistencyError("evidence span outside text block")
+        if block_text[start_offset:end_offset] != quote:
+            raise QuoteConsistencyError("quote does not match source text at span")
     evidence_id = str(uuid.uuid4())
     session.execute(
         evidence.insert().values(
