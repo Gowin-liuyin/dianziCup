@@ -1,0 +1,56 @@
+R-G1B 复跑与抽查日志（2026-09-30，工作目录 D:\dianzi）
+===============================================================
+[复跑] cd backend
+1. uv run pytest tests/integration/test_t07_jobs_and_outbox.py -q --cov-fail-under=0
+   -> exit 0, 6 passed in 1.64s（真库 PostgreSQL 127.0.0.1:5432/ai_intel）
+2. uv run pytest tests/integration -q --cov-fail-under=0
+   -> exit 0, 27 passed, 1 warning in 12.84s
+3. uv run pytest tests/unit -q
+   -> exit 0, 34 passed, 1 warning in 4.48s, cov 69.85%（门槛 60%）
+4. uv run pytest tests/security -q --cov-fail-under=0
+   -> exit 0, 12 passed in 1.10s
+5. uv run ruff check .            -> exit 0（All checks passed!）
+6. uv run ruff format --check .   -> exit 0（31 files already formatted）
+7. uv run mypy src                -> exit 0（18 source files）
+8. uv run python ..scriptserify_plan.py --baseline ..contractsaselinesplan_baseline_t01.json
+   -> exit 0, PLAN_OK
+9. uv run ruff check ..scripts   -> exit 1, 10 errors（目录级，非 CI 门禁）
+10. uv run ruff check ..scriptsadmin_user.py -> E501:3, I001:7, I001:55, UP017:75（4 errors）
+    uv run ruff format --check ..scriptsadmin_user.py -> 1 file would be reformatted
+
+[T06 N1 正则抽查]（正则取自 tests/security/test_t06_authentication_and_scope.py）
+- SECRET_KEY = 'supersecretvalue123'  -> secret_pattern=True, value_pattern=True（原盲区已消）
+- secret_key: 'supersecretvalue123'   -> True, True（原盲区已消）
+- DB_PASS = 'hunter2hunter2xx'        -> True, True（原盲区已消）
+- token='aaaaaaaa'（8 字符）          -> value_pattern=True（值捕获 6+）
+- jwt = 'eyJhbGciOiJIUzI1NiJ9.aaaa.bbbb' -> value_pattern=True
+- 残余（报告已声明非穷举）：'secret key = ...' 空格命名形态、<6 字符值不保证命中
+
+[T06 N2/N4 行为抽查]（内存目录）
+- N2: record.session_id == token=False；== sha256(token)=True；repr(record) 不含明文 token
+- N4: _append_audit('probe_no_trace', {}) -> AuditEventError('audit event requires trace_id')
+      _append_audit('probe_sensitive', {'trace_id':..., 'password':'x'})
+      -> AuditEventError('sensitive field refused in audit event: password')
+
+[T06 N3 真库抽查]（dev PG；探测行已清理：users/job_runs/outbox_events 各 0 残留）
+- 新用户名 DatabaseUserDirectory.add_precreated_user -> 成功，find_by_username 读回一致（created_at 修复生效）
+- 重复用户名 -> ValueError('username already exists')（真实唯一键拒绝）
+- user_id 主键冲突（不同用户名）-> 也报 'username already exists'（错误归并误导，残留）
+- grep tests/**: DatabaseUserDirectory 无任何测试引用（0 覆盖，残留）
+
+[T06 C2 文档抽查]
+- ADMIN_USER_PASSWORD 已设、无 DATABASE_URL 运行 admin_user.py
+  -> 实测 MissingDatabaseUrlError 全量 traceback（docstring 称"明确报缺配置而非 traceback"，不实）
+
+[T07 判别性抽查]
+- 简化 enqueue（无幂等检查）对同一 idempotency_key 插两次
+  -> 第二次被 uq_job_idempotency_key 拒（IntegrityError/UniqueViolation）；
+     C02 断言 first==second 对简化实现必败（异常即失败）；rows==1 由库唯一约束兜底
+- C03 期望值由测试侧 hashlib.sha256(b'original') 独立计算，非实现回显 -> 覆盖型实现必败
+- C04 旧 worker complete_job -> JobLeaseLostError（lease_owner 判别）；恢复认领断言 job_id 相等
+- C05 schedule_retry_or_fail(permanent=True) -> outcome='failed' 且 status='failed' -> 重试型实现必败
+- C06 错误串实测 'resource not found'（不存在/跨租户同串）；断言 'secret'/'tenant-alpha' 不出现
+- T07 文件 Any/cast/except:/pragma/type:ignore 扫描：0 命中（models.py 的 'pass' 命中为 password_hash 子串误报）
+
+[git] 复核时 git status 干净（HEAD 60dbbe1 docs(T07)）；复核过程未改任何被审文件，仅写
+reports/reviews/R-G1B.md 与本日志；DB 探测行全部清理（0 残留）。
