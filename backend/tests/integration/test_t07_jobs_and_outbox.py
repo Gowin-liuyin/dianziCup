@@ -109,12 +109,13 @@ def test_lost_worker_recovers_after_lease_expiry(migrated_engine) -> None:
     """T07-C04: worker 中断 → 租约过期后其他 worker 恢复认领, 不丢任务。"""
     now = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
     with migrated_engine.begin() as connection:
-        job_id = enqueue_job(connection, None, "enrich_claim", b"payload-c", now)
-        claimed = claim_next_job(connection, "worker-1", now, job_type="enrich_claim")
+        job_type = "t07-c04-" + str(uuid.uuid4())
+        job_id = enqueue_job(connection, None, job_type, b"payload-c", now)
+        claimed = claim_next_job(connection, "worker-1", now, job_type=job_type)
         assert claimed is not None and claimed["job_id"] == job_id
     later = now + timedelta(seconds=120)
     with migrated_engine.begin() as connection:
-        recovered = claim_next_job(connection, "worker-2", later, job_type="enrich_claim")
+        recovered = claim_next_job(connection, "worker-2", later, job_type=job_type)
         assert recovered is not None and recovered["job_id"] == job_id
         with pytest.raises(JobLeaseLostError):
             complete_job(connection, job_id, "worker-1", "succeeded", later)
@@ -124,8 +125,9 @@ def test_permanent_failure_does_not_retry_forever(migrated_engine) -> None:
     """T07-C05: 永久认证错误 → failed, 不进入无限重试。"""
     now = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
     with migrated_engine.begin() as connection:
-        job_id = enqueue_job(connection, None, "fetch_with_auth", b"payload-d", now)
-        claim_next_job(connection, "worker-1", now, job_type="fetch_with_auth")
+        job_type = "t07-c05-" + str(uuid.uuid4())
+        job_id = enqueue_job(connection, None, job_type, b"payload-d", now)
+        claim_next_job(connection, "worker-1", now, job_type=job_type)
         outcome = schedule_retry_or_fail(
             connection, job_id, "worker-1", permanent=True, failed_at=now
         )
