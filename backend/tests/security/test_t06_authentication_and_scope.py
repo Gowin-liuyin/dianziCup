@@ -151,7 +151,8 @@ def test_audit_and_sources_carry_no_secret_values_t06_c06() -> None:
     import re
 
     secret_pattern = re.compile(
-        r"(api[_-]?key|secret|token|password)\s*[:=]\s*['\"][A-Za-z0-9_\-]{16,}['\"]",
+        r"(api[_-]?key|secret[_-]?key|db[_-]?pass|secret|token|password)"
+        r"\s*[:=]\s*['\"][A-Za-z0-9_\-]{16,}['\"]",
         re.IGNORECASE,
     )
     scan_roots = (
@@ -163,7 +164,8 @@ def test_audit_and_sources_carry_no_secret_values_t06_c06() -> None:
     )
     documented_dev_placeholders = {"dev-only-not-a-secret", "Dev-Only-Not-A-Secret-1!"}
     secret_value_pattern = re.compile(
-        r"(api[_-]?key|secret|password|passwd|token|jwt)\s*[:=]\s*['\"]([^'\"]{8,})['\"]",
+        r"(api[_-]?key|secret[_-]?key|db[_-]?pass|secret|password|passwd|token|jwt)"
+        r"\s*[:=]\s*['\"]([^'\"]{6,})['\"]",
         re.IGNORECASE,
     )
     for source_root in scan_roots:

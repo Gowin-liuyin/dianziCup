@@ -120,6 +120,48 @@ users = Table(
     Column("tenant_id", Text(), nullable=True),
     Column("role", Text(), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint(
+        "role IN ('tenant_admin', 'system_admin', 'analyst', 'viewer')",
+        name="ck_users_role",
+    ),
+    CheckConstraint(
+        "(tenant_id IS NULL AND role = 'system_admin') OR tenant_id IS NOT NULL",
+        name="ck_users_tenant_admin_requires_tenant",
+    ),
+)
+
+job_runs = Table(
+    "job_runs",
+    metadata,
+    Column("job_id", Text(), primary_key=True),
+    Column("tenant_id", Text(), nullable=True),
+    Column("job_type", Text(), nullable=False),
+    Column("status", Text(), nullable=False),
+    Column("idempotency_key", Text(), nullable=True, unique=True),
+    Column("payload_sha256", Text(), nullable=True),
+    Column("payload_ref", Text(), nullable=False),
+    Column("attempt_count", Integer(), nullable=False, server_default="0"),
+    Column("max_attempts", Integer(), nullable=False, server_default="5"),
+    Column("lease_owner", Text(), nullable=True),
+    Column("lease_expires_at", DateTime(timezone=True), nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint(
+        "status IN ('queued','running','retry_wait','waiting_approval',"
+        "'succeeded','partial','failed','cancelled','blocked')",
+        name="ck_job_status",
+    ),
+)
+
+outbox_events = Table(
+    "outbox_events",
+    metadata,
+    Column("event_id", Text(), primary_key=True),
+    Column("job_id", Text(), ForeignKey("job_runs.job_id"), nullable=False),
+    Column("topic", Text(), nullable=False),
+    Column("payload_ref", Text(), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("published_at", DateTime(timezone=True), nullable=True),
 )
 
 fetch_attempts = Table(

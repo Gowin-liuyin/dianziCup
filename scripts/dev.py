@@ -22,7 +22,15 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BACKEND_DIR = PROJECT_ROOT / "backend"
 COMPOSE_FILE = PROJECT_ROOT / "infra" / "compose" / "compose.yaml"
-SUPPORTED_SCOPES = ("unit", "contract", "integration", "security", "frontend", "e2e", "all")
+SUPPORTED_SCOPES = (
+    "unit",
+    "contract",
+    "integration",
+    "security",
+    "frontend",
+    "e2e",
+    "all",
+)
 IMPLEMENTED_SCOPES = ("unit", "integration", "security")
 
 SCOPE_CHECK_COMMANDS: dict[str, list[str]] = {
@@ -62,7 +70,17 @@ def run_scope_checks(requested_scope: str) -> int:
 def run_compose_services(*arguments: str) -> subprocess.CompletedProcess[str]:
     """对开发编排执行 docker compose 子命令, 统一 profile 与文件路径。"""
     return subprocess.run(
-        ["docker", "compose", "-f", str(COMPOSE_FILE), "--profile", "core", "--profile", "search", *arguments],
+        [
+            "docker",
+            "compose",
+            "-f",
+            str(COMPOSE_FILE),
+            "--profile",
+            "core",
+            "--profile",
+            "search",
+            *arguments,
+        ],
         capture_output=True,
         text=True,
     )
@@ -90,10 +108,14 @@ def stop_development_services(confirm_destroy: bool) -> int:
 def probe_dependency_states() -> dict[str, str]:
     """逐服务探测真实状态; 不可用/未运行如实记录, 不猜测。"""
     states: dict[str, str] = {}
-    ps_probe = run_compose_services("ps", "--format", "{{.Service}} {{.State}} {{.Health}}")
+    ps_probe = run_compose_services(
+        "ps", "--format", "{{.Service}} {{.State}} {{.Health}}"
+    )
     observed = ps_probe.stdout if ps_probe.returncode == 0 else ""
     for service in (*REQUIRED_DEPENDENCY_SERVICES, *OPTIONAL_DEPENDENCY_SERVICES):
-        matching_lines = [line for line in observed.splitlines() if line.startswith(service + " ")]
+        matching_lines = [
+            line for line in observed.splitlines() if line.startswith(service + " ")
+        ]
         if not matching_lines:
             states[service] = "not_running"
         elif "healthy" in matching_lines[0]:
@@ -106,7 +128,9 @@ def probe_dependency_states() -> dict[str, str]:
 def report_dependencies() -> int:
     """输出依赖就绪报告: 可选依赖未运行记 degraded, 不谎报全依赖就绪。"""
     states = probe_dependency_states()
-    required_ready = all(states[name] == "healthy" for name in REQUIRED_DEPENDENCY_SERVICES)
+    required_ready = all(
+        states[name] == "healthy" for name in REQUIRED_DEPENDENCY_SERVICES
+    )
     search_ready = states.get("opensearch") == "healthy"
     for name, state in states.items():
         print(f"{name}: {state}")
@@ -114,7 +138,9 @@ def report_dependencies() -> int:
         print("overall: not_ready (required dependency unhealthy)")
         return 1
     if not search_ready:
-        print("overall: degraded (search profile not running; 检索能力降级, 非全依赖 ready)")
+        print(
+            "overall: degraded (search profile not running; 检索能力降级, 非全依赖 ready)"
+        )
         return 4
     print("overall: ready")
     return 0
@@ -122,7 +148,9 @@ def report_dependencies() -> int:
 
 def build_argument_parser() -> argparse.ArgumentParser:
     """构造命令行解析器: check --scope 与 services up/down/deps-check。"""
-    parser = argparse.ArgumentParser(prog="dev.py", description="项目质量检查与本地开发服务入口")
+    parser = argparse.ArgumentParser(
+        prog="dev.py", description="项目质量检查与本地开发服务入口"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     check_parser = subparsers.add_parser("check", help="执行指定范围的质量检查")

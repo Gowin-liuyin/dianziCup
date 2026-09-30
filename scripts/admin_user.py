@@ -13,9 +13,8 @@ import sys
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import insert
-
 from ai_intel.domain.access import Role
+from sqlalchemy import insert
 
 
 def read_password_without_echo() -> str:
@@ -27,10 +26,18 @@ def read_password_without_echo() -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """创建持久化预创建用户; 重复用户名返回非零, 账号重启后仍可用。"""
-    parser = argparse.ArgumentParser(prog="admin_user.py", description="创建预创建用户(无公共注册)")
+    """创建持久化预创建用户; 重复用户名返回非零, 账号重启后仍可用。
+
+    运行前提: 环境提供 DATABASE_URL(Settings 读取; 本地可复制 config/dev.env.example
+    为 .env 注入开发连接串), 否则明确报缺配置而非 traceback。
+    """
+    parser = argparse.ArgumentParser(
+        prog="admin_user.py", description="创建预创建用户(无公共注册)"
+    )
     parser.add_argument("username")
-    parser.add_argument("--tenant", required=True, help="租户 id; system_admin 用 none 表示无租户")
+    parser.add_argument(
+        "--tenant", required=True, help="租户 id; system_admin 用 none 表示无租户"
+    )
     parser.add_argument("--role", required=True, choices=[role.value for role in Role])
     arguments = parser.parse_args(argv)
     password = read_password_without_echo()
@@ -45,12 +52,11 @@ def main(argv: list[str] | None = None) -> int:
         print("ERROR tenant role requires --tenant <id>", file=sys.stderr)
         return 2
     try:
-        from argon2 import PasswordHasher
-        from sqlalchemy.exc import IntegrityError
-
         from ai_intel.infrastructure.database import build_engine, session_scope
         from ai_intel.infrastructure.settings import load_application_settings
         from ai_intel.knowledge.models import users
+        from argon2 import PasswordHasher
+        from sqlalchemy.exc import IntegrityError
     except ImportError as import_error:
         print(f"ERROR run inside backend venv: {import_error}", file=sys.stderr)
         return 2

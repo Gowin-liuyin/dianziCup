@@ -1,0 +1,65 @@
+# R-T06-RECHECK 运行日志（全部命令在 D:\dianzi\backend 下执行，除注明外）
+
+[1] uv run pytest tests/security -q --cov-fail-under=0
+    exit=0  12 passed in 1.13s  （cov TOTAL 32%；--cov-fail-under=0）
+
+[2] uv run pytest tests/unit -q
+    exit=0  34 passed, 1 warning in 4.22s  cov 73.24%（门槛 60%）
+
+[3] uv run pytest tests/integration -q --cov-fail-under=0
+    exit=0  21 passed, 1 warning in 12.21s
+    collect-only: test_t03_development_services.py 6 项 + test_t05_persistence_and_raw_store.py 15 项
+    （T06.md §6.9 声称 17/17；差额来自 T05/T03 轨道文件，全部通过）
+
+[4] uv run ruff check .              exit=0  All checks passed!
+[5] uv run ruff format --check .     exit=0  27 files already formatted
+[6] uv run mypy src                  exit=0  Success: no issues found in 16 source files
+[7] uv run ruff check ..\scripts     exit=1  Found 35 errors
+    admin_user.py: E501 line 3（调用方式行，M4 修复批新增）、UP017 line 69（timezone.utc）
+    dev.py / verify_plan.py: 既有 E501/RUF005（非本次复核对象）
+[8] uv run ruff format --check ..\scripts  exit=1  3 files would be reformatted
+    admin_user.py:80（M4 修复批引入）、dev.py、verify_plan.py
+[9] uv run python ..\scripts\verify_plan.py --baseline ..\contracts\baselines\plan_baseline_t01.json
+    exit=0  PLAN_OK（含 source_hashes 对比；contracts 冻结未动）
+
+[M4-a] DB 实查（information_schema/pg_constraint）：
+    users 列 = user_id NO text / username NO text / password_hash NO text / tenant_id YES text / role NO text / created_at NO timestamptz
+    约束 = ck_users_role(c)、ck_users_tenant_admin_requires_tenant(c)、users_pkey(p)、users_username_key(u)
+    alembic_version=0003_users；users 行数=0
+
+[M4-b] CLI 两次创建（DATABASE_URL=postgresql+psycopg://ai_intel:…@127.0.0.1:5432/ai_intel；ADMIN_USER_PASSWORD 环境变量）：
+    首次：created user_id=d5e5f318-1fe3-4a98-97c4-799e8764cc72   FIRST_EXIT=0
+    二次：ERROR username already exists: (psycopg.errors.UniqueViolation) duplicate key value violates unique constraint "users_username_key"   SECOND_EXIT=1
+    （SQL 参数回显含 password_hash=\$argon2id$…，无明文——记 C4）
+
+[M4-c] 持久化读回（全新进程 DatabaseUserDirectory.find_by_username）：
+    rt06_recheck_probe / analyst / rt06-probe / hash_prefix=$argon2id$v=   → 跨进程持久 ✓
+
+[M4-d] DatabaseUserDirectory.add_precreated_user（全新用户名 rt06_recheck_probe2）：
+    ValueError username already exists   ← created_at 缺失致 NOT NULL 违规被误译（N3）
+
+[M4-e] 无 DATABASE_URL 按 docstring 运行 admin_user.py：
+    ai_intel.infrastructure.database.MissingDatabaseUrlError: DATABASE_URL is required for persistence（traceback）（C2）
+
+[M4-f] 清理：DELETE users WHERE username LIKE 'rt06_recheck_probe%' → 1 行；users 行数回到 0
+
+[M2] C06 正则抽样（secret_pattern / secret_value_pattern 双正则）：
+    SECRET_KEY = 'supersecretvalue123'      strict=False value=None        ← 盲区（N1）
+    secret_key: 'supersecretvalue123'       strict=False value=None        ← 盲区（N1）
+    JWT_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.abc.defgh'  value=('TOKEN','eyJ…')   ← 点值覆盖 ✓
+    api_key = 'abcdEFGH1234abcd'            strict=True  value=('api_key',…) ✓
+    password = 'Str0ng-Passphrase!'         value=('password','Str0ng-Passphrase!') ✓ 标点密码覆盖
+    DB_PASS = 'hunter2hunter2xx'            strict=False value=None        ← 盲区（N1）
+    token='aaaaaaaa'                        value=('token','aaaaaaaa')     ← <8 值不设防（N1）
+    扫描面实查：frontend/src=3 文件、frontend/dist=2 文件、reports/runs=21 文件（均存在非空）
+
+[M5] 会话/审计抽样：
+    SESSION_KEY_IS_SHA256: True
+    PLAINTEXT_TOKEN_IN_KEY: False
+    RECORD_SESSION_ID_EQUALS_PLAINTEXT: True      ← N2
+    PLAINTEXT_TOKEN_RETAINED_IN_RECORDS: True     ← N2
+    AUDIT_EVENT_WITHOUT_TRACE_ID_ALLOWED: True {'event_type': 'probe_no_trace'}   ← N4
+
+[M3] cookie_secure_for_environment('production') is True / ('development') is False（tests/security 断言非回显，12 passed 含该用例）；settings.py 无 cookie 相关校验（C1）
+
+SHA-256（复核对象）见报告 §0。git status: 仅 progress/context_handoff.md 修改（非本次写入）。

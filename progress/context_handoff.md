@@ -1,6 +1,20 @@
 # 上下文交接（progress/context_handoff.md）
 
-## 0.5 Goal 第 72 轮增量（最新，恢复锚点）
+## 0.6 Goal 第 80 轮增量（最新，恢复锚点）
+
+- **T02 accepted**；**T03/T04 accepted 附条件**（条件清单见 R-G1A.md，G1 阶段检查前闭合：T03 README/CI §4.6 + C03 容器态回归；T04 DTO 补全/G2 对齐留痕/空操作 validator 清理）。
+- **T05**：R-T05 needs_changes(M1-M5)→修复→R-T05-RECHECK needs_changes(MF-1/2/3)→修复（attach 三不变量：块切片==引文/区间在块内/quote_sha256=hash(quote)；4 判别用例；逐段命令日志+数字统一）→ **15/15 真库**；R-T05-RECHECK2（154be9f8）运行中。
+- **T06**：R-T06 needs_changes(M1-M6)→修复（viewer/权限版本/角色区分/会话sha256键/cookie强制/0003 users+CLI持久化/伪造审计/filter_visible_rows/C06扩展扫描）→ **security 12/12**；R-T06-RECHECK（1e105e5f）运行中。
+- 终态全绿：unit 34/34 cov 73.24%、integration 21/21、security 12/12、ruff check+format/mypy 0、verify_plan PLAN_OK。
+- **Git**（用户已授权本地 commit、每轮一提交；push 无授权）：1ec7efd 基线→7f5198f→cb34cd0→2ee131a→ccdde38。
+- 关键文件：migrations/0001-0003、knowledge/{models,revisions}.py、infrastructure/{database,content_store,settings}.py、api/authentication.py、domain/{access,enums,values,records,schema_export}.py、scripts/{dev,admin_user}.py、tests/{unit,integration,security}。
+- 变更单：CR-001/erratum、CR-002（vitest）、CR-003（持久化依赖）、CR-004（认证栈）、CR-005（03 合同分期对齐——条件 C1 待补台账：canonical_uri/latest_revision_id/document_kind/language/locator_kind 等）。
+- **下一动作**：双复核结论→T05/T06=accepted→T07（jobs/outbox，卡=docs/tasks/T07_jobs_and_outbox.md，验收 C01—C06：outbox 保留恢复投递/重复消息单结果/幂等键 409/租约过期恢复/永久认证错误不无限重试/他人 job_id 404）→T08/T09→G1 阶段检查（含 R-G1A 条件闭合）。
+- 节奏模式（有效）：实现=主控；文档/审查=subagent；收窄审查+本回合交付；判别性负例（对旧实现必败）；每轮 git commit；修复附录写入各 reports/tasks/T*.md §6.9。
+
+---
+
+## 0.5 Goal 第 72 轮增量（历史）
 
 - **T02 = accepted**（审查链：R-T02 needs_changes→主控修复→R-T02 定向复核 accepted + RV-FIX-T02 accepted 附 3 条件；报告 reports/reviews/R-T02.md、R-T02_recheck.md、RV-FIX-T02.md）。
 - **T03 实现完成全绿**：infra/compose（postgres:16.4/redis:7.4/opensearch:2.17.0，127.0.0.1、限额、健康检查；opensearch 需 OPENSEARCH_INITIAL_ADMIN_PASSWORD=Dev-Only-Not-A-Secret-1!（开发占位，强度正则约束））、config/dev.env.example、infrastructure/settings.py（production 拒 fixture/占位秘密）、scripts/dev.py（check scope 合同 0/1/2/3 + services up/down/deps-check 合同 0/4/2/1，down 默认保卷）、tests/integration/test_t03_development_services.py（6/6 真容器：C01 三探针、C02 重启持久化、C03 search 降级不谎报、C04 双负例、C05 无容器 blocked 不冒充 SQLite、C06 关服保卷）。

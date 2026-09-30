@@ -126,6 +126,7 @@ class DatabaseUserDirectory:
                         password_hash=account.password_hash,
                         tenant_id=account.tenant_id,
                         role=account.role.value,
+                        created_at=datetime.now(UTC),
                     )
                 )
         except IntegrityError as duplicate:
@@ -232,7 +233,7 @@ class AuthenticationSessionService:
             raise InvalidCredentialsError("invalid credentials") from None
         session_token = secrets.token_urlsafe(32)
         session_record = SessionRecord(
-            session_id=session_token,
+            session_id=self._session_key(session_token),
             user_id=account.user_id,
             expires_at=self._clock() + timedelta(seconds=SESSION_TTL_SECONDS),
             csrf_token=secrets.token_urlsafe(32),
@@ -334,6 +335,8 @@ class AuthenticationSessionService:
 
     def _append_audit(self, event_type: str, fields: dict[str, str]) -> None:
         """写入审计事件: 拒绝敏感字段名, 事件带 trace_id。"""
+        if "trace_id" not in fields:
+            raise AuditEventError("audit event requires trace_id")
         for key in fields:
             lowered = key.lower()
             if any(marker in lowered for marker in SENSITIVE_AUDIT_MARKERS):

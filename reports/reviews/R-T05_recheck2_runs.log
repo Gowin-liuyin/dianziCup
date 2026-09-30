@@ -1,0 +1,133 @@
+R-T05-RECHECK2 复核运行原始记录（R-T05 系审查者，非修复作者）
+复核对象批次: commit ccdde38「fix(T05): R-T05-RECHECK 修复 MF-1/2/3」
+复核时间: 2026-10-01 01:58—02:06 +08:00
+复核工作目录: D:\dianzi（命令段各自标注 backend / 根）
+数据库: 真实 PostgreSQL postgresql+psycopg://ai_intel:***@127.0.0.1:5432/ai_intel（探针事务全部回滚）
+探针脚本: %TEMP%\rt05_recheck2_probe.py / rt05_recheck2_oldswap.py（系统临时目录，复核后已删除）
+工具版本: uv 0.10.9；backend/.venv CPython 3.12.13、pytest 8.4.2
+
+== [0] 复核时工作树状态（重要：并行轨在飞改动）==
+HEAD: ccdde38 fix(T05): R-T05-RECHECK 修复 MF-1/2/3（引文不变量/判别用例/证据链）
+git status --short（02:04 实测）:
+ M backend/src/ai_intel/api/authentication.py
+ M backend/src/ai_intel/knowledge/models.py
+ M backend/tests/security/test_t06_authentication_and_scope.py
+ M progress/context_handoff.md
+ M reports/tasks/T06.md
+ M scripts/admin_user.py
+ M scripts/dev.py
+ M scripts/verify_plan.py
+?? backend/migrations/versions/0004_jobs_outbox.py
+?? backend/src/ai_intel/infrastructure/outbox.py
+?? backend/src/ai_intel/workers/
+?? backend/tests/integration/test_t07_jobs_and_outbox.py
+?? reports/reviews/R-T06_recheck.md
+?? reports/reviews/R-T06_recheck_runs.log
+说明: 上列为 T06/T07 并行轨未提交的在飞文件（0004_jobs_outbox.py 落盘 01:55:35），非 T05 复核对象；
+按 AGENTS.md §2.2 未做任何触碰。四个复核对象文件均不在修改列表中，即与 ccdde38 一致。
+
+== [A1] T05 判别用例所在集成文件（命令: uv run pytest tests/integration/test_t05_persistence_and_raw_store.py -q --cov-fail-under=0；目录: backend；02:0x）==
+............F..  [100%]
+FAILED tests/integration/test_t05_persistence_and_raw_store.py::test_migration_downgrade_and_upgrade_roundtrip_and_version_recorded
+E AssertionError: assert '0004_jobs_outbox' == '0003_users'
+1 failed, 14 passed in 2.57s
+exit=1
+判定注记: 失败项为迁移版本硬编码断言（current_migration_revision == "0003_users"），
+被并行轨未提交的 0004_jobs_outbox 迁移顶掉（Alembic head 变为 0004_jobs_outbox）。
+MF-1/2/3 相关的 4 个判别用例与其余 14 项全部通过（含 PROBE1/PROBE2/PROBE3-5 用例）。
+
+== [A2] 单元测试（命令: uv run pytest tests/unit -q；目录: backend）==
+1 failed, 33 passed, 1 warning in 4.16s
+FAILED tests/unit/test_t02_project_skeleton.py::test_mypy_rejects_injected_type_error_and_recovers
+TOTAL 595 179 70%（Required test coverage of 60% reached. Total coverage: 69.92%）
+exit=1
+判定注记: 该用例要求仓库 mypy 干净基线；当前 mypy 报 8 错全部来自 T07 轨未提交
+workers/jobs.py、infrastructure/outbox.py（见 [A5]）。T05 边界单测 6 项全过。
+
+== [A3] 集成全套（命令: uv run pytest tests/integration -q --cov-fail-under=0；目录: backend）==
+ERROR collecting tests/integration/test_t07_jobs_and_outbox.py
+ImportError: cannot import name 'job_runs' from 'ai_intel.knowledge.models'
+Interrupted: 1 error during collection !!!
+exit=2
+判定注记: T07 轨未提交测试文件与其半成品 models.py 改动（job_runs/outbox_events 尚未落）导致
+收集中断，21/21 在当前树上不可测。非 T05 文件问题。
+
+== [A4] 代码风格（命令: uv run ruff check . / uv run ruff format --check .；目录: backend）==
+ruff check .: Found 1 error — E501 migrations/versions/0004_jobs_outbox.py:17（T07 轨未提交文件）exit=1
+ruff format --check .: 31 files already formatted  exit=0
+判定注记: format 段确已 0（本次复核要求「format 亦应 0」达成）；ruff check 的唯一错误在
+T07 轨未提交迁移文件内。T05 范围文件 ruff check/format 全合规。
+
+== [A5] 类型检查（命令: uv run mypy src；目录: backend）==
+src/ai_intel/workers/jobs.py:15/62/80/95/117/133: error（6 条）
+src/ai_intel/infrastructure/outbox.py:12: error（2 条）
+Found 8 errors in 2 files (checked 18 source files)
+exit=1
+判定注记: 8 错全部位于 T07 轨未提交文件（models 尚未加 job_runs/outbox_events 等）。
+T05 范围（revisions.py/content_store.py/database.py/models.py）0 错。
+
+== [A6] 冻结核对（命令: uv run python scripts/verify_plan.py --baseline contracts/baselines/plan_baseline_t01.json；目录: 根）==
+PLAN_OK:（计划/顺序/覆盖/引用/状态结构校验通过，未发现基线违例通过）
+exit=0
+
+== [B] MF-1 探针重放（现实现；uv run python %TEMP%\rt05_recheck2_probe.py；目录: backend；真库事务回滚）==
+== MF-1: PROBE replay vs CURRENT implementation ==
+[PROBE3 tampered quote (span 0:5 vs 'EXACT') -> expect QuoteConsistencyError] -> QuoteConsistencyError: quote does not match source text at span
+[PROBE4 out-of-range span 0:9999 -> expect QuoteConsistencyError] -> QuoteConsistencyError: evidence span outside text block
+[PROBE4b inverted span 5:3 -> expect QuoteConsistencyError] -> QuoteConsistencyError: evidence span outside text block
+[PROBE4c negative start -2:3 -> expect QuoteConsistencyError] -> QuoteConsistencyError: evidence span outside text block
+    stored quote_sha256 == sha256(quote): True
+[PROBE5 quote_sha256=hash(quote) per contract -> expect ACCEPT] -> no exception (accepted)
+[PROBE5b quote_sha256=hash-of-something-else -> expect QuoteConsistencyError] -> QuoteConsistencyError: quote hash does not match quote text
+    positive attach evidence_id ok: True
+[PROBE6 positive attach -> expect ACCEPT] -> no exception (accepted)
+[OBS block_id=None span 1000:1200 quote='anything' (contract 3.3 bypass?)] -> no exception (accepted)
+
+== [C] MF-2 旧/现实现行为对照（同一脚本；旧实现=git show 7f5198f:backend/src/ai_intel/knowledge/revisions.py，
+   仅做机械列名替换 revision_index->revision_number、supersedes_id->previous_revision_id 以适配现 schema，逻辑不动）==
+[OLD cleanup: only documents.content_hash refs] cleanup returned=True, file_exists=False
+[CURRENT cleanup: only documents.content_hash refs] cleanup returned=False, file_exists=True
+[OLD attach PROBE2 (tenant,None) on public revision] -> IntegrityError: (psycopg.errors.CheckViolation) new row for relation "evidence" violates check constraint "ck_evidence_tenant_xor"
+[CURRENT attach PROBE2 (tenant,None) on public revision] -> TenantScopeViolation: tenant evidence requires exactly one tenant_id
+[OLD attach PROBE3 tampered quote] attach ACCEPTED evidence_id=d3e428f9-...
+[CURRENT attach PROBE3 tampered quote] -> QuoteConsistencyError: quote does not match source text at span
+[OLD attach PROBE4 span 0:9999] attach ACCEPTED evidence_id=5c8e7e11-...
+[CURRENT attach PROBE4 span 0:9999] -> QuoteConsistencyError: evidence span outside text block
+    (note: OLD attach PROBE5 quote_sha256=hash(quote) API has no ['quote_sha256'] -> contract field absent in old implementation)
+[OLD attach PROBE5 quote_sha256=hash(quote)] attach ACCEPTED evidence_id=506aaa0c-...
+[OLD save (tenant,alpha) on public doc (MF-2 case-3)] save ACCEPTED revision=1
+[CURRENT save (tenant,alpha) on public doc (MF-2 case-3)] -> TenantScopeViolation: revision scope does not match document scope
+[OLD save (tenant,None) on public doc (MF-2 case-2)] -> IntegrityError: (psycopg.errors.CheckViolation) new row for relation "document_revisions" violates check constraint "ck_document_revisions_tenant_xor"
+[CURRENT save (tenant,None) on public doc (MF-2 case-2)] -> TenantScopeViolation: tenant revision requires exactly one tenant_id
+probe scratch cleaned: True
+
+== [D] MF-2 字面换装复跑（4 判别用例 + 旧文件原样注入 sys.modules；uv run python %TEMP%\rt05_recheck2_oldswap.py）==
+old module injected: ['attach_evidence_span', 'cleanup_unreferenced_object', 'save_document_revision']
+（旧模块无 add_text_block / QuoteConsistencyError / MissingDocumentError）
+ImportError: cannot import name 'MissingDocumentError' from 'ai_intel.knowledge.revisions' (<old revisions at 7f5198f>)
+ERROR: found no collectors for ...4 个判别用例逐一报 no collectors
+exit=4
+判定注记: 对旧实现 4 判别用例 0 通过（字面换装=收集失败；行为级判别力见 [C] 段逐场景差异，
+旧实现在 PROBE1 场景误删文件、PROBE3/4 接受篡改引文与越界区间、save 归属不一致静默接受——
+4 个判别用例的断言在旧行为下必然失败）。对现实现 4 判别用例全过（[A1] 14 passed 内）。
+
+== [E] MF-3 证据链核对（reports/runs/t05_persistence_check.log，767→1372 字节新版）==
+逐段实际命令: 有（== [unit] uv run pytest tests/unit -q == 等 7 段，命令原文入段）✓
+逐段退出码: 有（每段 exit=0，共 7 段）✓
+ruff format --check 段: 有（[ruff-format] uv run ruff format --check . → 27 files already formatted, exit=0）✓
+工作目录: 有（D:\dianzi\backend，日志首行）✓
+时间: 有（2026-10-01 01:46:02，单一起点时间，无结束时间）△
+输入版本: 有（"git 2ee131a + 工作树"），但未绑定终态提交 ccdde38、无哈希 △
+日志数字: unit 34 passed cov 73.24% / integration 21 passed / t05 15 passed / security 12 passed；
+与 T05.md 首行（34/34、21/21=T03 6+T05 15、15/15、cov 73.24%）逐项一致 ✓
+T05.md 口径: 首行声明「MF-3 修复后终态批次…以本行为准」，§6.9 前数字标注为修复前历史批次 ✓（实质单一权威口径）
+残留: §6.9 内 11/11（M1-M5 批次）未列入该注明枚举；§2/§4 保留历史数字（已标历史）；
+§2 载过时测试名 test_failed_database_write_leaves_no_record_of_missing_content（现名
+test_database_failure_after_object_write_leaves_no_dangling_record）与「alembic_version=0001_core_tables」
+（现实测 0003_users，且树上已有 0004_jobs_outbox）△
+
+== [F] 复核对象版本绑定（02:04 +08:00 实测，均与 ccdde38 一致）==
+backend/src/ai_intel/knowledge/revisions.py | 10898 | 2DBC1258F450BB2BAAF53216294615A2FA4574B51771874BBD56804A33933901
+backend/tests/integration/test_t05_persistence_and_raw_store.py | 21807 | 7F46108EDA5C5155494F46D5727940E4EF5E582251E961BAACF64C260AF6D840
+reports/tasks/T05.md | 9042 | 97B45457511EFF820F97DCDEAD8FC9CDD0EB8CE4E432609E9EC5F178FEDCA039
+reports/runs/t05_persistence_check.log | 1372 | AB1ADF9AAFEDC91DD42E36CD1A903BEE1FB0CF474181B8AAA98AABC04C17EE36
