@@ -20,6 +20,8 @@
 | 缺 parser_version/parse_status/is_synthetic/material_change | 解析元数据 | T09 解析任务 |
 | 缺 documents.source_record_id 与 source+source_record 唯一键 | 03 §4 | T08 抓取管线 |
 | fetch_attempts.new_event_count | 合同无此字段 | T08 收敛为 contract 字段或删除 |
+| evidence block_id=None 路径不强制 03 §3.3 引文锚定 | 引文必须锚定原文块 | T08 论断管线强制 block_id 必填；此前无块锚定 attach 记 not-verified，不计评分 |
+| canonical_uri / latest_revision_id / document_kind / language / normalizer_version / locator_kind / TextBlock 定位列 / FetchAttempt 全字段集 | 03 §3 完整字段 | T08/T09 随抓取与解析管线补齐；未落地前相关评分证据不计入（C1 台账补录） |
 
 ## 理由
 
