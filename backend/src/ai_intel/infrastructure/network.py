@@ -9,7 +9,8 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 from dataclasses import dataclass, field
-from collections.abc import Callable, Iterable`nfrom typing import Protocol
+from collections.abc import Callable, Iterable
+from typing import Protocol
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
