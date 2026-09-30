@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import ipaddress
-from dataclasses import dataclass, field
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
 from typing import Protocol
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
