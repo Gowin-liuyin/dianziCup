@@ -9,7 +9,8 @@
 - **活动委派**：DOCS-G1A（159b0efa，T03.md+T04.md 报告）与 R-G1A（6c022f3f，T03+T04 批量收窄审查→reports/reviews/R-G1A.md）均运行中；已告知 R-G1A 的 T05 并行边界。
 - **T05 已预读待实施**（依赖 T03+T04）：backend/migrations/、infrastructure/（Session/内容存储：临时写入原子替换、hash 校验、路径不取用户输入）、knowledge/revisions.py（save_document_revision：重复末版复用、A→B→A 三修订、FetchAttempt 不误计事件）、scope epoch 表、tests/integration/test_t05_persistence_and_raw_store.py（C01—C06）；需 SQLAlchemy/alembic/psycopg[binary] 新依赖→pyproject+uv.lock+变更记录（CR-003）。
 - **节奏模式（已验证）**：实现=主控（代码生成类 subagent 不可靠，4 次零交付）；文档/审查=subagent（可靠）；审查范围收窄+本回合交付；批量审查省轮次；同阶段前置 awaiting_review+自动检查通过即可并行（执行索引 §4）。
-- 下一动作：DOCS-G1A+R-G1A 交付 → T03/T04=accepted → T05 实施+审查 → T06—T09（G1 余项，T06 认证/T07 outbox/T08 抓取网关/T09 解析）→ G1 阶段检查 → G2。
+- 下一动作：R-T05 交付 → T05=accepted → T06（认证）‖T07（outbox）→ T08/T09 → G1 阶段检查（含 R-G1A 条件闭合）→ G2。
+- **Git（用户 2026-09-30 授权）**：本地 commit 已授权，基线 `1ec7efd`（T00—T05 累积）；**此后每轮一提交**；push/fetch 仍无授权。BLK-003 本地提交部分关闭。
 
 ---
 

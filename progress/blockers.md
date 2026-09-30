@@ -36,6 +36,7 @@
 | BLK-001 | 再次实测 `docker info` 退出码 1（npipe 管道不存在）：守护进程仍未运行。影响范围不变（T03/T05 及需容器的集成与 live 验证）；最小用户操作不变：启动 Docker Desktop。T02 不受影响 | open（今日两次实测确认） |
 | BLK-002 | 不变：无模型/embedding/rerank/FOFA 凭据；本轮未读取任何密钥值。只阻断真实接口验证，不阻断离线开发 | open（blocked_live） |
 | BLK-003 | 不变：git 已 init（main、origin）、**仍无任何提交**（R-T00 21:07 复核 `git log` 退出码 128）；本 Goal 未获 add/commit/push 授权，版本标识继续用文件哈希与日志 | open（部分缓解） |
+| BLK-003 | **2026-09-30 Goal 轮 77 更新：用户指示「每轮一个 commit」→ 本地提交授权已获得**。累积基线提交 `1ec7efd`（306 文件/35537 行，含 .gitignore）已建立；此后每轮一提交；**push/fetch 仍无授权** | closed（本地提交）/ push 仍 open |
 | BLK-004 | 不变：人数、截止、部署位置、授权资产、人工标注、费用/网络范围仍 unknown；合并最小用户输入清单见下 | open |
 | BLK-005 | 不变（低影响）；本轮未复现（R-T00 记 not_run） | open（低影响） |
 | BLK-006 | 不变：原 ZIP 仍未补入。依据官方 PDF + 任务卡 + 计划文档审查重建内容（R-T01 已独立复现官方依据链：PDF 哈希一致、pdftotext 165 行逐字节一致）；格式差异不判失败 | open（不阻断离线路径） |
