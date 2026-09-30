@@ -30,7 +30,10 @@ def test_mixed_chinese_english_span_roundtrips_exactly_t09_c01() -> None:
 
 def test_table_header_and_rows_keep_relation_t09_c02() -> None:
     """T09-C02: 表格版本表头与行关系保留(block_type 区分)。"""
-    html = b"<table><tr><th>version</th><th>status</th></tr><tr><td>2.1</td><td>affected</td></tr></table>"
+    html = (
+        b"<table><tr><th>version</th><th>status</th></tr>"
+        b"<tr><td>2.1</td><td>affected</td></tr></table>"
+    )
     outcome = parse_html_document(html)
     types = [block.block_type for block in outcome.blocks]
     assert "table_header" in types and "table_row" in types
