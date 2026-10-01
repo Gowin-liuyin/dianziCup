@@ -108,3 +108,39 @@ def test_cross_tenant_or_private_evidence_excluded_from_public_results_t21_c06()
     )
     with pytest.raises(ClaimsContractError):
         ledger.add_claim(hypothesis)
+
+
+def test_hard_identifier_conflict_blocks_merge_and_overlap_merges_t21_c01b() -> None:
+    """T21-C01 扩展: 同生态硬 ID 不相交→拒绝; 相交或为空→合并成功(补分支覆盖)。"""
+    key = canonicalize_entity("package", "pypi", "demo-lib")
+    left = EntityRecord(key, hard_identifiers=("pypi:demo-lib",))
+    right = EntityRecord(key, hard_identifiers=("pypi:other",))
+    with pytest.raises(EntityMergeConflictError):
+        can_merge_entities(left, right)
+    overlapping = EntityRecord(key, hard_identifiers=("pypi:demo-lib",))
+    assert can_merge_entities(left, overlapping) is True
+    assert can_merge_entities(left, EntityRecord(key)) is True
+
+
+def test_hypothesis_and_withdrawn_claims_never_published_t21_c06b() -> None:
+    """T21-C06 扩展: hypothesis/withdrawn 主张不进发布 outbox(发布路径负例)。"""
+    ledger = ClaimsLedger()
+    hypothesis = ClaimRecord(
+        claim_id="c-hyp-live",
+        dimension="affected_version",
+        value="9.9",
+        scope="product-a",
+        effective_at=None,
+        tenant_id="t1",
+        visibility="public",
+        evidences=(ClaimEvidence("src-m", "model guess", "model_hypothesis"),),
+        state="current",
+    )
+    assert ledger.add_claim(hypothesis) == "hypothesis"
+    ledger.add_claim(make_claim("c-withdrawn"))
+    ledger.claims["c-withdrawn"] = ClaimRecord(
+        **{**ledger.claims["c-withdrawn"].__dict__, "state": "withdrawn"}
+    )
+    ledger.add_claim("c-ok" and make_claim("c-ok"))
+    event = ledger.publish_claims("t1", "epoch-2", ["c-hyp-live", "c-withdrawn", "c-ok"])
+    assert event["published_claim_ids"] == ["c-ok"]

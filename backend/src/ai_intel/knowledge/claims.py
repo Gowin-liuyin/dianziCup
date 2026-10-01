@@ -96,6 +96,10 @@ class ClaimsLedger:
             claim = self.claims.get(claim_id)
             if claim is None or claim.tenant_id != tenant_id or claim.visibility != "public":
                 continue
+            if claim.state != "current":
+                continue
+            if any(evidence.assertion_kind == "model_hypothesis" for evidence in claim.evidences):
+                continue
             published.append(claim_id)
         event = {
             "scope_epoch": scope_epoch,
