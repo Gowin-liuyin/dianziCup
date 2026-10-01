@@ -70,12 +70,7 @@ def test_interruption_on_page_two_recovers_without_duplicating_page_one_t16_c02(
     )
     assert stored == ["e1", "e2"]
     replay = FetchPageResult(entries=({"entry_id": "e1"},), next_cursor="c1", is_last_page=False)
-    assert (
-        commit_page_persisted(
-            state, replay, lambda entry: stored.append(str(entry["entry_id"])) or True
-        )
-        == 0
-    )
+    assert commit_page_persisted(state, replay, lambda entry: True) == 0
     assert stored == ["e1", "e2"]
 
 
