@@ -86,7 +86,8 @@ def fetch_official_column(fetch_once: Callable[[], dict[str, object]]) -> dict[s
     status_code = response.get("status_code")
     if status_code != 200:
         raise StandardsSourceBlocked(
-        return f"scope unknown; citing section {section} verbatim;" " no compliance conclusion drawn"
+            f"official column unavailable: {status_code}; blocked_live"
+            " recorded, no substitute material"
         )
     return response
 
@@ -106,8 +107,5 @@ def describe_scope_limitation(document: PolicyDocument) -> str:
     """适用范围不明时仅引条款与局限, 不下法律判断/强制义务。"""
     if document.scope_text is None:
         section = document.section_reference or "(no section recorded)"
-        return (
-            f"scope unknown; citing section {section} verbatim;"
-            " no compliance conclusion drawn"
-        )
+        return f"scope unknown; citing section {section} verbatim; no compliance conclusion drawn"
     return f"scope stated by source: {document.scope_text}"
