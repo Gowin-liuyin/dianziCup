@@ -106,5 +106,8 @@ def describe_scope_limitation(document: PolicyDocument) -> str:
     """适用范围不明时仅引条款与局限, 不下法律判断/强制义务。"""
     if document.scope_text is None:
         section = document.section_reference or "(no section recorded)"
-        return f"scope unknown; citing section {section} verbatim; no compliance conclusion drawn"
+        return (
+            f"scope unknown; citing section {section} verbatim;"
+            " no compliance conclusion drawn"
+        )
     return f"scope stated by source: {document.scope_text}"
