@@ -43,9 +43,8 @@ def can_merge_entities(left: EntityRecord, right: EntityRecord) -> bool:
         raise EntityMergeConflictError("same name across ecosystems must not merge")
     left_ids = set(left.hard_identifiers)
     right_ids = set(right.hard_identifiers)
-    if left_ids and right_ids:
-        if not left_ids & right_ids:
-            raise EntityMergeConflictError("hard identifiers disagree; merge blocked")
+    if left_ids and right_ids and not left_ids & right_ids:
+        raise EntityMergeConflictError("hard identifiers disagree; merge blocked")
     return True
 
 
