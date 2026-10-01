@@ -141,6 +141,6 @@ def test_hypothesis_and_withdrawn_claims_never_published_t21_c06b() -> None:
     ledger.claims["c-withdrawn"] = ClaimRecord(
         **{**ledger.claims["c-withdrawn"].__dict__, "state": "withdrawn"}
     )
-    ledger.add_claim("c-ok" and make_claim("c-ok"))
+    ledger.add_claim(make_claim("c-ok"))
     event = ledger.publish_claims("t1", "epoch-2", ["c-hyp-live", "c-withdrawn", "c-ok"])
     assert event["published_claim_ids"] == ["c-ok"]
