@@ -82,13 +82,13 @@ def test_revision_saves_replacement_and_history_t15_c04() -> None:
 
 def test_unreachable_official栏目_blocks_without_fabricated_material_t15_c05() -> None:
     """T15-C05: 官方栏目访问失败 → blocked_live, 不用模型自写材料凑数。"""
-    from ai_intel.ingestion.sources.standards import StandardsSourceBlocked
+    from ai_intel.ingestion.sources.standards import StandardsSourceBlocked, fetch_official_column
 
-    def unreachable_fetch() -> dict[str, object]:
-        raise StandardsSourceBlocked("official column unreachable")
-
+    with pytest.raises(StandardsSourceBlocked) as captured:
+        fetch_official_column(lambda: {"status_code": 503})
+    assert "blocked_live" in str(captured.value)
     with pytest.raises(StandardsSourceBlocked):
-        unreachable_fetch()
+        fetch_official_column(lambda: {"status_code": 404})
     partial = normalize_policy_document(
         {
             "document_number": "POL-4",
@@ -114,3 +114,20 @@ def test_unknown_scope_cites_clauses_without_legal_judgment_t15_c06() -> None:
         {"document_number": "POL-6", "kind": "policy", "scope": "applies to X"}
     )
     assert describe_scope_limitation(scoped) == "scope stated by source: applies to X"
+
+
+def test_expiry_date_preserved_without_overwriting_effective_t15_c02b() -> None:
+    """T15-C02 扩展: 失效时间独立保留, 不覆盖生效日期(三时间字段全测)。"""
+    expired = normalize_policy_document(
+        {
+            "document_number": "POL-7",
+            "kind": "policy",
+            "status": "expired",
+            "published_at": "2020-01-01",
+            "effective_at": "2020-07-01",
+            "expires_at": "2022-07-01",
+        }
+    )
+    assert expired.expires_at == "2022-07-01"
+    assert expired.expires_at != expired.effective_at and expired.expires_at != expired.published_at
+    assert expired.effective_at == "2020-07-01"

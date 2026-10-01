@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 STANDARDS_CONNECTOR_VERSION = "standards-1.0.0"
@@ -72,6 +73,22 @@ def normalize_policy_document(payload: dict[str, object]) -> PolicyDocument:
         else None,
         full_text_fetched=payload.get("full_text_fetched") is True,
     )
+
+
+def fetch_official_column(fetch_once: Callable[[], dict[str, object]]) -> dict[str, object]:
+    """官方栏目抓取入口: 不可达/非 200 抛 StandardsSourceBlocked, 不用自写材料凑数。"""
+    try:
+        response = fetch_once()
+    except OSError as error:
+        raise StandardsSourceBlocked(f"official column unreachable: {error}") from error
+    if not isinstance(response, dict):
+        raise StandardsContractError("official column response must be an object")
+    status_code = response.get("status_code")
+    if status_code != 200:
+        raise StandardsSourceBlocked(
+            f"official column unavailable: {status_code}; blocked_live recorded, no substitute material"
+        )
+    return response
 
 
 def link_replacement_relation(
