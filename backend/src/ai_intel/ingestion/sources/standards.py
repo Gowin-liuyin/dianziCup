@@ -86,7 +86,7 @@ def fetch_official_column(fetch_once: Callable[[], dict[str, object]]) -> dict[s
     status_code = response.get("status_code")
     if status_code != 200:
         raise StandardsSourceBlocked(
-            f"official column unavailable: {status_code}; blocked_live recorded, no substitute material"
+        return f"scope unknown; citing section {section} verbatim;" " no compliance conclusion drawn"
         )
     return response
 
