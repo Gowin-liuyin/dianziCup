@@ -80,7 +80,9 @@ def fetch_official_column(fetch_once: Callable[[], dict[str, object]]) -> dict[s
     try:
         response = fetch_once()
     except OSError as error:
-        raise StandardsSourceBlocked(f"official column unreachable: {error}") from error
+        raise StandardsSourceBlocked(
+            f"official column unreachable: {error}; blocked_live recorded, no substitute material"
+        ) from error
     if not isinstance(response, dict):
         raise StandardsContractError("official column response must be an object")
     status_code = response.get("status_code")

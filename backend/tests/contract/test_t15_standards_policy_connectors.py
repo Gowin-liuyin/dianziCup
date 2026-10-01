@@ -89,6 +89,14 @@ def test_unreachable_official栏目_blocks_without_fabricated_material_t15_c05()
     assert "blocked_live" in str(captured.value)
     with pytest.raises(StandardsSourceBlocked):
         fetch_official_column(lambda: {"status_code": 404})
+
+    def connection_failure() -> dict[str, object]:
+        raise OSError("connection refused")
+
+    with pytest.raises(StandardsSourceBlocked) as network_captured:
+        fetch_official_column(connection_failure)
+    assert "blocked_live" in str(network_captured.value)
+    assert fetch_official_column(lambda: {"status_code": 200}) == {"status_code": 200}
     partial = normalize_policy_document(
         {
             "document_number": "POL-4",
@@ -131,3 +139,4 @@ def test_expiry_date_preserved_without_overwriting_effective_t15_c02b() -> None:
     assert expired.expires_at == "2022-07-01"
     assert expired.expires_at != expired.effective_at and expired.expires_at != expired.published_at
     assert expired.effective_at == "2020-07-01"
+    assert expired.published_at == "2020-01-01"
