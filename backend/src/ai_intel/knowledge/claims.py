@@ -54,9 +54,11 @@ class ClaimsLedger:
     def add_claim(self, claim: ClaimRecord) -> str:
         """模型假设不得发布为确认事实; 私有/跨 tenant 不入公共结果。"""
         confirmed_only = {"explicit", "rule_derived", "human_confirmed"}
-        if any(evidence.assertion_kind == "model_hypothesis" for evidence in claim.evidences):
-            if claim.state == "published":
-                raise ClaimsContractError("model hypothesis cannot be published as confirmed fact")
+        if (
+            any(evidence.assertion_kind == "model_hypothesis" for evidence in claim.evidences)
+            and claim.state == "published"
+        ):
+            raise ClaimsContractError("model hypothesis cannot be published as confirmed fact")
         if claim.visibility not in ("public", "private", "tenant"):
             raise ClaimsContractError(f"unknown visibility: {claim.visibility}")
         if all(evidence.assertion_kind not in confirmed_only for evidence in claim.evidences):
@@ -103,10 +105,12 @@ class ClaimsLedger:
         self.outbox_events.append(event)
         return event
 
-    def query_public_current(self) -> list[ClaimRecord]:
-        """范围化查询: 公共当前状态, 私有/tenant/假设不进入。"""
+    def query_public_current(self, tenant_id: str) -> list[ClaimRecord]:
+        """范围化查询: 仅本租户公共当前状态, 跨 tenant/私有/假设不进入。"""
         return [
             claim
             for claim in self.claims.values()
-            if claim.visibility == "public" and claim.state == "current"
+            if claim.visibility == "public"
+            and claim.state == "current"
+            and claim.tenant_id == tenant_id
         ]

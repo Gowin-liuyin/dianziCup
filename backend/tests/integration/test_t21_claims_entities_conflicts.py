@@ -90,7 +90,7 @@ def test_cross_tenant_or_private_evidence_excluded_from_public_results_t21_c06()
     ledger.add_claim(make_claim("c-public"))
     ledger.add_claim(make_claim("c-private", visibility="private"))
     ledger.add_claim(make_claim("c-other-tenant", tenant="t2"))
-    public_ids = [claim.claim_id for claim in ledger.query_public_current()]
+    public_ids = [claim.claim_id for claim in ledger.query_public_current("t1")]
     assert public_ids == ["c-public"]
     event = ledger.publish_claims("t1", "epoch-1", ["c-public", "c-private", "c-other-tenant"])
     assert event["published_claim_ids"] == ["c-public"]

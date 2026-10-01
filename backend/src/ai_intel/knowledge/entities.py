@@ -41,8 +41,10 @@ def can_merge_entities(left: EntityRecord, right: EntityRecord) -> bool:
     """合并判定: 硬标识或生态不一致直接拒绝; 别名须有来源才可归一。"""
     if left.entity_key.ecosystem != right.entity_key.ecosystem:
         raise EntityMergeConflictError("same name across ecosystems must not merge")
-    if set(left.hard_identifiers) and set(right.hard_identifiers):
-        if not set(left.hard_identifiers) & set(right.hard_identifiers):
+    left_ids = set(left.hard_identifiers)
+    right_ids = set(right.hard_identifiers)
+    if left_ids and right_ids:
+        if not left_ids & right_ids:
             raise EntityMergeConflictError("hard identifiers disagree; merge blocked")
     return True
 
