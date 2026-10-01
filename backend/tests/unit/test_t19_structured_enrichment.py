@@ -13,7 +13,7 @@ def test_structured_version_and_cvss_traceable_to_source_path_t19_c01() -> None:
         value="9.8",
         source_record_id="src-nvd-1",
         json_path="$.containers.cna.metrics[0].cvssV3_1.baseScore",
-        evidence_text="CVSS:3.1/AV:N/AC:L ...",
+        evidence_span_text="CVSS:3.1/AV:N/AC:L ...",
         scoring_authority="NVD",
     )
     ledger = EnrichmentLedger()
@@ -22,7 +22,7 @@ def test_structured_version_and_cvss_traceable_to_source_path_t19_c01() -> None:
     assert stored.value == "9.8"
     assert stored.json_path.startswith("$.containers.cna.metrics")
     assert stored.source_record_id == "src-nvd-1" and stored.scoring_authority == "NVD"
-    assert stored.evidence_text.startswith("CVSS")
+    assert stored.evidence_span_text.startswith("CVSS")
 
 
 def test_paper_without_cve_marks_cvss_not_applicable_mechanism_pending_t19_c02() -> None:
