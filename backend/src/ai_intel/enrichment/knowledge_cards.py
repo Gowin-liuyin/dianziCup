@@ -66,6 +66,8 @@ def describe_policy_applicability(card: PolicyCard) -> str:
 
 def verification_label(author_claimed: bool, team_reproduced: bool) -> str:
     """验证等级: 作者报告/团队复现/规则推断分立; 未复现不写系统验证通过。"""
+    if team_reproduced and not author_claimed:
+        raise KnowledgeCardError("team reproduction requires an author-reported claim")
     if team_reproduced:
         return "team_reproduced"
     if author_claimed:
