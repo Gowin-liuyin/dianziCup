@@ -80,7 +80,9 @@ def test_revision_saves_replacement_and_history_t15_c04() -> None:
         )
 
 
-def test_unreachable_official栏目_blocks_without_fabricated_material_t15_c05() -> None:
+def test_unreachable_official_column_blocks_without_substitute_blocks_without_fabricated_material_t15_c05() -> (
+    None
+):
     """T15-C05: 官方栏目访问失败 → blocked_live, 不用模型自写材料凑数。"""
     from ai_intel.ingestion.sources.standards import StandardsSourceBlocked, fetch_official_column
 
