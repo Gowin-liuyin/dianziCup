@@ -159,3 +159,4 @@
 - [round 229] RV-T23 兜底中断，RV-T23b 超微终核已派发。
 - [round 230] RV-T23b 超微终核中（第 2 轮）；T23 awaiting_review。
 - [round 230b] T23 accepted（RV-T23b）；G2 14/14 accepted；G2 阶段检查已派发。
+- [round 231] G2-GATE 阶段检查中（第 2 轮）；G2 14/14 accepted。
