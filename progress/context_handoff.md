@@ -172,3 +172,4 @@
 - [round 240] G1 闭合批次修复中（第 5 轮）；240/256 轮；G3 待开工。
 - [round 241] 闭合批次修复者无产出已中断；G1-CARRYOVER-b（逐项即回）已重派。
 - [round 242] G1-CARRYOVER-b 逐项推进中（第 2 轮）。
+- [round 243] G1-CARRYOVER-b 推进中（第 3 轮）。
