@@ -187,3 +187,4 @@
 - [round 256] === goal rounds 耗尽（条件 E）=== 恢复点完备（见 round 254b 段）；G1-CLOSE-c 状态: closure report 在；Goal 不标完成、保持 active；恢复后第一步: 收 ②⑤⑥ → G3-T40。
 - [round 256b] G1-CLOSE-c 终态送达: ②⑤⑥ 全 closed（158 passed、cov 89.99%、mypy 0、ruff 0, exit 0）; G1 结转 6 项全部闭合（①前提修正/②留痕/③部分-6DTO在册/④两分支/⑤retry_wait/⑥重定向判别）, G2-GATE 附条件达成; 新增 tests/contract/test_t07_jobs_outbox.py + test_t08_network_redirects.py; Goal 保持 active, 恢复后第一步 G3-T40。
 - [resume r1] 恢复核对: HEAD 097b528、工作树干净、T40 卡已读；并行派发 T40-A 合同核对 + T40-B 前端准备；下一步 按合同实现 T40 认证路径（T40-C01—C06）。
+- [resume r2] T40-B 报告收讫（reports/reviews/T40_frontend_prep.md）: 前端极简从零建/权威命令 npm run {lint,typecheck,test,build}/tsconfig include 缺 tests/后端 auth HTTP 路由未挂载（T06 仅领域服务）→ 决定: 按 resume 指令'最小前置修复'挂 auth/health HTTP 路由（待 T40-A 合同定形），T40-C01/C05 在路由就绪前 fixture 标 live=blocked 不冒充。
