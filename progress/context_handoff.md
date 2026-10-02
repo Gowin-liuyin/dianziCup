@@ -184,3 +184,4 @@
 - [round 252] G1-CLOSE-c 执行中；预算余 4 轮；恢复点见 reports/tasks/G1_carryover_closure.md。
 - [round 253] 预算余 3 轮；G1-CLOSE-c（11a75684）仍在执行；恢复点: reports/tasks/G1_carryover_closure.md + reports/stages/G2.md + progress/task_state.json；下一动作: 收 ②⑤⑥ 终态并更新闭合报告；Goal 保持 active（T24—T59 未完）。
 - [round 254b] === 最终恢复点（goal rounds 254/256）=== Goal 未完成、保持 active。已完成: G0/G1 验收、G2 14/14 accepted（G2-GATE=pass 附条件）、G1 闭合 ①④ closed+③部分（②⑤⑥ 未闭, G1-CLOSE-c subagent 11a75684 在途未落地）；全绿基线 unit+contract+integration 156/156、mypy 0（46 文件）、cov 86.88%。恢复后第一步: 收 G1-CLOSE-c 产出（若无则按 reports/tasks/G1_carryover_closure.md ②⑤⑥ 精确步骤由主控直接补）, 然后开 G3-T40（问答前置）。未完: G3 T40-42/T30+ 问答主体、G4、G5、G6 T53-59 终审计、真实验收全部 not_run、live 全线 blocked、20 合成案例人工复核、CR-001 追认。禁止动作: 不得把离线放行当最终验收; 不生成指标数字; D2/X1/R2 不提前判过。
+- [round 256] === goal rounds 耗尽（条件 E）=== 恢复点完备（见 round 254b 段）；G1-CLOSE-c 状态: closure report 在；Goal 不标完成、保持 active；恢复后第一步: 收 ②⑤⑥ → G3-T40。
