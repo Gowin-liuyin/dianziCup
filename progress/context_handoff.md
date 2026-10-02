@@ -154,3 +154,4 @@
 - [round 224] T23 awaiting_review（RV-T23 已派发）；G2 14/14 实现齐；下一步 G2 阶段检查。
 - [round 225] RV-T23 复核中（第 2 轮）；T23 awaiting_review；G2 全部实现齐（13 accepted+T23 审查中）。
 - [round 226] RV-T23 复核中（第 3 轮）；T23 awaiting_review。
+- [round 227] RV-T23 已催办（第 4 轮）。
