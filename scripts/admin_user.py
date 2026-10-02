@@ -29,15 +29,11 @@ def main(argv: list[str] | None = None) -> int:
     """创建持久化预创建用户; 重复用户名返回非零, 账号重启后仍可用。
 
     运行前提: 环境提供 DATABASE_URL(Settings 读取; 本地可复制 config/dev.env.example
-    为 .env 注入开发连接串), 否则明确报缺配置而非 traceback。
+    为 .env 注入开发连接串), 否则明确报缺配置并输出可行动的错误消息(含缺失键名)。
     """
-    parser = argparse.ArgumentParser(
-        prog="admin_user.py", description="创建预创建用户(无公共注册)"
-    )
+    parser = argparse.ArgumentParser(prog="admin_user.py", description="创建预创建用户(无公共注册)")
     parser.add_argument("username")
-    parser.add_argument(
-        "--tenant", required=True, help="租户 id; system_admin 用 none 表示无租户"
-    )
+    parser.add_argument("--tenant", required=True, help="租户 id; system_admin 用 none 表示无租户")
     parser.add_argument("--role", required=True, choices=[role.value for role in Role])
     arguments = parser.parse_args(argv)
     password = read_password_without_echo()
@@ -75,8 +71,15 @@ def main(argv: list[str] | None = None) -> int:
                     created_at=datetime.now(timezone.utc),
                 )
             )
-    except IntegrityError as duplicate:
-        print(f"ERROR username already exists: {duplicate}", file=sys.stderr)
+    except IntegrityError as integrity_failure:
+        failure_text = str(integrity_failure)
+        if "unique" in failure_text.lower() and "username" in failure_text:
+            print(f"ERROR username already exists: {failure_text}", file=sys.stderr)
+        else:
+            print(
+                f"ERROR integrity constraint violated (not a username conflict): {failure_text}",
+                file=sys.stderr,
+            )
         return 1
     print(f"created user_id={user_id}")
     return 0
