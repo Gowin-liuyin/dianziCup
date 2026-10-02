@@ -58,7 +58,8 @@ def describe_policy_applicability(card: PolicyCard) -> str:
     """范围不明: 给原文与局限, 不生成合规裁决/法律判断。"""
     if card.scope_text.strip() in ("", "unknown"):
         return (
-            f"scope uncertain; quoting clause {card.clause_reference} verbatim: {card.original_text}; "
+            f"scope uncertain; quoting clause {card.clause_reference} verbatim:"
+            f" {card.original_text}; "
             "applicability limitation recorded; no compliance ruling generated"
         )
     return f"scope stated by source: {card.scope_text}"
