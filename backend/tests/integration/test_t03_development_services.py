@@ -44,6 +44,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+# 容器态回归纳入 CI（tests/integration）。
+
+
 def test_dependencies_report_health_and_accept_application_queries() -> None:
     """T03-C01: 依赖健康检查可用, 且从应用侧可执行真实查询。"""
     ready_probe = subprocess.run(
