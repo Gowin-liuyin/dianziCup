@@ -161,3 +161,4 @@
 - [round 230b] T23 accepted（RV-T23b）；G2 14/14 accepted；G2 阶段检查已派发。
 - [round 231] G2-GATE 阶段检查中（第 2 轮）；G2 14/14 accepted。
 - [round 232] G2-GATE 检查中（第 3 轮）。
+- [round 233] G2-GATE 已催办（第 4 轮）。
