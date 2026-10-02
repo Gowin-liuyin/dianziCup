@@ -151,3 +151,4 @@
 - [round 221] RV-T22 复核中（第 3 轮）；T22 awaiting_review；G2 13/14 accepted。
 - [round 222] RV-T22 已催办（第 4 轮）；T22 awaiting_review。
 - [round 223] T22 accepted（RV-T22）；G2 14/14 中 T23 待办即收官；下一步 T23。
+- [round 224] T23 awaiting_review（RV-T23 已派发）；G2 14/14 实现齐；下一步 G2 阶段检查。
