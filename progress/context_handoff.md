@@ -180,3 +180,4 @@
 - [round 248] 闭合修复者执行中（带裁决）。
 - [round 249] 闭合修复者执行中。
 - [round 250b] G1 闭合批次终态：①④ closed、③部分、②⑤⑥未闭（报告 reports/tasks/G1_carryover_closure.md）；G2-GATE 附条件未完全满足如实登记。
+- [round 251] G1-CLOSE-c（②⑤⑥）已派发；预算余 5 轮。
