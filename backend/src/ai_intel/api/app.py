@@ -7,11 +7,17 @@
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import JSONResponse
 
+from ai_intel.api.authentication import AuthenticationSessionService
 
-def create_application() -> FastAPI:
-    """构建最小 FastAPI 应用: 仅含健康检查路由, 业务路由由后续任务接入。"""
+
+def create_application(auth_service: AuthenticationSessionService | None = None) -> FastAPI:
+    """构建 FastAPI 应用: 健康检查路由 + 可选认证路由(T40 前置最小修复)。"""
     application = FastAPI(title="ai-intel-backend", version="0.1.0")
     application.include_router(build_health_router())
+    if auth_service is not None:
+        from ai_intel.api.auth_routes import build_auth_router
+
+        application.include_router(build_auth_router(auth_service))
     return application
 
 

@@ -268,6 +268,14 @@ class AuthenticationSessionService:
             raise InvalidCredentialsError("invalid credentials")
         return Principal(user_id=account.user_id, tenant_id=account.tenant_id, role=account.role)
 
+    def session_record(self, session_token: str) -> SessionRecord:
+        """返回有效会话记录(含 CSRF 令牌), 供 /auth/csrf 下发; 无效/过期/撤销抛对应错误。"""
+        principal = self.validate_session(session_token)
+        record = self._sessions.get(self._session_key(session_token))
+        if record is None or record.user_id != principal.user_id:
+            raise SessionExpiredError("session is not valid")
+        return record
+
     def build_access_scope(self, session_token: str) -> AccessScope:
         """服务端由会话构造 AccessScope; 请求体自报身份在此无入口。"""
         principal = self.validate_session(session_token)
