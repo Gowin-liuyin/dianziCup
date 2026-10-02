@@ -157,3 +157,4 @@
 - [round 227] RV-T23 已催办（第 4 轮）。
 - [round 228] RV-T23 复核中（第 5 轮）；T23 awaiting_review。
 - [round 229] RV-T23 兜底中断，RV-T23b 超微终核已派发。
+- [round 230] RV-T23b 超微终核中（第 2 轮）；T23 awaiting_review。
