@@ -175,3 +175,4 @@
 - [round 243] G1-CARRYOVER-b 推进中（第 3 轮）。
 - [round 244] G1-CARRYOVER-b 已催办（第 4 轮）。
 - [round 245] G1-CARRYOVER-b 第 5 轮无产出；下一轮兜底处置。
+- [round 246] ④ 路径冲突裁决：授权 scripts/admin_user.py 仅两分支修改；① 前提修正（not_implemented 为 dev.py scope 语义）；修复者已带裁决续跑。
