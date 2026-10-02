@@ -150,3 +150,4 @@
 - [round 220] T22 awaiting_review（RV-T22 复核中）；T10—T21 accepted（13/14）；全绿基线 150/150、mypy 0（44 文件）、cov 86.59%；下一步 T23。
 - [round 221] RV-T22 复核中（第 3 轮）；T22 awaiting_review；G2 13/14 accepted。
 - [round 222] RV-T22 已催办（第 4 轮）；T22 awaiting_review。
+- [round 223] T22 accepted（RV-T22）；G2 14/14 中 T23 待办即收官；下一步 T23。
