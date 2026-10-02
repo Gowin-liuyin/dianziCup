@@ -164,3 +164,4 @@
 - [round 233] G2-GATE 已催办（第 4 轮）。
 - [round 234] G2-GATE 检查中（第 5 轮）。
 - [round 235] G2-GATE 兜底中断，G2-GATEb 超微检查已派发。
+- [round 235b] G2-GATE=pass（附条件）；G2.md 已落；下一步 G1 结转闭合批次（6 项）→ G3。
