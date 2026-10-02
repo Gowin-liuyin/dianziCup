@@ -174,3 +174,4 @@
 - [round 242] G1-CARRYOVER-b 逐项推进中（第 2 轮）。
 - [round 243] G1-CARRYOVER-b 推进中（第 3 轮）。
 - [round 244] G1-CARRYOVER-b 已催办（第 4 轮）。
+- [round 245] G1-CARRYOVER-b 第 5 轮无产出；下一轮兜底处置。
