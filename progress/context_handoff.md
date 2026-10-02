@@ -182,3 +182,4 @@
 - [round 250b] G1 闭合批次终态：①④ closed、③部分、②⑤⑥未闭（报告 reports/tasks/G1_carryover_closure.md）；G2-GATE 附条件未完全满足如实登记。
 - [round 251] G1-CLOSE-c（②⑤⑥）已派发；预算余 5 轮。
 - [round 252] G1-CLOSE-c 执行中；预算余 4 轮；恢复点见 reports/tasks/G1_carryover_closure.md。
+- [round 253] 预算余 3 轮；G1-CLOSE-c（11a75684）仍在执行；恢复点: reports/tasks/G1_carryover_closure.md + reports/stages/G2.md + progress/task_state.json；下一动作: 收 ②⑤⑥ 终态并更新闭合报告；Goal 保持 active（T24—T59 未完）。
