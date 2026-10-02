@@ -178,3 +178,4 @@
 - [round 246] ④ 路径冲突裁决：授权 scripts/admin_user.py 仅两分支修改；① 前提修正（not_implemented 为 dev.py scope 语义）；修复者已带裁决续跑。
 - [round 247] 闭合修复者带裁决续跑中。
 - [round 248] 闭合修复者执行中（带裁决）。
+- [round 249] 闭合修复者执行中。
