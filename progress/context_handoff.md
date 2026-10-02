@@ -163,3 +163,4 @@
 - [round 232] G2-GATE 检查中（第 3 轮）。
 - [round 233] G2-GATE 已催办（第 4 轮）。
 - [round 234] G2-GATE 检查中（第 5 轮）。
+- [round 235] G2-GATE 兜底中断，G2-GATEb 超微检查已派发。
