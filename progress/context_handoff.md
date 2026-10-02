@@ -148,3 +148,4 @@
 命名见名知意（含业务对象与动作）；说明性注释只用 docstring/TSDoc；不堆段落注释；直接可读实现优先；语义一致的重复逻辑适度抽象；不搭万能框架；不吞异常、不伪造默认成功。
 
 - [round 220] T22 awaiting_review（RV-T22 复核中）；T10—T21 accepted（13/14）；全绿基线 150/150、mypy 0（44 文件）、cov 86.59%；下一步 T23。
+- [round 221] RV-T22 复核中（第 3 轮）；T22 awaiting_review；G2 13/14 accepted。
