@@ -1,23 +1,22 @@
 """T05 持久化与原文存储集成验收测试: 真实 PostgreSQL + 真实文件系统。
 
-覆盖 T05-C01—C06 与审查修复项(M1-M3); 容器不可用时整组 blocked, 不使用 SQLite 冒充。
+覆盖 T05-C01—C06 与审查修复项(M1-M3)。
+缺少专用测试库时明确 blocked 错误，不使用 SQLite 或 skip 冒充。
 """
 
 from __future__ import annotations
 
 import hashlib
-import socket
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import select, text
 
 from ai_intel.infrastructure.content_store import ContentPathValidationError, ContentStore
 from ai_intel.infrastructure.database import (
     current_migration_revision,
-    run_downgrade,
     run_migrations,
 )
 from ai_intel.knowledge.models import (
@@ -40,30 +39,7 @@ from ai_intel.knowledge.revisions import (
     save_document_revision,
 )
 
-UTC = UTC
-DEVELOPMENT_DSN = "postgresql+psycopg://ai_intel:dev-only-not-a-secret@127.0.0.1:5432/ai_intel"
-
-
-def containers_available() -> bool:
-    """探测开发数据库端口是否可达; 不可达即整组 blocked, 不使用 SQLite 冒充。"""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe_socket:
-        probe_socket.settimeout(2)
-        return probe_socket.connect_ex(("127.0.0.1", 5432)) == 0
-
-
-pytestmark = pytest.mark.skipif(
-    not containers_available(),
-    reason="blocked: 数据库容器不可用（T05 集成验证挂起）, 不使用 SQLite 冒充",
-)
-
-
-@pytest.fixture()
-def migrated_engine():
-    """真实库引擎: 迁移到 head 后提供, 用后断开。"""
-    run_migrations(DEVELOPMENT_DSN)
-    engine = create_engine(DEVELOPMENT_DSN)
-    yield engine
-    engine.dispose()
+pytestmark = pytest.mark.real_pg
 
 
 def make_content_store(tmp_path: Path) -> ContentStore:
@@ -452,7 +428,7 @@ def test_evidence_attach_success_and_quote_consistency(migrated_engine, tmp_path
 
 
 def test_migration_upgrade_preserves_existing_facts_times_and_unknown_status(
-    migrated_engine, tmp_path
+    migrated_engine, tmp_path, isolated_test_database_url
 ) -> None:
     """T05-C06: 既有数据升级后事实、时间与 unknown 状态保留; 幂等复跑不破坏。"""
     now = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
@@ -483,7 +459,7 @@ def test_migration_upgrade_preserves_existing_facts_times_and_unknown_status(
                 "created_at": now,
             },
         )
-    run_migrations(DEVELOPMENT_DSN)
+    run_migrations(isolated_test_database_url)
     with migrated_engine.begin() as connection:
         row = connection.execute(
             text(
@@ -499,15 +475,15 @@ def test_migration_upgrade_preserves_existing_facts_times_and_unknown_status(
     assert row[4] is None
 
 
-def test_migration_downgrade_and_upgrade_roundtrip_and_version_recorded(migrated_engine) -> None:
-    """迁移版本记录与回滚路径: downgrade 后 upgrade 可恢复, 版本号如实。"""
-    run_migrations(DEVELOPMENT_DSN)
-    head_revision = current_migration_revision(DEVELOPMENT_DSN)
+def test_repeated_migration_upgrade_preserves_head_revision(
+    migrated_engine, isolated_test_database_url
+) -> None:
+    """非破坏性迁移复跑保持版本记录；测试入口从不执行 downgrade。"""
+    run_migrations(isolated_test_database_url)
+    head_revision = current_migration_revision(isolated_test_database_url)
     assert head_revision is not None
-    run_downgrade(DEVELOPMENT_DSN, "0002_constraints_and_text_blocks")
-    assert current_migration_revision(DEVELOPMENT_DSN) == "0002_constraints_and_text_blocks"
-    run_migrations(DEVELOPMENT_DSN)
-    assert current_migration_revision(DEVELOPMENT_DSN) == head_revision
+    run_migrations(isolated_test_database_url)
+    assert current_migration_revision(isolated_test_database_url) == head_revision
 
 
 def test_fetch_attempt_is_recorded_without_counting_new_events(migrated_engine) -> None:

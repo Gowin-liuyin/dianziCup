@@ -1,0 +1,80 @@
+# G-A / R01-quality · 真实质量入口与测试隔离
+
+文档首次创建时间：2026-10-14T22:53:01+08:00。
+本次写作开始时间：2026-10-14T22:53:01+08:00；本次写作结束时间：未结束；最后更新时间：2026-10-14T22:53:01+08:00。
+实现Agent：/root/r01_quality。独立review：未运行；工作包状态：awaiting_review。
+分支：codex/recovery-r01-quality；输入冻结基线：69ecf16be7d95e839b18a4a40f03b3f9d86707f4。
+当前证据为自检中的工作树，尚未签R01/原T02/T03，也没有阶段push。
+
+## 1. 范围与前置
+
+R00准确落实由独立review accepted后主控派发。本包实现R01/T02检查入口与R01/T03安全测试接通，E1/R2证据；认证/API/worker/基础设施/锁/CI/前端实现由其它唯一所有人负责。
+
+已读AGENTS、执行地图、R01/T02/T03及架构/测试/编码/运维合同，采用本机Ponytail插件5.2.0 full。没有删原C01–C06，没有修改金标/阈值/分母。
+
+## 2. 修改与复用
+
+- scripts/dev.py：七scope真实派发；pytest/Vitest/Playwright使用实际JUnit testcase元素计数，0项、失败、error、skip、报告缺失均非通过；unit保留既有cov60，contract/integration/security沿用既有scope门槛。all全部层执行后汇总，不用首层成功代替全部。
+- 前端层执行既有npm lint/typecheck/test/build；e2e要求真实test:e2e入口及JUnit，不借组件测试冒充浏览器业务。
+- subprocess有1–3600秒参数边界；超时终止本次进程组/Windows子树，exit124；工具缺失/测试资源缺失exit4。未知scope/错误参数exit2，未建设exit3。
+- 公共测试guard限定TEST_DATABASE_URL的PG、loopback、test_dianzi_<run_id>、test_用户及独立端口；5432仅显式container隔离且用户=库允许，CI=true不是豁免。查询参数、fragment和非test库拒绝，错误不回显连接串。
+- backend/tests/conftest.py：共享隔离fixture，导入/collect-only不联网，执行期才探身份/迁移；缺资源以error/blocked呈现，删除旧skipif。pytest报告hook只脱敏DSN/密码，不改结果/count；真实故意失败证明终端/JUnit不泄漏且仍exit1。
+- T03生命周期在写数据/restart/down前校验正在运行的自己Compose服务/项目/POSTGRES_DB；不操作当前裸Docker资源。WSL Docker前缀只接JSON argv，Windows文件转/mnt路径，不shell/eval、不改全局context。Compose config只在内存捕获，避免回显环境。
+- T05/T07及contract/T07删除硬编码常规DSN/导入时端口探测，保留原业务断言。T05额外downgrade回路改为非破坏性重复upgrade/版本不变；原C06既有事实/时间/unknown保留仍在，不执行破坏性downgrade。
+- T02类型错误注入改用pytest临时目录，不往src写临时文件与其它Agent竞态。未建设scope负例在明确空目录验证，不依赖未来e2e是否存在。
+
+复用现有uv/pytest/pytest-cov、npm/TypeScript/Vitest、Docker Compose及标准库subprocess/XML/URL解析。没有新增依赖或通用测试框架；增加的IO控制、隔离guard、报告脱敏和共享fixture是完成验收与秘密保护所必需。
+
+## 3. 调用方与版本定位
+
+codebase-memory-mcp官方portable v0.11.0；本WT独立project=dianzi-r01-quality-wt，cache=/tmp/dianzi-cbm-r01-quality-wt-20261014，索引仅scripts，不包含秘密/holdout。
+初始3文件82节点251边；修改后89节点285边，main到scope/Compose调用链实测并与rg交叉核对。记录cbm_receipt.json/index/trace于本包run目录。生产业务不import脚本；共享guard仅开发CLI和测试使用。后续冻结与合并须刷新对应tree索引。
+
+## 4. 实际自检与证据
+
+日志目录：reports/runs/recovery_r01_quality_20261014/。每个receipt记录真实命令/cwd/开始结束/退出码，XML记录真实用例；不把基线SHA冒充工作树代码已冻结。
+
+| 检查 | 真实结果 | 限制 |
+|---|---|---|
+| 初次目标检查 | 41 passed（30新负例+11T02） | 初稿探索，后来新增到32负例 |
+| unit | 47 passed，cov61.73%，exit0 | 输入基线业务源码，非后续API新版本证明 |
+| 32质量负例 | 32 passed，exit0 | 真实timeout、真实失败报告脱敏、无IO导入；待冻结再复跑 |
+| offline_recheck_1 contract | 104 passed/1 real_pg显式deselected/0skip，exit0 | 明确fixture子集，不是完整contract/live |
+| 初批完整contract | 102 passed/1 setup error，exit1 | 百分号迁移根因，保留失败日志 |
+| 初批PG T05/T07 | 1纯文件 passed/20 setup error，exit1 | 下述主控库授权纠正；迁移前失败，无业务写入 |
+| security | 20 passed，exit0 | 既有fixture安全测试，非默认应用新鉴权验收 |
+| frontend | lint/typecheck/test1/build，exit0 | 旧骨架，仅1组件测试，不等于UI业务完成 |
+| e2e | exit3 not_implemented | 本基线无test:e2e，真实UI由另一Agent接入 |
+| missing resource integration | exit4 blocked | 不skip、不SQLite |
+| all无资源 | exits unit0/contract4/integration4/security0/frontend0/e2e3；总exit4 | 证明失败/阻塞传播，不是all通过 |
+| Ruff/format/mypy | 最新自检exit0；mypy48源文件 | 原失败及修正记录保留，冻结后仍需复跑 |
+
+初次uv sync发生TLS handshake EOF（exit1），随后锁安装成功；npm ci既有锁成功，报告damaged lockfile警告及3漏洞(1moderate/2critical)，没有擅自--force改锁，已通知锁所有人主控。早期未归档命令精确起止为历史未记录；不推测补写。
+
+各层状态：unit passed；contract partial（fixture passed，完整PG失败待复验）；integration blocked/未完全复验；security passed仅fixture；frontend passed仅旧骨架；e2e blocked/not_implemented；live not_run；manual not_run。
+
+## 5. 问题与纠正
+
+| ID | 触发/预期/实际/根因 | 修复与状态 |
+|---|---|---|
+| Q-01 | 原dev.py contract/frontend/e2e/all不存在；scope实际运行不可证 | 新真实入口/JUnit、0/skip/失败负例，已修待独立review |
+| Q-02 | 原测试import联网并skip，硬编码5432/ai_intel，T05在开发库downgrade | 移除import IO/默认DSN/skip；隔离guard+fixture；非破坏迁移验收，已修待review |
+| Q-03 | 原health以healthy子串判断unhealthy也命中 | 精确JSON Health/State检查，负例passed |
+| Q-04 | ConfigParser set_main_option未转义URL百分号；fixture带%3D options在迁移前ValueError，含编码密码同受影响 | 已报告主控唯一数据库所有人，root公共修复待SHA与本包专库复验，不私自测试层绕过 |
+| Q-05 | 初次派发授权读取主控r01_20261014配置；22:38以后身份SELECT成功、迁移进入DB前失败 | 主控随后明确每WT独立库，立即停止复用；本包新runID=r01_quality_20261014/PG25434/Redis26381，复跑脚本必须核对身份。首批不是合格隔离验收，没有down/restart主控实例或写业务数据 |
+| Q-06 | pytest fixture异常把参数DSN带入终端/失败XML | 报告脱敏hook+真实故意失败负例，结果仍1failed；历史XML精确替换实际test秘密，原失败保留 |
+| Q-07 | Windows mypy不识别POSIX os.killpg/SIGKILL，初稿static失败 | sys.platform分支，最新mypy48files passed，未ignore |
+| Q-08 | 初稿Ruff两unusedvar及长行，早期root目录uv找不到ruff | 用backend锁环境、格式和修正，最新Ruff/format passed，不掩盖初稿错误 |
+
+## 6. 环境输入与复验入口
+
+TEST_DATABASE_URL/DIANZI_TEST_RUN_ID必填；TEST_REDIS_URL/TEST_OPENSEARCH_URL附属服务loopback独立端口。
+DIANZI_DOCKER_COMMAND_JSON是可信本机Docker argv前缀；DIANZI_TEST_COMPOSE_FILE是Windows侧可读文件，DIANZI_TEST_COMPOSE_PROJECT必须dianzi-test-<run_id>；dev服务必须DIANZI_COMPOSE_PROJECT显式dianzi-dev/test前缀。
+
+私有配置只在仓库外由主控/资源Agent注入；不打印DSN/密码、不复制connection.json入仓库。复跑run_checks.py需DIANZI_TEST_CONNECTION_FILE指定本WT私有WSL路径，核对r01_quality_20261014，每次创建新recheck目录而不覆写历史失败。
+
+本包未购服务，无产品模型/测绘API调用，产品API费用0；编码Agent费用unknown。T03真Compose生命周期、OpenSearch、浏览器e2e、业务API/worker及live均等待对应真实输入/实现，不能用已有资源smoke签整卡。
+
+## 7. 下一步与交付
+
+等待主控公共百分号修复的冻结SHA，按本WT专库复验PG/默认contract；冻结代码由新独立reviewer复跑32负例、原T02及资源边界，主控集成后重跑全scope/真实UI版本。报告只awaiting_review，不accepted，不push。没有新增计划/评分差异；本包不签整原T02/T03或G-A。

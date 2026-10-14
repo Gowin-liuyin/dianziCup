@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import socket
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 
 from ai_intel.domain.access import AccessScope, CrossTenantAccessError, Role
-from ai_intel.infrastructure.database import run_migrations
 from ai_intel.infrastructure.outbox import (
     IdempotencyConflictError,
     enqueue_job,
@@ -26,29 +24,7 @@ from ai_intel.workers.jobs import (
     schedule_retry_or_fail,
 )
 
-UTC = UTC
-DEVELOPMENT_DSN = "postgresql+psycopg://ai_intel:dev-only-not-a-secret@127.0.0.1:5432/ai_intel"
-
-
-def database_available() -> bool:
-    """数据库端口探测; 不可用即 blocked, 不使用 SQLite 冒充。"""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe_socket:
-        probe_socket.settimeout(2)
-        return probe_socket.connect_ex(("127.0.0.1", 5432)) == 0
-
-
-pytestmark = pytest.mark.skipif(
-    not database_available(),
-    reason="blocked: 数据库容器不可用（T07 集成验证挂起）, 不使用 SQLite 冒充",
-)
-
-
-@pytest.fixture()
-def migrated_engine():
-    run_migrations(DEVELOPMENT_DSN)
-    engine = create_engine(DEVELOPMENT_DSN)
-    yield engine
-    engine.dispose()
+pytestmark = pytest.mark.real_pg
 
 
 def test_outbox_survives_queue_outage_and_delivers_after_recovery(migrated_engine) -> None:

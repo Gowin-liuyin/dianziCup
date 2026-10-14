@@ -1,16 +1,19 @@
-"""T03 开发服务集成验收测试: 在真实容器上验证依赖、持久化与配置校验。
-
-覆盖 T03-C01—C06。容器不可用时整组标记 blocked 跳过, 绝不使用 SQLite 冒充真实依赖。
-"""
+"""T03-C01–C06：真实隔离服务验收；缺资源非通过，不触碰常规开发项目。"""
 
 from __future__ import annotations
 
 import json
-import subprocess
+import os
+import socket
+import time
 import urllib.request
-from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 import pytest
+from scripts.dev import TestEnvironmentError as IsolationError
+from scripts.dev import require_test_service_url, run_compose_services
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from ai_intel.infrastructure.settings import (
     ConfigurationError,
@@ -18,144 +21,141 @@ from ai_intel.infrastructure.settings import (
     load_application_settings,
 )
 
-COMPOSE_FILE = str(Path(__file__).resolve().parents[3] / "infra" / "compose" / "compose.yaml")
-COMPOSE_PROFILES = ["--profile", "core", "--profile", "search"]
+pytestmark = pytest.mark.real_services
 
 
-def run_compose(*arguments: str, check: bool = False) -> subprocess.CompletedProcess[str]:
-    """对本项目开发编排执行 docker compose 子命令并捕获输出。"""
-    return subprocess.run(
-        ["docker", "compose", "-f", COMPOSE_FILE, *COMPOSE_PROFILES, *arguments],
-        capture_output=True,
-        text=True,
-        check=check,
+def run_compose(*arguments: str):
+    """仅运行与隔离 DSN/run_id 一致的专用 Compose 项目。"""
+    try:
+        completed = run_compose_services(*arguments, test_project=True)
+    except (IsolationError, OSError) as unavailable:
+        message = (
+            str(unavailable)
+            if isinstance(unavailable, IsolationError)
+            else type(unavailable).__name__
+        )
+        raise pytest.UsageError(f"blocked: isolated Compose unavailable: {message}") from None
+    assert completed.returncode == 0, "isolated Compose command failed"
+    return completed
+
+
+def _require_running_test_compose(database_url: str) -> None:
+    """生命周期测试先证明目标由本项目 Compose 管理，不操作裸 Docker 实例。"""
+    probe = run_compose("ps", "--format", "json")
+    rows = (
+        json.loads(probe.stdout)
+        if probe.stdout.strip().startswith("[")
+        else [json.loads(line) for line in probe.stdout.splitlines() if line.strip()]
     )
+    assert any(
+        row.get("Service") == "postgres" and row.get("State") == "running" for row in rows
+    ), "blocked: lifecycle requires its own running Compose PostgreSQL"
+    configuration = json.loads(run_compose("config", "--format", "json").stdout)
+    assert configuration["name"] == os.environ["DIANZI_TEST_COMPOSE_PROJECT"]
+    configured_database = configuration["services"]["postgres"]["environment"]["POSTGRES_DB"]
+    assert configured_database == urlsplit(database_url).path.removeprefix("/")
 
 
-def containers_available() -> bool:
-    """探测 docker compose 是否可用且本项目服务在运行; 不可用即 blocked。"""
-    probe = run_compose("ps")
-    return probe.returncode == 0
+def _wait_for_database(database_url: str) -> None:
+    engine = create_engine(database_url, connect_args={"connect_timeout": 2})
+    deadline = time.monotonic() + 30
+    try:
+        while True:
+            try:
+                with engine.connect() as connection:
+                    assert connection.execute(text("SELECT 1")).scalar_one() == 1
+                return
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise
+            except SQLAlchemyError as not_ready:
+                if time.monotonic() >= deadline:
+                    raise AssertionError("isolated PostgreSQL did not become ready") from not_ready
+            time.sleep(0.25)
+    finally:
+        engine.dispose()
 
 
-pytestmark = pytest.mark.skipif(
-    not containers_available(),
-    reason="blocked: 容器环境不可用（T03-C05）, 集成验证挂起; 不使用 SQLite 冒充",
-)
+def _probe_authenticated_redis() -> None:
+    redis_url = require_test_service_url("TEST_REDIS_URL", "redis", 6379)
+    parsed = urlsplit(redis_url)
+    with socket.create_connection(
+        (parsed.hostname or "", parsed.port or 0), timeout=5
+    ) as connection:
+        connection.settimeout(5)
+        with connection.makefile("rb") as response:
+            if parsed.password:
+                password = unquote(parsed.password).encode()
+                connection.sendall(
+                    b"*2\r\n$4\r\nAUTH\r\n$"
+                    + str(len(password)).encode()
+                    + b"\r\n"
+                    + password
+                    + b"\r\n"
+                )
+                assert response.readline(1024) == b"+OK\r\n", "isolated Redis authentication failed"
+            connection.sendall(b"*1\r\n$4\r\nPING\r\n")
+            assert response.readline(1024) == b"+PONG\r\n"
 
 
-# 容器态回归纳入 CI（tests/integration）。
-
-
-def test_dependencies_report_health_and_accept_application_queries() -> None:
-    """T03-C01: 依赖健康检查可用, 且从应用侧可执行真实查询。"""
-    ready_probe = subprocess.run(
-        [
-            "docker",
-            "compose",
-            "-f",
-            COMPOSE_FILE,
-            "--profile",
-            "core",
-            "exec",
-            "-T",
-            "postgres",
-            "pg_isready",
-            "-U",
-            "ai_intel",
-            "-d",
-            "ai_intel",
-        ],
-        capture_output=True,
-        text=True,
+def test_dependencies_report_health_and_accept_application_queries(
+    isolated_test_database_url,
+) -> None:
+    """T03-C01：隔离项目健康、应用侧 PG/Redis/OpenSearch 实际响应。"""
+    running = run_compose("ps", "--format", "json")
+    rows = (
+        json.loads(running.stdout)
+        if running.stdout.strip().startswith("[")
+        else [json.loads(line) for line in running.stdout.splitlines() if line.strip()]
     )
-    assert ready_probe.returncode == 0
-    query_probe = subprocess.run(
-        [
-            "docker",
-            "compose",
-            "-f",
-            COMPOSE_FILE,
-            "--profile",
-            "core",
-            "exec",
-            "-T",
-            "postgres",
-            "psql",
-            "-U",
-            "ai_intel",
-            "-d",
-            "ai_intel",
-            "-t",
-            "-c",
-            "SELECT 1;",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert query_probe.returncode == 0
-    assert "1" in query_probe.stdout
-    redis_probe = subprocess.run(
-        [
-            "docker",
-            "compose",
-            "-f",
-            COMPOSE_FILE,
-            "--profile",
-            "core",
-            "exec",
-            "-T",
-            "redis",
-            "redis-cli",
-            "ping",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert redis_probe.returncode == 0
-    assert "PONG" in redis_probe.stdout
-    search_probe = urllib.request.urlopen("http://127.0.0.1:9200/_cluster/health", timeout=10)
-    assert search_probe.status == 200
-    search_payload = json.loads(search_probe.read().decode("utf-8"))
-    assert search_payload["status"] in {"green", "yellow"}
-
-
-def test_persisted_row_survives_container_restart() -> None:
-    """T03-C02: 容器重启后已写数据保留, 证明卷挂载真实生效。"""
-    write_probe = run_compose(
-        "exec",
-        "-T",
+    assert {row["Service"] for row in rows if row.get("Health") == "healthy"} >= {
         "postgres",
-        "psql",
-        "-U",
-        "ai_intel",
-        "-d",
-        "ai_intel",
-        "-c",
-        "CREATE TABLE IF NOT EXISTS t03_persistence_probe (id int PRIMARY KEY, note text);"
-        "INSERT INTO t03_persistence_probe VALUES (1, 'survives-restart') ON CONFLICT DO NOTHING;",
-    )
-    assert write_probe.returncode == 0
-    run_compose("restart", "postgres")
-    read_probe = run_compose(
-        "exec",
-        "-T",
-        "postgres",
-        "psql",
-        "-U",
-        "ai_intel",
-        "-d",
-        "ai_intel",
-        "-t",
-        "-c",
-        "SELECT note FROM t03_persistence_probe WHERE id = 1;",
-    )
-    assert read_probe.returncode == 0
-    assert "survives-restart" in read_probe.stdout
+        "redis",
+        "opensearch",
+    }
+    _wait_for_database(isolated_test_database_url)
+    _probe_authenticated_redis()
+    search_url = require_test_service_url("TEST_OPENSEARCH_URL", "http", 9200)
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(search_url.rstrip("/") + "/_cluster/health", timeout=10) as search_response:
+        assert search_response.status == 200
+        assert json.loads(search_response.read(65536))["status"] in {"green", "yellow"}
+
+
+def test_persisted_row_survives_container_restart(isolated_test_database_url) -> None:
+    """T03-C02：仅重启专用 test Compose PG，持久数据仍可读。"""
+    _require_running_test_compose(isolated_test_database_url)
+    engine = create_engine(isolated_test_database_url, connect_args={"connect_timeout": 5})
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "CREATE TABLE IF NOT EXISTS t03_persistence_probe "
+                    "(id int PRIMARY KEY, note text)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO t03_persistence_probe VALUES (1, 'survives-restart') "
+                    "ON CONFLICT DO NOTHING"
+                )
+            )
+        run_compose("restart", "postgres")
+        engine.dispose()
+        _wait_for_database(isolated_test_database_url)
+        with engine.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT note FROM t03_persistence_probe WHERE id = 1")
+                ).scalar_one()
+                == "survives-restart"
+            )
+    finally:
+        engine.dispose()
 
 
 def test_search_dependency_absent_is_reported_as_degraded_not_ready() -> None:
-    """T03-C03: 搜索依赖未配置时识别为降级, 不谎报全依赖就绪。"""
+    """T03-C03：搜索未配置的语义明确降级，不算实际健康。"""
     settings = load_application_settings(
         app_env="development",
         data_mode="fixture",
@@ -170,7 +170,7 @@ def test_search_dependency_absent_is_reported_as_degraded_not_ready() -> None:
 
 
 def test_production_rejects_fixture_data_mode() -> None:
-    """T03-C04: production 配 fixture 数据模式必须被配置校验拒绝。"""
+    """T03-C04：production fixture 被拒绝。"""
     with pytest.raises(ConfigurationError):
         load_application_settings(
             app_env="production",
@@ -180,7 +180,7 @@ def test_production_rejects_fixture_data_mode() -> None:
 
 
 def test_production_rejects_placeholder_secret() -> None:
-    """T03-C04: production 携带默认开发秘密必须被配置校验拒绝。"""
+    """T03-C04：production 默认开发秘密被拒绝。"""
     with pytest.raises(ConfigurationError):
         load_application_settings(
             app_env="production",
@@ -189,44 +189,35 @@ def test_production_rejects_placeholder_secret() -> None:
         )
 
 
-def test_stop_services_preserves_volumes_and_user_data() -> None:
-    """T03-C06: 关闭开发服务不删除卷与用户数据; 销毁需显式确认路径。"""
-    write_probe = run_compose(
-        "exec",
-        "-T",
-        "postgres",
-        "psql",
-        "-U",
-        "ai_intel",
-        "-d",
-        "ai_intel",
-        "-c",
-        "CREATE TABLE IF NOT EXISTS t03_volume_probe (id int PRIMARY KEY, note text);"
-        "INSERT INTO t03_volume_probe VALUES (1, 'survives-down-up') ON CONFLICT DO NOTHING;",
-    )
-    assert write_probe.returncode == 0
-    down_probe = run_compose("down")
-    assert down_probe.returncode == 0
-    volume_probe = subprocess.run(
-        ["docker", "volume", "ls", "--format", "{{.Name}}"],
-        capture_output=True,
-        text=True,
-    )
-    assert "compose_postgres_data" in volume_probe.stdout
-    up_probe = run_compose("up", "-d")
-    assert up_probe.returncode == 0
-    read_probe = run_compose(
-        "exec",
-        "-T",
-        "postgres",
-        "psql",
-        "-U",
-        "ai_intel",
-        "-d",
-        "ai_intel",
-        "-t",
-        "-c",
-        "SELECT note FROM t03_volume_probe WHERE id = 1;",
-    )
-    assert read_probe.returncode == 0
-    assert "survives-down-up" in read_probe.stdout
+def test_stop_services_preserves_volumes_and_user_data(isolated_test_database_url) -> None:
+    """T03-C06：专用 Compose down/up 不删除卷，真实测试行保留。"""
+    _require_running_test_compose(isolated_test_database_url)
+    engine = create_engine(isolated_test_database_url, connect_args={"connect_timeout": 5})
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text("CREATE TABLE IF NOT EXISTS t03_volume_probe (id int PRIMARY KEY, note text)")
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO t03_volume_probe VALUES (1, 'survives-down-up') "
+                    "ON CONFLICT DO NOTHING"
+                )
+            )
+        before = run_compose("config", "--format", "json")
+        configuration = json.loads(before.stdout)
+        assert configuration["name"] == os.environ["DIANZI_TEST_COMPOSE_PROJECT"]
+        assert configuration.get("volumes"), "test PostgreSQL must use a persistent volume"
+        run_compose("down")
+        run_compose("up", "-d", "--wait", "--wait-timeout", "90")
+        engine.dispose()
+        _wait_for_database(isolated_test_database_url)
+        with engine.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT note FROM t03_volume_probe WHERE id = 1")
+                ).scalar_one()
+                == "survives-down-up"
+            )
+    finally:
+        engine.dispose()

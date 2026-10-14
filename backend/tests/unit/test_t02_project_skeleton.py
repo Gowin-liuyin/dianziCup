@@ -31,16 +31,15 @@ def run_dev_script(scope_argument: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_unimplemented_scope_exits_nonzero_without_pass() -> None:
-    """T02-C04：未建设 scope 必须非零退出并明示 not_implemented，不得打印 PASS。
+def test_unimplemented_scope_exits_nonzero_without_pass(monkeypatch, tmp_path, capsys) -> None:
+    """T02-C04：隔离目录确无 integration 测试时非零，不能空跑成功。"""
+    from scripts import dev
 
-    T03/T06 起 integration 与 security scope 已建设, 本断言改用仍处未建设状态的 e2e,
-    保持原验收意图(未实现=非零+not_implemented+无 PASS)不变。
-    """
-    completed = run_dev_script("e2e")
-    assert completed.returncode == 3
-    assert "not_implemented" in completed.stderr
-    assert "PASS" not in completed.stdout
+    monkeypatch.setattr(dev, "PROJECT_ROOT", tmp_path)
+    assert dev.main(["check", "--scope", "integration"]) == 3
+    captured = capsys.readouterr()
+    assert "not_implemented" in captured.err
+    assert "PASS" not in captured.out
 
 
 def test_unknown_scope_is_rejected_with_argument_error() -> None:
@@ -49,11 +48,14 @@ def test_unknown_scope_is_rejected_with_argument_error() -> None:
     assert completed.returncode == 2
 
 
-def test_dev_script_repeat_invocation_is_idempotent() -> None:
-    """重复调用同一未实现 scope，两次退出码一致且均为非零。"""
-    first = run_dev_script("e2e")
-    second = run_dev_script("e2e")
-    assert first.returncode == second.returncode == 3
+def test_dev_script_repeat_invocation_is_idempotent(monkeypatch, tmp_path) -> None:
+    """同一空测试目录重复调用退出码一致且非零，不依赖未来 e2e 是否建设。"""
+    from scripts import dev
+
+    monkeypatch.setattr(dev, "PROJECT_ROOT", tmp_path)
+    first = dev.main(["check", "--scope", "integration"])
+    second = dev.main(["check", "--scope", "integration"])
+    assert first == second == 3
 
 
 def test_health_live_reports_process_liveness() -> None:
@@ -117,9 +119,9 @@ def test_wrong_node_version_is_rejected_by_engine_guard() -> None:
     assert (REPO_ROOT / "frontend" / ".nvmrc").read_text(encoding="utf-8").strip() == "24"
 
 
-def test_mypy_rejects_injected_type_error_and_recovers() -> None:
-    """T02-C03：注入 arg-type 类型错误必须被 mypy 非零拦截，移除探针后恢复全绿。"""
-    probe_path = REPO_ROOT / "backend" / "src" / "ai_intel" / "_mypy_type_probe.py"
+def test_mypy_rejects_injected_type_error_and_recovers(tmp_path) -> None:
+    """T02-C03：临时目录类型错误被拒绝，不向业务源码写文件或干扰其它 Agent。"""
+    probe_path = tmp_path / "type_probe.py"
     probe_source = (
         '"""临时类型错误探针, 验证后删除."""\n'
         "\n"
@@ -131,7 +133,7 @@ def test_mypy_rejects_injected_type_error_and_recovers() -> None:
     probe_path.write_text(probe_source, encoding="utf-8")
     try:
         blocked = subprocess.run(
-            [sys.executable, "-m", "mypy", "src"],
+            [sys.executable, "-m", "mypy", str(probe_path)],
             cwd=str(REPO_ROOT / "backend"),
             capture_output=True,
             text=True,
