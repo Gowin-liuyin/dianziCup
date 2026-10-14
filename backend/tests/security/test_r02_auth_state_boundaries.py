@@ -5,6 +5,7 @@ from __future__ import annotations
 import secrets
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -68,6 +69,7 @@ def client_for(service: AuthenticationSessionService) -> TestClient:
 def test_audit_tenant_isolation_and_unknown_user_system_admin_only(
     security_case: SecurityCase,
 ) -> None:
+    created_after = datetime.now(UTC)
     case = security_case
     other_username = f"test-other-{uuid.uuid4()}"
     other = case.service.create_precreated_user(
@@ -90,7 +92,12 @@ def test_audit_tenant_isolation_and_unknown_user_system_admin_only(
     assert len(case.service.read_audit_events(other_scope).events) == 1
     admin = AccessScope.for_authenticated_user("test-system-admin", None, Role.SYSTEM_ADMIN)
     all_events = case.service.read_audit_events(admin, limit=100).events
-    assert any(item.tenant_id is None and item.event_type == "login_failed" for item in all_events)
+    assert any(
+        item.tenant_id is None
+        and item.event_type == "login_failed"
+        and item.created_at >= created_after
+        for item in all_events
+    )
     with pytest.raises(AuditEventError, match="access scope"):
         case.service.audit_events()
     with pytest.raises(PermissionDeniedError):
