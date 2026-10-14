@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import re
@@ -388,6 +389,9 @@ def build_argument_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     """区分参数错误、资源阻塞与检查失败。"""
+    for output_stream in (sys.stdout, sys.stderr):
+        if isinstance(output_stream, io.TextIOWrapper):
+            output_stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     try:
         arguments = build_argument_parser().parse_args(argv)
     except SystemExit as parsed_exit:

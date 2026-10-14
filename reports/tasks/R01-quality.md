@@ -1,7 +1,7 @@
 # G-A / R01-quality · 真实质量入口与测试隔离
 
 文档首次创建时间：2026-10-14T22:53:01+08:00。
-本次写作开始时间：2026-10-14T22:53:01+08:00；本次写作结束时间：未结束；最后更新时间：2026-10-14T22:53:01+08:00。
+本次写作开始时间：2026-10-14T22:53:01+08:00；本次写作结束时间：2026-10-14T22:59:03+08:00；最后更新时间：2026-10-14T22:59:03+08:00。
 实现Agent：/root/r01_quality。独立review：未运行；工作包状态：awaiting_review。
 分支：codex/recovery-r01-quality；输入冻结基线：69ecf16be7d95e839b18a4a40f03b3f9d86707f4。
 当前证据为自检中的工作树，尚未签R01/原T02/T03，也没有阶段push。
@@ -78,3 +78,27 @@ DIANZI_DOCKER_COMMAND_JSON是可信本机Docker argv前缀；DIANZI_TEST_COMPOSE
 ## 7. 下一步与交付
 
 等待主控公共百分号修复的冻结SHA，按本WT专库复验PG/默认contract；冻结代码由新独立reviewer复跑32负例、原T02及资源边界，主控集成后重跑全scope/真实UI版本。报告只awaiting_review，不accepted，不push。没有新增计划/评分差异；本包不签整原T02/T03或G-A。
+
+## 8. 冻结复验与文档修订
+
+2026-10-14T22:59:03+08:00：代码/首稿报告已冻结2b79c8087ee49bf6c6926359fab793977f3d6117；独立review尚未运行，已审SHA无。作者在此冻结源码复跑32质量负例passed、47 unit passed/cov61.73%、mypy48源文件passed、8授权源码/test的format passed；命令/精确时间/退出码/日志在frozen_2b79c80/。这是冻结源码自检，不是初稿基线或完整R01通过。
+
+secret_scan.json核对9个提交文件及当时全部本包证据：两套已授权test DSN/密码未发现残留；没有读取产品密钥。后续PG仍等待主控共享迁移百分号修复冻结SHA，使用本WT独立资源；T03真Compose生命周期/OpenSearch/e2e/live保持未通过。
+
+## 9. 新公共实现与本WT真实PG复验
+
+本次写作开始时间：2026-10-14T23:33:23+08:00；本次写作结束时间/最后更新时间：2026-10-14T23:48:13+08:00。首创建时间不改。root公共实现a874c2752af7746bf70ede7bd203f62a2840d68c通过cherry-pick在本WT为ebedb39af5367a25fcaff199a2bf290c2385f23d；增加默认认证/API、settings、锁、迁移百分号修复，不能拿旧源码测试背书新实现。
+
+资源fresh探针：WSL true exit0/0.141秒、Docker version exit0/0.469秒、自己loopback25434/26381可达；receipt按实际start/end与wall_clock_seconds记录于fresh_resources_20261014_2334，不将此前宿主其它Agent异常860秒称为本包正常timeout。没有restart/delete/root资源修复。
+
+新冻结公共源码自检日志recheck_20261014_233550：unit47passed/cov62.00%保留60门、quality contract32passed、完整contract107passed(含1真实PG T07合同及2迁移URL配置)、T05/T07文件21passed(20真实PG fixture+1纯文件安全例)、security28passed；全部0fail/0error/0skip。Ruff/format/mypy49源文件和默认scope contract均exit0；使用本WT专库test_dianzi_r01_quality_20261014/PG25434，没有复用root库。百分号缺陷由root公共修复，本包没有业务层绕过。
+
+完整integration也实际执行：38passed/3failed/0skip/exit1；三失败是T03真实Compose依赖/重启/down-up，缺DIANZI_TEST_COMPOSE_PROJECT被guard在IO前拒绝；其它14内存判断测试仍按unit语义，不计真实PG能力。未提供自己Compose+OpenSearch，不能从裸Docker资源或21目标例通过签整T03/T07/R01。
+
+锁安装：新npm ci exit0；本WT只有旧骨架App，尚未取得frontendAgent组件/e2e配置。初次scope frontend因旧node_modules缺node types exit2；锁安装后lint/type/test实际成功，build的Unicode✓输出又触发本包dev.py GBK stdout编码缺陷(exit1)，这是检查入口bug，不是构建业务失败。新修复仅main标准库TextIOWrapper设置UTF8/安全errors；新增真实ascii/gbk CLI中文help负例，质量负例34passed、mypy49文件passed；待新freeze复跑受影响scope。e2e当前0tests/exit1，Playwright误发现旧Vitest组件文件，无真实浏览器流程，明确未通过。
+
+## 10. 新证实的R03阻断（不改本包公共业务）
+
+2026-10-14T23:48:13+08:00：job_boundary_probe.py在自己真实PG的合成逻辑时钟/回滚事务复现两项失败，exit1：schedule_retry_or_fail后同逻辑时刻立即重领(actual true/expected false)；lease60秒后+61秒原owner complete仍成功(actual true/expected false)。源码workers/jobs.py:32 retry_wait无到期条件/无next_retry_at，:90 complete与:115 retry只校验owner/job_id，缺有效租约/状态校验。所有探针SQL事务回滚，未留下业务数据；不是墙钟持续运行测量。共同根因和触发/lines/最低复验已通知root，由R03统一修复退避与租约/fencing，不能把21旧正例通过当这些边界已通过。日志job_boundary.json/stdout。
+
+各层最新状态：unit passed；contract passed(完整107，新增stdio负例另34passed待freeze复跑)；integration partial且完整命令failed/资源缺口；security passed仅fixture/HTTP隔离；frontend/e2e未完全通过；live/manual not_run。本包只awaiting_review，R01/G-A没有通过、没有push。

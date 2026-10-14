@@ -203,3 +203,19 @@ def test_failed_pytest_case_redacts_connection_in_terminal_and_junit(tmp_path) -
         assert "quality-secret-marker" not in output
         assert environment["TEST_DATABASE_URL"] not in output
     assert "1 failed" in completed.stdout
+
+
+@pytest.mark.parametrize("console_encoding", ["ascii", "gbk"])
+def test_cli_encodes_chinese_help_as_utf8_on_legacy_console(console_encoding) -> None:
+    """实际CLI不依赖调用者设置UTF8，也不因工具Unicode输出误报检查失败。"""
+    environment = dict(os.environ)
+    environment["PYTHONIOENCODING"] = console_encoding
+    completed = subprocess.run(
+        [sys.executable, str(dev.PROJECT_ROOT / "scripts/dev.py"), "check", "--help"],
+        capture_output=True,
+        encoding="utf-8",
+        env=environment,
+        timeout=10,
+    )
+    assert completed.returncode == 0
+    assert "离线子集" in completed.stdout
