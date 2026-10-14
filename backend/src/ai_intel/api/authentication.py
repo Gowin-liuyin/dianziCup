@@ -10,6 +10,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from threading import Lock
 from typing import Protocol
 
 from argon2 import PasswordHasher
@@ -205,6 +206,7 @@ class AuthenticationSessionService:
         self._password_hasher = PasswordHasher()
         self._sessions: dict[str, SessionRecord] = {}
         self._login_attempts: dict[str, list[float]] = {}
+        self._login_lock = Lock()
         self._audit_events: list[dict[str, str]] = []
 
     def create_precreated_user(
@@ -225,12 +227,11 @@ class AuthenticationSessionService:
         self, username: str, password: str, origin: str | None, client_key: str
     ) -> tuple[str, SessionRecord]:
         """登录: 凭证与 Origin 校验后签发不透明会话; 失败统一报错。"""
-        self._enforce_login_rate(client_key)
         if origin is not None and origin not in self._allowed_origins:
             raise CsrfRejectionError("origin not allowed")
+        self._reserve_login_attempt(client_key)
         account = self._user_directory.find_by_username(username)
         if account is None:
-            self._record_login_failure(client_key)
             self._append_audit(
                 "login_failed", {"reason": "invalid_credentials", "trace_id": str(uuid.uuid4())}
             )
@@ -238,7 +239,6 @@ class AuthenticationSessionService:
         try:
             self._password_hasher.verify(account.password_hash, password)
         except VerifyMismatchError:
-            self._record_login_failure(client_key)
             self._append_audit(
                 "login_failed", {"reason": "invalid_credentials", "trace_id": str(uuid.uuid4())}
             )
@@ -251,7 +251,6 @@ class AuthenticationSessionService:
             csrf_token=secrets.token_urlsafe(32),
         )
         self._sessions[self._session_key(session_token)] = session_record
-        self._login_attempts.pop(client_key, None)
         self._append_audit(
             "login_succeeded", {"user_id": account.user_id, "trace_id": str(uuid.uuid4())}
         )
@@ -268,6 +267,11 @@ class AuthenticationSessionService:
 
     def validate_session(self, session_token: str) -> Principal:
         """校验会话得到主体; 过期/注销/未知统一 SessionExpiredError。"""
+        principal, _ = self.authenticated_session(session_token)
+        return principal
+
+    def authenticated_session(self, session_token: str) -> tuple[Principal, SessionRecord]:
+        """一次会话及账户读取，绑定身份与CSRF；不组合两次HTTP会话快照。"""
         session_record = self._sessions.get(self._session_key(session_token))
         if (
             session_record is None
@@ -278,14 +282,14 @@ class AuthenticationSessionService:
         account = self._user_directory.find_by_id(session_record.user_id)
         if account is None:
             raise SessionExpiredError("session is not valid")
-        return Principal(user_id=account.user_id, tenant_id=account.tenant_id, role=account.role)
+        return (
+            Principal(user_id=account.user_id, tenant_id=account.tenant_id, role=account.role),
+            session_record,
+        )
 
     def session_record(self, session_token: str) -> SessionRecord:
         """返回有效会话记录(含 CSRF 令牌), 供 /auth/csrf 下发; 无效/过期/撤销抛对应错误。"""
-        principal = self.validate_session(session_token)
-        record = self._sessions.get(self._session_key(session_token))
-        if record is None or record.user_id != principal.user_id:
-            raise SessionExpiredError("session is not valid")
+        _, record = self.authenticated_session(session_token)
         return record
 
     def build_access_scope(self, session_token: str) -> AccessScope:
@@ -306,7 +310,9 @@ class AuthenticationSessionService:
             or session_record.expires_at <= self._clock()
         ):
             raise SessionExpiredError("session is not valid")
-        if not hmac.compare_digest(session_record.csrf_token, csrf_token):
+        if not csrf_token.isascii() or not hmac.compare_digest(
+            session_record.csrf_token, csrf_token
+        ):
             raise CsrfRejectionError("csrf token mismatch")
         if origin is None or origin not in self._allowed_origins:
             raise CsrfRejectionError("origin not allowed")
@@ -331,27 +337,19 @@ class AuthenticationSessionService:
         """会话以服务端哈希为键存储, 落库/内存不保存明文 token(05 §1 合同)。"""
         return hashlib.sha256(session_token.encode("utf-8")).hexdigest()
 
-    def _enforce_login_rate(self, client_key: str) -> None:
-        """窗口内超限拒绝; 不确认账号存在性。"""
-        now_epoch = time.time()
-        attempts = [
-            stamp
-            for stamp in self._login_attempts.get(client_key, [])
-            if now_epoch - stamp < LOGIN_WINDOW_SECONDS
-        ]
-        if len(attempts) >= MAX_LOGIN_ATTEMPTS:
-            raise LoginRateLimitedError("too many login attempts")
-
-    def _record_login_failure(self, client_key: str) -> None:
-        """记录失败尝试用于限流。"""
-        now_epoch = time.time()
-        attempts = [
-            stamp
-            for stamp in self._login_attempts.get(client_key, [])
-            if now_epoch - stamp < LOGIN_WINDOW_SECONDS
-        ]
-        attempts.append(now_epoch)
-        self._login_attempts[client_key] = attempts
+    def _reserve_login_attempt(self, client_key: str) -> None:
+        """昂贵目录/密码IO前原子占位；成功登录不能清除其他在途尝试。"""
+        with self._login_lock:
+            now_epoch = time.time()
+            attempts = [
+                stamp
+                for stamp in self._login_attempts.get(client_key, [])
+                if now_epoch - stamp < LOGIN_WINDOW_SECONDS
+            ]
+            if len(attempts) >= MAX_LOGIN_ATTEMPTS:
+                raise LoginRateLimitedError("too many login attempts")
+            attempts.append(now_epoch)
+            self._login_attempts[client_key] = attempts
 
     def _append_audit(self, event_type: str, fields: dict[str, str]) -> None:
         """写入审计事件: 拒绝敏感字段名, 事件带 trace_id。"""

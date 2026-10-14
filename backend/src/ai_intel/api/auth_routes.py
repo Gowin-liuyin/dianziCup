@@ -16,6 +16,7 @@ from ai_intel.api.authentication import (
     SessionExpiredError,
 )
 from ai_intel.api.problems import problem_response
+from ai_intel.domain.access import AccessScope
 from ai_intel.infrastructure.settings import ApplicationSettings
 
 SESSION_COOKIE_NAME = "ai_intel_session"
@@ -105,8 +106,10 @@ def build_auth_router(
                 True,
             )
         try:
-            principal = service.validate_session(session_token)
-            scope = service.build_access_scope(session_token)
+            principal, record = service.authenticated_session(session_token)
+            scope = AccessScope.for_authenticated_user(
+                principal.user_id, principal.tenant_id, principal.role
+            )
         except (SessionExpiredError, InvalidCredentialsError):
             return problem_response(request, 401, "session_expired", "session is not valid")
         except SQLAlchemyError:
@@ -120,6 +123,7 @@ def build_auth_router(
         return JSONResponse(
             content={
                 "user_id": principal.user_id,
+                "csrf_token": record.csrf_token,
                 "tenant_id": principal.tenant_id,
                 "role": principal.role.value,
                 "permissions": sorted(scope.permissions),

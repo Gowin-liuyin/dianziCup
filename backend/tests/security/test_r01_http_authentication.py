@@ -1,9 +1,20 @@
 """R01 HTTP边界；显式内存fixture只验证路由，不计持久化或live。"""
 
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+from time import sleep
+
+import pytest
 from fastapi.testclient import TestClient
 
 from ai_intel.api.app import create_application
-from ai_intel.api.authentication import AuthenticationSessionService, InMemoryUserDirectory
+from ai_intel.api.authentication import (
+    AuthenticationSessionService,
+    InMemoryUserDirectory,
+    InvalidCredentialsError,
+    LoginRateLimitedError,
+    UserAccount,
+)
 from ai_intel.domain.access import Role
 from ai_intel.infrastructure.settings import ApplicationSettings
 
@@ -101,3 +112,92 @@ def test_me_returns_authenticated_scope_and_explicit_fixture_mode() -> None:
     assert body["data_mode"] == "fixture"
     assert "read:asset" in body["permissions"]
     assert "password" not in response.text and "session_token" not in response.text
+
+
+def test_non_ascii_csrf_is_rejected_without_revoking_session() -> None:
+    client = fixture_client()
+    client.post(
+        "/v1/auth/login",
+        json={"username": "fixture-analyst", "password": "synthetic-password"},
+        headers={"Origin": ORIGIN},
+    )
+    response = client.post(
+        "/v1/auth/logout", headers=[(b"Origin", ORIGIN.encode()), (b"X-CSRF-Token", b"\xff")]
+    )
+    assert response.status_code == 403
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert client.get("/v1/auth/me").status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("path", "expected_status", "expected_code"),
+    [
+        ("/v1/auth/missing", 404, "not_found"),
+        ("/v1/auth/login", 405, "method_not_allowed"),
+    ],
+)
+def test_routing_errors_follow_problem_contract(
+    path: str, expected_status: int, expected_code: str
+) -> None:
+    response = fixture_client().get(path)
+    assert response.status_code == expected_status
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["error"]["code"] == expected_code
+    if expected_status == 405:
+        assert response.headers["Allow"] == "POST"
+
+
+def test_concurrent_login_reserves_attempt_before_directory_io() -> None:
+    class SlowDirectory(InMemoryUserDirectory):
+        def find_by_username(self, username: str) -> UserAccount | None:
+            sleep(0.05)
+            return None
+
+    service = AuthenticationSessionService(SlowDirectory(), (ORIGIN,), False)
+    barrier = Barrier(8)
+
+    def login_attempt(_: int) -> int:
+        barrier.wait(timeout=5)
+        try:
+            service.login("missing-fixture", "synthetic-password", ORIGIN, "same-client")
+        except LoginRateLimitedError:
+            return 429
+        except InvalidCredentialsError:
+            return 401
+        raise AssertionError("missing user unexpectedly logged in")
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(login_attempt, range(8)))
+    assert results.count(401) == 5
+    assert results.count(429) == 3
+
+
+def test_me_reads_one_account_and_its_session_bound_csrf() -> None:
+    class CountingDirectory(InMemoryUserDirectory):
+        reads = 0
+
+        def find_by_id(self, user_id: str) -> UserAccount | None:
+            self.reads += 1
+            return super().find_by_id(user_id)
+
+    directory = CountingDirectory()
+    service = AuthenticationSessionService(directory, (ORIGIN,), False)
+    service.create_precreated_user("fixture-user", "synthetic-password", "tenant-a", Role.ANALYST)
+    client = TestClient(
+        create_application(
+            service,
+            settings=ApplicationSettings(
+                app_env="test", data_mode="fixture", allowed_origins=(ORIGIN,)
+            ),
+        )
+    )
+    login = client.post(
+        "/v1/auth/login",
+        json={"username": "fixture-user", "password": "synthetic-password"},
+        headers={"Origin": ORIGIN},
+    )
+    snapshot = client.get("/v1/auth/me")
+    assert snapshot.json()["csrf_token"] == login.json()["csrf_token"]
+    assert snapshot.json()["user_id"] == login.json()["user_id"]
+    assert snapshot.json()["tenant_id"] == "tenant-a"
+    assert directory.reads == 1

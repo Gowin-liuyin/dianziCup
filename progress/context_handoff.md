@@ -1,4 +1,20 @@
-# 当前恢复交接 · 2026-10-14T22:19:34+08:00
+# 当前恢复交接 · 2026-10-15T00:03:09+08:00
+
+完整目标active，不能在R01停止。集成分支codex/full-delivery-recovery，HEAD a1b8aae232c416958d7d12c4ee5d2bf61adbc05c，origin已核对授权地址；无阶段push。R00独立验收并正式激活（代码15d0272、登记69ecf16、文档f0b154e），原整T均未接受、G-A仍in_progress。主控R01 API/settings/锁已提交a874c27，健康非字符串状态修复a1b8aae。主仓当前认证定向修复尚未提交，不得用旧SHA背书。
+
+R01冻结小批候选4a17ca7b967a10d6077ba5219984a2d1a74cf320，worktree C:/Users/yinha/.codex/worktrees/recovery-r01-candidate/dianzi。新非作者reviewer /root/r01_independent_review报告reports/reviews/recovery/G-A-R01-behavior-review-1.md，needs_changes：并发限流、非ASCII CSRF 500、身份/CSRF双HTTP切换竞争、Vitest依赖漏洞、fixture秘密扫描误报、404/405错误格式。独立57unit/106离线contract/27security通过1失败、frontend30通过，独立8前端负例7通过1失败；这些不证明PG/Compose/worker/e2e/live。修复后由同非作者定向复核。不可改冻结候选源码。
+
+主控正在修后端/authenticated_session一次读取、登录IO前锁占位、非ASCII403、404/405 Problem。/me兼容新增csrf_token。/root/r01_frontend定向修单快照恢复/登录及标准库随机fixture nonce；仅src及直接测试/自有报告，不动锁/配置。前端交付原189990c→b07596c只在候选未并入主仓。/root/r01_quality已完成，依次集成2b79c80→c918279→453893d→e895852（ebedb39是a874副本不重复），34质量/47unit/109contract/21 T05/T07真PG与文件/28security通过，完整integration38通过3缺自有Compose失败；0 e2e不通过。报告R01-quality.md及195脱敏证据，awaiting_review。真实PG还复现R03立即重试、过期租约提交两bug，需根因修复。
+
+/root/r01_vitest_candidate独立WT recovery-r01-vitest-candidate：Vitest4.1.11候选audit0、30原例通过、ci成功，锁初损坏已在候选修复保留失败证据；尚未集成。仅批准两个本run .gitattributes精确原字节规则。依赖主版本升级超CR-R01–09须完成具体候选+CR-R10后请求新明确授权，不能因等待过时视同同意。
+
+实际资源：WSL Ubuntu-22.04官方Docker29.2.0专用daemon/socket，8GiB/2CPU/pids2048，受控期限2026-10-17T21:49:15+08:00。Desktop AF_UNIX旧socket故障未修，不能称已修。根PG25432/Redis26379/OpenSearch29200；quality专用PG25434/Redis26381；frontend专用PG25435/Redis26382。私有连接root600在/tmp/dianzi-docker-static-r01-20261014/runtime，捕获并注入不输出。真实读写/重启/vector/BM25+认证负例均已有资源证据，应用尚未全接线；23:09–23:23有WSL宿主860s墙钟异常不可拼稳定窗口。报告R01-resources.md。PPT后置、平台/UI优先，双人金标与FOFA资产范围仍缺，不影响当前独立开发。
+
+秘密仅USERPROFILE/.codex/secrets/dianzi/本聊天ID.dpapi，主控受控解密注入；不向子Agent发送值、不打印或提交。生成模型deepseek-flash兼容OpenAI/Anthropic，embedding/rerank成熟本地候选未安装；实际产品API调用尚无live证据，费用unknown。CBM portable /tmp/dianzi-cbm-audit-20261014/portable/codebase-memory-mcp v0.11.0，每WT独立源索引，根cache /tmp/dianzi-cbm-recovery-root-20261014，代码变化后需刷新。下一步修复并冻结→复核，同时真实API用户/浏览器、worker/scheduler、专用Compose/CI→R02 PG会话/账本→R03可靠任务；G-A全满足后新阶段reviewer才push。
+
+以下条目保留历史，不能用于当前验收：
+
+# 历史恢复交接 · 2026-10-14T22:19:34+08:00
 
 集成分支codex/full-delivery-recovery，R00被审代码15d0272bd2a9e25d19397d8147e9c3cbe6016f9b。依据reports/reviews/recovery/G-A-R00-review-1-recheck.md登记R00/三个切片accepted与CR生效，原整T仍未接受、G-A未通过。R01进入实现调度；质量与前端新worktree待创建，主控拥有API/settings/迁移/locks/infra/CI。PG/Redis专用受控资源详见主仓尚未并入本R00冻结树的reports/tasks/R01-resources.md（随R01提交同步，资源smoke不签应用集成），私有连接配置仅仓库外root600捕获并注入、不输出DSN。模型已授权DeepSeek deepseek-flash，两种协议须真实实现；embedding/rerank候选成熟本地语义模型仍待验证。人工金标与FOFA授权资产范围仍未提供。当前无push。
 

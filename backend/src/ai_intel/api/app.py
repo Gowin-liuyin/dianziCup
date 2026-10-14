@@ -14,6 +14,7 @@ from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.exceptions import HTTPException
 
 from ai_intel.api.auth_routes import build_auth_router
 from ai_intel.api.authentication import (
@@ -83,6 +84,18 @@ def create_application(
         if service is not None and submitted_keys:
             service.record_identity_spoof_attempt(dict.fromkeys(submitted_keys, ""))
         return problem_response(request, 422, "validation_error", "request schema invalid")
+
+    @application.exception_handler(HTTPException)
+    async def http_error(request: Request, error: HTTPException) -> JSONResponse:
+        """路由错误遵循同一问题合同，保留Allow但不回显任意异常文本。"""
+        code, detail = {
+            404: ("not_found", "requested resource is not available"),
+            405: ("method_not_allowed", "request method is not allowed"),
+        }.get(error.status_code, ("http_error", "request could not be completed"))
+        response = problem_response(request, error.status_code, code, detail)
+        if error.headers and "Allow" in error.headers:
+            response.headers["Allow"] = error.headers["Allow"]
+        return response
 
     auth_router = build_auth_router(lambda: service, configuration)
     health_router = build_health_router(configuration, engine, cache)

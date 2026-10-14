@@ -1,10 +1,22 @@
 # 恢复批次并行与文件所有权
 
 首次创建时间：2026-10-14T20:56:36+08:00
-最后更新时间：2026-10-14T20:56:36+08:00
+最后更新时间：2026-10-15T00:03:09+08:00
 集成分支：codex/full-delivery-recovery；实际初始SHA：8e265dc039a67319140f003f6a070ea714bf7bef；授权文档基线：b8199ce5dd0a7920ce5770e4f580fe23e0fe9f6b。
 
-宿主4槽。当前R00有3个独立分析/验证工作包；冻结后释放槽建立新独立reviewer，后续默认主控+2实现+1review。默认继承主模型。无其他用户聊天或外部消息。
+宿主4槽。R00已独立通过；当前主控认证/运行装配、前端定向修复、依赖隔离候选；初审已交付待修复复核。默认继承主模型。无其他用户聊天或外部消息。
+
+## 当前文件所有权与冻结流水线
+
+| 工作包 | Agent / 基线 | 唯一写集 | 当前交付与结束条件 |
+|---|---|---|---|
+| R01核心运行/集成 | /root / a1b8aae | backend API/auth/settings、迁移/models/locks/infra/CI、progress、阶段文档、Git | 主仓修认证根因；实际worker/浏览器/Compose待实现，独立review后集成 |
+| R01前端 | /root/r01_frontend / 189990c+b07596c | 自有WT frontend/src、直接测试/e2e、自有报告/日志；禁止锁/公共配置 | 已交30用例及构建，修同会话快照和nonce误报后交新SHA；不签accepted/push |
+| R01质量 | /root/r01_quality / c918279 | 自有WT scripts/dev.py、测试安全配置及指定原卡测试、自有报告/日志 | 2b79c80/c918279/453893d/e895852交付；195证据，需独立集成复核；不要重复ebedb39 |
+| R01行为独立初审 | /root/r01_independent_review / 固定4a17ca7 | 主仓自身review报告及recovery_r01_behavior_review_1_20261014原始日志；不改业务 | needs_changes，6项真实缺陷/误报，复核待新冻结修复版；不签整R01 |
+| R01 Vitest主版本候选 | /root/r01_vitest_candidate / d0a179e | 独立WT package/lock必要vite配置、自己的报告与run两个精确attrs | 4.1.11真实兼容候选；未并入main，CR-R10新授权后才能应用 |
+
+以上是当前权威登记，下表保留历史分工与结论。迁移编号/共享schema/锁/全局状态由主控统一；任何授权单一其他写者只限具体独立候选。
 
 | 工作包 | Agent | 输入→输出 | 允许写入 | 结束条件/状态 |
 |---|---|---|---|---|
