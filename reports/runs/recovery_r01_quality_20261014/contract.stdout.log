@@ -1,0 +1,113 @@
+..............................E......................................... [ 69%]
+...............................                                          [100%]
+=================================== ERRORS ====================================
+_ ERROR at setup of test_transient_failure_parks_in_retry_wait_then_retries_exactly_once _
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x0000014EF7731460>
+parser = <configparser.ConfigParser object at 0x0000014EFABF0C50>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  C:\Users\yinha\.codex\worktrees\recovery-r01-quality\dianzi\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: C:\Users\yinha\.codex\worktrees\recovery-r01-quality\dianzi\reports\runs\recovery_r01_quality_20261014\contract.xml -
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.12.13-final-0 _______________
+
+Name                                             Stmts   Miss  Cover   Missing
+------------------------------------------------------------------------------
+src\ai_intel\__init__.py                             0      0   100%
+src\ai_intel\api\__init__.py                         0      0   100%
+src\ai_intel\api\app.py                             21      3    86%   31, 36-42
+src\ai_intel\api\auth_routes.py                     55      5    91%   42, 72-73, 89-90
+src\ai_intel\api\authentication.py                 179     46    74%   80, 92, 104, 111, 115-133, 137-147, 151-161, 166-170, 218, 221-225, 265, 268, 276, 290-300, 308, 312, 331, 347, 351
+src\ai_intel\domain\__init__.py                      0      0   100%
+src\ai_intel\domain\access.py                       42      5    88%   64-65, 70, 73, 86
+src\ai_intel\domain\enums.py                        79      0   100%
+src\ai_intel\domain\records.py                      59     59     0%   7-103
+src\ai_intel\domain\schema_export.py                15     15     0%   6-49
+src\ai_intel\domain\values.py                       47     47     0%   7-88
+src\ai_intel\enrichment\extraction.py               61      2    97%   58, 74
+src\ai_intel\enrichment\impact.py                   36      1    97%   77
+src\ai_intel\enrichment\knowledge_cards.py          46      2    96%   52, 65
+src\ai_intel\enrichment\poc.py                      31      2    94%   34, 39
+src\ai_intel\enrichment\research_links.py           24      0   100%
+src\ai_intel\infrastructure\__init__.py              0      0   100%
+src\ai_intel\infrastructure\content_store.py        54     34    37%   32-33, 37-39, 43-66, 72-77, 81-83
+src\ai_intel\infrastructure\database.py             45     24    47%   30-32, 38-47, 55, 60-63, 68-77
+src\ai_intel\infrastructure\models\__init__.py       0      0   100%
+src\ai_intel\infrastructure\models\clients.py       69      2    97%   63, 73
+src\ai_intel\infrastructure\network.py              90     31    66%   69-70, 76-85, 90, 98-106, 126, 137, 160, 163-184
+src\ai_intel\infrastructure\outbox.py               27     17    37%   29-65, 70-94
+src\ai_intel\infrastructure\settings.py             39     19    51%   45-60, 65-68, 73-78
+src\ai_intel\ingestion\parsing\__init__.py           0      0   100%
+src\ai_intel\ingestion\parsing\parsers.py           80     12    85%   31, 34, 36, 38, 89-93, 101, 115-119
+src\ai_intel\ingestion\parsing\text_blocks.py       30      0   100%
+src\ai_intel\ingestion\sources\__init__.py           0      0   100%
+src\ai_intel\ingestion\sources\academic.py          41      0   100%
+src\ai_intel\ingestion\sources\cve.py               80      5    94%   39, 56, 68, 97, 102
+src\ai_intel\ingestion\sources\feed.py              52      0   100%
+src\ai_intel\ingestion\sources\nvd.py               61      7    89%   34, 37, 40, 87, 90-92
+src\ai_intel\ingestion\sources\osv.py               80      5    94%   65, 73, 85, 96, 135
+src\ai_intel\ingestion\sources\repository.py        66     11    83%   50, 52, 56, 76, 79, 99, 101, 110, 116-118
+src\ai_intel\ingestion\sources\standards.py         55      3    95%   47, 54, 87
+src\ai_intel\knowledge\evidence.py                  40      7    82%   33, 40, 47, 50, 53, 74, 76
+src\ai_intel\knowledge\models.py                    15      0   100%
+src\ai_intel\knowledge\revisions.py                101     74    27%   55-59, 68-75, 88-147, 164-183, 202-253, 264-275, 280-296, 301-313
+src\ai_intel\workers\jobs.py                        62     48    23%   31-60, 65-79, 86-100, 107-126, 133-145, 159-166
+------------------------------------------------------------------------------
+TOTAL                                             1782    486    73%
+=========================== short test summary info ===========================
+ERROR tests/contract/test_t07_jobs_outbox.py::test_transient_failure_parks_in_retry_wait_then_retries_exactly_once
+102 passed, 1 warning, 1 error in 4.65s

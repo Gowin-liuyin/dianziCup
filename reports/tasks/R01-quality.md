@@ -102,3 +102,9 @@ secret_scan.json核对9个提交文件及当时全部本包证据：两套已授
 2026-10-14T23:48:13+08:00：job_boundary_probe.py在自己真实PG的合成逻辑时钟/回滚事务复现两项失败，exit1：schedule_retry_or_fail后同逻辑时刻立即重领(actual true/expected false)；lease60秒后+61秒原owner complete仍成功(actual true/expected false)。源码workers/jobs.py:32 retry_wait无到期条件/无next_retry_at，:90 complete与:115 retry只校验owner/job_id，缺有效租约/状态校验。所有探针SQL事务回滚，未留下业务数据；不是墙钟持续运行测量。共同根因和触发/lines/最低复验已通知root，由R03统一修复退避与租约/fencing，不能把21旧正例通过当这些边界已通过。日志job_boundary.json/stdout。
 
 各层最新状态：unit passed；contract passed(完整107，新增stdio负例另34passed待freeze复跑)；integration partial且完整命令failed/资源缺口；security passed仅fixture/HTTP隔离；frontend/e2e未完全通过；live/manual not_run。本包只awaiting_review，R01/G-A没有通过、没有push。
+
+## 11. 编码修复冻结与最终自检
+
+2026-10-14T23:53:12+08:00：Windows输出修复已冻结c918279c003925844c2444b768a2c81e427ffb33。作者在此源码再次跑：34质量负例、47 unit/cov62.00%、完整contract109、T05/T07文件21(20PG+1文件)、security28，0fail/0error/0skip；Ruff/format/mypy49files和默认scope contract exit0。frontend已从新锁npm ci，scope实际lint/typecheck/Vitest1/build完整exit0，Vite Unicode输出不再失败；这仍是此WT旧骨架组件，不是主控新UI验收。e2e0tests/exit1保持未通过；missing resources integration exit4。完整integration的3个真实Compose缺口仍未关闭。新日志recheck_20261014_234925，每条命令具有code_sha/实际起止与退出码，旧失败全部保留。
+
+scripts索引按c918刷新及main trace成功，命令单10秒deadline、实际exit0/墙钟记录于cbm_index_c918/cbm_trace_c918，范围仍仅scripts，排除秘密/holdout。无独立review结论，已审SHA无；工作包awaiting_review，R01/G-A没有accepted/push。最后证据commit只包含本包report/runs，并携带root明确授权的2条rawXML attrs(已经在c918代码commit)，不引入其它公共配置变更。

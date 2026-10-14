@@ -1,0 +1,1134 @@
+EEEEEEEE.EEEEEEEEEEEE                                                    [100%]
+=================================== ERRORS ====================================
+_ ERROR at setup of test_duplicate_tip_reuse_creates_single_revision_without_events _
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F54703E0>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+_____ ERROR at setup of test_content_a_b_a_keeps_three_revisions_in_order _____
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F5473080>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+_ ERROR at setup of test_database_failure_after_object_write_leaves_no_dangling_record _
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F5473E30>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+_____ ERROR at setup of test_cleanup_refuses_to_delete_referenced_object ______
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F58F9370>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+_ ERROR at setup of test_cleanup_refuses_when_only_document_references_object _
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F58FAC00>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+_______ ERROR at setup of test_save_revision_scope_mismatch_is_rejected _______
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F588C5C0>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+_ ERROR at setup of test_tenant_none_evidence_on_public_revision_is_rejected __
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F58FBE90>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+___ ERROR at setup of test_quote_invariants_reject_tampered_and_out_of_span ___
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F58F8650>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+_____ ERROR at setup of test_cross_tenant_evidence_reference_is_rejected ______
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F588D880>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+____ ERROR at setup of test_evidence_attach_success_and_quote_consistency _____
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F588F440>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+_ ERROR at setup of test_migration_upgrade_preserves_existing_facts_times_and_unknown_status _
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F588E1B0>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+__ ERROR at setup of test_repeated_migration_upgrade_preserves_head_revision __
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F58F9A60>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+_ ERROR at setup of test_fetch_attempt_is_recorded_without_counting_new_events _
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F58906B0>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+_______ ERROR at setup of test_scope_epoch_bumps_for_cache_invalidation _______
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F5891D30>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+_ ERROR at setup of test_outbox_survives_queue_outage_and_delivers_after_recovery _
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F58FBE30>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+___ ERROR at setup of test_duplicate_message_yields_single_business_result ____
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F5892D50>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+___ ERROR at setup of test_same_idempotency_key_different_payload_conflicts ___
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F5893230>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+_______ ERROR at setup of test_lost_worker_recovers_after_lease_expiry ________
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F58ACB60>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+_______ ERROR at setup of test_permanent_failure_does_not_retry_forever _______
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F5893D70>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+_ ERROR at setup of test_guessing_other_tenant_job_id_returns_404_without_leak _
+
+isolated_test_database_url = '[redacted test secret]'
+
+    @pytest.fixture()
+    def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+        """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        try:
+            with engine.connect() as connection:
+                database_name, username = connection.execute(
+                    text("SELECT current_database(), current_user")
+                ).one()
+                assert database_name == engine.url.database
+                assert username == engine.url.username
+            migration_url = engine.url.update_query_dict(
+                {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+            ).render_as_string(hide_password=False)
+>           run_migrations(migration_url)
+
+tests\conftest.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\database.py:54: in run_migrations
+    alembic_config.set_main_option("sqlalchemy.url", database_url)
+.venv\Lib\site-packages\alembic\config.py:354: in set_main_option
+    self.set_section_option(self.config_ini_section, name, value)
+.venv\Lib\site-packages\alembic\config.py:387: in set_section_option
+    self.file_config.set(section, name, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:1184: in set
+    super().set(section, option, value)
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:872: in set
+    value = self._interpolation.before_set(self, section, option,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <configparser.BasicInterpolation object at 0x000001A4F275D970>
+parser = <configparser.ConfigParser object at 0x000001A4F588D820>
+section = 'alembic', option = 'sqlalchemy.url'
+value = '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000'
+
+    def before_set(self, parser, section, option, value):
+        tmp_value = value.replace('%%', '') # escaped percent signs
+        tmp_value = self._KEYCRE.sub('', tmp_value) # valid syntax
+        if '%' in tmp_value:
+>           raise ValueError("invalid interpolation syntax in %r at "
+                             "position %d" % (value, tmp_value.find('%')))
+E           ValueError: invalid interpolation syntax in '[redacted test secret]?connect_timeout=5&options=-c+statement_timeout%3D20000+-c+lock_timeout%3D5000' at position 189
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\configparser.py:374: ValueError
+- generated xml file: C:\Users\yinha\.codex\worktrees\recovery-r01-quality\dianzi\reports\runs\recovery_r01_quality_20261014\postgres_integration.xml -
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.12.13-final-0 _______________
+
+Name                                             Stmts   Miss  Cover   Missing
+------------------------------------------------------------------------------
+src\ai_intel\__init__.py                             0      0   100%
+src\ai_intel\api\__init__.py                         0      0   100%
+src\ai_intel\api\app.py                             21     21     0%   7-47
+src\ai_intel\api\auth_routes.py                     55     55     0%   3-103
+src\ai_intel\api\authentication.py                 179    179     0%   3-352
+src\ai_intel\domain\__init__.py                      0      0   100%
+src\ai_intel\domain\access.py                       42     11    74%   58, 64-65, 69-73, 77-78, 86
+src\ai_intel\domain\enums.py                        79     79     0%   7-133
+src\ai_intel\domain\records.py                      59     59     0%   7-103
+src\ai_intel\domain\schema_export.py                15     15     0%   6-49
+src\ai_intel\domain\values.py                       47     47     0%   7-88
+src\ai_intel\infrastructure\__init__.py              0      0   100%
+src\ai_intel\infrastructure\content_store.py        54     17    69%   47-50, 62-65, 72-77, 81-83
+src\ai_intel\infrastructure\database.py             45     24    47%   30-32, 38-47, 55, 60-63, 68-77
+src\ai_intel\infrastructure\models\__init__.py       0      0   100%
+src\ai_intel\infrastructure\models\clients.py       69     69     0%   3-135
+src\ai_intel\infrastructure\network.py              90     90     0%   7-184
+src\ai_intel\infrastructure\outbox.py               27     17    37%   29-65, 70-94
+src\ai_intel\infrastructure\settings.py             39     19    51%   45-60, 65-68, 73-78
+src\ai_intel\knowledge\models.py                    15      0   100%
+src\ai_intel\knowledge\revisions.py                101     74    27%   55-59, 68-75, 88-147, 164-183, 202-253, 264-275, 280-296, 301-313
+src\ai_intel\workers\jobs.py                        62     48    23%   31-60, 65-79, 86-100, 107-126, 133-145, 159-166
+------------------------------------------------------------------------------
+TOTAL                                              999    824    18%
+=========================== short test summary info ===========================
+ERROR tests/integration/test_t05_persistence_and_raw_store.py::test_duplicate_tip_reuse_creates_single_revision_without_events
+ERROR tests/integration/test_t05_persistence_and_raw_store.py::test_content_a_b_a_keeps_three_revisions_in_order
+ERROR tests/integration/test_t05_persistence_and_raw_store.py::test_database_failure_after_object_write_leaves_no_dangling_record
+ERROR tests/integration/test_t05_persistence_and_raw_store.py::test_cleanup_refuses_to_delete_referenced_object
+ERROR tests/integration/test_t05_persistence_and_raw_store.py::test_cleanup_refuses_when_only_document_references_object
+ERROR tests/integration/test_t05_persistence_and_raw_store.py::test_save_revision_scope_mismatch_is_rejected
+ERROR tests/integration/test_t05_persistence_and_raw_store.py::test_tenant_none_evidence_on_public_revision_is_rejected
+ERROR tests/integration/test_t05_persistence_and_raw_store.py::test_quote_invariants_reject_tampered_and_out_of_span
+ERROR tests/integration/test_t05_persistence_and_raw_store.py::test_cross_tenant_evidence_reference_is_rejected
+ERROR tests/integration/test_t05_persistence_and_raw_store.py::test_evidence_attach_success_and_quote_consistency
+ERROR tests/integration/test_t05_persistence_and_raw_store.py::test_migration_upgrade_preserves_existing_facts_times_and_unknown_status
+ERROR tests/integration/test_t05_persistence_and_raw_store.py::test_repeated_migration_upgrade_preserves_head_revision
+ERROR tests/integration/test_t05_persistence_and_raw_store.py::test_fetch_attempt_is_recorded_without_counting_new_events
+ERROR tests/integration/test_t05_persistence_and_raw_store.py::test_scope_epoch_bumps_for_cache_invalidation
+ERROR tests/integration/test_t07_jobs_and_outbox.py::test_outbox_survives_queue_outage_and_delivers_after_recovery
+ERROR tests/integration/test_t07_jobs_and_outbox.py::test_duplicate_message_yields_single_business_result
+ERROR tests/integration/test_t07_jobs_and_outbox.py::test_same_idempotency_key_different_payload_conflicts
+ERROR tests/integration/test_t07_jobs_and_outbox.py::test_lost_worker_recovers_after_lease_expiry
+ERROR tests/integration/test_t07_jobs_and_outbox.py::test_permanent_failure_does_not_retry_forever
+ERROR tests/integration/test_t07_jobs_and_outbox.py::test_guessing_other_tenant_job_id_returns_404_without_leak
+1 passed, 20 errors in 2.23s
