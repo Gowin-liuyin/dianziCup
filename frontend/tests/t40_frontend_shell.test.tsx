@@ -1,8 +1,11 @@
+import { randomBytes } from "node:crypto";
 import { StrictMode } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "../src/App";
+
+const fixtureNonce = randomBytes(32).toString("hex");
 
 const fixtureUser = {
   user_id: "fixture-analyst",
@@ -11,6 +14,7 @@ const fixtureUser = {
   permissions: ["read:public", "read:asset"],
   permission_version: 3,
   data_mode: "fixture",
+  csrf_token: fixtureNonce,
 };
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -49,11 +53,11 @@ function mockApi(options: { authenticated?: boolean; dependencyFailure?: boolean
       if (options.expiresOnRefresh && meRequests > 1) return problemResponse(401, "session_expired");
       return authenticated ? jsonResponse(fixtureUser) : problemResponse(401, "unauthenticated");
     }
-    if (path === "/v1/auth/csrf") return authenticated ? jsonResponse({ csrf_token: "fixture-memory-csrf", header_name: "X-CSRF-Token" }) : problemResponse(401, "unauthenticated");
+    if (path === "/v1/auth/csrf") return authenticated ? jsonResponse({ csrf_token: fixtureNonce, header_name: "X-CSRF-Token" }) : problemResponse(401, "unauthenticated");
     if (path === "/v1/auth/login") {
       if (options.loginRejected) return problemResponse(401, "invalid_credentials");
       authenticated = true;
-      return jsonResponse({ user_id: fixtureUser.user_id, csrf_token: "fixture-memory-csrf", expires_at: "2026-10-15T00:00:00+08:00" });
+      return jsonResponse({ user_id: fixtureUser.user_id, csrf_token: fixtureNonce, expires_at: "2099-01-01T00:00:00+08:00" });
     }
     if (path === "/v1/auth/logout") {
       if (options.logoutFailure) throw new TypeError("fixture offline");
@@ -131,7 +135,7 @@ describe("T40 R01 authenticated workbench — explicit fixture HTTP boundary", (
     expect(screen.queryByText("fixture-tenant")).toBeNull();
     await waitFor(() => expect(requests.some((request) => request.path === "/v1/auth/logout")).toBe(true));
     const logout = requests.find((request) => request.path === "/v1/auth/logout");
-    expect(new Headers(logout?.options?.headers).get("X-CSRF-Token")).toBe("fixture-memory-csrf");
+    expect(new Headers(logout?.options?.headers).get("X-CSRF-Token")).toBe(fixtureNonce);
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
   });
@@ -194,7 +198,7 @@ describe("T40 R01 authenticated workbench — explicit fixture HTTP boundary", (
         if (meRequests === 1) return oldMe;
         return authenticated ? jsonResponse(fixtureUser) : problemResponse(401, "unauthenticated");
       }
-      if (input === "/v1/auth/csrf") return authenticated ? jsonResponse({ csrf_token: "fixture-csrf", header_name: "X-CSRF-Token" }) : problemResponse(401, "unauthenticated");
+      if (input === "/v1/auth/csrf") return authenticated ? jsonResponse({ csrf_token: fixtureNonce, header_name: "X-CSRF-Token" }) : problemResponse(401, "unauthenticated");
       if (input === "/v1/auth/logout") { authenticated = false; return jsonResponse({ status: "logged_out" }); }
       if (input === "/v1/health/live") return jsonResponse({ status: "live" });
       if (input === "/v1/health/ready") return jsonResponse({ status: "ready", reason: "fixture", dependencies: { database: { state: "ready" } } });

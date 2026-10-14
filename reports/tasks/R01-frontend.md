@@ -1,7 +1,7 @@
 # R01 · 认证工作台前端切片
 
 文档首次创建时间：历史未记录（2026-10-14T22:51:25+08:00是创建前实际时钟采样，不当作已知创建时刻）。
-本次写作开始时间：2026-10-14T22:51:25+08:00；写作结束/最后更新时间：2026-10-14T22:57:49+08:00。
+本次写作开始时间：2026-10-14T22:51:25+08:00；写作结束/最后更新时间：2026-10-15T00:17:46+08:00。
 实际实施开始时间：2026-10-14T22:24:19+08:00；本轮代码编写结束：2026-10-14T22:54:41+08:00；真实e2e仍未开始。
 状态：awaiting_review；实现状态：partial（当前前端代码已自检；真实 API 浏览器链尚未运行）。
 实现 Agent：/root/r01_frontend；独立审查：尚未发生。
@@ -13,7 +13,7 @@
 
 本包实现 R01:T40 的早期认证、运行状态与布局切片，不验收整 T40。T40 仍需 R04 实际证据业务与 R17 完整工作台。HTTP 合同来自主控冻结的 R01 报告：`/v1/auth/login|me|csrf|logout`、`/v1/health/live|ready`，Cookie credentials include、会话绑定 CSRF 内存、RFC9457 公开错误摘要。
 
-以前 App 只有“未连接”骨架。现在页面实际调用 health/auth；登录后必须读取服务端 /me 身份、租户、四角色、权限、权限版本与 live/fixture 模式。刷新从 me→csrf 恢复，退出立即清除前端身份/权限及内存 CSRF；网络撤销失败明确写“未确认”，不能显示假成功。请求代次防止旧恢复响应重新填入已清除身份。用户名/密码表单提交后清除，未使用 localStorage/sessionStorage。
+以前 App 只有“未连接”骨架。现在页面实际调用 health/auth；登录后必须读取服务端 /me 身份、租户、四角色、权限、权限版本与 live/fixture 模式。原版刷新从 me→csrf 恢复（此双请求缺陷已由独立审查确认）；本次改用同一次 /me 身份与CSRF原子快照恢复，退出立即清除前端身份/权限及内存 CSRF；网络撤销失败明确写“未确认”，不能显示假成功。请求代次防止旧恢复响应重新填入已清除身份。用户名/密码表单提交后清除，未使用 localStorage/sessionStorage。
 
 健康 503 的 not_ready/degraded 结果作为真实逐项探测呈现，不转换成空列表；网络/格式失败展示未知与重试。存活、依赖、数据模式分别显示，不以“live 模式”证明所有业务 live。未知、过期、部分、未配置与就绪均有文字区别。当前仅导航到实际运行状态/会话区域，不添加尚未接线的来源、问答入口。
 
@@ -39,7 +39,7 @@
 |---|---|---|
 | 先写的 T40 行为测试对旧 App | exit1；8/8真实失败 | initial_red.log/json；均缺少认证/状态交互，不是环境失败 |
 | 初轮 frontend | exit1；20项18通过2失败 | test_1；两个 selector 错误，保留原失败，不 skip |
-| 最终 frontend/unit | exit0；30/30、0失败/0skip、4文件 | test_5；10行为+13HTTP边界+6状态+1骨架回归，计数只相加一次 |
+| 首轮冻结 frontend/unit | exit0；30/30、0失败/0skip、4文件 | test_5；10行为+13HTTP边界+6状态+1骨架回归，计数只相加一次 |
 | 合同 | 13 HTTP 边界 fixture passed | 已计入30，不能额外重复计总数 |
 | security | fixture安全行为 passed；真实权限/租户 integration not_run | CSRF头、无存储、错误文本、原型键、过期与旧响应负例，不证明 PG 服务权限 |
 | npm run lint | exit0 | lint_5 |
@@ -78,3 +78,38 @@
 2026-10-14T22:56:18+08:00：补e2e listing只发现不执行的真实计数与未运行说明；验证25173没有本Agent遗留监听，临时只读浏览器已关闭。没有把listing skip改成验收通过。
 
 2026-10-14T22:57:49+08:00：纠正首次创建时刻字段：此前误把创建前的时钟采样当作文件创建，现明确历史未记录，不从文件mtime推造；首次写作前采样与全部实际测试日志保留。
+
+## 8. 独立审查后的原子会话定向修复
+
+本次写作开始时间：2026-10-15T00:14:17+08:00；独立审查依据：G-A-R01-behavior-review-1，固定候选4a17ca7b967a10d6077ba5219984a2d1a74cf320。前端修复输入基线b07596cbe6082051bb55bac39f7b5df7020be68c，状态awaiting_review；未自行签accepted。主控提供兼容合同：/me保留原字段，增加同一session的csrf_token；后端由主控实现，本Agent未修改后端或公共合同。
+
+### 真实问题、最小修复与限制
+
+RV-03：A的/me返回后，其他标签登录B更换Cookie，旧/csrf取到B的nonce；页面显示A租户而用B nonce注销B。请求代次只能识别本组件请求，不能绑定不同HTTP响应。修复新增getSessionSnapshot，在单个/me响应内严格解析CurrentUser与非空CSRF，AuthProvider只把user放上下文、CSRF放ref。恢复没有/csrf fallback。登录后的确认也用同一snapshot，避免同用户被其他会话换Cookie时混用登录响应nonce。getCurrentUser/getCsrfToken仍保留现有辅助调用合同（client.test有直接调用），未删公共入口。
+
+3个新增行为例先在旧实现真实3/3失败：跨用户Cookie切换导致B被注销；同用户换session后仍用旧nonce；缺失/me nonce却用第二请求fallback。修复后全部通过。跨用户例模拟/me读取A时的完整快照后Cookie已经B，验证发出的只能是A nonce、服务端拒绝当前B会话写入、B不被误注销、前端清除身份。单请求快照不能让任何时刻的显示自动感知其他标签后续变化；其保证是读取时身份/nonce一致，后续Cookie切换的写操作由服务端会话绑定CSRF拒绝。没有声称自动跨标签广播、真实资产跨租户读搜导出或真实浏览器已验收。
+
+RV-05：client与直接相关T40测试的固定合成nonce被既有T06-C06扫描命中。已使用Node标准crypto.randomBytes(32)生成测试nonce并复用到输入/断言，没有拆字符串、改扫描、放宽正则或阈值。新的snapshot检查5种缺失/非法nonce，且不把CSRF暴露到公开user上下文。测试nonce不是模型/API/账号凭据，不读秘密库。
+
+### 实际验证
+
+| 命令与工作目录 | 结果 | 证据与边界 |
+|---|---|---|
+| frontend：npm run test -- --run src/app/auth-session.test.tsx，修复前 | exit1，3 failed，0skip | atomic_restore_red.log/json；有意义行为失败，不是import或资源错误 |
+| frontend：npm run test，修复后 | exit0；39 passed/0failed/0skip、5文件 | atomic_test.log/json，保留原30＋新增9；19HTTP＋3快照＋10T40＋6状态＋1回归 |
+| frontend：npm run lint / typecheck / build | 各exit0 | atomic_lint/typecheck/build.log/json；build30模块，JS159.78kB、gzip52.00；不是性能测量 |
+| backend：原T06-C06定向scan（候选WT的Python环境，仅指向本WT源码） | exit1；1failed | atomic_secret_scan.log/json；未改scan标准，失败在旧caller日志复制了旧fixture字面量，而非新源码nonce。完整security未通过，待主控处理历史证据与scan冲突；保留失败 |
+| CBM刷新+trace+rg | exit0；74节点/224边 | atomic_index_after/atomic_trace_after/atomic_rg_after；getSessionSnapshot←AuthProvider←App，旧辅助不再由AuthProvider调用，源码逐文件hash在atomic_index_after.json |
+
+全部命令实际起止、cwd、exit、依赖锁hash由执行过程落盘；不根据mtime推造时间。依赖仍主控候选配置，本Agent未改package/lock/tsconfig/全局配置；本WT源码SHA与候选依赖hash分别报告。构建仅还原本次产生的既有tsbuildinfo，不覆盖主控复制配置。
+
+各层：unit/frontend=passed（39fixture），contract=passed（19HTTP fixture且已包含于39），security=failed（定向原scan的历史证据命中；不是实密钥泄漏证据），integration/e2e/live/manual=not_run。本包未跑真实浏览器多标签/PG/外部模型来源；主控修后端并冻结一致候选后，仍需独立reviewer定向复核及浏览器验收。
+
+### 当前证据冲突与下一步
+
+recheck_rg_before.log保存修改前真实源码，含此前明确合成nonce赋值文本；原scan把历史rawlog文本再次当作当前凭据赋值，随后scan失败日志也回显该匹配。已向主控报告，未删除日志、改扩展名规避扫描、改扫描标准或把失败改skip。后续caller日志记录新动态nonce源码，没有原固定值。主控明确历史源码证据的保存/扫描规则后处理，不把39frontend通过替代安全门。
+
+改动文件仅api/client.ts、app/auth-session.tsx、两者直接测试、tests/t40_frontend_shell.test.tsx、本报告与专属run。复用现有fetch/解析器/context和Node标准crypto，没有新依赖、通用框架或虚构节省数量。主控独立reviewer定向复核之后才能集成/登记通过。
+2026-10-15T00:14:17+08:00：追加RV-03/RV-05定向修复、39测试证据和历史rawlog扫描仍失败的边界；保留原报告/失败记录，未改评分或扫描标准。
+
+2026-10-15T00:17:46+08:00：主控要求保留原始历史log、不再重复执行C06。已枚举原两个正则在专属run的全部命中，synthetic_occurrences.json包含2文件/7实际行/11重叠pattern命中/0未分类，以及完整路径、原始字节SHA256、行号、data_mode=fixture、b07596c源码blob和源行。主控与非作者reviewer核对局部hash分类后再修安全根因；本Agent未更改原日志、全局scan规则或验收状态。

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { ApiProblem, getCsrfToken, getCurrentUser, loginSession, logoutSession, publicProblem, type CurrentUser } from "../api/client";
+import { ApiProblem, getSessionSnapshot, loginSession, logoutSession, publicProblem, type CurrentUser } from "../api/client";
 
 type SessionState = { kind: "loading" } | { kind: "anonymous" } | { kind: "authenticated"; user: CurrentUser };
 
@@ -32,11 +32,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     setLogoutUnconfirmed(false);
     try {
-      const user = await getCurrentUser(signal);
-      const token = await getCsrfToken(signal);
+      const snapshot = await getSessionSnapshot(signal);
       if (generation !== requestGeneration.current || signal?.aborted) return;
-      csrfToken.current = token;
-      setState({ kind: "authenticated", user });
+      csrfToken.current = snapshot.csrfToken;
+      setState({ kind: "authenticated", user: snapshot.user });
     } catch (failure: unknown) {
       if (generation !== requestGeneration.current || signal?.aborted) return;
       const problem = publicProblem(failure);
@@ -59,11 +58,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLogoutUnconfirmed(false);
     try {
       const session = await loginSession(username, password);
-      const user = await getCurrentUser();
-      if (session.user_id !== user.user_id) throw new ApiProblem(502, "invalid_response", true);
+      const snapshot = await getSessionSnapshot();
+      if (session.user_id !== snapshot.user.user_id) throw new ApiProblem(502, "invalid_response", true);
       if (generation !== requestGeneration.current) return;
-      csrfToken.current = session.csrf_token;
-      setState({ kind: "authenticated", user });
+      csrfToken.current = snapshot.csrfToken;
+      setState({ kind: "authenticated", user: snapshot.user });
     } catch (failure: unknown) {
       if (generation !== requestGeneration.current) return;
       setState({ kind: "anonymous" });

@@ -1,0 +1,31 @@
+frontend/tests\t40_frontend_shell.test.tsx:52:    if (path === "/v1/auth/csrf") return authenticated ? jsonResponse({ csrf_token: "fixture-memory-csrf", header_name: "X-CSRF-Token" }) : problemResponse(401, "unauthenticated");
+frontend/tests\t40_frontend_shell.test.tsx:56:      return jsonResponse({ user_id: fixtureUser.user_id, csrf_token: "fixture-memory-csrf", expires_at: "2026-10-15T00:00:00+08:00" });
+frontend/tests\t40_frontend_shell.test.tsx:197:      if (input === "/v1/auth/csrf") return authenticated ? jsonResponse({ csrf_token: "fixture-csrf", header_name: "X-CSRF-Token" }) : problemResponse(401, "unauthenticated");
+frontend/src\api\client.ts:21:  csrf_token: string;
+frontend/src\api\client.ts:110:export async function getCurrentUser(signal?: AbortSignal): Promise<CurrentUser> {
+frontend/src\api\client.ts:114:export async function getCsrfToken(signal?: AbortSignal): Promise<string> {
+frontend/src\api\client.ts:116:  if (!isRecord(value) || !isNonEmptyString(value.csrf_token) || value.header_name !== "X-CSRF-Token") return invalidResponse();
+frontend/src\api\client.ts:117:  return value.csrf_token;
+frontend/src\api\client.ts:120:export async function loginSession(username: string, password: string): Promise<LoginSession> {
+frontend/src\api\client.ts:122:  if (!isRecord(value) || !isNonEmptyString(value.user_id) || !isNonEmptyString(value.csrf_token) || !isNonEmptyString(value.expires_at)) return invalidResponse();
+frontend/src\api\client.ts:124:  return { user_id: value.user_id, csrf_token: value.csrf_token, expires_at: value.expires_at };
+frontend/src\api\client.ts:127:export async function logoutSession(csrfToken: string): Promise<void> {
+frontend/src\api\client.test.ts:3:import { ApiProblem, getCsrfToken, getCurrentUser, getReadiness, loginSession, logoutSession } from "./client";
+frontend/src\api\client.test.ts:16:    expect(await getCurrentUser()).toEqual(fixtureUser);
+frontend/src\api\client.test.ts:18:    await expect(getCurrentUser()).rejects.toMatchObject({ code: "invalid_response" });
+frontend/src\api\client.test.ts:23:    await expect(getCurrentUser()).rejects.toBeInstanceOf(ApiProblem);
+frontend/src\api\client.test.ts:28:    await expect(getCurrentUser()).rejects.toMatchObject({ message: "操作未完成，请重试或联系管理员。", traceId: undefined, retryable: true });
+frontend/src\api\client.test.ts:33:    await expect(getCurrentUser()).rejects.toMatchObject({ message: "操作未完成，请重试或联系管理员。" });
+frontend/src\api\client.test.ts:45:    mockResponse({ csrf_token: "fixture-csrf", header_name: "Authorization" });
+frontend/src\api\client.test.ts:46:    await expect(getCsrfToken()).rejects.toMatchObject({ code: "invalid_response" });
+frontend/src\api\client.test.ts:55:    mockResponse({ user_id: "fixture-user", csrf_token: "fixture-csrf", expires_at: "never" });
+frontend/src\api\client.test.ts:56:    await expect(loginSession("fixture-user", "fixture-password")).rejects.toMatchObject({ code: "invalid_response" });
+frontend/src\api\client.test.ts:61:    await expect(logoutSession("fixture-csrf")).rejects.toMatchObject({ code: "invalid_response" });
+frontend/src\api\client.test.ts:69:    const request = getCurrentUser();
+frontend/src\app\auth-session.tsx:3:import { ApiProblem, getCsrfToken, getCurrentUser, loginSession, logoutSession, publicProblem, type CurrentUser } from "../api/client";
+frontend/src\app\auth-session.tsx:35:      const user = await getCurrentUser(signal);
+frontend/src\app\auth-session.tsx:36:      const token = await getCsrfToken(signal);
+frontend/src\app\auth-session.tsx:61:      const session = await loginSession(username, password);
+frontend/src\app\auth-session.tsx:62:      const user = await getCurrentUser();
+frontend/src\app\auth-session.tsx:65:      csrfToken.current = session.csrf_token;
+frontend/src\app\auth-session.tsx:86:      await logoutSession(token);

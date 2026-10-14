@@ -22,6 +22,12 @@ export interface LoginSession {
   expires_at: string;
 }
 
+/** 同一次认证读取取得的身份与会话绑定 CSRF，不暴露到公开用户上下文。 */
+export interface SessionSnapshot {
+  user: CurrentUser;
+  csrfToken: string;
+}
+
 const errorMessages: Record<string, string> = {
   invalid_credentials: "用户名或密码不正确。",
   unauthenticated: "请登录后继续。",
@@ -109,6 +115,13 @@ function parseCurrentUser(value: unknown): CurrentUser {
 
 export async function getCurrentUser(signal?: AbortSignal): Promise<CurrentUser> {
   return parseCurrentUser(await fetchJson("/v1/auth/me", {}, signal));
+}
+
+export async function getSessionSnapshot(signal?: AbortSignal): Promise<SessionSnapshot> {
+  const value = await fetchJson("/v1/auth/me", {}, signal);
+  const user = parseCurrentUser(value);
+  if (!isRecord(value) || !isNonEmptyString(value.csrf_token)) return invalidResponse();
+  return { user, csrfToken: value.csrf_token };
 }
 
 export async function getCsrfToken(signal?: AbortSignal): Promise<string> {
