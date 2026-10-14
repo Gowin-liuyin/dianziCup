@@ -10,6 +10,6 @@ COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 COPY backend/src ./src
 COPY backend/migrations ./migrations
-RUN uv sync --locked --no-dev && mkdir -p /var/lib/ai-intel/raw && chown -R 10001:10001 /app /var/lib/ai-intel
+RUN uv sync --locked --no-dev && groupadd --gid 10001 ai-intel && useradd --uid 10001 --gid 10001 --create-home --no-log-init ai-intel && mkdir -p /var/lib/ai-intel/raw && chown -R 10001:10001 /app /var/lib/ai-intel
 USER 10001:10001
 CMD ["uvicorn", "ai_intel.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
