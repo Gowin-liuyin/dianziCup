@@ -215,6 +215,29 @@ def test_compose_caller_rejects_nonisolated_database(database_url: str) -> None:
         require_isolated_test_database(environment)
 
 
+@pytest.mark.parametrize(
+    "filename", ["compose.yaml", "compose.test.yaml", "compose.test.host.yaml"]
+)
+def test_frontend_cache_mounts_are_owned_by_the_frozen_nonroot_node_user(filename: str) -> None:
+    result = render_configuration(filename, configuration_environment())
+    assert result.returncode == 0, result.stderr
+    frontend = json.loads(result.stdout)["services"]["frontend"]
+    mounts: dict[str, str] = {}
+    for mount in frontend["tmpfs"]:
+        path, _, mount_options = mount.partition(":")
+        mounts[path] = mount_options
+    for path in ("/app/node_modules/.vite", "/app/node_modules/.vite-temp"):
+        options = dict(option.split("=", 1) for option in mounts[path].split(",") if "=" in option)
+        assert options.get("uid") == "1000"
+        assert options.get("gid") == "1000"
+        mode = int(options.get("mode", "0"), 8)
+        assert mode & 0o700 == 0o700
+        assert mode & 0o077 == 0
+    assert frontend["read_only"] is True
+    assert "ALL" in frontend["cap_drop"]
+    assert frontend["healthcheck"]["test"]
+
+
 def test_dockerfiles_install_locked_packages_and_use_nonroot_users() -> None:
     backend = (PROJECT_ROOT / "infra/docker/backend.Dockerfile").read_text(encoding="utf-8")
     frontend = (PROJECT_ROOT / "infra/docker/frontend.Dockerfile").read_text(encoding="utf-8")
