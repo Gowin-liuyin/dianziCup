@@ -206,6 +206,44 @@ class RecoveryPlanTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn(code, result.stdout)
 
+    def accept_recovery_packages(self, package_ids: list[str]) -> None:
+        """Approve synthetic slices without accepting their larger original T cards."""
+        reference = "reports/reviews/synthetic_package_acceptance.md"
+        (self.root / reference).parent.mkdir(parents=True, exist_ok=True)
+        (self.root / reference).write_text(
+            "Synthetic independent review evidence for validator tests only.\n", encoding="utf-8"
+        )
+        manifest = mutate_json(
+            self.manifest_path,
+            lambda doc: doc["recovery"]["authority"].update(
+                {"status": "accepted", "review_ref": reference}
+            ),
+        )
+
+        def accept_packages(doc: dict) -> None:
+            for package_id in package_ids:
+                entry = (
+                    doc["recovery_tasks"]["R24"]["slices"][package_id[-1]]
+                    if package_id.startswith("R24-")
+                    else doc["recovery_tasks"][package_id]
+                )
+                entry.update(
+                    {
+                        "status": "accepted",
+                        "implementation": "complete",
+                        "verification": dict.fromkeys(VERIFICATION_SCOPES, "passed"),
+                        "evidence": [reference],
+                        "review_ref": reference,
+                    }
+                )
+                for slice_id in manifest["recovery"]["work_packages"][package_id]["output_slices"]:
+                    task_id = manifest["recovery"]["capability_slices"][slice_id]["original_task"]
+                    doc["tasks"][task_id]["slice_acceptance"][slice_id].update(
+                        {"status": "accepted", "evidence": [reference], "review_ref": reference}
+                    )
+
+        mutate_json(self.state_path, accept_packages)
+
     def test_recovery_plan_passes(self) -> None:
         result = run_verify(self.root)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -423,6 +461,102 @@ class RecoveryPlanTests(unittest.TestCase):
             ),
         )
         self.assert_violation("STATE_REVIEW_MISSING")
+
+    def test_accepted_recovery_package_requires_its_output_slices(self) -> None:
+        self.accept_recovery_packages(["R00", "R01"])
+        mutate_json(
+            self.state_path,
+            lambda doc: doc["tasks"]["T06"]["slice_acceptance"]["R01:T06"].update(
+                {"status": "pending"}
+            ),
+        )
+        self.assert_violation("STATE_RECOVERY_OUTPUT_SLICE")
+
+    def test_accepted_recovery_package_requires_consumed_slices(self) -> None:
+        self.accept_recovery_packages(["R00", "R01", "R02"])
+        mutate_json(
+            self.manifest_path,
+            lambda doc: doc["recovery"]["work_packages"]["R02"].update(
+                {"requires_slices": ["R01:T06"]}
+            ),
+        )
+        mutate_json(
+            self.state_path,
+            lambda doc: doc["tasks"]["T06"]["slice_acceptance"]["R01:T06"].update(
+                {"status": "pending"}
+            ),
+        )
+        self.assert_violation("STATE_RECOVERY_REQUIRED_SLICE")
+
+    def test_accepted_consumed_slice_needs_evidence_and_review(self) -> None:
+        self.accept_recovery_packages(["R00", "R01", "R02"])
+        mutate_json(
+            self.manifest_path,
+            lambda doc: doc["recovery"]["work_packages"]["R02"].update(
+                {"requires_slices": ["R01:T06"]}
+            ),
+        )
+        mutate_json(
+            self.state_path,
+            lambda doc: doc["tasks"]["T06"]["slice_acceptance"]["R01:T06"].update(
+                {"evidence": [], "review_ref": None}
+            ),
+        )
+        result = run_verify(self.root)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("EVIDENCE_MISSING: R01:T06", result.stdout)
+        self.assertIn("STATE_REVIEW_MISSING: R01:T06", result.stdout)
+
+    def test_accepted_slices_allow_recovery_while_original_task_stays_pending(self) -> None:
+        self.accept_recovery_packages(["R00", "R01", "R02"])
+        mutate_json(
+            self.manifest_path,
+            lambda doc: doc["recovery"]["work_packages"]["R02"].update(
+                {"requires_slices": ["R01:T06"]}
+            ),
+        )
+        state = json.loads(self.state_path.read_text(encoding="utf-8"))
+        self.assertEqual(state["tasks"]["T06"]["status"], "pending")
+        self.assertEqual(state["tasks"]["T06"]["slice_acceptance"]["R20:T06"]["status"], "pending")
+        result = run_verify(self.root)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_r24_a_requires_original_task_output_slice_acceptance(self) -> None:
+        self.accept_recovery_packages(RECOVERY_ORDER[: RECOVERY_ORDER.index("R24-A") + 1])
+        mutate_json(
+            self.state_path,
+            lambda doc: doc["tasks"]["T59"]["slice_acceptance"]["R24-A:T59"].update(
+                {"status": "pending"}
+            ),
+        )
+        self.assert_violation("STATE_RECOVERY_OUTPUT_SLICE")
+
+    def test_r24_b_requires_candidate_slice_acceptance(self) -> None:
+        self.accept_recovery_packages(RECOVERY_ORDER)
+        mutate_json(
+            self.manifest_path,
+            lambda doc: doc["recovery"]["work_packages"]["R24-B"].update(
+                {"requires_slices": ["R24-A:T59"]}
+            ),
+        )
+        mutate_json(
+            self.state_path,
+            lambda doc: doc["tasks"]["T59"]["slice_acceptance"]["R24-A:T59"].update(
+                {"status": "pending"}
+            ),
+        )
+        self.assert_violation("STATE_RECOVERY_REQUIRED_SLICE")
+
+    def test_r24_a_accepted_preserves_partial_aggregate(self) -> None:
+        self.accept_recovery_packages(RECOVERY_ORDER[: RECOVERY_ORDER.index("R24-A") + 1])
+        mutate_json(
+            self.state_path,
+            lambda doc: doc["recovery_tasks"]["R24"].update(
+                {"status": "in_progress", "implementation": "partial"}
+            ),
+        )
+        result = run_verify(self.root)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_t06_cannot_be_accepted_with_only_r01_slice(self) -> None:
         review_path = "reports/reviews/synthetic.md"

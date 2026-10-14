@@ -1,0 +1,86 @@
+R-T00 独立审查 · 复跑命令记录（工作目录一律 D:\dianzi）
+审查者：独立审查 subagent R-T00｜日期：2026-09-30｜时区：本地
+说明：本文件为 reports/reviews/R-T00.md 的补充运行记录；全程只读，未执行任何 Git 写操作。
+
+[运行 0] 21:05—21:06  只读取被审查文件（AGENTS.md、reports/tasks/T00.md、reports/acceptance/t00_checklist.md、docs/decisions/*5、docs/tasks/T00_repository_audit.md、docs/plan/02_architecture.md、docs/plan/10_provenance_decisions.md、progress/task_state.json、progress/blockers.md、progress/context_handoff.md、reports/runs/t01_hash_check.log、reports/runs/t01_materialization.log、reports/acceptance/devkit_materialization.md、reports/runs/t01_materialization_inventory.json（前 60 行）、reports/runs/t01_git_init.log）
+  退出码：0（工具读取成功）
+
+[运行 1] 21:07:11—21:07:11  Git 事实
+  命令：
+    git -C D:\dianzi rev-parse --is-inside-work-tree        -> exit 0, 输出 "true"
+    git -C D:\dianzi status --porcelain（仅计数）            -> exit 0, entries=16
+    git -C D:\dianzi log --oneline                          -> exit 128（无任何提交/HEAD 未解析）
+    git -C D:\dianzi branch --show-current                  -> exit 0, "main"
+    git -C D:\dianzi remote -v                              -> exit 0, origin -> https://github.com/Gowin-liuyin/dianziCup.git (fetch/push)
+  结论：现已 init（main + origin）、无任何提交；与 DEC-001/更正附录“T00 时点非 Git、T01 轮 init、至今无提交”一致。
+
+[运行 2] 21:07:12—21:07:12  4 个来源存档 SHA-256 复算（Get-FileHash -Algorithm SHA256）
+  AGENTS.md = D3E1B0B706707A4E6F01FEB431FEE3BB6AD7F589681D541F1D402869E8680319   vs t01_hash_check.log = 同 -> MATCH
+  赛题九_Agent工程开发计划与执行提示词_完整版.md = DBCE8BF92276A962E5FA8AABD487A327BC07F4A44C8CBC075F58DC4E9C66C117 -> MATCH
+  赛题九_编码Agent首次执行提示词.txt = 6BA29880D50CA2D8849E211BF83CC9A4A72AA22DE684C58AF09995C3ED60EDD6 -> MATCH
+  9 赛题九：网信产业应用赛道-…（奇安信科技集团股份有限公司）.pdf = 37F28BC38DB91EC0407551B1254C8BC882432A8488CE896C681E1210814C6CF3 -> MATCH
+  docs/references/competition_brief.pdf（副本）= 37F28BC38DB91EC0407551B1254C8BC882432A8488CE896C681E1210814C6CF3 -> 与原件一致
+  退出码：0
+
+[运行 3] 21:07:43—21:07:44  AGENTS.md 比对（根目录 vs .bootstrap/devkit-v1.0/AGENTS.md）
+  非空行 Compare-Object：project_nonempty=49 / staged_nonempty=49 -> IDENTICAL
+  字节比较：project 7483 字节（LF×81，无 CRLF）；staged 7484 字节（LF×82）；首差异位置 0 -> staged 开头多 1 个换行（拼接分节引入）
+  退出码：0
+
+[运行 4] 21:08—21:10  合并式工具链探测（首次尝试，失败）
+  命令：单次 pwsh 内连续执行 python/node/npm/uv/git/docker --version 与 docker info
+  结果：整批执行在 120s 预算内超时被终止（程序判定 timeout，输出未保留）；疑似 docker info 挂起
+  处置：如实记录为失败运行；改用带 30 秒看门狗与分步隔离的探测（见运行 6）
+
+[运行 5] 21:10:14—21:10:14  秘密存在性检查（仅变量名/文件名，不读值、不输出值）
+  命令：Get-ChildItem Env: 按名称模式 "KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|FOFA|OPENAI|ANTHROPIC|API" 匹配；仓库内按文件名模式 ^\.env($|\.)|credential|secret|\.pem$|\.pfx$|\.key$|id_rsa 匹配
+  结果：ENV_NAME_MATCH=0；FILE_MATCH=0
+  退出码：0
+
+[运行 6] 21:10:37—21:10:41  工具链与容器（分步、并行、各自独立）
+  E:\miniconda\python.exe --version -> exit 0, Python 3.13.11
+  node --version  -> exit 0, v24.13.1
+  npm --version   -> exit 0, 11.8.0（见运行 11 补充：与 T00 记录一致）
+  uv --version    -> exit 0, uv 0.10.9 (f675560f3 2026-03-06)
+  git --version   -> exit 0, git version 2.53.0.windows.1
+  docker --version-> exit 0, Docker version 29.2.0, build 0b9d198
+  docker info（Start-Process + 30s 看门狗）-> exit 1；stderr: failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine（守护进程未运行）
+  结论：与 T00 环境表、BLK-001 一致
+
+[运行 7] 21:12—21:13  物化清单与文件树核对（E:\miniconda\python.exe -c，标准库）
+  inventory 条目 99 = created 98 + skipped_newline_only_difference 1（AGENTS.md，存在）
+  98 个 created 文件：全部存在，SHA-256 与 inventory staged_sha256 逐一相符（missing=0, mismatch=0）
+  docs/plan=11（00—10 齐全）；docs/tasks=60（T00—T59 连续，缺号 0）；prompts=12；templates=8
+  拼接包 "# 文件：" 分节 = 99（与记录一致）；created 顶层分布 docs 76 / prompts 12 / templates 8 / 根 2
+  AGENTS.md 分节直接抽取比对：分节非空行 50 = 项目 49 + 尾部 "---" 分隔符；a[:49] == b（完全一致）
+  退出码：0
+
+[运行 8] 21:12:35—21:12:37  环境硬件（现状核实）
+  OS: Microsoft Windows 11 家庭版 中文版 10.0.26200 64 位
+  CPU: AMD Ryzen AI 9 HX 370, cores=12, logical=24
+  TotalVisibleMemoryMB=31817；FreePhysicalMemoryMB(now)=17311
+  磁盘空闲：C 425.8 / D 483.2 / E 63.5 / F 451.9 GB
+  py -0p：3.11（C:\Users\yinha\...\Python311）、uv CPython 3.14.3、uv CPython 3.12.13
+  退出码：0
+
+[运行 9] 21:13:25—21:13:25  uv Python 安装时间戳（解释“无 3.12”历史事实）
+  cpython-3.12.13-windows-x86_64-none  created=2026-09-30 21:11:17（晚于 T00 记录 18:53，出现在本审查进行中）
+  cpython-3.14.3-windows-x86_64-none   created=2026-03-10 08:58:51
+  E:\miniconda                        created=2026-02-14 02:43:11
+  退出码：0
+
+[运行 10] 21:13  秘密值泄漏扫描（审查者自查，只输出文件名与计数，不输出匹配内容）
+  扫描范围：reports/ progress/ docs/ contracts/ fixtures/ prompts/ templates/ scripts/ tests/ .bootstrap/（排除 .git、__pycache__、二进制）
+  模式：已知密钥前缀（sk-/ghp_/gho_/AKIA/xox*-/PRIVATE KEY）+ “键=值”赋值模式（排除 64 位十六进制哈希与占位词）
+  结果：可疑文件 0
+  退出码：0
+
+[运行 11] 21:13  冻结输入版本绑定（SHA-256，见 reports/reviews/R-T00.md §1）
+  18 个被审查/引用文件哈希已记入报告；退出码：0
+
+[未复核项 · not_run]
+  git ls-remote（远程 ref 数）：未联网复核，不推翻 T00 记录（exit 0、0 ref）
+  web_fetch -> github.com 工具层拒绝（BLK-005）：未复现
+  T00 时点“仅 4 个既有文件”的历史快照：无历史哈希可回溯，按报告 §3.2 证据强度口径评价
+
+[写入动作] 仅两处：reports/reviews/R-T00.md（本审查主报告）、reports/reviews/R-T00_runs.log（本文件）。未修改任何被审查文件，未更新 progress/*。

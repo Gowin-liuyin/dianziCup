@@ -1,14 +1,14 @@
 # R00 · 严格计划验证器工作包
 
 首次创建时间：2026-10-14T21:07:40+08:00
-本次写作开始时间：2026-10-14T21:07:40+08:00
-本次写作结束时间：2026-10-14T21:07:40+08:00
-最后更新时间：2026-10-14T21:07:40+08:00
-证据截止时间：2026-10-14T21:07:40+08:00
+本次写作开始时间：2026-10-14T21:41:05+08:00
+本次写作结束时间：2026-10-14T21:41:05+08:00
+最后更新时间：2026-10-14T21:41:05+08:00
+证据截止时间：2026-10-14T21:41:05+08:00
 任务状态：awaiting_review；实现状态：complete（仅本验证器工作包，不代表R00整卡或G-A通过）。
-实现Agent：r00_plan_validation；独立审查：尚未执行，由主控冻结后派新reviewer。
+实现/修复Agent：r00_plan_validation；独立初审冻结d752fe0发现RV-02，定向修复仍awaiting_review。本文作者未担任独立reviewer；主控派原reviewer复核。
 共享工作区：`D:\dianzi`；分支：`codex/full-delivery-recovery`。
-代码版本：基于HEAD `b8199ce5dd0a7920ce5770e4f580fe23e0fe9f6b` 的未提交diff，精确内容hash见`reports/runs/recovery_r00_validator_20261014/delivery_snapshot.json`。未将该HEAD冒充已提交的新代码版本。
+代码版本：初轮历史快照基于b8199ce5，原delivery_snapshot.json保留；当前RV-02修复基于HEAD `d752fe0c8f14dd4c35b39863cfba0d1c902fffae` 的未提交diff，精确内容hash/diff见rv02_delivery_snapshot.json/rv02_changes.diff。未将基线HEAD冒充修复提交版本。
 提交/push：本工作包未提交、未push、未签accepted。
 
 ## 1. 输入输出与改动范围
@@ -77,3 +77,39 @@ CBM inbound trace实际返回`load_json ← run_all_checks ← main ← verify_p
 ## 7. 文档修订记录
 
 - 2026-10-14T21:07:40+08:00：r00_plan_validation首次创建，汇总实际红绿测试、静态检查、索引、重复字段纠偏依赖和未运行层。
+
+## 8. RV-02 · R包验收遗漏能力切片的定向修复
+
+本附录写作开始：2026-10-14T21:41:05+08:00；写作结束：2026-10-14T21:41:05+08:00。首次创建时间保持原值。本轮任务仍awaiting_review，未commit/push/登记accepted。
+
+独立缺陷发现时间：2026-10-14T21:31:32+08:00（review原始accepted_r02_missing_slices.json）。发现者为主控派出的独立reviewer，冻结代码d752fe0c8f14dd4c35b39863cfba0d1c902fffae。输入：authority、R00/R01/R02均accepted/complete，八层passed且证据/审查文件真实存在，但110个原T切片仍pending。预期失败并指出缺失能力；实际旧validator退出0。根因：accepted R节点只核对依赖R包状态，未读取requires_slices与output_slices对应的原T.slice_acceptance，允许包级绿灯绕过能力级验收。影响R00及所有后续恢复包的依赖放行；属于阻断合同完整性缺陷。
+
+本轮先在独立reviewer原临时副本只读复现，再新增7项行为测试。旧实现对4个消费/发布/R24切片负例退出0，其余新增证据/审查缺失负例、早期切片正例、R24部分聚合正例已有正确行为，全部保留。没有修改复现输入、manifest、state、评分门槛、金标或分母。
+
+修复新增16行脚本：在accepted执行节点循环中分别遍历requires_slices/output_slices，通过capability_slices.original_task定位所属T的slice_acceptance，未accepted分别报STATE_RECOVERY_REQUIRED_SLICE/STATE_RECOVERY_OUTPUT_SLICE。原函数前半段已经对每个accepted T切片检查全部evidence为存在的项目内文件、review_ref有效存在；本修复复用该完整证据检查，避免另建验收真相或重复证据逻辑。R节点自身审查、完整实现、验证状态和包依赖检查继续保留。
+
+不要求原T卡先accepted：正例中R00/R01/R02所需和输出切片均独立accepted、有真实可读合成测试证据，R20:T06仍pending，整张T06仍pending，validator退出0。此正例证明没有将T06后段安全增强反锁早期R02。R24-A/B同样从原T的A/B切片读验收，聚合R24继续由slices.A/B控制；A独立accepted、聚合partial/in_progress的正例退出0，A输出未验收和B消费A未验收都退出1。
+
+修复代码编辑瞬间未单独打时标，历史未记录；实际修复在最终回归开始前已落地，执行时间如下。修复版本是未提交diff，hash见rv02_delivery_snapshot.json。问题状态：实现修复、自动复验通过、待独立reviewer复核；未写关闭时间或accepted。
+
+| 命令 | 实际开始/结束（+08:00） | 退出码 | 实际结果 | run索引 |
+|---|---|---:|---|---|
+| `python scripts/verify_plan.py --root reports/runs/recovery_r00_review_1_20261014/temporary_copies/accepted_r02_missing_slices` | 2026-10-14T21:35:10+08:00 / 2026-10-14T21:35:11+08:00 | 0 | 独立review临时副本：错误返回PLAN_OK；缺陷复现 | `rv02_repro_before.json` |
+| `python -m unittest discover -s tests/plan -p test_recovery_plan.py -v` | 2026-10-14T21:36:37+08:00 / 2026-10-14T21:36:45+08:00 | 1 | 31项，27过/4失败/0skip；4个新负例暴露RV-02 | `rv02_red_tests.json` |
+| `python -m unittest discover -s tests/plan -p test_*.py -v` | 2026-10-14T21:37:35+08:00 / 2026-10-14T21:37:47+08:00 | 0 | 56项，56过/0失败/0skip；原16+恢复24+公共9+新增7全部保留 | `rv02_final_regression.json` |
+| `python scripts/verify_plan.py --root reports/runs/recovery_r00_review_1_20261014/temporary_copies/accepted_r02_missing_slices` | 2026-10-14T21:38:30+08:00 / 2026-10-14T21:38:30+08:00 | 1 | 同一review临时副本：PLAN_INVALID，20项输入/输出切片未验收；预期退出1 | `rv02_repro_after.json` |
+| `python scripts/verify_plan.py` | 2026-10-14T21:38:30+08:00 / 2026-10-14T21:38:30+08:00 | 0 | 当前真实manifest/state：PLAN_OK；退出0 | `rv02_repository_check.json` |
+| `uv run ruff check ../scripts/verify_plan.py ../tests/plan/test_verify_plan.py ../tests/plan/test_recovery_plan.py` | 2026-10-14T21:38:27+08:00 / 2026-10-14T21:38:27+08:00 | 0 | 3文件，无诊断 | `rv02_ruff.json` |
+| `uv run ruff format --check ../scripts/verify_plan.py ../tests/plan/test_verify_plan.py ../tests/plan/test_recovery_plan.py` | 2026-10-14T21:38:27+08:00 / 2026-10-14T21:38:27+08:00 | 0 | 3文件，格式一致 | `rv02_format.json` |
+| `uv run mypy --follow-imports=skip ../scripts/verify_plan.py` | 2026-10-14T21:38:27+08:00 / 2026-10-14T21:38:28+08:00 | 0 | 1脚本，无类型错误 | `rv02_mypy.json` |
+| `WSL codebase-memory-mcp v0.11.0 cli --json index_repository --repo-path /mnt/d/dianzi/scripts --name dianzi-recovery-validator --mode fast` | 2026-10-14T21:39:25+08:00 / 2026-10-14T21:39:32+08:00 | 0 | scripts安全窄索引刷新；cache工作区外 | `rv02_cbm_index_after_run.json` |
+
+全部run索引/原始日志位于reports/runs/recovery_r00_validator_20261014/。最终回归stdout为rv02_final_regression.log，56项是49个既有+7新增，不能把多次复跑数量相加。复现后日志rv02_repro_after.log实际列出20项缺失切片，当前repo仍PLAN_OK，证明修复阻止错误accepted而不把当前awaiting_review误判失效。
+
+CBM修改前refresh/inbound trace记录于rv02_cbm_index_before.json/rv02_cbm_trace.json，实际链为check_task_state←run_all_checks←main←模块入口；rg/源码交叉核查只此共享状态校验函数承担CLI验证。修改后独立窄索引刷新见rv02_cbm_index_after.json，对应精确代码hash见rv02_delivery_snapshot.json，cache未提交。
+
+改动范围：scripts/verify_plan.py、tests/plan/test_recovery_plan.py、本报告与本run目录新增证据；tests/plan/test_verify_plan.py未修改，公共9项合同回归未改。复用标准库和已有slice证据检查，无新依赖。主控的.gitattributes/冻结字节纠偏与本修复分离，本文未代修或验收RV-01。
+
+新限制：accepted R包必须在原T状态中具有可追溯的消费与发布切片验收，否则失败；独立准备和awaiting_review状态未被升级为accepted的强门，仍按既有合同调度。review_ref存在不证明评审者独立、内容支持或日志真执行，该语义核对仍由独立reviewer承担。产品integration/security/frontend/e2e/live/manual保持not_run，本修复没有产品live结果。
+
+文档修订：2026-10-14T21:41:05+08:00，r00_plan_validation补RV-02复现、最小修复、56项回归和未提交hash，保留原首次创建时间、历史失败及原验证记录；结束时刻2026-10-14T21:41:05+08:00。

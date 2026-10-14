@@ -623,6 +623,7 @@ def check_state_entry(entry: dict, label: str, root: Path, require_all_scopes: b
 
 
 def check_task_state(state_doc: dict, manifest: dict, root: Path) -> list[str]:
+    """Validate accepted slice evidence before recovery nodes consume or publish it."""
     violations: list[str] = []
     tasks_state = require_object(state_doc.get("tasks", {}), "tasks")
     recovery = manifest.get("recovery")
@@ -716,6 +717,21 @@ def check_task_state(state_doc: dict, manifest: dict, root: Path) -> list[str]:
             entry = recovery_states.get(package_id, {})
         if entry.get("status") != "accepted":
             continue
+        for field, error_code in (
+            ("requires_slices", "STATE_RECOVERY_REQUIRED_SLICE"),
+            ("output_slices", "STATE_RECOVERY_OUTPUT_SLICE"),
+        ):
+            for slice_id in package.get(field, []):
+                original_task = (
+                    recovery.get("capability_slices", {}).get(slice_id, {}).get("original_task")
+                )
+                slice_entry = (
+                    tasks_state.get(original_task, {}).get("slice_acceptance", {}).get(slice_id, {})
+                )
+                if slice_entry.get("status") != "accepted":
+                    violations.append(
+                        f"{error_code}: {package_id}的{field}切片{slice_id}尚未独立验收"
+                    )
         for dependency in package.get("depends_on", []):
             dependency_entry = (
                 r24_slices.get(dependency[-1], {})

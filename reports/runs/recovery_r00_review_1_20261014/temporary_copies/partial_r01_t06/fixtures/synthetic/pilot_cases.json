@@ -1,0 +1,471 @@
+{
+  "schema_version": 1,
+  "dataset": "pilot_synthetic_dev_cases",
+  "generated_by": "T01 (agent-drafted)",
+  "notice": "全部为合成案例（is_synthetic=true），仅用于开发与合同测试；不混入真实开发人口、盲测集或演示真值。所有 expected_result 均为 Agent 起草的『待复核提案』，未经人工核验，不得作为人工已确认金标。不使用真实 CVE 编号。",
+  "review_state_vocabulary": ["待复核提案", "人工已确认", "已裁决"],
+  "cases": [
+    {
+      "case_id": "SYN-REV-001",
+      "scenario": "公告修订：受影响范围扩大",
+      "data_kind": "revision",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "document_v1": { "published_at": "T0", "affected": ["prodA<=1.2"] },
+        "document_v2": { "published_at": "T1", "affected": ["prodA<=1.2", "prodB<=3.0"] },
+        "assets": [{ "asset_id": "A1", "product": "prodA", "version": "1.1" }, { "asset_id": "B1", "product": "prodB", "version": "2.9" }]
+      },
+      "expected_result": {
+        "old_findings_kept": ["A1@v1 受影响（历史结论保留）"],
+        "new_candidates": ["B1 为新增候选，触发重判"],
+        "revalidation": "范围扩大的新增部分不得覆盖或删除旧版本事实"
+      },
+      "expected_basis": "规则R-REV-01：范围扩大时新增受影响对象标记为新增候选并重判；旧版本事实保留历史，不被新版本覆盖。",
+      "covers_requirements": ["F1", "F2", "E1"],
+      "covers_tasks": ["T17", "T21", "T37"],
+      "expected_status": "new_candidates_and_history_kept",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『范围扩大』『新增命中』。"
+    },
+    {
+      "case_id": "SYN-REV-002",
+      "scenario": "公告修订：受影响范围缩小",
+      "data_kind": "revision",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "document_v1": { "published_at": "T0", "affected": ["prodA<=1.2", "prodC<=0.9"] },
+        "document_v2": { "published_at": "T1", "affected": ["prodA<=1.2"], "correction": "prodC 误列" },
+        "assets": [{ "asset_id": "C1", "product": "prodC", "version": "0.8" }]
+      },
+      "expected_result": {
+        "invalidated_findings": ["C1 原命中失效并重判"],
+        "history": "C1@v0 历史结论保留为『曾命中，已因修订失效』，不物理删除",
+        "negative_cache": "C1 的空/负结果缓存必须失效后重建"
+      },
+      "expected_basis": "规则R-REV-02：范围缩小使旧命中失效重判；历史保留并标注失效原因；相关缓存失效。",
+      "covers_requirements": ["F1", "F2", "E1"],
+      "covers_tasks": ["T21", "T36", "T37", "T38"],
+      "expected_status": "old_hits_invalidated_history_kept",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『范围缩小』『旧结果残留』。"
+    },
+    {
+      "case_id": "SYN-REV-003",
+      "scenario": "公告修订序列 A→B→A 回退",
+      "data_kind": "revision",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "revision_chain": [
+          { "version": "A", "statement": "受影响 <=1.2" },
+          { "version": "B", "statement": "仅 1.2 受影响" },
+          { "version": "A'", "statement": "受影响 <=1.2（回退到A）" }
+        ],
+        "as_of_queries": ["T(A)", "T(B)", "T(A')"]
+      },
+      "expected_result": {
+        "timeline": "三个版本各自可查，A' 与 A 内容相同但作为独立版本记录",
+        "as_of": "T(B) 时点查询不得泄漏 A' 内容",
+        "current": "当前结论以 A' 为准，B 不被删除"
+      },
+      "expected_basis": "规则R-TIME-01：原文修订不覆盖历史；双时间（valid/transaction）查询按请求时点返回当时已知结论。",
+      "covers_requirements": ["F1", "F3", "E1"],
+      "covers_tasks": ["T17", "T37", "T38"],
+      "expected_status": "versioned_timeline_correct",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『A→B→A修订』。"
+    },
+    {
+      "case_id": "SYN-VER-001",
+      "scenario": "版本区间包含边界（fixed 版本边界）",
+      "data_kind": "version_range",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "affected_range": "prodX >=1.0, <1.9 (fixed in 1.9)",
+        "assets": [
+          { "asset_id": "X1", "version": "1.8.9" },
+          { "asset_id": "X2", "version": "1.9" },
+          { "asset_id": "X3", "version": "1.10" }
+        ]
+      },
+      "expected_result": {
+        "X1": "affected",
+        "X2": "not_affected（fixed 边界含等于）",
+        "X3": "not_affected"
+      },
+      "expected_basis": "规则R-VER-01：区间为左闭右开 [1.0, 1.9)；fixed 版本本身不属于受影响集合；判断以生态化版本比较为准。",
+      "covers_requirements": ["F2", "P2", "F3"],
+      "covers_tasks": ["T26", "T27", "T28"],
+      "expected_status": "boundary_matrix_passed",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『fixed边界』。"
+    },
+    {
+      "case_id": "SYN-VER-002",
+      "scenario": "版本 1.10 与 1.9 的字符串比较陷阱",
+      "data_kind": "version_range",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "affected_range": "prodY <1.9",
+        "assets": [
+          { "asset_id": "Y1", "version": "1.10" },
+          { "asset_id": "Y2", "version": "1.9" }
+        ]
+      },
+      "expected_result": { "Y1": "not_affected", "Y2": "not_affected" },
+      "expected_basis": "规则R-VER-02：版本按生态数值段比较，1.10 > 1.9；字符串字典序（'1.10'<'1.9'）不得参与判断。",
+      "covers_requirements": ["F2", "P2"],
+      "covers_tasks": ["T26"],
+      "expected_status": "numeric_version_compare",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『版本1.10与1.9』。"
+    },
+    {
+      "case_id": "SYN-VER-003",
+      "scenario": "多分支修复（backport 分支）",
+      "data_kind": "version_range",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "branches": [
+          { "branch": "1.8.x", "fixed_in": "1.8.5" },
+          { "branch": "1.9.x", "fixed_in": "1.9.2" }
+        ],
+        "assets": [
+          { "asset_id": "Z1", "version": "1.8.4" },
+          { "asset_id": "Z2", "version": "1.9.1" },
+          { "asset_id": "Z3", "version": "1.8.5" }
+        ]
+      },
+      "expected_result": { "Z1": "affected", "Z2": "affected", "Z3": "not_affected" },
+      "expected_basis": "规则R-VER-03：按分支分别套用修复边界；1.8.5 已含 backport 修复，不受 1.9.x 修复缺失影响。",
+      "covers_requirements": ["F2", "P2"],
+      "covers_tasks": ["T26", "T27"],
+      "expected_status": "per_branch_boundary_passed",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『多分支』。"
+    },
+    {
+      "case_id": "SYN-UNK-001",
+      "scenario": "资产版本未知",
+      "data_kind": "assessment",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "asset": { "asset_id": "U1", "product": "prodA", "version": "unknown" },
+        "affected_range": "prodA<=1.2"
+      },
+      "expected_result": {
+        "assessment": "unknown",
+        "forbidden": ["not_affected", "affected"],
+        "reason": "版本未知不能推断否定或肯定"
+      },
+      "expected_basis": "不变量：未知不等于否定。规则R-UNK-01：关键条件缺失时结论为 unknown 并记录缺口。",
+      "covers_requirements": ["F2", "F3", "P2"],
+      "covers_tasks": ["T27", "T28"],
+      "expected_status": "unknown_preserved",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『未知版本』。"
+    },
+    {
+      "case_id": "SYN-CONF-001",
+      "scenario": "来源冲突：NVD 评级与厂商公告结论不一致",
+      "data_kind": "conflict",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "source_nvd": { "severity": "HIGH", "claim": "可远程利用" },
+        "source_vendor": { "severity": "MEDIUM", "claim": "需本地访问" },
+        "both_verified": true
+      },
+      "expected_result": {
+        "conflict_flag": true,
+        "retained": "两条事实都保留并关联各自证据位置",
+        "resolution": "标 conflict_pending_adjudication，不静默取高或取低"
+      },
+      "expected_basis": "规则R-CONF-01：可信来源冲突时双保留+冲突标记+待裁决；模型假设不等于事实，不自动覆盖。",
+      "covers_requirements": ["F2", "P2", "F3"],
+      "covers_tasks": ["T21", "T22"],
+      "expected_status": "conflict_retained",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『冲突来源』。"
+    },
+    {
+      "case_id": "SYN-CONF-002",
+      "scenario": "模型抽取字段与原文不符",
+      "data_kind": "conflict",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "source_span": "原文：『修复版本 1.9』",
+        "extracted_field": { "fixed_in": "1.8" },
+        "extraction_model": "synthetic-model"
+      },
+      "expected_result": {
+        "authoritative": "原文 span",
+        "extracted_field_status": "rejected_pending_review",
+        "evidence": "保留原文证据定位，抽取结果不得覆盖原文事实"
+      },
+      "expected_basis": "规则R-CONF-02：引文存在不等于内容支持；抽取与原文冲突时以原文为准并记录抽取失败。",
+      "covers_requirements": ["F2", "P3"],
+      "covers_tasks": ["T20", "T21"],
+      "expected_status": "source_span_authoritative",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『模型格式错误』。"
+    },
+    {
+      "case_id": "SYN-EMPTY-001",
+      "scenario": "资产外部观察为空结果",
+      "data_kind": "asset_observation",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "fofa_query": "合成查询（非真实资产）",
+        "observation": "empty_result",
+        "asset_inventory": { "asset_id": "E1", "declared": true }
+      },
+      "expected_result": {
+        "conclusion": "not_observed（不是 not_exists）",
+        "assessment_effect": "资产研判不因观察为空而改判 not_affected",
+        "statistics": "空结果计入观察记录与覆盖分母"
+      },
+      "expected_basis": "规则R-EMPTY-01：空观察不等于资产不存在；线索不等于确认。",
+      "covers_requirements": ["F2", "P2", "E1"],
+      "covers_tasks": ["T25", "T28"],
+      "expected_status": "not_observed_recorded",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『FOFA无结果』。"
+    },
+    {
+      "case_id": "SYN-EMPTY-002",
+      "scenario": "负缓存失效：空结果后出现新观察",
+      "data_kind": "cache_invalidation",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "t0": { "query": "Q1", "result": "empty", "cached_negative": true },
+        "t1": { "new_observation": "asset seen", "trigger": "增量采集新增候选" }
+      },
+      "expected_result": {
+        "cache": "t0 空结果缓存在 t1 事件后失效",
+        "revalidation": "相关研判重算并区分旧空结果与新命中",
+        "stale_guard": "索引滞后时不得把已知失效结论当作 current 返回"
+      },
+      "expected_basis": "规则R-EMPTY-02：更新必须覆盖旧命中、新增命中和原来的空结果；负缓存随新证据失效。",
+      "covers_requirements": ["F1", "F3", "E1"],
+      "covers_tasks": ["T37", "T38"],
+      "expected_status": "negative_cache_invalidated",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『空结果缓存』『负缓存失效』。"
+    },
+    {
+      "case_id": "SYN-TENANT-001",
+      "scenario": "跨租户隔离：读/搜/导出/日志",
+      "data_kind": "security_boundary",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "tenant_a": { "assets": ["A-SECRET"], "events": ["EV-A"] },
+        "tenant_b_request": ["read A-SECRET", "search EV-A", "export A-SECRET", "read audit log of A"]
+      },
+      "expected_result": {
+        "all_requests": "denied_or_empty_for_b",
+        "forbidden": ["跨租户读", "跨租户搜命中", "跨租户导出", "跨租户日志可见"],
+        "identity_source": "租户身份取自认证上下文而非请求体"
+      },
+      "expected_basis": "规则R-TENANT-01：租户隔离覆盖读、搜、导出、日志四类路径；请求体自报身份不可信。",
+      "covers_requirements": ["F3", "E1", "X1"],
+      "covers_tasks": ["T06", "T35", "T45"],
+      "expected_status": "isolation_enforced",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『跨租户读/搜/导出/日志』。"
+    },
+    {
+      "case_id": "SYN-PERS-001",
+      "scenario": "个性化差异：不同订阅产生不同推荐",
+      "data_kind": "recommendation",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "user_1": { "subscriptions": ["prodA"], "assets": ["A1"] },
+        "user_2": { "subscriptions": ["prodB"], "assets": ["B1"] },
+        "event": "合成事件 EV-P 同时影响 prodA 与 prodB"
+      },
+      "expected_result": {
+        "user_1": "推荐含 prodA 影响与 A1 资产结论，理由引用证据",
+        "user_2": "推荐含 prodB 影响与 B1 资产结论，理由引用证据",
+        "divergence": "两用户推荐集合与理由不同，可解释差异来源"
+      },
+      "expected_basis": "规则R-PERS-01：推荐随订阅与资产差异而不同；理由必须引用可核验证据。",
+      "covers_requirements": ["F3", "P3"],
+      "covers_tasks": ["T39", "T43"],
+      "expected_status": "personalized_divergence",
+      "review_state": "待复核提案",
+      "notes": "对应用户故事『个性化』。"
+    },
+    {
+      "case_id": "SYN-PERS-002",
+      "scenario": "推荐撤回：修订否决原结论后撤销推荐",
+      "data_kind": "recommendation",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "t0": { "recommendation": "EV-R 影响 A1，建议处置", "delivered": true },
+        "t1": { "revision": "EV-R 修订：A1 不受影响", "action": "撤回" }
+      },
+      "expected_result": {
+        "withdrawal": "已送达推荐生成撤回通知并说明依据（修订链接）",
+        "reassessment": "A1 研判重算，旧结论保留历史",
+        "no_quiet_rewrite": "不得静默改写已送达记录"
+      },
+      "expected_basis": "规则R-PERS-02：修订撤回必须显式通知并保留历史；当前结论不等于历史结论。",
+      "covers_requirements": ["F3", "P3", "E1"],
+      "covers_tasks": ["T39", "T37"],
+      "expected_status": "withdrawal_notified",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『推荐退订/撤回』。"
+    },
+    {
+      "case_id": "SYN-TIME-001",
+      "scenario": "历史时间边界：as-of 查询不泄漏未来修订",
+      "data_kind": "temporal",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "facts": [
+          { "fact": "F-v1", "valid_from": "T0", "valid_to": "T1" },
+          { "fact": "F-v2", "valid_from": "T1", "valid_to": null }
+        ],
+        "queries": [{ "as_of": "T0.5", "ask": "F 状态" }, { "as_of": "T1.5", "ask": "F 状态" }]
+      },
+      "expected_result": {
+        "T0.5": "返回 F-v1",
+        "T1.5": "返回 F-v2",
+        "forbidden": "T0.5 查询返回 F-v2"
+      },
+      "expected_basis": "规则R-TIME-02：双时间查询按 as-of 时点返回当时已知事实；时间测试只使用当时已获知数据。",
+      "covers_requirements": ["F3", "P3"],
+      "covers_tasks": ["T38", "T37"],
+      "expected_status": "as_of_isolated",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『时间测试只使用当时已获知的数据』。"
+    },
+    {
+      "case_id": "SYN-TIME-002",
+      "scenario": "发布时间缺失的时效统计",
+      "data_kind": "temporal",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "item": { "source": "合成来源S", "published_at": null, "ingested_at": "T5", "first_observed_at": "T4" }
+      },
+      "expected_result": {
+        "delay": "不可计算（不得用 ingested 或 first_observed 冒充 published）",
+        "statistics": "计入『无有效时间数』单列，不进延迟分位分母，也不从覆盖统计删除",
+        "forbidden": ["构造发布时间"]
+      },
+      "expected_basis": "规则R-TIME-03：不知道发布时间时不造时间；延迟=ingested_at-source_published_at，缺失单列。",
+      "covers_requirements": ["P1", "F1"],
+      "covers_tasks": ["T16", "T48", "T49"],
+      "expected_status": "missing_time_reported",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『FOFA缺观察时间』与时效统计要求。"
+    },
+    {
+      "case_id": "SYN-LINK-001",
+      "scenario": "事件归并：转载与译文归入同一事件家族",
+      "data_kind": "event_linking",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "items": [
+          { "item_id": "S1", "lang": "en", "type": "original" },
+          { "item_id": "S2", "lang": "zh", "type": "translation_of_S1" },
+          { "item_id": "S3", "lang": "en", "type": "reprint_of_S1" }
+        ]
+      },
+      "expected_result": {
+        "event_family": "S1/S2/S3 → 同一 event_family_id",
+        "dedup": "事实不因转载/译文重复计数",
+        "evidence": "各版本原文定位独立保留"
+      },
+      "expected_basis": "规则R-LINK-01：同事件译文/转载/修订整体分组；去重不删除证据版本。",
+      "covers_requirements": ["F1", "F2", "P2"],
+      "covers_tasks": ["T17", "T21"],
+      "expected_status": "merged_deduped",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『重复抓取』『去重』。"
+    },
+    {
+      "case_id": "SYN-DOC-001",
+      "scenario": "一篇公告含多个漏洞条目",
+      "data_kind": "structured_extraction",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "document": "合成公告：条目1 影响 prodA；条目2 影响 prodB",
+        "expected_facts": 2
+      },
+      "expected_result": {
+        "facts": "生成 2 条独立事实（SYN-F-001a / SYN-F-001b）",
+        "evidence_span": "各自证据定位指向公告内不同片段",
+        "no_double_count": "不合并为一条，也不复制为四条"
+      },
+      "expected_basis": "规则R-DOC-01：多漏洞同文逐条建事实并分别定位证据；每条事实可追溯到文档版本与证据位置。",
+      "covers_requirements": ["F1", "F2"],
+      "covers_tasks": ["T09", "T20", "T21"],
+      "expected_status": "per_clause_facts",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『多CVE同文』（使用合成条目，不用真实CVE编号）。"
+    },
+    {
+      "case_id": "SYN-EVID-001",
+      "scenario": "多跳问答删除关键证据",
+      "data_kind": "qa_evidence",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "question": "合成问题：prodA 的利用链与修复？（需要 2 跳：公告→论文→修复）",
+        "kb_full": "3 个证据片段",
+        "kb_removed": "删除修复片段（第3跳证据）"
+      },
+      "expected_result": {
+        "kb_full": "答案含修复建议并引用全部必要证据",
+        "kb_removed": "修复部分转 unknown 或明确说明证据缺失；不得凭模型记忆补答",
+        "citation": "引用存在且内容确实支持对应论断"
+      },
+      "expected_basis": "规则R-EVID-01：删除必要证据时结论降级为 unknown/缺失说明；引文存在不等于内容支持。",
+      "covers_requirements": ["F3", "P3"],
+      "covers_tasks": ["T31", "T35", "T43"],
+      "expected_status": "degrades_to_unknown",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『关键证据移除』。"
+    },
+    {
+      "case_id": "SYN-WITHDRAW-001",
+      "scenario": "来源 404 不等于撤回",
+      "data_kind": "source_lifecycle",
+      "is_synthetic": true,
+      "source_kind": "synthetic",
+      "input": {
+        "t0": { "url": "合成URL", "status": 200, "content_saved": true },
+        "t1": { "url": "合成URL", "status": 404 }
+      },
+      "expected_result": {
+        "conclusion": "source_unreachable（不是 withdrawn）",
+        "content": "t0 原文与结论保留",
+        "forbidden": ["把404当作撤回改判", "删除历史结论"]
+      },
+      "expected_basis": "规则R-WD-01：外部不可达不等于撤回或软件修复；来源失效只改来源状态，不改历史事实。",
+      "covers_requirements": ["F1", "F2", "E1"],
+      "covers_tasks": ["T16", "T21", "T37"],
+      "expected_status": "unreachable_not_withdrawn",
+      "review_state": "待复核提案",
+      "notes": "对应边界目录『404非撤回』。"
+    }
+  ]
+}

@@ -1,3 +1,11 @@
+## 最新检查点 · 2026-10-14T21:38:17+08:00
+
+R00冻结checkpoint=d752fe0c8f14dd4c35b39863cfba0d1c902fffae；尚未push/尚未生效。新独立reviewer /root/r00_independent_review 在 C:/Users/yinha/.codex/worktrees/recovery-r00-review/dianzi 固定SHA审查。已独立复跑49/49，但发现RV-01 GitEOL改冻结fixture字节hash（root已仅attrs修3源保原字节，未改金标）及RV-02 accepted R包未检requires_slices实际验收（作者 /root/r00_plan_validation正在补负例/正例及output一致性）。待合并修复冻结新SHA→同reviewer定向复核，不新签G-A。
+
+Docker初诊 /root/docker_runtime_diagnosis已交付，旧AF_UNIX dockerInference对象1920/STATUS_IO_REPARSE_TAG_NOT_HANDLED导致Desktop启动失败，Move/restart两次无进展；新诊断 /root/docker_socket_root_cause 已控制socket对照证明正常AF_UNIX可rename，旧对象5种open均失败。主控批准下载官方Docker29.2.0 portable到WSL /tmp/dianzi-docker-static-r01-20261014，HTTPS/TLS与本地hash/tar路径校验，无系统安装/全局context改变；专用Unix/data-root/exec-root/pid、bridge=none/iptables=false、最长72h，准备等价真实Docker资源，不称原Desktop修复。报告/日志各唯一写集；资源是否ready待实测。
+
+provider_docs_probe已交付 G-A-provider-docs.md。DPAPI凭据仅外部秘密库引用，禁止派发值/进repo，网关api-key/x-quaketoken脱敏缺口R03必须先修再live。R01/T02/T03/T06/T40与08/09合同已读，准备正式业务分工必须等R00准确落实review通过。用户平台/UI优先/PPT后置。
+
 # 当前完整恢复批次交接 · 2026-10-14T21:15:16+08:00
 
 当前目标：R00–R24/T00–T59完整实施/独立review/真实验证/阶段push，目标保持active，不能仅一张卡停止。用户授权及全部正文prompts/12_full_delivery_parallel_push.txt已读，主控实际完整批次指令在当前聊天。
