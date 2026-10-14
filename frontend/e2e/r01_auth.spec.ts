@@ -46,6 +46,7 @@ test("T40-C06 real keyboard focus and 390px authenticated layout", async ({ page
   await expect(page.getByRole("link", { name: "跳到主要内容" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.locator("#main-content")).toBeFocused();
+  await expect(page.getByRole("button", { name: "刷新状态", exact: true })).toBeEnabled();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "刷新状态", exact: true })).toBeFocused();
   await loginWithRealApi(page);

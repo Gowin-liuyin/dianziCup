@@ -1,7 +1,7 @@
 # R01 · 认证工作台前端切片
 
 文档首次创建时间：历史未记录（2026-10-14T22:51:25+08:00是创建前实际时钟采样，不当作已知创建时刻）。
-本次写作开始时间：2026-10-14T22:51:25+08:00；写作结束/最后更新时间：2026-10-15T00:57:04+08:00。
+本次写作开始时间：2026-10-14T22:51:25+08:00；写作结束/最后更新时间：2026-10-15T01:20:28+08:00。
 实际实施开始时间：2026-10-14T22:24:19+08:00；本轮代码编写结束：2026-10-14T22:54:41+08:00；真实e2e仍未开始。
 状态：awaiting_review；实现状态：partial（当前前端代码已自检；真实 API 浏览器链尚未运行）。
 实现 Agent：/root/r01_frontend；独立审查：尚未发生。
@@ -143,3 +143,16 @@ recheck_rg_before.log保存修改前真实源码，含此前明确合成nonce赋
 
 状态仍awaiting_review/partial。本轮改动：e2e/r01_auth.spec.ts的C06、App依赖名、status映射及直接测试、本报告/专属日志。主控以新SHA重新运行3例并由独立reviewer定向复核后，才登记这一扩展切片通过；原T40/G-A不自动accepted。
 2026-10-15T00:57:04+08:00：追加真实访客键盘可达诊断、C06有明确起点的最小修复、worker/scheduler实际标签及42fixture回归；完整认证390px复验交主控，保留原失败。
+
+## 10. 健康请求完成前的键盘状态同步
+
+本次写作开始：2026-10-15T01:20:28+08:00；输入前端c2e96c11a5f0bb9d97f7a0a971eeac7310a1bef8。主控真实重跑backend b504＋c2前端，正常登录和离线恢复再次通过，C06的skip-link→MAIN实际已通过；新失败出现在健康请求尚未完成的刷新按钮。主仓browser_e2e_retry_3.stdout.log/XML原始失败保留：locator先disabled，随后enabled却inactive。HTML正确跳过disabled控件，后续enabled不会倒转既有焦点。本问题与前次文档起点不同，已有skip/main进展，不扩大产品UI修补。
+
+修改仅C06一行：MAIN聚焦确认后，await expect(刷新状态按钮).toBeEnabled()，再按Tab并保留原focus断言。没有sleep、额外retry循环、删除断言、修改产品disabled语义或另外两条e2e。
+
+真实无凭据访客诊断复用官方Chrome156与主控API28000，通过Playwright route.fetch取得真实本地ready响应，再用明确Promise gate延迟交付同一响应；没有编造响应体。对照不等待enabled时，Tab跳到username输入框且响应释放后仍在那里；用状态等待后，Tab实际聚焦刷新按钮。两个对照均实际断言，见keyboard_enabled_probe.json，完整实际时间/前端baseline/主控后端版本来源/浏览器版本/焦点记录与exit0。此为受控延迟的真实本地浏览器诊断，不是供应商live、性能时延或完整认证390px验收；未读取或录制账号秘密。
+
+npm run lint与typecheck各exit0，命令/真实时间/cwd/锁hash在keyboard_enabled_lint/typecheck.log/json。产品src未改，原42fixture结果仍来自c2的keyboard_test；本轮未把它们冒充新执行。完整3例需要主控在本新冻结SHA受控重跑，非作者复核新增状态等待、42fixture和录屏状态。trace/video仍off，本Agent没有密码录屏。
+
+各层：本轮frontend=passed（无凭据延迟对照）、lint/typecheck=passed；unit/contract沿用c2已记录但本轮not_run；完整e2e/security/integration/provider-live/manual本轮not_run。状态awaiting_review，主控复制配置保持未提交。临时25173服务已结束，不动主控API/worker。
+2026-10-15T01:20:28+08:00：仅增加C06可观察enabled同步，补真实响应受控延迟的负/正对照与静态检查，保留新旧失败并等待主控完整三例和独立复核。
