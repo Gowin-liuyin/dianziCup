@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import shlex
 import subprocess
 from pathlib import Path, PureWindowsPath
 from urllib.parse import urlsplit
@@ -223,3 +224,9 @@ def test_dockerfiles_install_locked_packages_and_use_nonroot_users() -> None:
     assert "RUN npm ci" in frontend
     assert "USER node" in frontend
     assert "COPY . " not in backend + frontend
+    for dockerfile in (backend, frontend):
+        for line in dockerfile.splitlines():
+            if line.startswith("COPY ") and "--from=" not in line:
+                arguments = [part for part in shlex.split(line)[1:] if not part.startswith("--")]
+                for source in arguments[:-1]:
+                    assert (PROJECT_ROOT / source).exists(), f"missing Docker build input: {source}"
