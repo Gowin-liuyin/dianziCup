@@ -1,6 +1,6 @@
 # 当前恢复交接 · 2026-10-14T22:19:34+08:00
 
-集成分支codex/full-delivery-recovery，R00被审代码15d0272bd2a9e25d19397d8147e9c3cbe6016f9b。依据reports/reviews/recovery/G-A-R00-review-1-recheck.md登记R00/三个切片accepted与CR生效，原整T仍未接受、G-A未通过。R01进入实现调度；质量与前端新worktree待创建，主控拥有API/settings/迁移/locks/infra/CI。PG/Redis专用受控资源详见reports/tasks/R01-resources.md，私有连接配置仅仓库外root600捕获并注入、不输出DSN。模型已授权DeepSeek deepseek-flash，两种协议须真实实现；embedding/rerank候选成熟本地语义模型仍待验证。人工金标与FOFA授权资产范围仍未提供。当前无push。
+集成分支codex/full-delivery-recovery，R00被审代码15d0272bd2a9e25d19397d8147e9c3cbe6016f9b。依据reports/reviews/recovery/G-A-R00-review-1-recheck.md登记R00/三个切片accepted与CR生效，原整T仍未接受、G-A未通过。R01进入实现调度；质量与前端新worktree待创建，主控拥有API/settings/迁移/locks/infra/CI。PG/Redis专用受控资源详见主仓尚未并入本R00冻结树的reports/tasks/R01-resources.md（随R01提交同步，资源smoke不签应用集成），私有连接配置仅仓库外root600捕获并注入、不输出DSN。模型已授权DeepSeek deepseek-flash，两种协议须真实实现；embedding/rerank候选成熟本地语义模型仍待验证。人工金标与FOFA授权资产范围仍未提供。当前无push。
 
 ## 最新检查点 · 2026-10-14T21:38:17+08:00
 

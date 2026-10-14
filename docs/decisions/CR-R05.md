@@ -1,10 +1,10 @@
 # CR-R05 · 来源断言、冲突与撤回
 
-状态：awaiting_review（用户建设决策已授权，待独立核对准确落实后生效）。
-首次记录/更新时间：2026-10-14T20:52:23+08:00
+状态：accepted（用户建设决策已授权，准确落实经独立核对生效）。
+首次记录时间：2026-10-14T20:52:23+08:00；最后更新时间：2026-10-14T22:31:09+08:00
 提出/记录者：主控 /root。
 授权依据：`prompts/12_full_delivery_parallel_push.txt` §§1、7、9；用户当前明确批准CR-R01–CR-R09。
-独立审查：尚未发生；review_ref=null。
+独立审查：/root/r00_independent_review；review_ref=reports/reviews/recovery/G-A-R00-review-1-recheck.md；被审SHA=15d0272bd2a9e25d19397d8147e9c3cbe6016f9b。
 
 ## 原合同与问题
 
