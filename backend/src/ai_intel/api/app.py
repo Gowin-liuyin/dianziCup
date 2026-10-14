@@ -143,7 +143,11 @@ def build_health_router(
                     search = response.json()
                 dependencies["search"] = {
                     "state": "ready"
-                    if isinstance(search, dict) and search.get("status") in {"yellow", "green"}
+                    if (
+                        isinstance(search, dict)
+                        and isinstance(search.get("status"), str)
+                        and search["status"] in {"yellow", "green"}
+                    )
                     else "unavailable"
                 }
             except (httpx.HTTPError, ValueError):
