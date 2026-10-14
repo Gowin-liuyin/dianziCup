@@ -50,6 +50,16 @@ class AuthCase:
     account: UserAccount
 
 
+@dataclass(frozen=True)
+class AuthProcessPayload:
+    """进程管道载荷的repr隐藏凭据，即使启动失败也不能写进pytest参数日志。"""
+
+    username: str = ""
+    password: str = field(default="", repr=False)
+    client_key: str = ""
+    session_token: str = field(default="", repr=False)
+
+
 def build_service(engine: Engine) -> AuthenticationSessionService:
     return AuthenticationSessionService(
         DatabaseUserDirectory(engine),
@@ -87,30 +97,31 @@ def _process_session(pipe: Connection, action: str) -> None:
     service = build_service(engine)
     try:
         payload = pipe.recv()
+        assert isinstance(payload, AuthProcessPayload)
         if action == "issue":
-            username, password, client_key = payload
-            token, _ = service.login(username, password, ORIGIN, client_key)
+            token, _ = service.login(payload.username, payload.password, ORIGIN, payload.client_key)
             pipe.send(token)
         elif action == "read_revoke":
-            principal = service.validate_session(payload)
-            service.logout(payload)
+            principal = service.validate_session(payload.session_token)
+            service.logout(payload.session_token)
             pipe.send(principal.user_id)
         elif action == "attempt":
-            username, password, client_key = payload
             try:
-                service.login(username, password, ORIGIN, client_key)
+                service.login(payload.username, payload.password, ORIGIN, payload.client_key)
             except InvalidCredentialsError:
                 pipe.send(401)
             except LoginRateLimitedError:
                 pipe.send(429)
             else:
                 pipe.send(200)
+        elif action == "synthetic_startup_failure":
+            raise RuntimeError("controlled authentication child startup failure")
     finally:
         engine.dispose()
         pipe.close()
 
 
-def process_roundtrip(action: str, payload: object) -> tuple[int, object]:
+def process_roundtrip(action: str, payload: AuthProcessPayload) -> tuple[int, object]:
     context = multiprocessing.get_context("spawn")
     parent, child = context.Pipe()
     process = context.Process(target=_process_session, args=(child, action))
@@ -135,10 +146,12 @@ def test_issue_read_revoke_across_two_independent_processes(
     pg_auth: AuthCase, record_property: Callable[[str, object], None]
 ) -> None:
     issuing_pid, token = process_roundtrip(
-        "issue", (pg_auth.username, pg_auth.password, pg_auth.username)
+        "issue", AuthProcessPayload(pg_auth.username, pg_auth.password, pg_auth.username)
     )
     assert isinstance(token, str)
-    revoking_pid, user_id = process_roundtrip("read_revoke", token)
+    revoking_pid, user_id = process_roundtrip(
+        "read_revoke", AuthProcessPayload(session_token=token)
+    )
     assert issuing_pid != revoking_pid
     record_property("issuing_pid", issuing_pid)
     record_property("revoking_pid", revoking_pid)
@@ -239,13 +252,30 @@ def test_eight_concurrent_requests_share_five_pg_reservations(pg_auth: AuthCase)
 def test_failure_limit_persists_across_independent_processes(pg_auth: AuthCase) -> None:
     for _ in range(5):
         _, status = process_roundtrip(
-            "attempt", ("test-missing", "synthetic-password", pg_auth.username)
+            "attempt", AuthProcessPayload("test-missing", "synthetic-password", pg_auth.username)
         )
         assert status == 401
     _, status = process_roundtrip(
-        "attempt", ("test-missing", "synthetic-password", pg_auth.username)
+        "attempt", AuthProcessPayload("test-missing", "synthetic-password", pg_auth.username)
     )
     assert status == 429
+
+
+def test_child_startup_failure_trace_hides_live_test_credentials(
+    pg_auth: AuthCase, capfd: pytest.CaptureFixture[str]
+) -> None:
+    token, _ = pg_auth.service.login(pg_auth.username, pg_auth.password, ORIGIN, pg_auth.username)
+    payload = AuthProcessPayload(
+        pg_auth.username, pg_auth.password, pg_auth.username, session_token=token
+    )
+    with pytest.raises(EOFError) as failure:
+        process_roundtrip("synthetic_startup_failure", payload)
+    captured = capfd.readouterr()
+    failure_text = str(failure.getrepr(showlocals=False)) + captured.err + repr(payload)
+    safe = pg_auth.password not in failure_text and token not in failure_text
+    assert safe, "controlled process failure exposed authentication test credentials"
+    assert "controlled authentication child startup failure" in captured.err
+    assert "AuthProcessPayload" in failure_text
 
 
 def test_success_preserves_another_instances_inflight_reservation(pg_auth: AuthCase) -> None:
