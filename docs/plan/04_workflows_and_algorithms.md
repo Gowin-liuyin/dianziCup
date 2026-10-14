@@ -154,3 +154,8 @@ Orchestrator管理可检查目标/预算/停止；Collector采集；Triage相关
 使用固定版本的OpenVEX schema和本地映射测试[S10]。unknown/conflict/stale通常under_investigation。supported_applicability不能不经映射规则自动宣布真实利用；not_affected必须有与声明范围匹配的排除依据；只阻断一条已知路径不得直接导出整体not_affected。fixed需要明确修复与当前版本证据。
 
 没有足够映射依据则输出内部证据报告而不是伪造VEX状态。非CVE风险不强行映射。导出必须检查tenant和证据范围，并保存格式版本、作者配置与生成时间。
+
+
+### R00生效登记 · 2026-10-14T22:19:34+08:00
+
+冻结15d0272bd2a9e25d19397d8147e9c3cbe6016f9b经[独立定向复核](../../reports/reviews/recovery/G-A-R00-review-1-recheck.md)确认R00与三个输出切片accepted，CR-R01–09准确落实生效；前述awaiting_review为其所标日期的历史状态。后续按manifest.recovery能力DAG推进；原T最终前置/全部切片/六验收、人工金标与阶段门保持。G-A仍in_progress，R01–03尚未验收。

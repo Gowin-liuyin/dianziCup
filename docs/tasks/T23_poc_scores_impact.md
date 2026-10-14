@@ -74,6 +74,6 @@ cd backend && uv run pytest tests/contract/test_t23_poc_scores_impact.py -v
 
 自检通过进入awaiting_review；没有独立验收不自行写accepted。存在安全、合同或数据问题标needs_changes/blocked。默认本轮到此停止；有界批处理按同阶段顺序继续，遇阶段检查点或风险变更停止。
 
-## 恢复合并验收附录（R00 / CR-R07待核验）
+## 恢复合并验收附录（R00 / CR-R07已独立核验生效）
 
 最终需要：R07:T23、R08:T23、R10:T23。原C01–C06、实施范围、引用合同和原前置保留。恢复执行前置按manifest.recovery.work_packages.requires_slices；最终前置仍为原depends_on。单R完成不得自动验收整卡；独立review须核对当前冻结版本/真实证据。记录时间：2026-10-14T21:05:58+08:00。

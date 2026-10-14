@@ -36,4 +36,7 @@ T17/T19–T23/T27/T28/T37/T38；R02/R07/R10/R11/R16；F2/P2/F3。不改官方评
 
 ## 批准记录
 
-建设决策：用户已授权。准确落实核验：awaiting_review。生效依据将在独立审查报告冻结后追加，记录其被审SHA与报告路径，主控不自签。
+建设决策：用户已授权。准确落实核验：accepted（独立意见见下方生效记录）。生效依据将在独立审查报告冻结后追加，记录其被审SHA与报告路径，主控不自签。
+
+
+2026-10-14T22:19:34+08:00：依据独立reviewer /root/r00_independent_review 的 [reports/reviews/recovery/G-A-R00-review-1-recheck.md](../../reports/reviews/recovery/G-A-R00-review-1-recheck.md)，冻结代码15d0272bd2a9e25d19397d8147e9c3cbe6016f9b上的准确落实核验通过并生效。主控仅登记该意见；本单产品实现结果仍按各R卡独立验收，原整T与G-A不自动通过。

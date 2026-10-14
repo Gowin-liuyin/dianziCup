@@ -160,3 +160,8 @@ requires_slices是可核验能力前置，depends_on是R工作包DAG；原T卡fi
 R19工具/候选在R04真实闭环独立通过后，正式冻结依赖完整覆盖+双人核验；R20基础从R01、R22观测从首真实链分版本、R24骨架从R00。资源阻塞时独立开发须review记录安全独立理由，不等于阶段通过。
 
 T55/T56完整候选材料和原验收在R24-A，新文档reviewer先试部署；R23再整体干净复现。T59需A候选清单+B最终冻结；复现后实质材料修改须复核新版本，避免T57前置T55/T56与B依赖R23互锁。T51在R20仅CI切片，原T48性能前置仍待R21。
+
+
+### R00生效登记 · 2026-10-14T22:19:34+08:00
+
+冻结15d0272bd2a9e25d19397d8147e9c3cbe6016f9b经[独立定向复核](../../reports/reviews/recovery/G-A-R00-review-1-recheck.md)确认R00与三个输出切片accepted，CR-R01–09准确落实生效；前述awaiting_review为其所标日期的历史状态。后续按manifest.recovery能力DAG推进；原T最终前置/全部切片/六验收、人工金标与阶段门保持。G-A仍in_progress，R01–03尚未验收。

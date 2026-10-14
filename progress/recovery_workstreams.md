@@ -19,3 +19,8 @@
 后续业务实现从主控已提交正确合同基线建独立worktree，每个独立代码索引；review冻结SHA，作者可在另worktree继续。主控核实精确diff/commit与日志后集成，不以“完成”消息替代验收。
 
 2026-10-14T21:22:01+08:00：R00候选最终49合同/计划测试通过，三实现/分析包均交付。provider_docs_probe报告已交付（官方文档，不是live）；docker_runtime_diagnosis独立安全诊断在途。R00独立review待新Agent，业务实现尚未启动。
+
+2026-10-14T22:07:43+08:00：R00修复候选15d0272由r00_independent_review在独立worktree定向复核；r01_resources仅准备外部PG/Redis和Compose插件与自身报告；r01_quality仅只读设计检查入口，代码所有权为scripts/dev.py、backend/tests/conftest.py、T02 unit、T03/T05/T07 integration、T07 jobs contract、新R01质量合同及自身报告；收到批准baseline前不写业务。主控负责公共接口/locks/迁移/infra/CI，当前无前端实现者。
+
+
+2026-10-14T22:19:34+08:00：独立reviewer /root/r00_independent_review 已在冻结15d0272bd2a9e25d19397d8147e9c3cbe6016f9b完成56/56与静态检查、切片正负例、新干净Windows/WSL基线0/0。依据[reports/reviews/recovery/G-A-R00-review-1-recheck.md](../reports/reviews/recovery/G-A-R00-review-1-recheck.md)仅登记R00与三个R00输出切片accepted、九CR生效；原整T不自动接受，G-A未过门、未push。R01质量/前端从该批准合同基线独立worktree实施。真实PG16.14/pgvector0.8.2与Redis7.4.11资源已认证读写/重启/负例，仍非应用集成。

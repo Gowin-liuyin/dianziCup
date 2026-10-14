@@ -151,3 +151,8 @@ AnswerDraft：conclusions[]（text、kind=source_fact/rule_result/project_sugges
 内部上述证据/ACL/历史合同保持；公共八对象定义见contracts/schemas/public_api_v2.json。ask为kind=completed/task联合，task返回轮询句柄且无answer强制字段；check_stack四态含reason_code，无匹配或unsupported不叫clean。同步最多200组件；独立上传最大10485760字节/10000组件异步解析，不是同数组超限自动202。六只读MCP工具和本人订阅写工具经共享业务与PG认证，stdio stdout只协议。REST增加/api/v1路径兼容适配，分页/8k预算不拆断事实证据；客户端实测与三扩展沙箱在R18。
 
 CLI退出码冻结：0=成功、无确认高风险且结论确定；1=存在确认高风险（结果仍显示其他未知）；2=未确认高风险但存在unknown/conflict/unsupported；3=执行/认证/网络失败。严重等级筛选参数须文档化，不能把0称绝对安全。
+
+
+### R00生效登记 · 2026-10-14T22:19:34+08:00
+
+冻结15d0272bd2a9e25d19397d8147e9c3cbe6016f9b经[独立定向复核](../../reports/reviews/recovery/G-A-R00-review-1-recheck.md)确认R00与三个输出切片accepted，CR-R01–09准确落实生效；前述awaiting_review为其所标日期的历史状态。后续按manifest.recovery能力DAG推进；原T最终前置/全部切片/六验收、人工金标与阶段门保持。G-A仍in_progress，R01–03尚未验收。

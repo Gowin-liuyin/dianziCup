@@ -160,3 +160,8 @@ Recommendation：recommendation_id、subscription_id、event_id、assessment_id�
 Pydantic输出schema→保存JSON Schema→API生成OpenAPI→前端生成或维护严格匹配类型。不要手工创建两套不同枚举。
 
 迁移使用Alembic。测试空库升级、上一版本升级、备份恢复；有数据的破坏性downgrade不自动执行。新增默认值不能改变既有unknown语义。
+
+
+### R00生效登记 · 2026-10-14T22:19:34+08:00
+
+冻结15d0272bd2a9e25d19397d8147e9c3cbe6016f9b经[独立定向复核](../../reports/reviews/recovery/G-A-R00-review-1-recheck.md)确认R00与三个输出切片accepted，CR-R01–09准确落实生效；前述awaiting_review为其所标日期的历史状态。后续按manifest.recovery能力DAG推进；原T最终前置/全部切片/六验收、人工金标与阶段门保持。G-A仍in_progress，R01–03尚未验收。

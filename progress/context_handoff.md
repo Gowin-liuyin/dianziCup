@@ -1,3 +1,7 @@
+# 当前恢复交接 · 2026-10-14T22:19:34+08:00
+
+集成分支codex/full-delivery-recovery，R00被审代码15d0272bd2a9e25d19397d8147e9c3cbe6016f9b。依据reports/reviews/recovery/G-A-R00-review-1-recheck.md登记R00/三个切片accepted与CR生效，原整T仍未接受、G-A未通过。R01进入实现调度；质量与前端新worktree待创建，主控拥有API/settings/迁移/locks/infra/CI。PG/Redis专用受控资源详见reports/tasks/R01-resources.md，私有连接配置仅仓库外root600捕获并注入、不输出DSN。模型已授权DeepSeek deepseek-flash，两种协议须真实实现；embedding/rerank候选成熟本地语义模型仍待验证。人工金标与FOFA授权资产范围仍未提供。当前无push。
+
 ## 最新检查点 · 2026-10-14T21:38:17+08:00
 
 R00冻结checkpoint=d752fe0c8f14dd4c35b39863cfba0d1c902fffae；尚未push/尚未生效。新独立reviewer /root/r00_independent_review 在 C:/Users/yinha/.codex/worktrees/recovery-r00-review/dianzi 固定SHA审查。已独立复跑49/49，但发现RV-01 GitEOL改冻结fixture字节hash（root已仅attrs修3源保原字节，未改金标）及RV-02 accepted R包未检requires_slices实际验收（作者 /root/r00_plan_validation正在补负例/正例及output一致性）。待合并修复冻结新SHA→同reviewer定向复核，不新签G-A。

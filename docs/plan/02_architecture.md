@@ -119,3 +119,8 @@ PostgreSQL保存 `JobRun` 与业务任务状态。Celery状态只用于队列观
 ## 9. 不增加的基础设施
 
 不增加Kafka、Kubernetes、Agent自动安装平台、全能插件商店或自研认证协议。CR-R02明确批准pgvector/Neo4j/MinIO/脱敏追踪，依赖版本与容量在R01真实核实后锁定。不训练基础模型、不重做所有第三方产品能力。新增基础设施必须有明确瓶颈与维护成本说明。
+
+
+### R00生效登记 · 2026-10-14T22:19:34+08:00
+
+冻结15d0272bd2a9e25d19397d8147e9c3cbe6016f9b经[独立定向复核](../../reports/reviews/recovery/G-A-R00-review-1-recheck.md)确认R00与三个输出切片accepted，CR-R01–09准确落实生效；前述awaiting_review为其所标日期的历史状态。后续按manifest.recovery能力DAG推进；原T最终前置/全部切片/六验收、人工金标与阶段门保持。G-A仍in_progress，R01–03尚未验收。

@@ -1,0 +1,34 @@
+tests/plan\test_verify_plan.py:58:        for slice_entry in entry.get("slice_acceptance", {}).values():
+tests/plan\test_recovery_plan.py:159:                "slice_acceptance": {
+tests/plan\test_recovery_plan.py:241:                    doc["tasks"][task_id]["slice_acceptance"][slice_id].update(
+tests/plan\test_recovery_plan.py:268:            entry["slice_acceptance"]["R00:T00"].update(
+tests/plan\test_recovery_plan.py:469:            lambda doc: doc["tasks"]["T06"]["slice_acceptance"]["R01:T06"].update(
+tests/plan\test_recovery_plan.py:473:        self.assert_violation("STATE_RECOVERY_OUTPUT_SLICE")
+tests/plan\test_recovery_plan.py:485:            lambda doc: doc["tasks"]["T06"]["slice_acceptance"]["R01:T06"].update(
+tests/plan\test_recovery_plan.py:489:        self.assert_violation("STATE_RECOVERY_REQUIRED_SLICE")
+tests/plan\test_recovery_plan.py:501:            lambda doc: doc["tasks"]["T06"]["slice_acceptance"]["R01:T06"].update(
+tests/plan\test_recovery_plan.py:520:        self.assertEqual(state["tasks"]["T06"]["slice_acceptance"]["R20:T06"]["status"], "pending")
+tests/plan\test_recovery_plan.py:524:    def test_r24_a_requires_original_task_output_slice_acceptance(self) -> None:
+tests/plan\test_recovery_plan.py:528:            lambda doc: doc["tasks"]["T59"]["slice_acceptance"]["R24-A:T59"].update(
+tests/plan\test_recovery_plan.py:532:        self.assert_violation("STATE_RECOVERY_OUTPUT_SLICE")
+tests/plan\test_recovery_plan.py:534:    def test_r24_b_requires_candidate_slice_acceptance(self) -> None:
+tests/plan\test_recovery_plan.py:544:            lambda doc: doc["tasks"]["T59"]["slice_acceptance"]["R24-A:T59"].update(
+tests/plan\test_recovery_plan.py:548:        self.assert_violation("STATE_RECOVERY_REQUIRED_SLICE")
+tests/plan\test_recovery_plan.py:573:            entry["slice_acceptance"]["R01:T06"].update(
+scripts\verify_plan.py:89:def load_json(path: Path) -> dict:
+scripts\verify_plan.py:625:def check_task_state(state_doc: dict, manifest: dict, root: Path) -> list[str]:
+scripts\verify_plan.py:649:        slice_acceptance = require_object(
+scripts\verify_plan.py:650:            entry.get("slice_acceptance", {}), f"{task_id}.slice_acceptance"
+scripts\verify_plan.py:652:        if set(declared_slices) != set(required_slices) or set(slice_acceptance) != set(
+scripts\verify_plan.py:656:        for slice_id, slice_value in slice_acceptance.items():
+scripts\verify_plan.py:657:            slice_entry = require_object(slice_value, f"{task_id}.slice_acceptance.{slice_id}")
+scripts\verify_plan.py:678:            if slice_acceptance.get(slice_id, {}).get("status") != "accepted":
+scripts\verify_plan.py:721:            ("requires_slices", "STATE_RECOVERY_REQUIRED_SLICE"),
+scripts\verify_plan.py:722:            ("output_slices", "STATE_RECOVERY_OUTPUT_SLICE"),
+scripts\verify_plan.py:729:                    tasks_state.get(original_task, {}).get("slice_acceptance", {}).get(slice_id, {})
+scripts\verify_plan.py:842:    requirements_doc = load_json(contract_paths["contracts/requirements.json"])
+scripts\verify_plan.py:843:    manifest = load_json(contract_paths["contracts/task_manifest.json"])
+scripts\verify_plan.py:844:    cases_doc = load_json(contract_paths["fixtures/synthetic/pilot_cases.json"])
+scripts\verify_plan.py:846:    state_doc = load_json(state_path) if state_path.is_file() else {"tasks": {}}
+scripts\verify_plan.py:855:    violations.extend(check_task_state(state_doc, manifest, root))
+scripts\verify_plan.py:858:            compare_baseline(load_json(baseline_path), requirements_doc, cases_doc, contract_paths)

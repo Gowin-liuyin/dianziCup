@@ -281,3 +281,8 @@ R19 的标注工具和候选集在 R04 真实闭环独立通过后准备，R05�
 ## R00落实与现行执行入口
 
 记录时间：2026-10-14T21:05:58+08:00；准确落实awaiting_review。全部60T/110切片/26执行节点以manifest.recovery为机器可校验合同，原T前置与C01–C06完整保留。正文任务映射已与覆盖索引同步。九变更单各有兼容/迁移/回滚/影响。旧重复键状态原字节归档progress/history/task_state_pre_recovery_8e265dc.json.txt；当前八层验证不默认passed。T55/T56候选原卡验收归R24-A；T59候选A+最终B；A后整R24保持partial。
+
+
+### R00生效登记 · 2026-10-14T22:19:34+08:00
+
+冻结15d0272bd2a9e25d19397d8147e9c3cbe6016f9b经[独立定向复核](../../reports/reviews/recovery/G-A-R00-review-1-recheck.md)确认R00与三个输出切片accepted，CR-R01–09准确落实生效；前述awaiting_review为其所标日期的历史状态。后续按manifest.recovery能力DAG推进；原T最终前置/全部切片/六验收、人工金标与阶段门保持。G-A仍in_progress，R01–03尚未验收。
