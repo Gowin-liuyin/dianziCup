@@ -8,7 +8,7 @@ import secrets
 import time
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from threading import Lock
 from typing import Protocol
@@ -62,7 +62,7 @@ class UserAccount:
 
     user_id: str
     username: str
-    password_hash: str
+    password_hash: str = field(repr=False)
     tenant_id: str | None
     role: Role
 
@@ -71,10 +71,10 @@ class UserAccount:
 class SessionRecord:
     """不透明会话记录: 过期或注销即失效。"""
 
-    session_id: str
+    session_id: str = field(repr=False)
     user_id: str
     expires_at: datetime
-    csrf_token: str
+    csrf_token: str = field(repr=False)
     revoked: bool = False
 
 
@@ -189,6 +189,50 @@ class DatabaseUserDirectory:
         )
 
 
+@dataclass(frozen=True)
+class AuditEvent:
+    """固定审计字段，不携带会话、凭据或任意请求正文。"""
+
+    audit_id: str
+    event_type: str
+    actor_user_id: str | None
+    tenant_id: str | None
+    trace_id: str
+    reason: str | None
+    submitted_keys: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class AuditPage:
+    """范围化审计游标页；游标仅为稳定排序位置。"""
+
+    events: tuple[AuditEvent, ...]
+    next_cursor: str | None
+
+
+class AuthenticationStateStore(Protocol):
+    """PG状态边界；会话签发与占位释放、成功审计必须原子提交。"""
+
+    def reserve_login_attempt(self, client_key: str, now: datetime) -> str: ...
+
+    def successful_login(
+        self, client_key: str, attempt_id: str, record: SessionRecord, now: datetime
+    ) -> None: ...
+
+    def authenticated_session(
+        self, session_hash: str, now: datetime
+    ) -> tuple[Principal, SessionRecord]: ...
+
+    def revoke_session(self, session_hash: str, now: datetime) -> None: ...
+
+    def append_audit(self, event_type: str, fields: dict[str, str], now: datetime) -> None: ...
+
+    def read_audit_events(
+        self, scope: AccessScope, *, limit: int = 20, cursor: str | None = None
+    ) -> AuditPage: ...
+
+
 class AuthenticationSessionService:
     """登录/注销/会话校验 + 登录限流 + 审计事件(脱敏)。"""
 
@@ -198,12 +242,15 @@ class AuthenticationSessionService:
         allowed_origins: tuple[str, ...],
         cookie_secure: bool,
         clock: Callable[[], datetime] | None = None,
+        *,
+        state_store: AuthenticationStateStore | None = None,
     ) -> None:
         self._user_directory = user_directory
         self._allowed_origins = allowed_origins
         self._cookie_secure = cookie_secure
         self._clock = clock or (lambda: datetime.now(UTC))
         self._password_hasher = PasswordHasher()
+        self._state_store = state_store
         self._sessions: dict[str, SessionRecord] = {}
         self._login_attempts: dict[str, dict[str, float]] = {}
         self._login_lock = Lock()
@@ -240,7 +287,12 @@ class AuthenticationSessionService:
             self._password_hasher.verify(account.password_hash, password)
         except VerifyMismatchError:
             self._append_audit(
-                "login_failed", {"reason": "invalid_credentials", "trace_id": str(uuid.uuid4())}
+                "login_failed",
+                {
+                    "user_id": account.user_id,
+                    "reason": "invalid_credentials",
+                    "trace_id": str(uuid.uuid4()),
+                },
             )
             raise InvalidCredentialsError("invalid credentials") from None
         session_token = secrets.token_urlsafe(32)
@@ -250,16 +302,24 @@ class AuthenticationSessionService:
             expires_at=self._clock() + timedelta(seconds=SESSION_TTL_SECONDS),
             csrf_token=secrets.token_urlsafe(32),
         )
-        self._sessions[self._session_key(session_token)] = session_record
-        with self._login_lock:
-            self._login_attempts.get(client_key, {}).pop(attempt_id, None)
-        self._append_audit(
-            "login_succeeded", {"user_id": account.user_id, "trace_id": str(uuid.uuid4())}
-        )
+        if self._state_store is not None:
+            self._state_store.successful_login(
+                client_key, attempt_id, session_record, self._clock()
+            )
+        else:
+            self._sessions[self._session_key(session_token)] = session_record
+            with self._login_lock:
+                self._login_attempts.get(client_key, {}).pop(attempt_id, None)
+            self._append_audit(
+                "login_succeeded", {"user_id": account.user_id, "trace_id": str(uuid.uuid4())}
+            )
         return session_token, session_record
 
     def logout(self, session_token: str) -> None:
         """注销: 立即失效, 重复注销幂等。"""
+        if self._state_store is not None:
+            self._state_store.revoke_session(self._session_key(session_token), self._clock())
+            return
         session_record = self._sessions.get(self._session_key(session_token))
         if session_record is not None:
             session_record.revoked = True
@@ -274,6 +334,10 @@ class AuthenticationSessionService:
 
     def authenticated_session(self, session_token: str) -> tuple[Principal, SessionRecord]:
         """一次会话及账户读取，绑定身份与CSRF；不组合两次HTTP会话快照。"""
+        if self._state_store is not None:
+            return self._state_store.authenticated_session(
+                self._session_key(session_token), self._clock()
+            )
         session_record = self._sessions.get(self._session_key(session_token))
         if (
             session_record is None
@@ -305,13 +369,7 @@ class AuthenticationSessionService:
         self, session_token: str, csrf_token: str, origin: str | None
     ) -> None:
         """写请求必须会话有效、CSRF 令牌匹配且 Origin 合法。"""
-        session_record = self._sessions.get(self._session_key(session_token))
-        if (
-            session_record is None
-            or session_record.revoked
-            or session_record.expires_at <= self._clock()
-        ):
-            raise SessionExpiredError("session is not valid")
+        _, session_record = self.authenticated_session(session_token)
         if not csrf_token.isascii() or not hmac.compare_digest(
             session_record.csrf_token, csrf_token
         ):
@@ -324,8 +382,18 @@ class AuthenticationSessionService:
         return {"httponly": True, "samesite": "strict", "secure": self._cookie_secure}
 
     def audit_events(self) -> list[dict[str, str]]:
-        """审计事件副本: 供测试与审计接口消费。"""
+        """旧显式内存fixture兼容；PG审计必须通过范围化分页接口。"""
+        if self._state_store is not None:
+            raise AuditEventError("persistent audit requires authenticated access scope")
         return [dict(event) for event in self._audit_events]
+
+    def read_audit_events(
+        self, scope: AccessScope, *, limit: int = 20, cursor: str | None = None
+    ) -> AuditPage:
+        """认证上下文的审计范围，不允许无scope读取持久化审计。"""
+        if self._state_store is None:
+            raise AuditEventError("persistent audit store is not configured")
+        return self._state_store.read_audit_events(scope, limit=limit, cursor=cursor)
 
     def record_identity_spoof_attempt(self, submitted_fields: dict[str, str]) -> None:
         """请求体携带自报身份字段时记录安全审计事件(仅记字段名与 trace_id, 不记值)。"""
@@ -341,6 +409,8 @@ class AuthenticationSessionService:
 
     def _reserve_login_attempt(self, client_key: str) -> str:
         """昂贵目录/密码IO前原子占位；成功登录不能清除其他在途尝试。"""
+        if self._state_store is not None:
+            return self._state_store.reserve_login_attempt(client_key, self._clock())
         with self._login_lock:
             now_epoch = time.time()
             attempts = {
@@ -363,4 +433,7 @@ class AuthenticationSessionService:
             lowered = key.lower()
             if any(marker in lowered for marker in SENSITIVE_AUDIT_MARKERS):
                 raise AuditEventError(f"sensitive field refused in audit event: {key}")
-        self._audit_events.append({"event_type": event_type, **fields})
+        if self._state_store is not None:
+            self._state_store.append_audit(event_type, fields, self._clock())
+        else:
+            self._audit_events.append({"event_type": event_type, **fields})
