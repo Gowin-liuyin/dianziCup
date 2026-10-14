@@ -1,74 +1,168 @@
-# T03 开发依赖服务编排（本机隔离开发，不对外暴露数据服务）
-#
-# 资源限制、健康检查与持久卷按 docs/tasks/T03_development_services.md §4 配置;
-# 数据库/搜索端口仅绑定 127.0.0.1, 不暴露公网。
+x-backend: &backend
+  build:
+    context: ../..
+    dockerfile: infra/docker/backend.Dockerfile
+    args:
+      PYTHON_IMAGE: ${PYTHON_IMAGE:?Set a verified Python 3.12 image digest}
+      UV_IMAGE: ${UV_IMAGE:?Set a verified uv image digest}
+  environment: &backend-environment
+    APP_ENV: ${APP_ENV:-development}
+    DATA_MODE: live
+    DATABASE_URL: ${DATABASE_URL:?Inject the application PostgreSQL URL}
+    REDIS_URL: ${REDIS_URL:?Inject the authenticated Redis URL}
+    OPENSEARCH_URL: ${OPENSEARCH_URL:-}
+    ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?Set exact frontend origins as JSON}
+    RAW_CONTENT_DIRECTORY: /var/lib/ai-intel/raw
+  networks: [private]
+  init: true
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  volumes: [raw_content:/var/lib/ai-intel/raw]
+
 services:
   postgres:
-    image: postgres:16.4
-    profiles: ["core"]
+    image: pgvector/pgvector@sha256:00ba258a66dac104fd5171074a0084462a64a1369d8513f3d0a634e2f24d15bc
+    profiles: [core, app, worker, scheduler, frontend]
     environment:
-      POSTGRES_DB: ai_intel
-      POSTGRES_USER: ai_intel
-      POSTGRES_PASSWORD: dev-only-not-a-secret
-    ports:
-      - "127.0.0.1:5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      POSTGRES_DB: ${POSTGRES_DB:?Set the dedicated database name}
+      POSTGRES_USER: ${POSTGRES_USER:?Set the dedicated database user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Inject PostgreSQL credential}
+    ports: ["127.0.0.1:${POSTGRES_PORT:?Set an exclusive PostgreSQL port}:5432"]
+    networks: [private]
+    volumes: [postgres_data:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ai_intel -d ai_intel"]
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 5s
       timeout: 3s
-      retries: 12
-    deploy:
-      resources:
-        limits:
-          memory: 1g
-          cpus: "2.0"
+      retries: 18
+    mem_limit: 512m
+    cpus: 0.4
+    pids_limit: 128
 
   redis:
-    image: redis:7.4
-    profiles: ["core"]
-    command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "127.0.0.1:6379:6379"
-    volumes:
-      - redis_data:/data
+    image: redis@sha256:4fa24486b8bcca8eec45ee0eb166edc674795e53a2b53d1a9ef263eecebaac85
+    profiles: [core, app, worker, scheduler, frontend]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Inject Redis credential}
+    command: [/bin/sh, -ec, 'exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}"']
+    ports: ["127.0.0.1:${REDIS_PORT:?Set an exclusive Redis port}:6379"]
+    networks: [private]
+    volumes: [redis_data:/data]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$${REDIS_PASSWORD}" redis-cli ping | grep -x PONG']
       interval: 5s
       timeout: 3s
-      retries: 12
-    deploy:
-      resources:
-        limits:
-          memory: 512m
-          cpus: "1.0"
+      retries: 18
+    mem_limit: 128m
+    cpus: 0.1
+    pids_limit: 64
 
   opensearch:
-    image: opensearchproject/opensearch:2.17.0
-    profiles: ["search"]
+    image: opensearchproject/opensearch@sha256:7b9517dff561f54456fad947f11820fa595a340fd1034fc63d57b77f724b3f8f
+    profiles: [search]
     environment:
       discovery.type: single-node
-      plugins.security.disabled: "true"
-      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
-      # OpenSearch 2.12+ 的 demo 配置引导要求该变量; 本值为开发占位, 经环境注入, 非真实秘密。
-      OPENSEARCH_INITIAL_ADMIN_PASSWORD: Dev-Only-Not-A-Secret-1!
-    ports:
-      - "127.0.0.1:9200:9200"
-    volumes:
-      - opensearch_data:/usr/share/opensearch/data
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD:?Inject search credential}
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+      DISABLE_PERFORMANCE_ANALYZER_AGENT_CLI: "true"
+      node.store.allow_mmap: "false"
+    ports: ["127.0.0.1:${OPENSEARCH_PORT:?Set an exclusive search port}:9200"]
+    networks: [private]
+    volumes: [opensearch_data:/usr/share/opensearch/data]
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health || exit 1"]
+      test: [CMD-SHELL, 'curl -fsSk -u "admin:$${OPENSEARCH_INITIAL_ADMIN_PASSWORD}" https://localhost:9200/_cluster/health >/dev/null']
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 30s
+    mem_limit: 2g
+    cpus: 0.5
+    pids_limit: 256
+
+  api:
+    <<: *backend
+    profiles: [app, frontend]
+    command: [uvicorn, ai_intel.api.app:app, --host, 0.0.0.0, --port, "8000"]
+    ports: ["127.0.0.1:${API_PORT:?Set an exclusive API port}:8000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/v1/health/ready", timeout=5)']
+      interval: 10s
+      timeout: 6s
+      retries: 6
+    mem_limit: 384m
+    cpus: 0.25
+    pids_limit: 128
+
+  worker:
+    <<: *backend
+    profiles: [worker, scheduler]
+    command: [celery, -A, ai_intel.workers.runtime:celery_app, worker, --concurrency=1]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: [CMD-SHELL, 'celery -A ai_intel.workers.runtime:celery_app inspect ping --destination "celery@$${HOSTNAME}" --timeout 5']
+      interval: 15s
+      timeout: 8s
+      retries: 6
+    mem_limit: 384m
+    cpus: 0.25
+    pids_limit: 128
+
+  scheduler:
+    <<: *backend
+    profiles: [scheduler]
+    command: [celery, -A, ai_intel.workers.runtime:celery_app, beat, --schedule=/tmp/celerybeat-schedule, --pidfile=/tmp/celerybeat.pid]
+    depends_on:
+      worker: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, 'import os,pathlib; os.kill(int(pathlib.Path("/tmp/celerybeat.pid").read_text()),0)']
+      interval: 15s
+      timeout: 3s
+      retries: 6
+    mem_limit: 128m
+    cpus: 0.1
+    pids_limit: 64
+
+  frontend:
+    build:
+      context: ../..
+      dockerfile: infra/docker/frontend.Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:?Set a verified Node 24 image digest}
+    profiles: [frontend]
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:?Set the browser reachable API URL}
+    command: [npm, run, dev, --, --host, 0.0.0.0, --port, "5173", --strictPort]
+    ports: ["127.0.0.1:${FRONTEND_PORT:?Set an exclusive frontend port}:5173"]
+    networks: [private]
+    depends_on:
+      api: {condition: service_healthy}
+    init: true
+    read_only: true
+    tmpfs: [/tmp, /app/node_modules/.vite, /app/node_modules/.vite-temp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:5173/").then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))']
       interval: 10s
       timeout: 5s
-      retries: 20
-    deploy:
-      resources:
-        limits:
-          memory: 2g
-          cpus: "2.0"
+      retries: 6
+    mem_limit: 256m
+    cpus: 0.25
+    pids_limit: 128
+
+networks:
+  private:
+    internal: true
 
 volumes:
   postgres_data:
   redis_data:
   opensearch_data:
+  raw_content:

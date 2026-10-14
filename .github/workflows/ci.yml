@@ -1,43 +1,110 @@
-# T02 CI：只编排本仓库已存在且已实测的检查。
-# 未建设的检查（contract/integration/security/e2e scope、容器集成、真实 API）不在此声明。
 name: ci
 
 on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   backend:
-    name: backend checks
+    name: backend checks and isolated services
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
+    timeout-minutes: 25
+    env:
+      COMPOSE_DISABLE_ENV_FILE: "1"
+      DIANZI_TEST_COMPOSE_FILE: infra/compose/compose.test.yaml
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v5
-      - run: uv sync --locked
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
-      - run: uv run mypy src
-      - run: uv run pytest tests/unit
+      - name: Install locked backend
+        run: uv sync --locked --project backend
+      - name: Static checks
+        working-directory: backend
+        run: |
+          uv run --locked ruff check . ../scripts/dev.py
+          uv run --locked ruff format --check . ../scripts/dev.py
+          uv run --locked mypy src ../scripts/dev.py
+      - name: Create disposable test configuration
+        run: |
+          python - <<'PY'
+          import json, os, secrets
+          from pathlib import Path
+          run_id = f"r01_ci_{os.environ['GITHUB_RUN_ID']}_{os.environ['GITHUB_RUN_ATTEMPT']}"
+          password = secrets.token_urlsafe(32)
+          redis_password = secrets.token_urlsafe(32)
+          search_password = secrets.token_urlsafe(32) + "aA1!"
+          database = f"test_dianzi_{run_id}"
+          database_url = f"postgresql+psycopg://{database}:{password}@127.0.0.1:25436/{database}"
+          redis_url = f"redis://:{redis_password}@127.0.0.1:26383/0"
+          values = {
+              "DIANZI_TEST_RUN_ID": run_id,
+              "DIANZI_TEST_COMPOSE_PROJECT": f"dianzi-test-{run_id}",
+              "TEST_DATABASE_URL": database_url,
+              "TEST_REDIS_URL": redis_url,
+              "TEST_OPENSEARCH_URL": "http://127.0.0.1:29201",
+              "POSTGRES_DB": database, "POSTGRES_USER": database,
+              "POSTGRES_PASSWORD": password, "POSTGRES_PORT": "25436",
+              "REDIS_PASSWORD": redis_password, "REDIS_PORT": "26383",
+              "OPENSEARCH_INITIAL_ADMIN_PASSWORD": search_password,
+              "OPENSEARCH_PORT": "29201",
+              "TEST_POSTGRES_USER": database, "TEST_POSTGRES_PASSWORD": password,
+              "TEST_POSTGRES_PORT": "25436", "TEST_REDIS_PASSWORD": redis_password,
+              "TEST_REDIS_PORT": "26383", "TEST_OPENSEARCH_PORT": "29201",
+              "DATABASE_URL": database_url, "REDIS_URL": redis_url,
+              "ALLOWED_ORIGINS": json.dumps(["http://127.0.0.1:25201"]),
+              "API_PORT": "28201", "FRONTEND_PORT": "25201",
+              "VITE_API_BASE_URL": "http://127.0.0.1:28201",
+              "PYTHON_IMAGE": "unused-config@sha256:" + "0" * 64,
+              "UV_IMAGE": "unused-config@sha256:" + "0" * 64,
+              "NODE_IMAGE": "unused-config@sha256:" + "0" * 64,
+          }
+          for value in (password, redis_password, search_password, database_url, redis_url):
+              print(f"::add-mask::{value}")
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as output:
+              for name, value in values.items():
+                  output.write(f"{name}={value}\n")
+          PY
+      - name: Start isolated PostgreSQL Redis and search
+        run: >-
+          docker compose --project-name "$DIANZI_TEST_COMPOSE_PROJECT"
+          -f "$DIANZI_TEST_COMPOSE_FILE" --profile core --profile search
+          up -d --wait --wait-timeout 180
+      - name: Unit tests with actual test counts
+        run: python scripts/dev.py check --scope unit --timeout-seconds 600
+      - name: Contract tests including real PostgreSQL
+        if: ${{ !cancelled() }}
+        run: python scripts/dev.py check --scope contract --timeout-seconds 600
+      - name: Security tests
+        if: ${{ !cancelled() }}
+        run: python scripts/dev.py check --scope security --timeout-seconds 600
+      - name: Integration tests including Compose lifecycle
+        if: ${{ !cancelled() }}
+        run: python scripts/dev.py check --scope integration --timeout-seconds 600
+      - name: Stop only this test project and preserve volumes
+        if: always()
+        run: |
+          test -n "$DIANZI_TEST_COMPOSE_PROJECT"
+          test "$DIANZI_TEST_COMPOSE_PROJECT" = "dianzi-test-$DIANZI_TEST_RUN_ID"
+          docker compose --project-name "$DIANZI_TEST_COMPOSE_PROJECT" -f "$DIANZI_TEST_COMPOSE_FILE" --profile core --profile search down
 
   frontend:
     name: frontend checks
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
       - run: npm ci
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm run test
-      - run: npm run build
+        working-directory: frontend
+      - name: Lint typecheck tests and build with test counts
+        run: python scripts/dev.py check --scope frontend --timeout-seconds 600

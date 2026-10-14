@@ -1,0 +1,36 @@
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: test_dianzi_${DIANZI_TEST_RUN_ID:?Set an isolated test run ID}
+      POSTGRES_USER: ${TEST_POSTGRES_USER:?Set a dedicated test_ user}
+      POSTGRES_PASSWORD: ${TEST_POSTGRES_PASSWORD:?Inject a random test credential}
+    ports: !override ["127.0.0.1:${TEST_POSTGRES_PORT:?Set an exclusive test port}:5432"]
+  redis:
+    environment:
+      REDIS_PASSWORD: ${TEST_REDIS_PASSWORD:?Inject a random test credential}
+    ports: !override ["127.0.0.1:${TEST_REDIS_PORT:?Set an exclusive test port}:6379"]
+  opensearch:
+    environment:
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      DISABLE_SECURITY_PLUGIN: "true"
+    ports: !override ["127.0.0.1:${TEST_OPENSEARCH_PORT:?Set an exclusive test port}:9200"]
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:9200/_cluster/health >/dev/null']
+  api:
+    environment:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://${TEST_POSTGRES_USER:?Set test user}:${TEST_POSTGRES_PASSWORD:?Inject test credential}@postgres:5432/test_dianzi_${DIANZI_TEST_RUN_ID:?Set test run ID}
+      REDIS_URL: redis://:${TEST_REDIS_PASSWORD:?Inject test credential}@redis:6379/0
+      OPENSEARCH_URL: http://opensearch:9200
+  worker:
+    environment:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://${TEST_POSTGRES_USER:?Set test user}:${TEST_POSTGRES_PASSWORD:?Inject test credential}@postgres:5432/test_dianzi_${DIANZI_TEST_RUN_ID:?Set test run ID}
+      REDIS_URL: redis://:${TEST_REDIS_PASSWORD:?Inject test credential}@redis:6379/0
+      OPENSEARCH_URL: http://opensearch:9200
+  scheduler:
+    environment:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://${TEST_POSTGRES_USER:?Set test user}:${TEST_POSTGRES_PASSWORD:?Inject test credential}@postgres:5432/test_dianzi_${DIANZI_TEST_RUN_ID:?Set test run ID}
+      REDIS_URL: redis://:${TEST_REDIS_PASSWORD:?Inject test credential}@redis:6379/0
+      OPENSEARCH_URL: http://opensearch:9200

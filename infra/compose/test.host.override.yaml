@@ -1,0 +1,51 @@
+services:
+  postgres:
+    network_mode: host
+    networks: !reset []
+    ports: !reset []
+    command: [postgres, -c, listen_addresses=127.0.0.1, -p, "${TEST_POSTGRES_PORT:?Set an exclusive test port}"]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -p ${TEST_POSTGRES_PORT:?Set an exclusive test port} -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+  redis:
+    network_mode: host
+    networks: !reset []
+    ports: !reset []
+    command: [/bin/sh, -ec, 'exec redis-server --bind 127.0.0.1 --port ${TEST_REDIS_PORT:?Set an exclusive test port} --appendonly yes --requirepass "$${REDIS_PASSWORD}"']
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$${REDIS_PASSWORD}" redis-cli -h 127.0.0.1 -p ${TEST_REDIS_PORT:?Set an exclusive test port} ping | grep -x PONG']
+  opensearch:
+    network_mode: host
+    networks: !reset []
+    ports: !reset []
+    environment:
+      network.host: 127.0.0.1
+      http.port: ${TEST_OPENSEARCH_PORT:?Set an exclusive search port}
+      transport.port: ${TEST_OPENSEARCH_TRANSPORT_PORT:?Set an exclusive transport port}
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://127.0.0.1:${TEST_OPENSEARCH_PORT:?Set an exclusive search port}/_cluster/health >/dev/null']
+  api:
+    network_mode: host
+    networks: !reset []
+    ports: !reset []
+    command: [uvicorn, ai_intel.api.app:app, --host, 127.0.0.1, --port, "${API_PORT:?Set an exclusive API port}"]
+    environment: &host-application-environment
+      DATABASE_URL: ${TEST_DATABASE_URL:?Inject isolated loopback PostgreSQL URL}
+      REDIS_URL: ${TEST_REDIS_URL:?Inject isolated loopback Redis URL}
+      OPENSEARCH_URL: ${TEST_OPENSEARCH_URL:?Set isolated loopback search URL}
+    healthcheck:
+      test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:${API_PORT:?Set an exclusive API port}/v1/health/ready", timeout=5)']
+  worker:
+    network_mode: host
+    networks: !reset []
+    environment: *host-application-environment
+  scheduler:
+    network_mode: host
+    networks: !reset []
+    environment: *host-application-environment
+  frontend:
+    network_mode: host
+    networks: !reset []
+    ports: !reset []
+    command: [npm, run, dev, --, --host, 127.0.0.1, --port, "${FRONTEND_PORT:?Set an exclusive frontend port}", --strictPort]
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:${FRONTEND_PORT:?Set an exclusive frontend port}/").then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))']
