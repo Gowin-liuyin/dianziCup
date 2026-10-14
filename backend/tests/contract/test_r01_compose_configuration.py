@@ -34,9 +34,9 @@ def configuration_environment() -> dict[str, str]:
         REDIS_PORT="26380",
         OPENSEARCH_INITIAL_ADMIN_PASSWORD=secrets.token_urlsafe(32) + "aA1!",
         OPENSEARCH_PORT="29200",
-        DATABASE_URL=f"postgresql+psycopg://dianzi_config:{password}@postgres:5432/dianzi_config",
-        REDIS_URL=f"redis://:{redis_password}@redis:6379/0",
-        ALLOWED_ORIGINS='["http://127.0.0.1:25201"]',
+        COMPOSE_DATABASE_URL=f"postgresql+psycopg://dianzi_config:{password}@postgres:5432/dianzi_config",
+        COMPOSE_REDIS_URL=f"redis://:{redis_password}@redis:6379/0",
+        COMPOSE_ALLOWED_ORIGINS='["http://127.0.0.1:25201"]',
         API_PORT="28201",
         FRONTEND_PORT="25201",
         VITE_API_BASE_URL="http://127.0.0.1:28201",
@@ -60,7 +60,7 @@ def configuration_environment() -> dict[str, str]:
     transferred_names = {
         name
         for name in environment
-        if name.startswith(("POSTGRES_", "REDIS_", "OPENSEARCH_", "TEST_"))
+        if name.startswith(("COMPOSE_", "POSTGRES_", "REDIS_", "OPENSEARCH_", "TEST_"))
         or name
         in {
             "COMPOSE_DISABLE_ENV_FILE",

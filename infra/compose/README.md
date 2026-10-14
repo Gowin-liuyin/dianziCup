@@ -11,6 +11,9 @@ Choose an explicit `dianzi-dev-<name>` project. `core` starts PostgreSQL and
 authenticated Redis; `search` adds OpenSearch with its security plugin enabled.
 `app`, `worker`, `scheduler` and `frontend` select the actual runtime entrypoints
 and their required services. Search is optional; when selected, supply its URL.
+`COMPOSE_DATABASE_URL`, `COMPOSE_REDIS_URL` and `COMPOSE_ALLOWED_ORIGINS` are
+deployment inputs: Compose maps them to the application variable names inside
+containers. They do not configure a pytest or management process on the host.
 The backend application URLs use `postgres:5432`, `redis:6379` and, when selected,
 the configured search endpoint inside the private network. Browser URLs use the
 published localhost ports. `ALLOWED_ORIGINS` must be exact JSON origins.
