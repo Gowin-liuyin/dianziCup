@@ -1,5 +1,6 @@
 """默认真实依赖装配；导入无网络，健康请求执行有界的实际探测。"""
 
+import ssl
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -152,8 +153,21 @@ def build_health_router(
         dependencies["search"] = {"state": "not_configured"}
         if settings.opensearch_url:
             try:
+                tls_context = ssl.create_default_context(cafile=settings.opensearch_ca_file)
+                search_auth = None
+                if (
+                    settings.opensearch_username is not None
+                    and settings.opensearch_password is not None
+                ):
+                    search_auth = httpx.BasicAuth(
+                        settings.opensearch_username,
+                        settings.opensearch_password.get_secret_value(),
+                    )
                 with httpx.Client(
-                    timeout=settings.dependency_timeout_seconds, trust_env=False
+                    timeout=settings.dependency_timeout_seconds,
+                    trust_env=False,
+                    verify=tls_context,
+                    auth=search_auth,
                 ) as client:
                     response = client.get(settings.opensearch_url.rstrip("/") + "/_cluster/health")
                     response.raise_for_status()
@@ -167,7 +181,7 @@ def build_health_router(
                     )
                     else "unavailable"
                 }
-            except (httpx.HTTPError, ValueError):
+            except (httpx.HTTPError, ValueError, OSError):
                 dependencies["search"] = {
                     "state": "unavailable",
                     "reason": "search connection unavailable",

@@ -1,4 +1,18 @@
-# 当前恢复交接 · 2026-10-15T01:04:16+08:00
+# 当前恢复交接 · 2026-10-15T01:47:36+08:00
+
+主分支codex/full-delivery-recovery，HEAD b504c2376142c6557ac3cfa7c42ffe2baa0dbca4；01:46:40重新核对origin为授权URL，无push。R00 accepted；R01及G-A仍in_progress/partial，R02只读准备在途。当前主仓4个修改仅root所有：app/settings/对应TLS unit、supervise_runtime分段参数；TLS 79回归通过但尚未冻结/真实安全搜索实测。任何新major依赖仍待CR-R10明确批准，提问已在会话，不重复询问、不能应用Vitest4候选。
+
+更正上一交接的进程假设：原supervisor正常terminate后，01:09:08精确核查7个自有进程全部退出；没有证明孤儿，不引入taskkill补丁。当前b504_full受控API28000/Windows solo worker/beat于01:12:44启动，单段一小时截止02:12:44，receipt在reports/runs/recovery_r01_controller_20261014/b504_full。它实际加载b504，后续源文件编辑不能追认为新版本运行。此前API-only真实过期观测503已记录。
+
+真实浏览器retry_4在01:23:06–01:23:11退出0，前端9334fad/back b504，3/3：会话恢复/退出、键盘与390px、依赖离线恢复/撤销；旧4轮失败全部保留。C06修正等待真实refresh可用再Tab，不削弱断言。实际6秘密优先候选扫描exit0（01:22:13–15），36精确误报记录不豁免真实秘密。行为review固定d30eeab1d723080decea5f64a992b909a0d834c2（WT recovery-r01-recheck-final）正在写最终复核：独立unit59、security63、frontend42、自主并发/成功限流/扫描边界、访客浏览器2通过；Vitest问题仍open，未背书整R01/runtime。
+
+基础设施独立review发现真实第二次冷启动frontend缓存EACCES，作者修复代码32d16a4a055a46da2f2183f367075db686ddd790，证据eff45e5f933a002d429ded7557dc29fbf48dd729，WT recovery-r01-infra-fix干净冻结。两缓存uid/gid1000 mode0700，19配置回归通过、两次真实冷启动78.828s/73.844s七服务健康。原独立runtime reviewer现定向复核该版本，独占project dianzi-test-r01_infra_20261015；root不可同时操作项目。安全HTTPS/认证CA仍缺部署实测，root负责app settings修复及真实PG45s边界回归，作者缓存修复不代表全部runtime问题关闭。
+
+活跃4槽：root集成/TLS/公共迁移，r01_independent_review行为最终复核，r01_runtime_review缓存定向复核，r02_persistence_preflight只读接口/迁移分析。R02分析确认0001已有claims表而ORM缺失，必须复用事实表，不另建内存真相。主控将冻结auth0006/facts0007等明确小接口再分工；持久化/任务可靠性尚未实现。保留质量/前端/classifier/infra作者待集成commit列表见下方历史及各报告，不能重复pick root副本。当前main仍旧dev.py，禁止执行旧危险integration。
+
+以下保留历史，已更正项不能用于当前判断：
+
+# 历史恢复交接 · 2026-10-15T01:04:16+08:00
 
 集成main工作分支仍codex/full-delivery-recovery，HEAD ca6aec29bda0c63d0451ddea41bc6f1f22a3f76e（origin授权URL不变、无阶段push）。R00 accepted、G-A in_progress/partial、R01–03未整卡接受、目标active。主控当前未提交：成功登录限流占位释放修复(api/authentication+security回归)，supervise_runtime受控进程树/分段增强，浏览器探针/运行日志；不要丢失。75完整unit+定向security/contract通过，cov69.89%、50源mypy/Ruff/format0；新增成功登录6次不过限、其他4失败不被成功清空、第五失败保留后超限拒绝。原因：真实browser第二轮第三例登录429，旧8b/ca6把成功尝试也留15min窗口，已明确复现不能假装旧版通过；新修复未重启应用，待冻结→非作者定向复核。
 

@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -11,6 +12,11 @@ from zoneinfo import ZoneInfo
 
 backend = Path(__file__).resolve().parents[3] / "backend"
 run_directory = Path(__file__).resolve().parent
+segment = os.environ.get("DIANZI_RUNTIME_SEGMENT", "")
+if segment:
+    assert re.fullmatch(r"[a-z0-9_]{1,48}", segment), "invalid runtime segment identifier"
+    run_directory = run_directory / segment
+    run_directory.mkdir(exist_ok=False)
 clock = ZoneInfo("Asia/Shanghai")
 schedule_path = os.environ["DIANZI_BEAT_SCHEDULE_PATH"]
 process_commands = {
@@ -51,6 +57,10 @@ process_commands = {
         "--loglevel=WARNING",
     ],
 }
+selected_components = os.environ.get("DIANZI_RUNTIME_COMPONENTS", "api,worker,scheduler").split(",")
+assert selected_components and len(set(selected_components)) == len(selected_components)
+assert all(component in process_commands for component in selected_components)
+process_commands = {component: process_commands[component] for component in selected_components}
 launched_at = datetime.now(clock).isoformat(timespec="seconds")
 processes: dict[str, subprocess.Popen[bytes]] = {}
 logs = []

@@ -39,10 +39,48 @@ class ApplicationSettings(BaseSettings):
     database_url: SecretStr | None = None
     redis_url: SecretStr | None = None
     opensearch_url: str | None = None
+    opensearch_username: str | None = None
+    opensearch_password: SecretStr | None = None
+    opensearch_ca_file: str | None = None
     auth_secret_ref: SecretStr | None = None
     allowed_origins: tuple[str, ...] = ("http://localhost:5173", "http://127.0.0.1:25173")
     dependency_timeout_seconds: float = Field(default=3.0, gt=0, le=10)
     raw_content_directory: str = "var/raw"
+
+    @model_validator(mode="after")
+    def validate_search_connection_security(self) -> ApplicationSettings:
+        """CA显式注入；认证独立于URL，不能关闭TLS或回显秘密以绕过健康检查。"""
+        if (self.opensearch_username is None) != (self.opensearch_password is None):
+            raise ConfigurationError(
+                "OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD must be configured together"
+            )
+        if self.opensearch_username is not None and (
+            not self.opensearch_username.strip()
+            or self.opensearch_password is None
+            or not self.opensearch_password.get_secret_value()
+        ):
+            raise ConfigurationError("OpenSearch credentials must be non-empty")
+        if self.opensearch_url is not None:
+            try:
+                parsed = urlsplit(self.opensearch_url)
+                port = parsed.port
+                if (
+                    parsed.scheme not in {"http", "https"}
+                    or not parsed.hostname
+                    or parsed.username is not None
+                    or parsed.password is not None
+                    or parsed.query
+                    or parsed.fragment
+                    or (port is not None and port < 1)
+                ):
+                    raise ValueError
+            except ValueError:
+                raise ConfigurationError(
+                    "OPENSEARCH_URL must be an http(s) origin without credentials"
+                ) from None
+            if self.app_env == "production" and parsed.scheme != "https":
+                raise ConfigurationError("OPENSEARCH_URL requires HTTPS in production")
+        return self
 
     @model_validator(mode="after")
     def reject_unsafe_allowed_origins(self) -> ApplicationSettings:
