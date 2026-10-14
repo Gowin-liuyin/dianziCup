@@ -18,11 +18,10 @@ The backend application URLs use `postgres:5432`, `redis:6379` and, when selecte
 the configured search endpoint inside the private network. Browser URLs use the
 published localhost ports. `ALLOWED_ORIGINS` must be exact JSON origins.
 
-Set `PYTHON_IMAGE`, `UV_IMAGE`, `NODE_IMAGE` to verified digest references for
-Python 3.12, uv and Node 24 before building application images. Dockerfiles
+The Dockerfiles and Compose build arguments pin the actually pulled official
+Python 3.12, uv 0.10.9 and Node 24 RepoDigests. Dockerfiles
 install the checked-in locks, copy only required source/config files and use
-nonroot application users. The CI service job uses explicit config-only image
-placeholders, and does not build or start application images.
+nonroot application users. The CI service job does not build or start application images.
 
 ```powershell
 docker compose --project-name dianzi-dev-myname -f infra/compose/compose.yaml --profile core --profile search up -d --wait

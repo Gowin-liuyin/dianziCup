@@ -17,20 +17,25 @@ services:
     healthcheck:
       test: [CMD-SHELL, 'curl -fsS http://localhost:9200/_cluster/health >/dev/null']
   api:
+    image: ${TEST_BACKEND_IMAGE:-dianzi-backend:test}
     environment:
       APP_ENV: test
       DATABASE_URL: postgresql+psycopg://${TEST_POSTGRES_USER:?Set test user}:${TEST_POSTGRES_PASSWORD:?Inject test credential}@postgres:5432/test_dianzi_${DIANZI_TEST_RUN_ID:?Set test run ID}
       REDIS_URL: redis://:${TEST_REDIS_PASSWORD:?Inject test credential}@redis:6379/0
       OPENSEARCH_URL: http://opensearch:9200
   worker:
+    image: ${TEST_BACKEND_IMAGE:-dianzi-backend:test}
     environment:
       APP_ENV: test
       DATABASE_URL: postgresql+psycopg://${TEST_POSTGRES_USER:?Set test user}:${TEST_POSTGRES_PASSWORD:?Inject test credential}@postgres:5432/test_dianzi_${DIANZI_TEST_RUN_ID:?Set test run ID}
       REDIS_URL: redis://:${TEST_REDIS_PASSWORD:?Inject test credential}@redis:6379/0
       OPENSEARCH_URL: http://opensearch:9200
   scheduler:
+    image: ${TEST_BACKEND_IMAGE:-dianzi-backend:test}
     environment:
       APP_ENV: test
       DATABASE_URL: postgresql+psycopg://${TEST_POSTGRES_USER:?Set test user}:${TEST_POSTGRES_PASSWORD:?Inject test credential}@postgres:5432/test_dianzi_${DIANZI_TEST_RUN_ID:?Set test run ID}
       REDIS_URL: redis://:${TEST_REDIS_PASSWORD:?Inject test credential}@redis:6379/0
       OPENSEARCH_URL: http://opensearch:9200
+  frontend:
+    image: ${TEST_FRONTEND_IMAGE:-dianzi-frontend:test}
