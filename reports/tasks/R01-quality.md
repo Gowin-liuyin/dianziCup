@@ -1,10 +1,10 @@
 # G-A / R01-quality · 真实质量入口与测试隔离
 
 文档首次创建时间：2026-10-14T22:53:01+08:00。
-本次写作开始时间：2026-10-14T22:53:01+08:00；本次写作结束时间：2026-10-14T22:59:03+08:00；最后更新时间：2026-10-14T22:59:03+08:00。
+本次写作开始时间：2026-10-14T23:33:23+08:00；本次写作结束时间：2026-10-14T23:56:52+08:00；最后更新时间：2026-10-14T23:56:52+08:00。
 实现Agent：/root/r01_quality。独立review：未运行；工作包状态：awaiting_review。
 分支：codex/recovery-r01-quality；输入冻结基线：69ecf16be7d95e839b18a4a40f03b3f9d86707f4。
-当前证据为自检中的工作树，尚未签R01/原T02/T03，也没有阶段push。
+当前已测代码SHA：c918279c003925844c2444b768a2c81e427ffb33；证据提交SHA：453893dfc6815288b9f6985b2d632a4493c68458。独立审查尚未出具意见；尚未签R01/原T02/T03，也没有阶段push。前8节为保留的实施/初稿探索记录，最新事实与缺口见第9–11节。
 
 ## 1. 范围与前置
 
@@ -108,3 +108,5 @@ secret_scan.json核对9个提交文件及当时全部本包证据：两套已授
 2026-10-14T23:53:12+08:00：Windows输出修复已冻结c918279c003925844c2444b768a2c81e427ffb33。作者在此源码再次跑：34质量负例、47 unit/cov62.00%、完整contract109、T05/T07文件21(20PG+1文件)、security28，0fail/0error/0skip；Ruff/format/mypy49files和默认scope contract exit0。frontend已从新锁npm ci，scope实际lint/typecheck/Vitest1/build完整exit0，Vite Unicode输出不再失败；这仍是此WT旧骨架组件，不是主控新UI验收。e2e0tests/exit1保持未通过；missing resources integration exit4。完整integration的3个真实Compose缺口仍未关闭。新日志recheck_20261014_234925，每条命令具有code_sha/实际起止与退出码，旧失败全部保留。
 
 scripts索引按c918刷新及main trace成功，命令单10秒deadline、实际exit0/墙钟记录于cbm_index_c918/cbm_trace_c918，范围仍仅scripts，排除秘密/holdout。无独立review结论，已审SHA无；工作包awaiting_review，R01/G-A没有accepted/push。最后证据commit只包含本包report/runs，并携带root明确授权的2条rawXML attrs(已经在c918代码commit)，不引入其它公共配置变更。
+
+2026-10-14T23:56:52+08:00：仅更正首部当前写作/更新时间及冻结版本指针，与已测c918及453893证据一致；源码/测试/阈值/分母没有变化。
