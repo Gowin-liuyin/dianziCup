@@ -1,19 +1,19 @@
 # G-A · 合同纠偏与真实运行底座
 
 文档首次创建时间：2026-10-14T20:56:36+08:00
-本次写作开始时间：2026-10-14T20:56:36+08:00
-本次写作结束时间：2026-10-14T20:56:36+08:00
-最后更新时间：2026-10-14T22:19:34+08:00
+本次写作开始时间：2026-10-15T00:23:38+08:00
+本次写作结束时间：2026-10-15T00:28:35+08:00
+最后更新时间：2026-10-15T00:28:35+08:00
 阶段实际开始/结束时间：历史未单独记录；首个已记录时钟为2026-10-14T20:44:18+08:00，仅为观测时点 / 尚未结束
-本报告证据截止时间：2026-10-14T22:19:34+08:00
-主控/实现Agent：/root；R00验证器 /root/r00_plan_validation
-独立审查Agent与报告：/root/r00_independent_review，reports/reviews/recovery/G-A-R00-review-1-recheck.md（仅R00）；阶段门尚未发生
+本报告证据截止时间：2026-10-15T00:23:38+08:00
+主控/实现Agent：/root；R00验证器 /root/r00_plan_validation；R01前端/质量/infra/Vitest候选见progress/recovery_workstreams.md
+独立审查Agent与报告：/root/r00_independent_review（R00通过）；/root/r01_independent_review（4a17ca7 needs_changes）；/root/r01_dependency_review（497740a候选技术通过、待新授权）；阶段门尚未发生
 阶段状态：in_progress
 实现状态：partial
 各层验证状态：unit=not_run；contract=not_run；integration=not_run；security=not_run；frontend=not_run；e2e=not_run；live=not_run；manual=not_run
 工作分支：codex/full-delivery-recovery
-已测代码SHA：旧审计复核对象8e265dc039a67319140f003f6a070ea714bf7bef；本阶段候选尚未冻结
-已审代码SHA：尚未发生
+已测代码SHA：R00=15d0272；R01认证8b3927自动70通过，后续runtime未冻结74通过，仅相应unit/合同fixture；各自证据见R01.md/原始receipt
+已审代码SHA：R00=15d0272；R01=4a17ca7 needs_changes；依赖候选497740a技术通过但未生效；不是阶段通过
 提交/推送结果：b8199ce5dd0a7920ce5770e4f580fe23e0fe9f6b仅授权文档基线提交；阶段push尚未发生
 
 ## 1. 本阶段要解决的用户问题与验收范围
@@ -22,6 +22,8 @@ R00–R03，原T00/T01/T02/T03/T04/T05/T06/T07/T08/T16等能力切片；E1/F1/P1
 
 ## 2. 当前真实状态与修改
 
+最新：R00已正式接受且三个输出切片激活。R01本卡报告当前章节记录实际API/锁/资源/观测迁移与各修复，G-A仍partial。独立认证报告的六项缺陷及新候选fd4f1d4定向复核尚未全部闭环；R02内存权威、R03任务租约/游标仍待实现。原摘要以下是初稿事实，不代表当前未修改。
+
 实际基线main@8e265dc，origin与授权URL一致，无tracked用户修改；本次四份计划/提示词/审计未跟踪文件经核对加入b8199ce文档基线。新增CR-R01–09待独立核对。旧状态原文含T18重复note已按原字节存档，不覆盖历史。运行与模型装配缺口仍未修复，不用状态“改绿”。
 
 ## 3. 并行执行与独立审查
@@ -29,6 +31,17 @@ R00–R03，原T00/T01/T02/T03/T04/T05/T06/T07/T08/T16等能力切片；E1/F1/P1
 [文件所有权与各工作包](../../../progress/recovery_workstreams.md)。当前两个只读分析包与一个验证器实现包独立写入。冻结批次后另新review；整个G-A仍需另新阶段review，不以R00过门代替运行底座。
 
 ## 4. 问题台账
+
+| 最新问题 | 发现/实际触发 | 预期/实际与根因 | 状态、修复与复验 |
+|---|---|---|---|
+| RA-008 | 4a17ca7独立审查，8线程同client慢目录 | 最大5尝试；实际8个401，check/record非原子 | 8b3927 IO前锁占位，新增8线程期望5x401/3x429通过；非作者fd4f1d4复核中。跨进程仍依赖R02PG限流 |
+| RA-009 | 有效session，CSRF原始Latin1 FF | 应403；实际hmac str不支持非ASCII抛500 | 8b3927 ASCII边界，负例403且会话不撤销通过，独立复核中 |
+| RA-010 | /me(A)后其他标签登录B，再/csrf(B) | 身份与CSRF应绑定同会话；实际组合A/B且可注销B | 8b3927单/me快照，前端0f4498原子读取及3旧失败回归；39前端通过，独立复核中 |
+| RA-011 | GET不存在与错误method | 应RFC9457；实际default detail JSON | 8b3927统一handler保留Allow、两负例通过，独立复核中 |
+| RA-012 | Vitest3.2.7 npm audit | 1moderate2critical记录 | 497740a精确4.1.11技术独立通过，CR-R10待新授权；未生效 |
+| RA-013 | T06-C06扫描历史fixture nonce原始日志 | 应区分合成fixture与真实秘密；实际regex误报 | 保留原始字节/失败；精确path/hash/span/合成来源分类建议经非作者确认，主控实施后须拒绝篡改/复制/新credential负例，无阈值或分母变动 |
+| RA-014 | 管理CLI重复或其他IntegrityError | 应固定错误；实际str异常回显SQL参数/密码哈希 | 主控结构化分类+两合成异常负例通过；真实重复账号复验待跑 |
+| RA-015 | R01 runtime导入/观测过期 | 缺配置拒启；worker/scheduler未运行不能ready | 增量0005及真实隔离PG升级完成，74回归通过；实际进程/45秒失效/重启仍待验证 |
 
 | ID | 发现时间/触发/预期与实际 | 根因/影响 | 状态/下一步 |
 |---|---|---|---|
@@ -59,6 +72,8 @@ E1/D1是当前合同/可追溯流程证据，F1/F2/F3/P1/P2/P3/A1尚无新正式
 G-A尚不能过门。先完成R00新独立review使合同生效，再接R01运行入口、R02持久化、R03worker/游标；外部产品模型缺口不影响G-A内部运行实现，但不得冒充G-B回答live通过。
 
 ## 9. 文档修订记录
+
+2026-10-15T00:23:38+08:00–00:28:35+08:00：/root更新独立review六项具体问题、认证修复和候选SHA、真实隔离PG迁移与运行观测入口、CR-R10 proposed及剩余R02/R03，不提前登记任何阶段通过。原首次时间和历史日志保留；仅新增本run XML原字节attrs，避免raw证据被Git EOL改写，不禁源代码diff或检查。
 
 2026-10-14T20:56:36+08:00：/root首次建立阶段报告，全部未完成项保留状态和问题；后续每次写作时间从真实时钟记录。
 

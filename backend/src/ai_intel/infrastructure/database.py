@@ -38,7 +38,11 @@ def build_engine(settings: ApplicationSettings) -> Engine:
         pool_size=5,
         max_overflow=5,
         pool_timeout=settings.dependency_timeout_seconds,
-        connect_args={"connect_timeout": max(1, int(settings.dependency_timeout_seconds))},
+        connect_args={
+            "connect_timeout": max(1, int(settings.dependency_timeout_seconds)),
+            "options": f"-c statement_timeout={int(settings.dependency_timeout_seconds * 1000)} "
+            f"-c lock_timeout={int(settings.dependency_timeout_seconds * 1000)}",
+        },
     )
 
 

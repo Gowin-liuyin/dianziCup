@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 import httpx
 from alembic.script import ScriptDirectory
@@ -24,6 +25,7 @@ from ai_intel.api.authentication import (
 )
 from ai_intel.api.problems import problem_response
 from ai_intel.infrastructure.database import MIGRATIONS_DIR, build_engine
+from ai_intel.infrastructure.runtime_observations import read_runtime_readiness
 from ai_intel.infrastructure.settings import ApplicationSettings, load_application_settings
 
 
@@ -101,6 +103,8 @@ def create_application(
     health_router = build_health_router(configuration, engine, cache)
     application.include_router(auth_router, prefix="/v1")
     application.include_router(health_router, prefix="/v1")
+    application.include_router(auth_router, prefix="/api/v1", include_in_schema=False)
+    application.include_router(health_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(auth_router, include_in_schema=False)
     application.include_router(health_router, include_in_schema=False)
     return application
@@ -168,8 +172,19 @@ def build_health_router(
                     "state": "unavailable",
                     "reason": "search connection unavailable",
                 }
+        dependencies.update(
+            {component: {"state": "not_observed_or_stale"} for component in ("worker", "scheduler")}
+        )
+        if engine is not None and dependencies["database"]["state"] == "ready":
+            try:
+                dependencies.update(read_runtime_readiness(engine, datetime.now(UTC)))
+            except SQLAlchemyError:
+                for component in ("worker", "scheduler"):
+                    dependencies[component] = {"state": "unavailable"}
         core_ready = all(dependencies[name]["state"] == "ready" for name in ("database", "cache"))
-        ready = core_ready and dependencies["search"]["state"] == "ready"
+        ready = core_ready and all(
+            dependency["state"] == "ready" for dependency in dependencies.values()
+        )
         if ready:
             status = "ready"
         elif core_ready:

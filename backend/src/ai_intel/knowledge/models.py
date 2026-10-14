@@ -174,3 +174,12 @@ fetch_attempts = Table(
     Column("http_status", Integer(), nullable=True),
     Column("new_event_count", Integer(), nullable=False, server_default="0"),
 )
+
+runtime_observations = Table(
+    "runtime_observations",
+    metadata,
+    Column("component", Text(), primary_key=True),
+    Column("observed_at", DateTime(timezone=True), nullable=False),
+    Column("platform_version", Text(), nullable=False),
+    CheckConstraint("component IN ('worker', 'scheduler')", name="ck_runtime_component"),
+)
