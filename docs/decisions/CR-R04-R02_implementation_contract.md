@@ -39,3 +39,13 @@ save_document_revision复用原函数并锁document父行；只末版相等复�
 保留R02六实验与原T04/T05/T06/T17/T19/T21的36案例，见R02-preflight。真实PG跨进程登录/撤销/并发、发布中途回滚、A→B→A、当前/历史、越权读/搜候选/导出、同key不同digest、旧库升级及空库迁移必须实跑。unit/contract/security/frontend/e2e/live/manual逐层记录，未运行not_run。无模型、外源、人工金标不能声称正式指标通过。
 
 回滚采用停止新写、保留原表/历史、前向修复或经实测的隔离备份恢复；不自动downgrade有数据的库。实施者仅awaiting_review，主控依据新的独立报告登记。
+
+## 2026-10-15T02:22:41+08:00 · 0007与值合同冻结细节
+
+映射唯一文件knowledge/persistence_models.py，增量迁移0007_knowledge_state。claims保留旧object_value，加object_json/value_kind/provenance_status/field_fingerprint唯一索引/is_current/schema_version/source_revision_id；原值、UTC时间、unknown不被重写。claim_evidence区分supports/refutes/context与validated/unverified；source assertions、状态history的Identity transition_sequence保证同一时刻顺序；当前与历史查询不能仅按随机UUID排序。实体键包含type/ecosystem/name/scope；alias保留出处与可空有效期；event/external_id/document/merge-undo操作历史全部有真实表，不把内存merge叫持久化。
+
+publication_receipts按scope_key+publication_key唯一，payload_sha256、claim_ids、epoch、job/outbox/change引用在同事务提交；change_events.payload是类型化变更消息信封，不是隐藏事实的metadata。payload_ref为pg:change:<UUID>，消费者必须读取该行内容并再次核对scope，不允许任意表/SQL引用。scope epoch原子增量；当前tenant读还需要READ_ASSET，不因同tenant让只读公共的viewer获得私有资产知识；public发布MANAGE_PUBLIC_SOURCES、tenant发布同租户WRITE_ASSET。
+
+canonical schema_version=2，ScoreValue(kind=score,score0–10,authority,vector)、LinkValue(kind=link,http(s)url,title)、VersionRangeValue(kind=version_range,ecosystem,expression,branch)。predicate cvss_score、reference_link/poc_link、affected_version(s)分别受限；其他已知文本事实保留有界文本。显式schema1仅支持旧文本，不能静默升为supported或新版本。导出JSON Schema与Pydantic运行校验使用同样的谓词/版本条件。初版直接引用Pydantic内部尚未归一$defs导致6失败，已改用三个简单值模型的成熟model_json_schema结果，原失败日志保留；类型检查错误已修正使用Pydantic准确JSON类型而非Any/cast/ignore。
+
+实际final81例（完整unit63+value/schema16+真实PG空schema/0006升级2）全通过、coverage66.56%，保持60%门。源码索引567节点/2151边，仅backend/src；这些是接口/迁移证据，不能代替事实发布服务、模型/来源、MinIO、整R02/整T或G-A验收。工作包按该冻结字段实现，任何新列由root协调，不抢迁移编号。

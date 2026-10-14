@@ -106,6 +106,7 @@ evidence = Table(
     Column("block_id", Text(), ForeignKey("text_blocks.block_id"), nullable=True),
     Column("quote_sha256", Text(), nullable=True),
     Column("verified_at", DateTime(timezone=True), nullable=True),
+    Column("coordinate_version", Text(), nullable=False, server_default="legacy_unverified"),
     CheckConstraint("end_offset >= start_offset", name="ck_span_not_inverted"),
     CheckConstraint(VISIBILITY_DOMAIN, name="ck_evidence_visibility"),
     CheckConstraint(TENANT_XOR, name="ck_evidence_tenant_xor"),

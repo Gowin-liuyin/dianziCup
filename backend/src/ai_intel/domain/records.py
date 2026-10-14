@@ -6,9 +6,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic.config import JsonDict, JsonValue
 
 from ai_intel.domain.enums import (
     AssessmentStatus,
@@ -21,7 +22,7 @@ from ai_intel.domain.enums import (
 )
 from ai_intel.domain.values import EvidenceSpan, Identifier, UtcTimestamp, VisibilityScope
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MAX_SUMMARY_LENGTH = 2000
 
 
@@ -29,6 +30,70 @@ class StrictRecord(BaseModel):
     """领域记录基类: 多余字段拒绝, 未知输入不静默吞掉。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class ScoreValue(StrictRecord):
+    """CVSS值保留评分机构/向量；没有数值不生成默认零分。"""
+
+    kind: Literal["score"] = "score"
+    score: Annotated[float, Field(ge=0, le=10, allow_inf_nan=False)]
+    authority: Annotated[str, Field(min_length=1, max_length=200)]
+    vector: Annotated[str, Field(max_length=500)] | None = None
+
+
+class LinkValue(StrictRecord):
+    """来源链接只是静态引用；存储不授予访问或运行PoC的权限。"""
+
+    kind: Literal["link"] = "link"
+    url: HttpUrl
+    title: Annotated[str, Field(min_length=1, max_length=500)]
+
+
+class VersionRangeValue(StrictRecord):
+    """保存来源表达的版本范围，适用判断交给受支持的生态比较器。"""
+
+    kind: Literal["version_range"] = "version_range"
+    ecosystem: Annotated[str, Field(min_length=1, max_length=100)]
+    expression: Annotated[str, Field(min_length=1, max_length=2000)]
+    branch: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+
+
+ClaimObjectValue = (
+    Annotated[str, Field(min_length=1, max_length=MAX_SUMMARY_LENGTH)]
+    | Annotated[ScoreValue | LinkValue | VersionRangeValue, Field(discriminator="kind")]
+)
+
+
+def _restrict_claim_json_schema(schema: JsonDict) -> None:
+    """使导出的JSON Schema与运行时谓词/版本校验一致。"""
+    predicate_models: dict[str, type[StrictRecord]] = {
+        "cvss_score": ScoreValue,
+        "reference_link": LinkValue,
+        "poc_link": LinkValue,
+        "affected_version": VersionRangeValue,
+        "affected_versions": VersionRangeValue,
+    }
+    predicate_constraints: list[JsonValue] = [
+        {
+            "if": {"properties": {"predicate": {"const": predicate}}},
+            "then": {"properties": {"object_value": model.model_json_schema()}},
+        }
+        for predicate, model in predicate_models.items()
+    ]
+    predicate_constraints.append(
+        {
+            "if": {"properties": {"predicate": {"not": {"enum": list(predicate_models)}}}},
+            "then": {"properties": {"object_value": {"type": "string"}}},
+        }
+    )
+    schema["allOf"] = [
+        {"properties": {"schema_version": {"enum": [1, 2]}}},
+        {
+            "if": {"properties": {"schema_version": {"const": 1}}, "required": ["schema_version"]},
+            "then": {"properties": {"object_value": {"type": "string"}}},
+            "else": {"allOf": predicate_constraints},
+        },
+    ]
 
 
 class SourceRecord(StrictRecord):
@@ -69,11 +134,15 @@ class EvidenceRecord(StrictRecord):
 class ClaimRecord(StrictRecord):
     """事实论断: 状态、来源等级与条件判定三分, 不合并为单一 status。"""
 
+    model_config = ConfigDict(
+        extra="forbid", frozen=True, json_schema_extra=_restrict_claim_json_schema
+    )
+
     schema_version: int = SCHEMA_VERSION
     claim_id: Identifier
     subject: Annotated[str, Field(min_length=1, max_length=500)]
     predicate: Annotated[str, Field(min_length=1, max_length=500)]
-    object_value: Annotated[str, Field(min_length=1, max_length=MAX_SUMMARY_LENGTH)]
+    object_value: ClaimObjectValue
     claim_status: ClaimStatus
     claim_origin: ClaimOrigin
     condition_value: ConditionValue
@@ -81,6 +150,27 @@ class ClaimRecord(StrictRecord):
     asserted_at: UtcTimestamp
     observed_at: UtcTimestamp | None = None
     scope: VisibilityScope
+
+    @model_validator(mode="after")
+    def validate_predicate_value_contract(self) -> ClaimRecord:
+        """v1文本明确兼容；v2结构只允许与谓词匹配的已冻结值类型。"""
+        if self.schema_version not in {1, 2}:
+            raise ValueError("unsupported claim schema version")
+        if self.schema_version == 1:
+            if not isinstance(self.object_value, str):
+                raise ValueError("schema version 1 requires text claim value")
+            return self
+        structured_predicates = {
+            "cvss_score": ScoreValue,
+            "reference_link": LinkValue,
+            "poc_link": LinkValue,
+            "affected_version": VersionRangeValue,
+            "affected_versions": VersionRangeValue,
+        }
+        expected_type = structured_predicates.get(self.predicate, str)
+        if not isinstance(self.object_value, expected_type):
+            raise ValueError("claim value does not match predicate contract")
+        return self
 
     @model_validator(mode="after")
     def current_freshness_requires_observation_time(self) -> ClaimRecord:

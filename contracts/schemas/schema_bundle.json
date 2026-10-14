@@ -1,6 +1,6 @@
 {
   "generator": "ai_intel.domain.schema_export",
-  "schema_version": 1,
+  "schema_version": 2,
   "schemas": {
     "AssessmentRecord": {
       "$defs": {
@@ -99,7 +99,7 @@
           "type": "array"
         },
         "schema_version": {
-          "default": 1,
+          "default": 2,
           "title": "Schema Version",
           "type": "integer"
         },
@@ -199,6 +199,124 @@
           "title": "Identifier",
           "type": "object"
         },
+        "LinkValue": {
+          "additionalProperties": false,
+          "description": "来源链接只是静态引用；存储不授予访问或运行PoC的权限。",
+          "properties": {
+            "kind": {
+              "const": "link",
+              "default": "link",
+              "title": "Kind",
+              "type": "string"
+            },
+            "title": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Title",
+              "type": "string"
+            },
+            "url": {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "title": "Url",
+              "type": "string"
+            }
+          },
+          "required": [
+            "url",
+            "title"
+          ],
+          "title": "LinkValue",
+          "type": "object"
+        },
+        "ScoreValue": {
+          "additionalProperties": false,
+          "description": "CVSS值保留评分机构/向量；没有数值不生成默认零分。",
+          "properties": {
+            "authority": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Authority",
+              "type": "string"
+            },
+            "kind": {
+              "const": "score",
+              "default": "score",
+              "title": "Kind",
+              "type": "string"
+            },
+            "score": {
+              "maximum": 10,
+              "minimum": 0,
+              "title": "Score",
+              "type": "number"
+            },
+            "vector": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Vector"
+            }
+          },
+          "required": [
+            "score",
+            "authority"
+          ],
+          "title": "ScoreValue",
+          "type": "object"
+        },
+        "VersionRangeValue": {
+          "additionalProperties": false,
+          "description": "保存来源表达的版本范围，适用判断交给受支持的生态比较器。",
+          "properties": {
+            "branch": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Branch"
+            },
+            "ecosystem": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Ecosystem",
+              "type": "string"
+            },
+            "expression": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Expression",
+              "type": "string"
+            },
+            "kind": {
+              "const": "version_range",
+              "default": "version_range",
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          "required": [
+            "ecosystem",
+            "expression"
+          ],
+          "title": "VersionRangeValue",
+          "type": "object"
+        },
         "VisibilityScope": {
           "description": "可见范围: public 记录 tenant_id 必须为空, tenant 记录必须非空。",
           "properties": {
@@ -228,6 +346,323 @@
         }
       },
       "additionalProperties": false,
+      "allOf": [
+        {
+          "properties": {
+            "schema_version": {
+              "enum": [
+                1,
+                2
+              ]
+            }
+          }
+        },
+        {
+          "else": {
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "predicate": {
+                      "const": "cvss_score"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "object_value": {
+                      "additionalProperties": false,
+                      "description": "CVSS值保留评分机构/向量；没有数值不生成默认零分。",
+                      "properties": {
+                        "authority": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "title": "Authority",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "score",
+                          "default": "score",
+                          "title": "Kind",
+                          "type": "string"
+                        },
+                        "score": {
+                          "maximum": 10,
+                          "minimum": 0,
+                          "title": "Score",
+                          "type": "number"
+                        },
+                        "vector": {
+                          "anyOf": [
+                            {
+                              "maxLength": 500,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Vector"
+                        }
+                      },
+                      "required": [
+                        "score",
+                        "authority"
+                      ],
+                      "title": "ScoreValue",
+                      "type": "object"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "predicate": {
+                      "const": "reference_link"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "object_value": {
+                      "additionalProperties": false,
+                      "description": "来源链接只是静态引用；存储不授予访问或运行PoC的权限。",
+                      "properties": {
+                        "kind": {
+                          "const": "link",
+                          "default": "link",
+                          "title": "Kind",
+                          "type": "string"
+                        },
+                        "title": {
+                          "maxLength": 500,
+                          "minLength": 1,
+                          "title": "Title",
+                          "type": "string"
+                        },
+                        "url": {
+                          "format": "uri",
+                          "maxLength": 2083,
+                          "minLength": 1,
+                          "title": "Url",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "url",
+                        "title"
+                      ],
+                      "title": "LinkValue",
+                      "type": "object"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "predicate": {
+                      "const": "poc_link"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "object_value": {
+                      "additionalProperties": false,
+                      "description": "来源链接只是静态引用；存储不授予访问或运行PoC的权限。",
+                      "properties": {
+                        "kind": {
+                          "const": "link",
+                          "default": "link",
+                          "title": "Kind",
+                          "type": "string"
+                        },
+                        "title": {
+                          "maxLength": 500,
+                          "minLength": 1,
+                          "title": "Title",
+                          "type": "string"
+                        },
+                        "url": {
+                          "format": "uri",
+                          "maxLength": 2083,
+                          "minLength": 1,
+                          "title": "Url",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "url",
+                        "title"
+                      ],
+                      "title": "LinkValue",
+                      "type": "object"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "predicate": {
+                      "const": "affected_version"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "object_value": {
+                      "additionalProperties": false,
+                      "description": "保存来源表达的版本范围，适用判断交给受支持的生态比较器。",
+                      "properties": {
+                        "branch": {
+                          "anyOf": [
+                            {
+                              "maxLength": 200,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Branch"
+                        },
+                        "ecosystem": {
+                          "maxLength": 100,
+                          "minLength": 1,
+                          "title": "Ecosystem",
+                          "type": "string"
+                        },
+                        "expression": {
+                          "maxLength": 2000,
+                          "minLength": 1,
+                          "title": "Expression",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "version_range",
+                          "default": "version_range",
+                          "title": "Kind",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "ecosystem",
+                        "expression"
+                      ],
+                      "title": "VersionRangeValue",
+                      "type": "object"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "predicate": {
+                      "const": "affected_versions"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "object_value": {
+                      "additionalProperties": false,
+                      "description": "保存来源表达的版本范围，适用判断交给受支持的生态比较器。",
+                      "properties": {
+                        "branch": {
+                          "anyOf": [
+                            {
+                              "maxLength": 200,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Branch"
+                        },
+                        "ecosystem": {
+                          "maxLength": 100,
+                          "minLength": 1,
+                          "title": "Ecosystem",
+                          "type": "string"
+                        },
+                        "expression": {
+                          "maxLength": 2000,
+                          "minLength": 1,
+                          "title": "Expression",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "version_range",
+                          "default": "version_range",
+                          "title": "Kind",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "ecosystem",
+                        "expression"
+                      ],
+                      "title": "VersionRangeValue",
+                      "type": "object"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "predicate": {
+                      "not": {
+                        "enum": [
+                          "cvss_score",
+                          "reference_link",
+                          "poc_link",
+                          "affected_version",
+                          "affected_versions"
+                        ]
+                      }
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "object_value": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 1
+              }
+            },
+            "required": [
+              "schema_version"
+            ]
+          },
+          "then": {
+            "properties": {
+              "object_value": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
       "description": "事实论断: 状态、来源等级与条件判定三分, 不合并为单一 status。",
       "properties": {
         "asserted_at": {
@@ -251,10 +686,35 @@
           "$ref": "#/$defs/FreshnessStatus"
         },
         "object_value": {
-          "maxLength": 2000,
-          "minLength": 1,
-          "title": "Object Value",
-          "type": "string"
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "discriminator": {
+                "mapping": {
+                  "link": "#/$defs/LinkValue",
+                  "score": "#/$defs/ScoreValue",
+                  "version_range": "#/$defs/VersionRangeValue"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ScoreValue"
+                },
+                {
+                  "$ref": "#/$defs/LinkValue"
+                },
+                {
+                  "$ref": "#/$defs/VersionRangeValue"
+                }
+              ]
+            }
+          ],
+          "title": "Object Value"
         },
         "observed_at": {
           "anyOf": [
@@ -276,7 +736,7 @@
           "type": "string"
         },
         "schema_version": {
-          "default": 1,
+          "default": 2,
           "title": "Schema Version",
           "type": "integer"
         },
@@ -413,7 +873,7 @@
           "type": "string"
         },
         "schema_version": {
-          "default": 1,
+          "default": 2,
           "title": "Schema Version",
           "type": "integer"
         },
@@ -515,7 +975,7 @@
           "type": "string"
         },
         "schema_version": {
-          "default": 1,
+          "default": 2,
           "title": "Schema Version",
           "type": "integer"
         },
@@ -631,7 +1091,7 @@
           "type": "string"
         },
         "schema_version": {
-          "default": 1,
+          "default": 2,
           "title": "Schema Version",
           "type": "integer"
         },
