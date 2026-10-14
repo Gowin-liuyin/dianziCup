@@ -1,4 +1,22 @@
-# 当前恢复交接 · 2026-10-15T00:03:09+08:00
+# 当前恢复交接 · 2026-10-15T01:04:16+08:00
+
+集成main工作分支仍codex/full-delivery-recovery，HEAD ca6aec29bda0c63d0451ddea41bc6f1f22a3f76e（origin授权URL不变、无阶段push）。R00 accepted、G-A in_progress/partial、R01–03未整卡接受、目标active。主控当前未提交：成功登录限流占位释放修复(api/authentication+security回归)，supervise_runtime受控进程树/分段增强，浏览器探针/运行日志；不要丢失。75完整unit+定向security/contract通过，cov69.89%、50源mypy/Ruff/format0；新增成功登录6次不过限、其他4失败不被成功清空、第五失败保留后超限拒绝。原因：真实browser第二轮第三例登录429，旧8b/ca6把成功尝试也留15min窗口，已明确复现不能假装旧版通过；新修复未重启应用，待冻结→非作者定向复核。
+
+实际root本地ca6 Windows API28000/worker solo/beat启动00:33:57，专用PG25432/Redis26379/Search29200；14实际HTTP检查全通过，admin重复账号真实exit1固定安全消息、实际秘密匹配0。日志root runs/recovery_r01_controller_20261014。当前一小时supervisor实际PID46884（StartProcess launcher54664），Popen记录api22468/worker33012/beat34608，真正shim子50232/56164/49960，runtime_owned_process_tree.json已保存精确commandline。旧加载的ca6 supervisor到期/marker仅terminate shim，是否连真子收尾尚未实测；新未提交helper改taskkill /T和DIANZI_RUNTIME_SEGMENT/COMPONENTS，务必实际停旧segment、验证/收尾精确自有子树后再启动新版本，不让背景孤儿超过期限。只本任务PID可停，不碰WSL daemon/其它项目。
+
+浏览器：第一次3setup fail因缺1248，未页面执行；已装项目独立cache USERPROFILE/.codex/cache/dianzi/r01_playwright_1248，ChromeHeadless156.0.8078.4、--no-remove保原缓存。初次全局安装在50%主动停保原版本1208/1228，原logs保留；清理其空global __dirlock被automatic review blocked by policy拒绝（无具体原因），禁止换手法重试，留存且独立cache不受影响。最终回复需短独立说明这一次拒绝，非产品阻塞。browser_e2e_retry_1=2pass1fail(C06初焦点假设)，frontend作者真实访客BODY→skip→MAIN→刷新证明并修C06，无弱化/skip。新c2e96c前端42fixtures/lint/type/build0，worker/scheduler中文标签/stale。browser retry_2=2pass1fail，键盘+390px已pass，第三登录失败为上述rate真实回归。下一步root重启新rate代码后在frontend c2e96c重跑全部3e2e，保留各独立attempt文件，密码只DPAPI环境、不输出、trace/videooff/截图仅认证后。rootrun_browser_e2e.py当前硬码retry_2，请下一轮另命名不要覆盖原证据。前端原189990c→b07596c→0f4498→c2e96c仍仅author/candidateWT未合main。
+
+独立行为review固定4a17ca7 needs_changes，fd4f1d4复核report G-A-R01-behavior-review-1-recheck.md确认问题1/2/3/6关闭（前端39+自主5、unit57+自主HTTP4/GBK qualityfrontend0），4(Vitest)与5(scanner)仍open，未签R01/G-A。4候选497740a独立dependency review技术passed(33命令、30同ID audit3→0)，CR-R10正式proposed已落docs/decisions/CR-R10_vitest_security_upgrade.md，本轮已请求新明确授权（实际提问见tool记录），仍pending无回复，不再重复问、不把等待当同意，不合major。quality交付2b79→c918→453→e895已在infra/recheck候选，rootmain仍旧dev.py，绝不再执行旧integration危险硬编码DSN。依赖review临时两个replay安装cache17678文件已核实安全回收，原33日志/hash未变。
+
+R01 infra最终冻结HEAD0b6a7ad5e984439855cd97124d70095c608adb58，源码d7290cf4240929aa98bfbcc381d9e35c32a534a4，WT recovery-r01-infra干净；自己的code依次a413eaf/dbbfcd1/9f93161/bc24286/d7290cf，证据a3ab25a/e75ae5d/0b6a7ad，quality4交付与4fa79ef(rootca6副本)勿重复pick。真实7Linux容器healthy，冷启动63.468s，PG worker+beat观测/API200/匿名401/UI旧骨架HTTP200、prefork1/nonroot10001。完整unit59/contract125/security35/integration41 0fail/skip；GitHubCI/新UI/e2e/provider live未跑。私有root600 /tmp/dianzi-r01-infra-20261015/connection.json，only project dianzi-test-r01_infra_20261015，PG25436/Redis26383/Search29201+29301，新增官方python3.12.15/node24.21.0/uv0.10.9 images total128MB；只继承已有代理无值argv/无ENV持久化，wheel首timeout保存。新独立 /root/r01_runtime_review固定该SHA正在实际停worker/beat45s失效与恢复、复跑关键scope，不能改忙WT/直接merge未通过code。
+
+R01 secret classification作者WT recovery-r01-secret-scan(fd4基)，新小scripts/security_scan.py保原regex/root；独立reviewer准许精确relative path/rawSHA/patternID/byte span+合成源码证据的误报表，真实secret exact比对先且不受豁免。作者已60security/42针对负例0；主仓临时缓存回收后18匹配(17fixture+1公开PG比较)无未知，actual secret exact仍待root注入。最后作者自己两raw gitdiff失败日志又复制原参数化synthetic样本8span，正在保原字节并逐源分类36记录/7路径；不要误把新的日志复制假密钥当真实泄漏，不能删失败/扩大豁免/变门槛。只批准其本run log/xml精确attrs，不全局禁检查。完成commit后原非作者behavior reviewer定向检查原问题5、新helper篡改/复制/邻接secret/表外span/路径逃逸/knownsecret优先；root需真实5模型测绘keys+testpwd优先scan完整候选及staged，不能只作者fixture模拟。
+
+CBM root刷新ca6=539nodes/2048edges、source tree绑定cbm_ca6aec.command.json，runtime read_ready inbound图只有app.py文件节点，真实嵌套health返回要与rg/14HTTP交叉，不拿图没边作没接线。索引cache仍仓库外，秘密/holdout/runs未纳入。父WSL daemondeadline17日21:49:15不延长。待R01各技术fix与新独立review、actual3UI e2e/controlledstop闭环；CR-R10如仍pending可按独立审查意见继续安全独立R02 PG会话/账本准备（不越阶段签通过），root唯一公共迁移/锁/状态/push，R02/R03核心仍未实现。不要仅本卡停或宣布全系统完成。
+
+以下旧交接保留历史：
+
+# 历史恢复交接 · 2026-10-15T00:03:09+08:00
 
 完整目标active，不能在R01停止。集成分支codex/full-delivery-recovery，HEAD a1b8aae232c416958d7d12c4ee5d2bf61adbc05c，origin已核对授权地址；无阶段push。R00独立验收并正式激活（代码15d0272、登记69ecf16、文档f0b154e），原整T均未接受、G-A仍in_progress。主控R01 API/settings/锁已提交a874c27，健康非字符串状态修复a1b8aae。主仓当前认证定向修复尚未提交，不得用旧SHA背书。
 

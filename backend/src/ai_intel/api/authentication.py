@@ -205,7 +205,7 @@ class AuthenticationSessionService:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._password_hasher = PasswordHasher()
         self._sessions: dict[str, SessionRecord] = {}
-        self._login_attempts: dict[str, list[float]] = {}
+        self._login_attempts: dict[str, dict[str, float]] = {}
         self._login_lock = Lock()
         self._audit_events: list[dict[str, str]] = []
 
@@ -229,7 +229,7 @@ class AuthenticationSessionService:
         """登录: 凭证与 Origin 校验后签发不透明会话; 失败统一报错。"""
         if origin is not None and origin not in self._allowed_origins:
             raise CsrfRejectionError("origin not allowed")
-        self._reserve_login_attempt(client_key)
+        attempt_id = self._reserve_login_attempt(client_key)
         account = self._user_directory.find_by_username(username)
         if account is None:
             self._append_audit(
@@ -251,6 +251,8 @@ class AuthenticationSessionService:
             csrf_token=secrets.token_urlsafe(32),
         )
         self._sessions[self._session_key(session_token)] = session_record
+        with self._login_lock:
+            self._login_attempts.get(client_key, {}).pop(attempt_id, None)
         self._append_audit(
             "login_succeeded", {"user_id": account.user_id, "trace_id": str(uuid.uuid4())}
         )
@@ -337,19 +339,21 @@ class AuthenticationSessionService:
         """会话以服务端哈希为键存储, 落库/内存不保存明文 token(05 §1 合同)。"""
         return hashlib.sha256(session_token.encode("utf-8")).hexdigest()
 
-    def _reserve_login_attempt(self, client_key: str) -> None:
+    def _reserve_login_attempt(self, client_key: str) -> str:
         """昂贵目录/密码IO前原子占位；成功登录不能清除其他在途尝试。"""
         with self._login_lock:
             now_epoch = time.time()
-            attempts = [
-                stamp
-                for stamp in self._login_attempts.get(client_key, [])
+            attempts = {
+                attempt_id: stamp
+                for attempt_id, stamp in self._login_attempts.get(client_key, {}).items()
                 if now_epoch - stamp < LOGIN_WINDOW_SECONDS
-            ]
+            }
             if len(attempts) >= MAX_LOGIN_ATTEMPTS:
                 raise LoginRateLimitedError("too many login attempts")
-            attempts.append(now_epoch)
+            attempt_id = str(uuid.uuid4())
+            attempts[attempt_id] = now_epoch
             self._login_attempts[client_key] = attempts
+            return attempt_id
 
     def _append_audit(self, event_type: str, fields: dict[str, str]) -> None:
         """写入审计事件: 拒绝敏感字段名, 事件带 trace_id。"""

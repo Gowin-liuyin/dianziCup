@@ -172,6 +172,22 @@ def test_concurrent_login_reserves_attempt_before_directory_io() -> None:
     assert results.count(429) == 3
 
 
+def test_successful_login_releases_only_its_own_rate_reservation() -> None:
+    service = AuthenticationSessionService(InMemoryUserDirectory(), (ORIGIN,), False)
+    service.create_precreated_user("fixture-user", "synthetic-password", "tenant-a", Role.ANALYST)
+    for _ in range(6):
+        session, _ = service.login("fixture-user", "synthetic-password", ORIGIN, "same-client")
+        service.logout(session)
+    for _ in range(4):
+        with pytest.raises(InvalidCredentialsError):
+            service.login("missing-fixture", "synthetic-password", ORIGIN, "same-client")
+    service.login("fixture-user", "synthetic-password", ORIGIN, "same-client")
+    with pytest.raises(InvalidCredentialsError):
+        service.login("missing-fixture", "synthetic-password", ORIGIN, "same-client")
+    with pytest.raises(LoginRateLimitedError):
+        service.login("fixture-user", "synthetic-password", ORIGIN, "same-client")
+
+
 def test_me_reads_one_account_and_its_session_bound_csrf() -> None:
     class CountingDirectory(InMemoryUserDirectory):
         reads = 0
