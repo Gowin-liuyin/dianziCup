@@ -13,7 +13,7 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from ai_intel.infrastructure.settings import ApplicationSettings
@@ -29,7 +29,17 @@ def build_engine(settings: ApplicationSettings) -> Engine:
     """按配置构建同步引擎; 每请求独立 Session 的基础。"""
     if settings.database_url is None:
         raise MissingDatabaseUrlError("DATABASE_URL is required for persistence")
-    return create_engine(settings.database_url.get_secret_value())
+    database_url = make_url(settings.database_url.get_secret_value())
+    if database_url.get_backend_name() != "postgresql":
+        raise MissingDatabaseUrlError("DATABASE_URL must use PostgreSQL")
+    return create_engine(
+        database_url.set(drivername="postgresql+psycopg"),
+        pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=5,
+        pool_timeout=settings.dependency_timeout_seconds,
+        connect_args={"connect_timeout": max(1, int(settings.dependency_timeout_seconds))},
+    )
 
 
 @contextmanager
@@ -51,7 +61,7 @@ def run_migrations(database_url: str, target_revision: str = "head") -> None:
     """执行迁移到目标版本; 供空库升级与既有数据升级复用, 版本记录在 alembic_version。"""
     alembic_config = Config()
     alembic_config.set_main_option("script_location", str(MIGRATIONS_DIR))
-    alembic_config.set_main_option("sqlalchemy.url", database_url)
+    alembic_config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
     command.upgrade(alembic_config, target_revision)
 
 
@@ -59,7 +69,7 @@ def run_downgrade(database_url: str, target_revision: str) -> None:
     """回滚到指定版本; 回滚失败由 alembic 原样抛出, 不吞异常。"""
     alembic_config = Config()
     alembic_config.set_main_option("script_location", str(MIGRATIONS_DIR))
-    alembic_config.set_main_option("sqlalchemy.url", database_url)
+    alembic_config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
     command.downgrade(alembic_config, target_revision)
 
 

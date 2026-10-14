@@ -7,12 +7,14 @@ import hmac
 import secrets
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Protocol
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
+from sqlalchemy.engine import Engine, RowMapping
 
 from ai_intel.domain.access import AccessScope, Role
 
@@ -104,10 +106,20 @@ class InMemoryUserDirectory:
         return None
 
 
+class UserDirectory(Protocol):
+    """认证使用相同目录合同；真实运行接PG，内存目录仅显式fixture。"""
+
+    def add_precreated_user(self, account: UserAccount) -> None: ...
+
+    def find_by_username(self, username: str) -> UserAccount | None: ...
+
+    def find_by_id(self, user_id: str) -> UserAccount | None: ...
+
+
 class DatabaseUserDirectory:
     """数据库用户目录: 预创建用户持久化到 PostgreSQL, 重启后仍可用。"""
 
-    def __init__(self, engine: object) -> None:
+    def __init__(self, engine: Engine) -> None:
         self._engine = engine
 
     def add_precreated_user(self, account: UserAccount) -> None:
@@ -118,7 +130,7 @@ class DatabaseUserDirectory:
         from ai_intel.knowledge.models import users
 
         try:
-            with self._engine.begin() as connection:  # type: ignore[attr-defined]
+            with self._engine.begin() as connection:
                 connection.execute(
                     insert(users).values(
                         user_id=account.user_id,
@@ -138,7 +150,7 @@ class DatabaseUserDirectory:
 
         from ai_intel.knowledge.models import users
 
-        with self._engine.connect() as connection:  # type: ignore[attr-defined]
+        with self._engine.connect() as connection:
             row = (
                 connection.execute(select(users).where(users.c.username == username))
                 .mappings()
@@ -152,7 +164,7 @@ class DatabaseUserDirectory:
 
         from ai_intel.knowledge.models import users
 
-        with self._engine.connect() as connection:  # type: ignore[attr-defined]
+        with self._engine.connect() as connection:
             row = (
                 connection.execute(select(users).where(users.c.user_id == user_id))
                 .mappings()
@@ -161,7 +173,7 @@ class DatabaseUserDirectory:
         return self._row_to_account(row)
 
     @staticmethod
-    def _row_to_account(row: Mapping[str, object] | None) -> UserAccount | None:
+    def _row_to_account(row: RowMapping | None) -> UserAccount | None:
         """把数据库行映射回账户对象; 无行返回 None。"""
         if row is None:
             return None
@@ -181,7 +193,7 @@ class AuthenticationSessionService:
 
     def __init__(
         self,
-        user_directory: InMemoryUserDirectory,
+        user_directory: UserDirectory,
         allowed_origins: tuple[str, ...],
         cookie_secure: bool,
         clock: Callable[[], datetime] | None = None,
@@ -265,7 +277,7 @@ class AuthenticationSessionService:
             raise SessionExpiredError("session is not valid")
         account = self._user_directory.find_by_id(session_record.user_id)
         if account is None:
-            raise InvalidCredentialsError("invalid credentials")
+            raise SessionExpiredError("session is not valid")
         return Principal(user_id=account.user_id, tenant_id=account.tenant_id, role=account.role)
 
     def session_record(self, session_token: str) -> SessionRecord:

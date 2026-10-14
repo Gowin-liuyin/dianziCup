@@ -9,6 +9,7 @@ from ai_intel.api.authentication import (
     AuthenticationSessionService,
     InMemoryUserDirectory,
 )
+from ai_intel.domain.access import Role
 
 
 def build_service() -> AuthenticationSessionService:
@@ -16,7 +17,7 @@ def build_service() -> AuthenticationSessionService:
     service = AuthenticationSessionService(
         directory, ("http://localhost:5173",), cookie_secure=False
     )
-    service.create_precreated_user("analyst", "correct horse", "tenant-1", "analyst")
+    service.create_precreated_user("analyst", "correct horse", "tenant-1", Role.ANALYST)
     return service
 
 
@@ -37,7 +38,10 @@ def test_auth_routes_login_me_csrf_logout_contract() -> None:
     assert me.status_code == 200 and me.json()["role"] == "analyst"
     csrf = client.get("/auth/csrf")
     assert csrf.status_code == 200 and csrf.json()["header_name"] == "X-CSRF-Token"
-    logout = client.post("/auth/logout")
+    logout = client.post(
+        "/auth/logout",
+        headers={"origin": "http://localhost:5173", "X-CSRF-Token": body["csrf_token"]},
+    )
     assert logout.status_code == 200
     after = client.get("/auth/me")
     assert after.status_code == 401 and after.json()["error"]["code"] in (
@@ -61,6 +65,12 @@ def test_auth_routes_error_mapping_no_false_success() -> None:
     assert "csrf_token" not in anonymous.text
 
 
-def test_auth_routes_no_auth_service_stays_unmounted() -> None:
+def test_default_auth_routes_are_registered_with_honest_missing_dependencies() -> None:
     client = TestClient(create_application())
-    assert client.get("/auth/me").status_code == 404
+    assert client.get("/auth/me").status_code == 401
+    response = client.post(
+        "/auth/login",
+        json={"username": "analyst", "password": "synthetic"},
+        headers={"origin": "http://localhost:5173"},
+    )
+    assert response.status_code == 503

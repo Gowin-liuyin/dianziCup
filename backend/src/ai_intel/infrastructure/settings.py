@@ -7,9 +7,11 @@
 from __future__ import annotations
 
 from typing import Literal
+from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings.exceptions import SettingsError
 
 DEVELOPMENT_SECRET_PLACEHOLDERS = frozenset(
     {
@@ -30,14 +32,39 @@ class ConfigurationError(ValueError):
 class ApplicationSettings(BaseSettings):
     """运行配置: 非秘密项直接读取, 秘密项以 SecretStr 承载且只存引用。"""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=None, extra="ignore", hide_input_in_errors=True)
 
     app_env: AppEnvironment = Field(default="development")
-    data_mode: DataMode = Field(default="fixture")
+    data_mode: DataMode = Field(default="live")
     database_url: SecretStr | None = None
-    redis_url: str | None = None
+    redis_url: SecretStr | None = None
     opensearch_url: str | None = None
     auth_secret_ref: SecretStr | None = None
+    allowed_origins: tuple[str, ...] = ("http://localhost:5173", "http://127.0.0.1:25173")
+    dependency_timeout_seconds: float = Field(default=3.0, gt=0, le=10)
+    raw_content_directory: str = "var/raw"
+
+    @model_validator(mode="after")
+    def reject_unsafe_allowed_origins(self) -> ApplicationSettings:
+        """凭据跨域只允许精确Origin；不接受通配、路径或用户信息。"""
+        if not self.allowed_origins:
+            raise ConfigurationError("ALLOWED_ORIGINS must contain at least one exact origin")
+        for origin in self.allowed_origins:
+            parsed = urlsplit(origin)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+                or "*" in origin
+            ):
+                raise ConfigurationError("ALLOWED_ORIGINS requires exact http(s) origins")
+            if self.app_env == "production" and parsed.scheme != "https":
+                raise ConfigurationError("ALLOWED_ORIGINS requires HTTPS in production")
+        return self
 
     @model_validator(mode="after")
     def production_must_not_use_fixture_or_placeholder_secrets(self) -> ApplicationSettings:
@@ -63,9 +90,19 @@ class ApplicationSettings(BaseSettings):
 def load_application_settings(**overrides: object) -> ApplicationSettings:
     """构造并校验配置; 缺必需项或组合违规时抛出 ConfigurationError。"""
     try:
-        return ApplicationSettings(**overrides)  # type: ignore[arg-type]
-    except ValueError as validation_error:
-        raise ConfigurationError(str(validation_error)) from validation_error
+        return ApplicationSettings.model_validate(overrides)
+    except ValidationError as validation_error:
+        reasons: list[str] = []
+        for error in validation_error.errors(include_input=False, include_url=False):
+            cause = error.get("ctx", {}).get("error")
+            if isinstance(cause, ConfigurationError):
+                reasons.append(str(cause))
+            else:
+                field = error["loc"][0] if error["loc"] else "configuration"
+                reasons.append(f"invalid setting: {field}")
+        raise ConfigurationError("; ".join(reasons)) from None
+    except SettingsError:
+        raise ConfigurationError("invalid environment settings; check field types") from None
 
 
 def describe_dependency_readiness(settings: ApplicationSettings) -> dict[str, str]:
