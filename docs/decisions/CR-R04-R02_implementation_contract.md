@@ -49,3 +49,5 @@ publication_receipts按scope_key+publication_key唯一，payload_sha256、claim_
 canonical schema_version=2，ScoreValue(kind=score,score0–10,authority,vector)、LinkValue(kind=link,http(s)url,title)、VersionRangeValue(kind=version_range,ecosystem,expression,branch)。predicate cvss_score、reference_link/poc_link、affected_version(s)分别受限；其他已知文本事实保留有界文本。显式schema1仅支持旧文本，不能静默升为supported或新版本。导出JSON Schema与Pydantic运行校验使用同样的谓词/版本条件。初版直接引用Pydantic内部尚未归一$defs导致6失败，已改用三个简单值模型的成熟model_json_schema结果，原失败日志保留；类型检查错误已修正使用Pydantic准确JSON类型而非Any/cast/ignore。
 
 实际final81例（完整unit63+value/schema16+真实PG空schema/0006升级2）全通过、coverage66.56%，保持60%门。源码索引567节点/2151边，仅backend/src；这些是接口/迁移证据，不能代替事实发布服务、模型/来源、MinIO、整R02/整T或G-A验收。工作包按该冻结字段实现，任何新列由root协调，不抢迁移编号。
+
+2026-10-15T02:30:44+08:00：知识实现者发现merge后新增独立来源时undo必须防覆盖，root在0007冻结后新增前向0008_event_operation_versions，两端merge前版本可空保留legacy未知；新的操作必须显式写版本，undo版本不匹配拒绝并待人工rebase，不能假定旧行版本1。SQL CHECK明确两端同时非空或同时为空，防止SQL NULL三值绕过。默认app新增PG state_store显式装配，validator审计PG异常固定retryable503。完整unit+真实PG/auth/默认factory/0008升级共86例通过、cov72.64%；其中应用关闭/重建是不同factory/连接池，真正独立进程实验在auth作者及后续非作者验收，不将TestClient本身叫进程重启。阶段仍未接受。

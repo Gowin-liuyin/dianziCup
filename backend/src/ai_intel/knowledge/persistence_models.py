@@ -152,6 +152,8 @@ event_operations = Table(
     Column("operation_type", Text(), nullable=False),
     Column("source_event_id", Text(), ForeignKey("events.event_id"), nullable=False),
     Column("target_event_id", Text(), ForeignKey("events.event_id"), nullable=False),
+    Column("source_business_version", Integer()),
+    Column("target_business_version", Integer()),
     Column("inverse_operation_id", Text(), ForeignKey("event_operations.operation_id")),
     Column("source_revision_ids", JSONB(), nullable=False),
     Column("target_revision_ids", JSONB(), nullable=False),
