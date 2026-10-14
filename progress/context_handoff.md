@@ -1,3 +1,27 @@
+# 当前完整恢复批次交接 · 2026-10-14T21:15:16+08:00
+
+当前目标：R00–R24/T00–T59完整实施/独立review/真实验证/阶段push，目标保持active，不能仅一张卡停止。用户授权及全部正文prompts/12_full_delivery_parallel_push.txt已读，主控实际完整批次指令在当前聊天。
+
+分支codex/full-delivery-recovery；原SHA8e265dc；授权文档基线b8199ce5dd0a7920ce5770e4f580fe23e0fe9f6b；当前R00候选diff待冻结。origin=https://github.com/Gowin-liuyin/dianziCup.git；已跟踪用户代码无原有diff；原未跟踪计划已授权纳入，不纳入项目外文件。
+
+R00=awaiting_review/complete，48计划/公共合同测试真实passed，旧16保留，原评分/不变量/案例ID不变，九CR准确落实待新非作者review。新manifest60T/110切片/26执行节点，T55/56 A完整候选、T59 A+B避免验收互锁；原T最终前置保留。新state8层与所有旧accepted纠偏，原字节archive含两note。报告reports/tasks/R00.md及reports/stages/recovery/G-A.md。G-A仍in_progress/partial，没有阶段门/阶段push。
+
+只读分析已交付：baseline_runtime_probe、recovery_mapping_audit、r00_plan_validation均结束，不可复用作R00初审。provider_docs_probe只读官方文档在途，docker_runtime_diagnosis定位Docker引擎在途。主控需冻结候选commit→创建独立worktree/索引→新reviewer复跑并审九CR/映射/状态。R00独立通过后，主控登记生效/切片再提交合同基线，开始R01。
+
+CBM portable v0.11.0存在；主控cache=/tmp/dianzi-cbm-recovery-root-20261014/project=dianzi-recovery-root-backend，只索引backend/src；47文件/516节点/1929边，不含秘密/holdout/附件。原日志reports/runs/recovery_r00_20261014/index_commands.json；每worktree独立索引。
+
+新实证缺口：auth logout无Origin/CSRF仍200、真实PDF/NVD失败、默认/auth/me404、内存会话/账本/游标、保存失败推进、worker租约/退避缺口（待真库）。153局部fixture测试+1骨架test通过不证明产品。R01必须补HTTP写校验装配，R02PG会话/账本，R03可靠worker/网关/游标。Docker启动进程存在但引擎仍超时，不以9月UP当当前事实。
+
+用户已提供模型/测绘凭据：只存仓库外当前用户DPAPI秘密存储，不能复制到仓库/报告/提示词；当前secret引用可由主控通过USERPROFILE/.codex/secrets/dianzi/本聊天ID.dpapi加载，仅注入受控子进程环境，不回显。DeepSeek V4.1 Flash实际model=deepseek-flash、OpenAI与Anthropic两风格；生成/embedding/rerank能力和聚合字段以官方报告为准。不要向任何子agent派发秘密值，不把编码模型账号当产品API。首次live前补网关供应商认证头/查询脱敏缺口。
+
+用户新优先级：先平台/系统与高质量UI，PPT后置；完整最终范围仍保留。人工双人核验、FOFA资产范围仍缺，继续独立代码/候选包，不签金标/资产live。实际外部产品API调用本轮0、费用0，编程会话费用unknown。
+
+下一步：冻结R00新review流水线，同时R01Docker安全诊断；不能停在计划，R00后满足切片继续实现。不要读KEYS/.env/秘密附件或holdout，不执行PoC/扫描第三方/生产清库；root唯一Git集成/push。
+
+---
+
+以下为历史交接（不作为当前状态）：
+
 # 上下文交接（progress/context_handoff.md）
 
 ## 0.7 Goal 第 93 轮增量（最新，恢复锚点）

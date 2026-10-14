@@ -1,0 +1,16 @@
+{
+  "cwd": "D:\\dianzi",
+  "argv": [
+    "E:\\miniconda\\python.exe",
+    "-c",
+    "from pathlib import Path\nimport json,hashlib\nroot=Path.cwd()\npath=root/'reports/runs/recovery_mapping_20261014/mapping_analysis.json'\ndef reject_duplicates(pairs):\n result={}\n for key,value in pairs:\n  if key in result:raise ValueError('duplicate JSON key: '+key)\n  result[key]=value\n return result\nobj=json.loads(path.read_text(encoding='utf-8'),object_pairs_hook=reject_duplicates)\nr=obj['recovery'];packages=r['work_packages'];slices=r['capability_slices'];originals=obj['original_contract_snapshot'];aggregation=r['original_task_aggregation'];order=r['execution_order']\nassert set(aggregation)==set(originals)=={f'T{i:02}' for i in range(60)}\nassert len(slices)==110\nassert len(order)==len(set(order))==26\nassert sum(len(t['acceptance_cases']) for t in originals.values())==360\nassert sum(len(t['implementation_steps']) for t in originals.values())==360\nfor tid,task in originals.items():\n assert hashlib.sha256((root/task['acceptance_contract']).read_bytes()).hexdigest()==task['contract_sha256'],tid+' original card changed'\n assert task['depends_on']==aggregation[tid]['final_dependencies']\n assert aggregation[tid]['acceptance_case_ids']==[f'{tid}-C{i:02}' for i in range(1,7)]\n assert set(aggregation[tid]['required_slices'])=={sid for sid,s in slices.items() if s['original_task']==tid}\nfor rid,pkg in packages.items():\n for dep in pkg['depends_on']:assert order.index(dep)<order.index(rid),(rid,dep)\n for sid in pkg['requires_slices']:\n  assert sid in slices,(rid,sid)\n  assert order.index(slices[sid]['work_package'])<order.index(rid),(rid,sid)\n assert set(pkg['output_slices'])=={sid for sid,s in slices.items() if s['work_package']==rid}\nassert aggregation['T55']['required_slices']==['R24-A:T55']\nassert aggregation['T56']['required_slices']==['R24-A:T56']\nassert aggregation['T59']['required_slices']==['R24-A:T59','R24-B:T59']\nassert order.index('R22')<order.index('R24-A')<order.index('R23')<order.index('R24-B')\nrequirements=json.loads((root/'contracts/requirements.json').read_text(encoding='utf-8-sig'),object_pairs_hook=reject_duplicates)\nassert len(requirements['requirements'])==13\nassert sum(x.get('prelim_score') or 0 for x in requirements['requirements'])==100\nassert sum(x.get('final_score') or 0 for x in requirements['requirements'])==100\nassert len({u for p in packages.values() for u in p['scenarios']})==14\nprint(json.dumps({'result':'passed','kind':'structural_contract_analysis_only','tasks':60,'original_cases':360,'original_steps':360,'slices':110,'execution_nodes':26,'dag':'acyclic','original_card_hashes':'60 matched','scenarios':14,'requirements':13,'scores':'100/100'},ensure_ascii=False))"
+  ],
+  "start": "2026-10-14T20:56:22+08:00",
+  "end": "2026-10-14T20:56:22+08:00",
+  "timezone": "Asia/Shanghai",
+  "exit_code": 0,
+  "stdout": "{\"result\": \"passed\", \"kind\": \"structural_contract_analysis_only\", \"tasks\": 60, \"original_cases\": 360, \"original_steps\": 360, \"slices\": 110, \"execution_nodes\": 26, \"dag\": \"acyclic\", \"original_card_hashes\": \"60 matched\", \"scenarios\": 14, \"requirements\": 13, \"scores\": \"100/100\"}\n",
+  "stderr": "",
+  "business_test_count": 0,
+  "kind": "structural contract assertions, no product tests"
+}

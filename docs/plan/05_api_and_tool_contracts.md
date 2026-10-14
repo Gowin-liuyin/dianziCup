@@ -1,6 +1,9 @@
 
 # 05 · API、工具与运行时Agent合同
 
+> R00恢复合同补充（2026-10-14T21:05:58+08:00）：用户已批准CR-R01–CR-R09建设决策与完整有界批次；准确落实awaiting_review。独立核对生效后以[变更记录](../decisions/CR-R07.md)和manifest.recovery执行。原T卡最终范围/原前置/六项验收完整保留；执行依赖按能力切片。新review/push规则见用户执行提示词，未完成live/人工不算通过。
+
+
 以下为本项目待实现接口，不是第三方API。已有仓库接口需T00映射。统一前缀 `/v1`；前后端与worker不能各自定义不同状态。
 
 ## 1. 认证与会话
@@ -17,7 +20,7 @@
 
 成功同步操作200/201；已接收长任务202且返回job_id；400非法业务输入；401无登录；403明确权限不足；404不可见对象与不存在对象统一；409冲突或幂等碰撞；422schema错误；429预算/限流；503依赖不可用。
 
-统一错误体：`error.code, error.message, error.retryable, error.details, trace_id`。details只含可公开字段，禁止原始异常栈、密钥或其他租户标识。
+统一RFC9457 `application/problem+json`：type/title/status/detail/instance；保留兼容扩展`error.code, error.message, error.retryable, error.details, trace_id`（CR-R04）。details只含可公开字段，禁止原始异常栈、密钥或其他租户标识。
 
 分页：cursor + limit（默认20，最大100）；按稳定排序键分页，返回next_cursor。客户端不能提供原始SQL、OpenSearch DSL或任意sort表达式。
 
@@ -142,3 +145,9 @@ AnswerDraft：conclusions[]（text、kind=source_fact/rule_result/project_sugges
 前端显示queued/running/partial/failed/stale/not_configured，不拿空数组统一展示“暂无风险”。刷新页面后可用job_id恢复进度。无权限不显示对象标题、数量或敏感错误细节。
 
 模型或搜索不可用时，允许显示已有结构化事实，但显著标注降级。不能把fallback模板当成正常高质量问答评测结果。
+
+## 11. 公共v2适配合同（CR-R04/09）
+
+内部上述证据/ACL/历史合同保持；公共八对象定义见contracts/schemas/public_api_v2.json。ask为kind=completed/task联合，task返回轮询句柄且无answer强制字段；check_stack四态含reason_code，无匹配或unsupported不叫clean。同步最多200组件；独立上传最大10485760字节/10000组件异步解析，不是同数组超限自动202。六只读MCP工具和本人订阅写工具经共享业务与PG认证，stdio stdout只协议。REST增加/api/v1路径兼容适配，分页/8k预算不拆断事实证据；客户端实测与三扩展沙箱在R18。
+
+CLI退出码冻结：0=成功、无确认高风险且结论确定；1=存在确认高风险（结果仍显示其他未知）；2=未确认高风险但存在unknown/conflict/unsupported；3=执行/认证/网络失败。严重等级筛选参数须文档化，不能把0称绝对安全。

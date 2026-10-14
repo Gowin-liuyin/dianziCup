@@ -54,3 +54,13 @@
 4. 队伍人数、截止日期、部署位置、授权资产范围、人工标注可用性（BLK-004；影响 T24/T46/T51/T54/T59）。
 5. Docker Desktop 启动（BLK-001；影响 T03/T05 集成验证，纯离线开发不受阻）。
 
+
+## 恢复批次资源/授权更新 · 2026-10-14T21:15:16+08:00
+
+保留上文全部历史，当前事实以下为准。origin匹配且用户授权本次codex分支阶段push、本地提交/隔离服务和CR-R01–09；旧DEC-001提交/push与费用未授权缺口关闭，本次不新购无关服务。费用未知记录unknown，任务调用/并发/超时受控。
+
+- BLK-001重新打开：Docker Desktop已授权启动，进程存在但引擎命令限时两次超时；R01资源诊断在途。真实PG/队列/搜索集成blocked，不能沿用9月关闭状态。
+- BLK-002更新：用户已提供DeepSeek与Hunter/FOFA/Quake/ZoomEye凭据，已DPAPI保护在仓库外（变量名DEEPSEEK_API_KEY/HUNTER_API_KEY/FOFA_API_KEY/QUAKE_API_KEY/ZOOMEYE_API_KEY）。不再称“用户未提供”；有效性/模型能力/权限仍未live验证。DeepSeek生成指定Flash，embedding/reranker接口未确认。
+- BLK-004保留最小缺口：FOFA授权资产范围、双人独立标签/裁决仍未提供。PPT用户要求后置；最终主办模板未提供时才阻断R24最终验收。本地平台/UI实现继续。
+- 旧无Git事实已历史失效：实际b8199ce文档基线已提交；尚无合格阶段push。外部公开部署/赛事提交仍无授权。
+- 安全前置：官方Hunter api-key查询、Quake x-quaketoken头、ZoomEye api-key头当前网关脱敏白名单未覆盖，R03首次live前须精确补齐；不得用凭据立即调用漏脱敏路径。

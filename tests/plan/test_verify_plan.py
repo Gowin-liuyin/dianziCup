@@ -1,8 +1,9 @@
-"""Behavior tests for scripts/verify_plan.py against intact and deliberately corrupted plan copies."""
+"""Behavior tests for the plan verifier against intact and deliberately corrupted copies."""
 
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -27,8 +28,41 @@ def copy_plan_root(destination: Path) -> Path:
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
-    state_doc = json.loads((destination / "progress" / "task_state.json").read_text(encoding="utf-8"))
-    evidence_paths = {path for entry in state_doc.get("tasks", {}).values() for path in entry.get("evidence", [])}
+    state_doc = json.loads(
+        (destination / "progress" / "task_state.json").read_text(encoding="utf-8")
+    )
+    evidence_paths = {
+        path for entry in state_doc.get("tasks", {}).values() for path in entry.get("evidence", [])
+    }
+    manifest = json.loads(
+        (destination / "contracts" / "task_manifest.json").read_text(encoding="utf-8")
+    )
+    recovery = manifest.get("recovery", {})
+    evidence_paths.update(recovery.get("change_records", []))
+    for entry in recovery.get("capability_slices", {}).values():
+        if entry.get("acceptance_contract"):
+            evidence_paths.add(entry["acceptance_contract"])
+    for entry in recovery.get("original_task_aggregation", {}).values():
+        if entry.get("acceptance_contract"):
+            evidence_paths.add(entry["acceptance_contract"])
+    authority = recovery.get("authority", {})
+    if authority.get("review_ref"):
+        evidence_paths.add(authority["review_ref"])
+    state_entries = list(state_doc.get("tasks", {}).values()) + list(
+        state_doc.get("recovery_tasks", {}).values()
+    )
+    for entry in state_entries:
+        evidence_paths.update(entry.get("evidence", []))
+        if entry.get("review_ref"):
+            evidence_paths.add(entry["review_ref"])
+        for slice_entry in entry.get("slice_acceptance", {}).values():
+            evidence_paths.update(slice_entry.get("evidence", []))
+            if slice_entry.get("review_ref"):
+                evidence_paths.add(slice_entry["review_ref"])
+        for slice_entry in entry.get("slices", {}).values():
+            evidence_paths.update(slice_entry.get("evidence", []))
+            if slice_entry.get("review_ref"):
+                evidence_paths.add(slice_entry["review_ref"])
     for relative in evidence_paths:
         source = REPO_ROOT / relative
         target = destination / relative
@@ -39,7 +73,14 @@ def copy_plan_root(destination: Path) -> Path:
 
 def run_verify(root: Path, *extra_args: str) -> subprocess.CompletedProcess:
     command = [sys.executable, str(VERIFY_SCRIPT), "--root", str(root), *extra_args]
-    return subprocess.run(command, capture_output=True, text=True, timeout=120)
+    return subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+        timeout=120,
+    )
 
 
 def mutate_json(path: Path, mutate) -> dict:
@@ -147,7 +188,9 @@ class VerifyPlanTests(unittest.TestCase):
         mutate_json(self.root / "contracts" / "task_manifest.json", swap_t18_and_t17)
         result = run_verify(self.root)
         self.assertNotEqual(result.returncode, 0, msg=result.stdout)
-        self.assertTrue("ORDER_RULE" in result.stdout or "DEP_ORDER" in result.stdout, msg=result.stdout)
+        self.assertTrue(
+            "ORDER_RULE" in result.stdout or "DEP_ORDER" in result.stdout, msg=result.stdout
+        )
 
     def test_baseline_detects_threshold_change(self) -> None:
         baseline_path = self.temp_dir / "frozen_baseline.json"
@@ -183,7 +226,11 @@ class VerifyPlanTests(unittest.TestCase):
         self.assertEqual(write_result.returncode, 0, msg=write_result.stdout)
 
         def drop_invariant(doc: dict) -> None:
-            doc["contract_invariants"] = [item for item in doc["contract_invariants"] if item["id"] != "INV-P3-no-5s-in-excellent"]
+            doc["contract_invariants"] = [
+                item
+                for item in doc["contract_invariants"]
+                if item["id"] != "INV-P3-no-5s-in-excellent"
+            ]
 
         mutate_json(self.root / "contracts" / "requirements.json", drop_invariant)
         result = run_verify(self.root, "--baseline", str(baseline_path))
@@ -196,9 +243,14 @@ class VerifyPlanTests(unittest.TestCase):
         self.assertEqual(write_result.returncode, 0, msg=write_result.stdout)
 
         def weaken_syn_rev_001_expected_result(doc: dict) -> None:
-            next(case for case in doc["cases"] if case["case_id"] == "SYN-REV-001")["expected_result"] = "被弱化的预期结果（案例ID不变）"
+            next(case for case in doc["cases"] if case["case_id"] == "SYN-REV-001")[
+                "expected_result"
+            ] = "被弱化的预期结果（案例ID不变）"
 
-        mutate_json(self.root / "fixtures" / "synthetic" / "pilot_cases.json", weaken_syn_rev_001_expected_result)
+        mutate_json(
+            self.root / "fixtures" / "synthetic" / "pilot_cases.json",
+            weaken_syn_rev_001_expected_result,
+        )
         result = run_verify(self.root, "--baseline", str(baseline_path))
         self.assertNotEqual(result.returncode, 0, msg=result.stdout)
         self.assertIn("BASELINE_SOURCE_HASH_CHANGED", result.stdout)
