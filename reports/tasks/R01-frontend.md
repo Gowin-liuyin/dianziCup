@@ -1,7 +1,7 @@
 # R01 · 认证工作台前端切片
 
 文档首次创建时间：历史未记录（2026-10-14T22:51:25+08:00是创建前实际时钟采样，不当作已知创建时刻）。
-本次写作开始时间：2026-10-14T22:51:25+08:00；写作结束/最后更新时间：2026-10-15T00:17:46+08:00。
+本次写作开始时间：2026-10-14T22:51:25+08:00；写作结束/最后更新时间：2026-10-15T00:57:04+08:00。
 实际实施开始时间：2026-10-14T22:24:19+08:00；本轮代码编写结束：2026-10-14T22:54:41+08:00；真实e2e仍未开始。
 状态：awaiting_review；实现状态：partial（当前前端代码已自检；真实 API 浏览器链尚未运行）。
 实现 Agent：/root/r01_frontend；独立审查：尚未发生。
@@ -113,3 +113,33 @@ recheck_rg_before.log保存修改前真实源码，含此前明确合成nonce赋
 2026-10-15T00:14:17+08:00：追加RV-03/RV-05定向修复、39测试证据和历史rawlog扫描仍失败的边界；保留原报告/失败记录，未改评分或扫描标准。
 
 2026-10-15T00:17:46+08:00：主控要求保留原始历史log、不再重复执行C06。已枚举原两个正则在专属run的全部命中，synthetic_occurrences.json包含2文件/7实际行/11重叠pattern命中/0未分类，以及完整路径、原始字节SHA256、行号、data_mode=fixture、b07596c源码blob和源行。主控与非作者reviewer核对局部hash分类后再修安全根因；本Agent未更改原日志、全局scan规则或验收状态。
+
+## 9. 真实键盘初始焦点与实际运行组件展示
+
+本次写作开始：2026-10-15T00:57:04+08:00。输入前端0f449850c92219ef4cdf469437959de0ad4023c9；主控提供实际后端运行版本ca6aec，PG/Redis/Search/API/Celery/beat运行由主控日志证明。本Agent只无凭据访客读取API，未读账号秘密或截图密码。
+
+### 原失败与实际浏览器诊断
+
+主控首次真实e2e缺Chrome1248，0页面操作；安装官方独立缓存后第二轮3例2pass/1fail，原始记录在主仓reports/runs/recovery_r01_controller_20261014/browser_e2e_retry_1.stdout.log/XML。通过的是登录/重载/Cookie-CSRF/退出、离线恢复；失败的是T40-C06在已点击登录按钮且该按钮被认证UI替换后，假设下一Tab从文档第一个控件开始。原失败与脚本目的保留，没有改skip或修改另外两条已通过案例。
+
+本轮IAB不可用且CUA库存apps/browsers为空；采用用户已授权的项目Playwright真实浏览器验收，复用主控已安装官方Headless156.0.8078.4缓存，没有换个人浏览器或新下载依赖。无凭据新文档真实观察：初始BODY→Tab聚焦skip-link→Enter聚焦MAIN#main-content→Tab聚焦“刷新状态”。3个焦点断言均成立，没有用DOM写入或locator.focus伪造键盘可达。原登录后Tab起点不受控，不能据此证明skip-link不可达；本轮未自行复现带密码的登录后焦点轨迹，不能声称所有登录焦点行为已检查。
+
+最小修复只改T40-C06：先goto新文档并等待访客登录控件，保留原skip-link/main的键盘断言，新增从main Tab到刷新按钮断言；然后执行原真实登录与390px无横向溢出、可见退出、截图和退出流程。其他两条e2e未修改。本轮未强行添加产品焦点管理，因为已证实键盘入口可达，没有复现产品不可达缺陷。
+
+### 实际运行组件与回归
+
+后端已实际返回worker/scheduler，App补中文“任务进程/调度进程”；not_observed_or_stale显示“待观测 / 已过期”，不误称ready。unavailable已有“不可用”映射，保持实现并补负例。新增组件与完整页面测试，模拟缺观测和不可用时按后端真实合同返回degraded/503，验证不能显示“全部依赖就绪”。没有加入未来空导航、统计或伪遥测。
+
+| 实际检查 | 结果与证据 |
+|---|---|
+| 无凭据真实guest keyboard probe | guest_keyboard_probe.json：实际系统时钟起止、官方Chrome156、初始BODY及3阶段焦点；guest_keyboard_focus.png为实际截图，已打开检查焦点环与真实依赖表 |
+| frontend npm run test | keyboard_test.log/json；42 passed、0failed/0skip、5文件（19API＋3快照＋11T40＋8状态＋1回归），新增3项，原39保留 |
+| frontend npm run lint / typecheck / build | 各exit0；keyboard_lint/typecheck/build；当前已批候选依赖hash在JSON。build30模块、JS159.88kB/gzip52.05，不当性能指标 |
+| CBM/rg | 独立cache /tmp/dianzi-cbm-r01-frontend-keyboard-20261015、scope frontend/src；StatusBadge入向DependencyDetails/Workbench/App，真实table调用与源码交叉一致；before/after日志和源hash分别保留 |
+| 本轮完整3case真实e2e | 未自行运行，需主控受控环境重跑新的固定前端commit；不把guest焦点probe计为整套e2e或390px认证验收 |
+| security / integration / live-provider / manual | 本轮not_run。真实guest仅证明访客API/键盘路径；人工验收、模型/来源、PG持久化等不从该probe推断 |
+
+主控复制package/lock/tsconfig/.gitattributes保持未提交，不采用未授权V4或修改CR-R10状态。Vite仅本Agent临时25173服务，已结束，不停主控API/worker；构建生成tsbuildinfo只还原本轮产物。
+
+状态仍awaiting_review/partial。本轮改动：e2e/r01_auth.spec.ts的C06、App依赖名、status映射及直接测试、本报告/专属日志。主控以新SHA重新运行3例并由独立reviewer定向复核后，才登记这一扩展切片通过；原T40/G-A不自动accepted。
+2026-10-15T00:57:04+08:00：追加真实访客键盘可达诊断、C06有明确起点的最小修复、worker/scheduler实际标签及42fixture回归；完整认证390px复验交主控，保留原失败。

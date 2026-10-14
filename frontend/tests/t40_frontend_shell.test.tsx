@@ -28,9 +28,10 @@ function problemResponse(status: number, code: string): Response {
   return jsonResponse({ error: { code, message: "fixture", retryable: false }, trace_id: "fixture-trace" }, status);
 }
 
-function mockApi(options: { authenticated?: boolean; dependencyFailure?: boolean; loginRejected?: boolean; logoutFailure?: boolean; expiresOnRefresh?: boolean } = {}) {
+function mockApi(options: { authenticated?: boolean; dependencyFailure?: boolean; loginRejected?: boolean; logoutFailure?: boolean; expiresOnRefresh?: boolean; runtimeObservations?: boolean } = {}) {
   let authenticated = options.authenticated ?? false;
   let meRequests = 0;
+  const dependenciesDegraded = options.dependencyFailure || options.runtimeObservations;
   const requests: { path: string; options: RequestInit | undefined }[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, requestOptions?: RequestInit) => {
     let path: string;
@@ -40,14 +41,15 @@ function mockApi(options: { authenticated?: boolean; dependencyFailure?: boolean
     requests.push({ path, options: requestOptions });
     if (path === "/v1/health/live") return jsonResponse({ status: "live" });
     if (path === "/v1/health/ready") return jsonResponse({
-      status: options.dependencyFailure ? "degraded" : "ready",
-      reason: options.dependencyFailure ? "search unavailable" : "dependencies ready",
+      status: dependenciesDegraded ? "degraded" : "ready",
+      reason: dependenciesDegraded ? "synthetic dependency or runtime observation unavailable" : "dependencies ready",
       dependencies: {
         database: { state: "ready" },
         cache: { state: "ready" },
         search: { state: options.dependencyFailure ? "unavailable" : "ready", reason: options.dependencyFailure ? "connection failed" : "" },
+        ...(options.runtimeObservations ? { worker: { state: "not_observed_or_stale" }, scheduler: { state: "unavailable" } } : {}),
       },
-    }, options.dependencyFailure ? 503 : 200);
+    }, dependenciesDegraded ? 503 : 200);
     if (path === "/v1/auth/me") {
       meRequests += 1;
       if (options.expiresOnRefresh && meRequests > 1) return problemResponse(401, "session_expired");
@@ -119,6 +121,17 @@ describe("T40 R01 authenticated workbench — explicit fixture HTTP boundary", (
     await screen.findAllByText("部分不可用");
     expect(screen.getByText("搜索服务")).toBeTruthy();
     expect(screen.getByText("connection failed")).toBeTruthy();
+    expect(screen.queryByText("全部依赖就绪")).toBeNull();
+  });
+
+  it("T40-C04 names real runtime components without presenting missing observations as ready", async () => {
+    mockApi({ authenticated: true, runtimeObservations: true });
+    render(<App />);
+    await screen.findByText("任务进程");
+    expect(screen.getByText("调度进程")).toBeTruthy();
+    expect(screen.getByText("待观测 / 已过期")).toBeTruthy();
+    expect(screen.getByText("不可用")).toBeTruthy();
+    expect(screen.queryByText("未知状态：not_observed_or_stale")).toBeNull();
     expect(screen.queryByText("全部依赖就绪")).toBeNull();
   });
 

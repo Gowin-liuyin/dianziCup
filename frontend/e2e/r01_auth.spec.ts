@@ -40,11 +40,15 @@ test("T40-C01/C02/C05 real login, reload, cookie/CSRF and revocation", async ({ 
 });
 
 test("T40-C06 real keyboard focus and 390px authenticated layout", async ({ page }, testInfo) => {
-  await loginWithRealApi(page);
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "登录工作台", exact: true })).toBeVisible();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "跳到主要内容" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.locator("#main-content")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "刷新状态", exact: true })).toBeFocused();
+  await loginWithRealApi(page);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expect(page.getByRole("button", { name: "退出登录", exact: true })).toBeVisible();

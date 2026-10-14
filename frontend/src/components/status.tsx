@@ -1,6 +1,6 @@
 import type { ApiProblem } from "../api/client";
 
-const statusLabels: Record<string, string> = { ready: "就绪", live: "可响应", not_ready: "未就绪", degraded: "部分不可用", unavailable: "不可用", not_configured: "未配置", unknown: "未知", stale: "已过期", partial: "部分完成", loading: "检查中" };
+const statusLabels: Record<string, string> = { ready: "就绪", live: "可响应", not_ready: "未就绪", degraded: "部分不可用", unavailable: "不可用", not_configured: "未配置", not_observed_or_stale: "待观测 / 已过期", unknown: "未知", stale: "已过期", partial: "部分完成", loading: "检查中" };
 
 /** 文本标识与颜色共同表达状态，未知状态不解释为成功。 */
 export function StatusBadge({ state }: { state: string }) {

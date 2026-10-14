@@ -7,7 +7,7 @@ import "./styles.css";
 
 type HealthState = { kind: "loading" } | { kind: "checked"; live: boolean; readiness: Readiness | null; errors: ApiProblem[]; checkedAt: string };
 
-const dependencyNames: Record<string, string> = { database: "数据库", cache: "缓存服务", search: "搜索服务", redis: "缓存服务", opensearch: "搜索服务" };
+const dependencyNames: Record<string, string> = { database: "数据库", cache: "缓存服务", search: "搜索服务", redis: "缓存服务", opensearch: "搜索服务", worker: "任务进程", scheduler: "调度进程" };
 const roleNames: Record<CurrentUser["role"], string> = { viewer: "查看者", analyst: "分析员", tenant_admin: "租户管理员", system_admin: "系统管理员" };
 
 function beijingTimestamp(): string {
