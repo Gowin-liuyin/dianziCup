@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-import ast
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from scripts.security_scan import (
+    SAFE_CATEGORIES,
+    is_public_authentication_failure_comparison,
+    load_fixture_classifications,
+    scan_repository,
+)
 
 from ai_intel.api.authentication import (
     MAX_LOGIN_ATTEMPTS,
@@ -28,28 +33,6 @@ from ai_intel.domain.access import (
     Role,
     filter_visible_rows,
 )
-
-
-def is_public_authentication_failure_comparison(content: str, source_line: int) -> bool:
-    """公开PG错误文案作为布尔比较不是密码赋值；直接字面量凭据仍拒绝。"""
-    try:
-        tree = ast.parse(content)
-    except SyntaxError:
-        return False
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign) or node.lineno != source_line:
-            continue
-        value = node.value
-        if (
-            isinstance(value, ast.Compare)
-            and isinstance(value.left, ast.Constant)
-            and value.left.value == "password authentication failed"
-            and len(value.ops) == 1
-            and isinstance(value.ops[0], ast.In)
-        ):
-            return True
-    return False
-
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ALLOWED_ORIGIN = "https://workbench.test"
@@ -171,54 +154,12 @@ def test_audit_and_sources_carry_no_secret_values_t06_c06() -> None:
         assert "trace_id" in event
     with pytest.raises(AuditEventError):
         service._append_audit("manual_probe", {"password": "should-not-be-logged"})
-    import re
-
-    secret_pattern = re.compile(
-        r"(api[_-]?key|secret[_-]?key|db[_-]?pass|secret|token|password)"
-        r"\s*[:=]\s*['\"][A-Za-z0-9_\-]{16,}['\"]",
-        re.IGNORECASE,
+    classifications = load_fixture_classifications(
+        REPO_ROOT, REPO_ROOT / "reports/security/recovery_fixture_false_positives.json"
     )
-    scan_roots = (
-        REPO_ROOT / "backend" / "src",
-        REPO_ROOT / "scripts",
-        REPO_ROOT / "frontend" / "src",
-        REPO_ROOT / "frontend" / "dist",
-        REPO_ROOT / "reports" / "runs",
-    )
-    documented_dev_placeholders = {"dev-only-not-a-secret", "Dev-Only-Not-A-Secret-1!"}
-    secret_value_pattern = re.compile(
-        r"(api[_-]?key|secret[_-]?key|db[_-]?pass|secret|password|passwd|token|jwt)"
-        r"\s*[:=]\s*['\"]([^'\"]{6,})['\"]",
-        re.IGNORECASE,
-    )
-    for source_root in scan_roots:
-        if not source_root.exists():
-            continue
-        for source_path in source_root.rglob("*"):
-            if not source_path.is_file() or source_path.suffix not in {
-                ".py",
-                ".ts",
-                ".tsx",
-                ".js",
-                ".log",
-                ".json",
-                ".html",
-            }:
-                continue
-            content = source_path.read_text(encoding="utf-8", errors="ignore")
-            assert not secret_pattern.search(content), source_path
-            for secret_match in secret_value_pattern.finditer(content):
-                source_line = content[: secret_match.start()].count("\n") + 1
-                if (
-                    source_path.suffix == ".py"
-                    and secret_match.group(2) == "password authentication failed"
-                    and is_public_authentication_failure_comparison(content, source_line)
-                ):
-                    continue
-                assert secret_match.group(2) in documented_dev_placeholders, (
-                    source_path,
-                    secret_match.group(1),
-                )
+    findings = scan_repository(REPO_ROOT, classifications)
+    rejected = [finding for finding in findings if finding.category not in SAFE_CATEGORIES]
+    assert not rejected, rejected
 
 
 @pytest.mark.parametrize(
