@@ -136,7 +136,10 @@ def _source_texts(documents: tuple[EnrichmentDocument, ...]) -> tuple[str, ...]:
 
 
 def _empty_attempts(
-    status: DimensionStatus, code: str, documents: tuple[EnrichmentDocument, ...]
+    status: DimensionStatus,
+    code: str,
+    documents: tuple[EnrichmentDocument, ...],
+    dimensions: tuple[DimensionName, ...],
 ) -> ModelFieldResult:
     source_ids = tuple(dict.fromkeys(document.source_id for document in documents))
     return ModelFieldResult(
@@ -144,7 +147,7 @@ def _empty_attempts(
             DimensionAttempt(
                 dimension=dimension, status=status, source_ids=source_ids, error_code=code
             )
-            for dimension in FIELD_DIMENSIONS
+            for dimension in dimensions
         )
     )
 
@@ -246,6 +249,62 @@ def generate_model_field_attempts(
     already approved real client. This function does not read environment credentials.
     PostgreSQL publication and any semantic/human review remain the caller's responsibility.
     """
+    return _generate_model_field_attempts(
+        context,
+        documents,
+        client,
+        dimensions=FIELD_DIMENSIONS,
+        budget_authorized=budget_authorized,
+        content_is_private=content_is_private,
+        egress_granted=egress_granted,
+        total_output_token_budget=total_output_token_budget,
+    )
+
+
+def extract_model_dimension(
+    context: EnrichmentContext,
+    documents: tuple[EnrichmentDocument, ...],
+    client: GenerationClient | None,
+    *,
+    dimension: DimensionName,
+    budget_authorized: bool,
+    content_is_private: bool,
+    egress_granted: bool,
+    total_output_token_budget: int = 1024,
+) -> ModelFieldResult:
+    """Return one field attempt with at most one wire call and no format repair.
+
+    The worker must supply an independently configured client whose total deadline is
+    at most 20 seconds and within its tool budget. Oversized deadlines are configuration
+    errors; this entry does not mutate the client or silently reduce its budget.
+    """
+    if type(dimension) is not str or dimension not in FIELD_DIMENSIONS:
+        raise FieldEvidenceError("field_dimension_invalid")
+    if isinstance(client, GenerationClient) and client.limits.total_timeout_seconds > 20:
+        raise FieldEvidenceError("field_single_dimension_timeout_invalid")
+    return _generate_model_field_attempts(
+        context,
+        documents,
+        client,
+        dimensions=(dimension,),
+        budget_authorized=budget_authorized,
+        content_is_private=content_is_private,
+        egress_granted=egress_granted,
+        total_output_token_budget=total_output_token_budget,
+    )
+
+
+def _generate_model_field_attempts(
+    context: EnrichmentContext,
+    documents: tuple[EnrichmentDocument, ...],
+    client: GenerationClient | None,
+    *,
+    dimensions: tuple[DimensionName, ...],
+    budget_authorized: bool,
+    content_is_private: bool,
+    egress_granted: bool,
+    total_output_token_budget: int,
+) -> ModelFieldResult:
     if (
         any(
             type(value) is not bool
@@ -256,29 +315,37 @@ def generate_model_field_attempts(
             )
         )
         or type(total_output_token_budget) is not int
-        or not 4 <= total_output_token_budget <= 8192
+        or not len(dimensions) <= total_output_token_budget <= 8192
     ):
         raise FieldEvidenceError("field_call_policy_invalid")
     if not isinstance(context, EnrichmentContext) or type(documents) is not tuple:
         raise FieldEvidenceError("field_context_invalid")
     documents = validate_documents(context, documents)
     if not budget_authorized:
-        return _empty_attempts(DimensionStatus.BLOCKED, "model_budget_not_authorized", documents)
+        return _empty_attempts(
+            DimensionStatus.BLOCKED, "model_budget_not_authorized", documents, dimensions
+        )
     if client is None:
-        return _empty_attempts(DimensionStatus.BLOCKED, "model_not_configured", documents)
+        return _empty_attempts(
+            DimensionStatus.BLOCKED, "model_not_configured", documents, dimensions
+        )
     if not isinstance(client, GenerationClient):
         raise FieldEvidenceError("field_real_client_required")
     if content_is_private and not egress_granted:
-        return _empty_attempts(DimensionStatus.BLOCKED, "model_egress_denied", documents)
+        return _empty_attempts(
+            DimensionStatus.BLOCKED, "model_egress_denied", documents, dimensions
+        )
     if not documents:
-        return _empty_attempts(DimensionStatus.PENDING, "field_evidence_missing", documents)
+        return _empty_attempts(
+            DimensionStatus.PENDING, "field_evidence_missing", documents, dimensions
+        )
     texts = _source_texts(documents)
     started = time.monotonic()
-    total_timeout_seconds = 4 * client.limits.total_timeout_seconds
+    total_timeout_seconds = len(dimensions) * client.limits.total_timeout_seconds
     attempts: list[DimensionAttempt] = []
     metadata: list[AttemptMetadata] = []
-    output_tokens = total_output_token_budget // 4
-    for dimension in FIELD_DIMENSIONS:
+    output_tokens = total_output_token_budget // len(dimensions)
+    for dimension in dimensions:
         if time.monotonic() - started >= total_timeout_seconds:
             attempts.append(
                 DimensionAttempt(
