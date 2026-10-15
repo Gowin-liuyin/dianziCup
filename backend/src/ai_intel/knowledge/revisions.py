@@ -143,7 +143,9 @@ def save_document_revision(
         document_revisions.c.content_hash,
     )
     if revision_metadata is not None:
-        tip_query = tip_query.add_columns(document_revisions.c.source_metadata)
+        tip_query = tip_query.add_columns(
+            (document_revisions.c.source_metadata == revision_metadata).label("metadata_matches")
+        )
     tip = (
         session.execute(
             tip_query.where(
@@ -156,16 +158,7 @@ def save_document_revision(
     )
     metadata_matches = revision_metadata is None
     if revision_metadata is not None and tip is not None:
-        metadata_matches = (
-            json.dumps(
-                tip["source_metadata"],
-                ensure_ascii=False,
-                allow_nan=False,
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8")
-            == encoded_metadata
-        )
+        metadata_matches = tip["metadata_matches"] is True
     if tip is not None and tip["content_hash"] == stored.content_hash and metadata_matches:
         return SavedRevision(
             revision_id=str(tip["revision_id"]),
