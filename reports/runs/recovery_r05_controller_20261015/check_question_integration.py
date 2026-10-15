@@ -15,10 +15,12 @@ assert not (run / (label + ".json")).exists()
 clock = ZoneInfo("Asia/Shanghai")
 environment = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
 base = ["uv", "run", "--frozen", "--extra", "semantic"]
-if label == "gb_security_exact_manifest_recheck":
+if label in {"gb_security_exact_manifest_recheck", "gb_fixture_checkout_bytes_recheck"}:
     command = base + ["pytest", "tests/security/test_t06_authentication_and_scope.py::test_audit_and_sources_carry_no_secret_values_t06_c06", "--no-cov", "-q", "--junitxml=" + str(run / (label + ".xml"))]
 elif label == "gb_pure_regression":
     command = base + ["pytest", "tests/unit", "tests/contract", "tests/security", "-m", "not real_pg", "-q", "--junitxml=" + str(run / (label + ".xml"))]
+elif label == "gb_schema_plan_formats":
+    command = base + ["pytest", "../tests/plan", "--no-cov", "-q", "--junitxml=" + str(run / (label + ".xml"))]
 elif label.startswith("questions_api_pg"):
     private = subprocess.run(["wsl", "-d", "Ubuntu-22.04", "-u", "root", "--exec", "cat", "/tmp/dianzi-docker-static-r01-20261014/runtime/r05-pgvector/connection.json"], capture_output=True, text=True, check=True, timeout=10)
     environment["TEST_DATABASE_URL"] = json.loads(private.stdout)["TEST_DATABASE_URL"]
