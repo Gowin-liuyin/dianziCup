@@ -1,8 +1,53 @@
 # R10 · PostgreSQL 证据图只读切片
 
-状态：`awaiting_review`。本切片 implementation=`complete`；整个 R10 仍需产品注册、Neo4j 投影、前端与独立验收，不能据此登记整 R10 完成。记录时间：2026-10-16T03:09:10+08:00。
+状态：`awaiting_review`。本切片 implementation=`complete`；修复代码冻结 `3516b9109b9b7f2c5691d78ad0439aea4a659f4f`，等待原独立 reviewer 定向复核。整个 R10 仍需产品注册、Neo4j 投影、前端与独立验收，不能据此登记整 R10 完成。修复记录时间：2026-10-16T04:18:48+08:00。
 
-基线：`cc1b1d302e22048f567475b7084bcd5490761ed2`。冻结代码：`b0b7a5b856cc38862f64c01565309564d67c34c0`。工作树：`D:/wt/r10-pg-graph`；分支：`codex/r10-pg-evidence-graph`。主 checkout 的既有未提交修改没有触碰；没有 push 或自行 accepted。
+基线：`cc1b1d302e22048f567475b7084bcd5490761ed2`。初版历史冻结代码：`b0b7a5b856cc38862f64c01565309564d67c34c0`；初版归档截止 `16803ce6be9ad6adb6d89f46c594cfa420190c24`。工作树：`D:/wt/r10-pg-graph`；分支：`codex/r10-pg-evidence-graph`。主 checkout 的既有未提交修改没有触碰；没有 push 或自行 accepted。
+
+## 独立初审后的修复交付
+
+独立 reviewer 在初版复现了 3 个 P1：typed value/空泛 quote 被提升为六类强关系；首次 RR event SELECT 后实际提交的父 ACL/claim/epoch/版本变更仍返回旧图；同窗口角色降权仍返回私图。另有 2000 支持行重复论文目标 ACL SELECT 的 P2。初审原 20 为 8 passed/12 failed，扩展 32 为 20 passed/12 failed；作者初版 35 通过不足以否认这些缺陷。以下修复说明与冻结复跑取代后文初版的语义及单 RR HTTP 说明；初版日志和叙述保留为历史。
+
+主控已明确批准最小读围栏设计和 10 个旧正例 fixture 的语义迁移，正式记录在 [CR-R10_graph_validity](../../docs/decisions/CR-R10_graph_validity.md)。公共 schema/auth/lock 配置、发布服务、迁移、app 注册、进度及金标分母没有改变。
+
+修复的两个源码文件仍为 `backend/src/ai_intel/knowledge/evidence_graph.py` 与 `backend/src/ai_intel/api/graph_routes.py`。已有 R10 unit 和 PG fixture 的版本输入/原文迁移、专属 `backend/tests/integration/test_r10_graph_validity_pg.py`、上述 CR、本报告和新 run 目录是其余改动。冻结版本相对初版归档共 6 个代码/CR 文件，精确清单、原始字节和规范 Git blob 在新 run 的 `frozen_code_manifest.json`。
+
+关系投影按 claim 聚合已验证引用后复用现有 `validate_field_candidate`，同时检查 typed value 与肯定原文中的组件/生态/版本边界/限定条件、体系 ID/固定 commit/机制/前提、论文正文/URI/title/目标身份和修复/缓解句。事件绑定由 PG subject/当前来源关联以及真实外部 CVE/GHSA 原文 ID 或精确 owner JSON 字段共同核验；非 CVE 使用同主来源验证后的 affected_product/source_excerpt 与安全描述。原文不需要内部 UUID。主题相似、背景 ID、条件省略、缺内容覆盖或目标父 ACL 均保持 unknown。复用模型专用校验器时只中和临时候选的模型权限限制，然后核对 PG 目标，不改已有 rule_derived 的比较支持或 static_reviewed，不写回事实。投影规则明确升为 `r10-graph-1.1.0`。
+
+HTTP 首次 REPEATABLE READ 只生成候选和有界输入摘要。关闭该事务后，新的 READ COMMITTED 事务重新调用现有 `lock_authenticated_scope`，比较完整 role/permissions/tenant；按认证 → source → document → revision → event → claim/evidence/block/关联 → epoch 取锁。当前输入、关系和父 ACL 全部重读，即使直接撤权不 bump epoch 也会失效。在锁内构造 JSONResponse 字节后提交；0 重试，没有 epoch 锁内回拿父锁。变化返回 409，身份失效/权限变更/不可见分别为 401/403/404，继承原锁等待超时后 503。直接 service 调用的上层仍须建立一致性事务；产品交付应使用此路由围栏。
+
+论文目标/文档仅在本次已认证 scope 的 event_graph 调用中 memo，下一调用重查 ACL。图节点/边/支持行上限保持 200/400/2000，围栏超容量明确 409。内部输入摘要只用于当前读有效性比较；`content_sha256` 仍为有界选集摘要，不替代 business_version，也不能用于截断全图的 Neo4j 一致签名。
+
+新 run：`reports/runs/recovery_r10_graph_validity_20261016/`。完整 argv、cwd、+08 起止、退出码和验证 SHA 逐次保存为对应 JSON；JUnit 保存实际 case/参数/失败。冻结复跑时间为 2026-10-16T04:10:58+08:00 起，主组于 04:12:38+08:00 结束；没有在复跑中改代码。
+
+| 冻结检查 | 实际结果 | 证据 |
+|---|---|---|
+| 原 pure 10 + 迁移后的原 PG 35 + 新 PG 30 | exit 0；75 passed，0 fail/error/skip | `frozen_author_and_validity.json/log/xml` |
+| R02/R07 原相关回归 7 文件 | exit 0；103 passed，0 fail/error/skip | `frozen_regression.json/log/xml` |
+| 原作者 PG 35 原 bytes | exit 1；24 passed/11 failed，0 error/skip | `frozen_original_author35.json/log/xml` |
+| 原 reviewer 扩展 32 原 bytes | exit 1；22 passed/10 failed，0 error/skip | `frozen_original_reviewer32.json/log/xml` |
+| 原 reviewer 20 case 子集 | exit 1；16 passed/4 failed，12 deselected，0 error/skip | `frozen_original_reviewer20_subset.json/log/xml` |
+| Ruff / 格式 / mypy / 代码+CR diff check | 各 exit 0；7 文件格式已符合，2 源文件类型通过 | `static_commands.json`、对应 `*_frozen.log`、`code_diff_check.log` |
+
+primary suite 与回归合计 178 passed。旧材料复跑另列，不并入这个通过分母，不将旧红改 skip。20 子集是从保持原 bytes 的现存 32 脚本按 `-k 'not exact_fixture_fields and not unknown_condition'` 选取原 20 case；它不是另一个可验证的最初 20 脚本字节版本。所有脚本 hash 和 case 名称在清单/summary 中保留。
+
+原作者 PG 文件 raw SHA-256=`dca8f657fc384c6af9363b020c7ce49ce9bd1d2b08f913fa73625ff2d13d3bf9`，原 Git blob=`2ccfb158d3d231af1a442cdda0e20d41023d515e`；其旧引用缺六类实际内容，10 个正例在新语义保持红，另 1 是旧 REST `1.0.0` 版本期待。迁移逐 case 原缺口、新自然公告输入及保留断言见 CR。合成原文字节实际存入内容寻址对象，新增检查直接读取验证坐标/hash，不在原文插入系统 UUID；仍是 fixture。
+
+reviewer 原 32 脚本 raw SHA-256=`cfbbb95d227f4e884d2765bde6da5dbd1121c5ffd9c159ac99a1e9eadf0bfe16`。原 12 个 P1 反例均通过；10 个 known loss 是 6 个内部 UUID/不完整原文的旧强边正例、3 个由旧虚构边驱动的截断期待、1 个缺绑定的 PoC same_event 期待。原脚本/原期待不修改，原作者 helper 副本也保持旧 bytes；新增真实字段/原文正负例、截断和 PoC 安全检查另列。独立 reviewer 决定迁移与新语义是否可接受。
+
+新 30 PG 覆盖：父 source/document/revision/claim/epoch/event version 12 个真实提交窗口（分别 bump/no-bump epoch）；role/tenant/session 三种身份变更；真实父锁等待与继承 5000ms 超时；错误组件/限定条件/边界/修复/事件背景 ID；ATLAS 前提省略；精确 owner 字段 rule_derived；非 CVE 描述缺失/普通描述；PoC 只做 presence；原文字节和 2000 支持行负载。实际 HTTP body/hash 与 SQLstate 保存在 `frozen_author_and_validity_http.jsonl`：窗口变化为 409，角色/租户为 403，会话为 401；父→epoch writer 提交时 reader 返回 409，0.216s、无 40P01；父锁超时返回 503，5.154s、SQLstate=55P03，没有假成功。此负载运行观测不证明所有并发调度均无死锁。
+
+2000 支持行来自 100 claims ×20 evidence，目标相同、max_nodes=1/max_edges=1，单次 service 读取观测 7 SELECT、其中 1 目标 ACL、0.407s；root-only truncated=true。下一次将目标改为 other 私有后重查拒绝，缓存未跨请求。这是受控 fixture 查询计数，不是 HTTP 全围栏总 SQL，也不作为官方性能评分或关系准确率。
+
+CBM 官方 CLI 冻结后自己的 backend/src fast 索引为 1426 nodes/7311 edges、未索引 0，qualified graph/fence traces 和 architecture 原输出已保存。首次 architecture 使用 JSON 数组 flag 被实际 CLI 拒绝（exit 1）；按 CLI help 的 `--aspects all` 重跑 exit 0，两个原始输出均保留。修改前 auth/field qualified trace 从旧 run 原字节复制到新 run。工具图只作导航，不证明业务正确。
+
+修复源码/CR 的提交差异及 staged 检查均 exit 0；完整归档 staged diff check 为 exit 2，来自保留的 CBM stdout EOF 空行、原始 diff patch 的空上下文行、旧失败 log/XML 的 traceback 空行。命令、原输出在 `archive_diff_commands.json`、`staged_archive_diff.log`，没有裁剪旧 red/原输出或添加忽略规则。该归档空白检查没有计作通过。`original_preservation.json` 另用 AST 实际确认原作者 test IDs、参数装饰器及全部断言一致，仅归一规则版本 1.0.0→1.1.0；raw 与 canonical Git blob 分别登记。
+
+开发阶段所有红记录保留，包括旧作者24/11、reviewer22/10、owner 字段诊断 NameError/大小写绑定失败、原文字节检查 import 失败及修后重跑。focused pytest 仍清空默认 addopts，全仓覆盖率门=`not_run`，未改门槛；观察到已有 Starlette/httpx 弃用 warning。unit/contract/security/integration=`passed`；原材料兼容预期=`failed`；frontend/e2e/live/manual=`not_run`。0 外网、model/provider、费用、扫描或新服务。
+
+剩余约束：没有完整原文/体系 coverage/精确源字段或非 CVE 安全描述时保守返回 gap；未接 R09 知识卡生产发布、Neo4j、consumer、UI 和产品入口。下一步原独立 reviewer 定向复核冻结代码、CR、日志和 manifests，之后主控注册路由/冻结正式公共图合同并做集成回归。不得自行 accepted 或据此接受整 R10。
+
+## 初版交付记录（历史，已被上述修复替代）
 
 ## 本轮输入、范围与合同核对
 

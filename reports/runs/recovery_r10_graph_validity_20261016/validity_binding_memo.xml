@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="3" time="10.299" timestamp="2026-10-16T03:53:56.004603+08:00" hostname="yin"><testcase classname="tests.integration.test_r10_graph_validity_pg" name="test_typed_version_requires_matching_contextual_source_lines[other_event]" time="1.364"><failure message="NameError: name 'SOURCE_IDENTIFIER' is not defined">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_b9467a1477994cb28b360ee5770a57e9+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-674/test_typed_version_requires_ma0')
+change = 'other_event'
+
+    @pytest.mark.parametrize(
+        "change", ["package", "boundary", "wrapped_condition", "fix", "other_event"]
+    )
+    def test_typed_version_requires_matching_contextual_source_lines(graph_engine, tmp_path, change):
+        event_id = uuid4()
+        submission = prepared_submission(graph_engine, tmp_path, predicate="version_assertion")
+        value = dict(VERSION)
+        lines = [value["raw_expression"], value["vendor_fix"], *value["mitigations"]]
+        if change == "other_event":
+            value["raw_expression"] = value["raw_expression"].replace(
+&gt;               SOURCE_IDENTIFIER, "GHSA-cccc-ffff-gggg"
+                ^^^^^^^^^^^^^^^^^
+            )
+E           NameError: name 'SOURCE_IDENTIFIER' is not defined
+
+tests\integration\test_r10_graph_validity_pg.py:277: NameError</failure></testcase><testcase classname="tests.integration.test_r10_graph_validity_pg" name="test_precise_source_owner_field_binds_a_rule_fact_without_internal_uuid_in_text" time="0.921"><failure message="NameError: name 'SOURCE_IDENTIFIER' is not defined">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_405edebe4b0948a6b5c0bcb49956c65d+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-674/test_precise_source_owner_fiel0')
+
+    def test_precise_source_owner_field_binds_a_rule_fact_without_internal_uuid_in_text(
+        graph_engine, tmp_path
+    ):
+        event_id = uuid4()
+        value = {**VERSION, "raw_expression": "PyPI fixture-package affected versions: &gt;=1.0,&lt;1.4.2"}
+        template = prepared_submission(
+            graph_engine, tmp_path, predicate="version_assertion", claim_origin="rule_derived"
+        )
+        record = ClaimRecord.model_validate(
+            {
+                **template.record.model_dump(),
+                "schema_version": 3,
+                "subject": str(event_id),
+                "object_value": value,
+            }
+        )
+        source = replace_source_body(
+            graph_engine,
+            template.model_copy(update={"record": record}),
+            [value["raw_expression"], value["vendor_fix"], *value["mitigations"]],
+        )
+        with graph_engine.begin() as writer:
+            block_id = add_text_block(
+                writer,
+                source.revision_id.value,
+                2,
+                500,
+&gt;               500 + len(SOURCE_IDENTIFIER),
+                          ^^^^^^^^^^^^^^^^^
+                SOURCE_IDENTIFIER,
+            )
+E           NameError: name 'SOURCE_IDENTIFIER' is not defined
+
+tests\integration\test_r10_graph_validity_pg.py:343: NameError</failure></testcase><testcase classname="tests.integration.test_r10_graph_validity_pg" name="test_2000_support_rows_share_one_request_local_paper_acl_lookup" time="6.235" /></testsuite></testsuites>
