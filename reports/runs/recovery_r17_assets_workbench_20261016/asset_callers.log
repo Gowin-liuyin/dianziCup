@@ -1,0 +1,46 @@
+frontend/src/app/workspace-navigation.ts:43:export function readAssetSelection(hash: string): { assetId: string } | null {
+frontend/src/app/workspace-navigation.ts:56:  if (readAssetSelection(hash) !== null) return "assets";
+frontend/src/App.tsx:6:import { readAssetSelection, readGraphSelection, readWorkspacePage, workspacePages, type WorkspacePage } from "./app/workspace-navigation";
+frontend/src/App.tsx:15:import { AssetWorkspace } from "./features/assets/asset-workspace";
+frontend/src/App.tsx:126:  const assetRoute = readAssetSelection(hash);
+frontend/src/App.tsx:202:          {page === "assets" && <AssetWorkspace key={sessionScopeKey} assetId={assetRoute?.assetId} />}
+frontend/src/features/assets\asset-workspace.tsx:6:import { getAssetList } from "./asset-client";
+frontend/src/features/assets\asset-workspace.tsx:7:import type { Asset, AssetImportResult, AssetPage } from "./asset-contracts";
+frontend/src/features/assets\asset-workspace.tsx:8:import { AssetDetail } from "./asset-detail";
+frontend/src/features/assets\asset-workspace.tsx:9:import { AssetImport } from "./asset-import";
+frontend/src/features/assets\asset-workspace.tsx:24:  const [receipt, setReceipt] = useState<AssetImportResult | null>(null);
+frontend/src/features/assets\asset-workspace.tsx:36:    void getAssetList(user.tenant_id, product, request.cursor, controller.signal).then((result) => {
+frontend/src/features/assets\asset-workspace.tsx:43:  function imported(result: AssetImportResult) { if (!isCurrent()) return; setReceipt(result); refreshAssets(); window.location.hash = `assets/${result.asset_id}`; }
+frontend/src/features/assets\asset-workspace.tsx:48:    {user.permissions.includes("write:asset") ? <AssetImport key={assetId ?? "new-asset"} tenant={user.tenant_id} currentAsset={currentAsset?.asset_id === assetId ? currentAsset : null} isCurrent={isCurrent} onImported={imported} onFailure={failed} /> : <div className="asset-permission-note"><strong>只读资产权限</strong><p>导入需要当前会话明确授予 write:asset。分析员当前只有读取权限；本页不会按角色名称补授权限。</p></div>}
+frontend/src/features/assets\asset-workspace.tsx:59:      {assetId ? <AssetDetail key={`${assetId}:${refresh}`} tenant={user.tenant_id} assetId={assetId} refresh={refresh} isCurrent={isCurrent} onAsset={setCurrentAsset} onFailure={failed} /> : <section className="asset-selection-guide"><p className="eyebrow">READ / VERIFY / COMPARE</p><h2>固定快照<br />保留判断边界</h2><p>选择资产，核对当前清单、历史快照、组件版本与字段位置。版本、配置或范围缺失时保留未知。</p><div><span>内部声明</span><strong>来源与完整性分别核对</strong></div><div><span>外部观察</span><strong>独立入口尚未接通</strong></div><div><span>影响研判</span><strong>等待条件与证据接口</strong></div></section>}
+frontend/src/features/assets\asset-workspace.tsx:65:export function AssetWorkspace({ assetId }: { assetId?: string }) {
+frontend/src/features/assets\asset-import.tsx:3:import { importAsset, MAX_ASSET_UPLOAD_BYTES, parseCsvMapping, type AssetImportRequest } from "./asset-client";
+frontend/src/features/assets\asset-import.tsx:4:import type { Asset, AssetImportResult, ManifestFormat } from "./asset-contracts";
+frontend/src/features/assets\asset-import.tsx:7:interface ImportProps { tenant: string; currentAsset: Asset | null; isCurrent: () => boolean; onImported: (result: AssetImportResult) => void; onFailure: (error: ApiProblem) => void }
+frontend/src/features/assets\asset-import.tsx:11:export function AssetImport({ tenant, currentAsset, isCurrent, onImported, onFailure }: ImportProps) {
+frontend/src/features/assets\asset-import.tsx:22:  const request = useRef<AssetImportRequest | null>(null);
+frontend/src/features/assets\asset-import.tsx:57:      const result = await importAsset(tenant, request.current, controller.current.signal, isCurrent);
+frontend/src/features/assets\asset-client.test.ts:3:import { getAsset, getAssetHistory, getAssetList, importAsset, parseCsvMapping } from "./asset-client";
+frontend/src/features/assets\asset-client.test.ts:12:    await getAssetList(fixtureTenant, "@synthetic/a+b", "server+/cursor");
+frontend/src/features/assets\asset-client.test.ts:14:    await getAssetHistory(fixtureTenant, fixtureAssetId);
+frontend/src/features/assets\asset-client.test.ts:25:    await importAsset(fixtureTenant, { file, displayName: "Synthetic fixture", sourceVersion: "synthetic-v1", observedAt: "2026-10-15T10:00:00Z", manifestFormat: "json_manifest_v1", idempotencyKey: "synthetic-replay-key" });
+frontend/src/features/assets\asset-client.test.ts:37:    await expect(importAsset(fixtureTenant, { ...request, file: new File([new Uint8Array(1048577)], "synthetic-big.json") })).rejects.toMatchObject({ status: 413 });
+frontend/src/features/assets\asset-client.test.ts:38:    await expect(importAsset(fixtureTenant, { ...request, observedAt: "2026-10-15T10:00:00" })).rejects.toMatchObject({ status: 422 });
+frontend/src/features/assets\asset-client.test.ts:41:    await expect(importAsset(fixtureTenant, request, undefined, () => false)).rejects.toMatchObject({ code: "request_canceled" });
+frontend/src/features/assets\asset-client.test.ts:47:      await expect(getAssetList(fixtureTenant)).rejects.toMatchObject({ status });
+frontend/src/features/assets\asset-client.test.ts:50:    await expect(getAssetList(fixtureTenant, "", "same-cursor")).rejects.toMatchObject({ status: 502 });
+frontend/src/features/assets\asset-client.test.ts:54:    await expect(importAsset(fixtureTenant, { file: new File(["synthetic"], "synthetic.json"), displayName: "Synthetic fixture", sourceVersion: "v1", observedAt: "2026-10-15T10:00:00Z", manifestFormat: "json_manifest_v1", assetId: "a0000000-0000-4000-8000-000000000099", idempotencyKey: "synthetic-append-key" })).rejects.toMatchObject({ code: "invalid_response" });
+frontend/src/features/assets\asset-detail.tsx:5:import { getAsset, getAssetHistory, getAssetSnapshot } from "./asset-client";
+frontend/src/features/assets\asset-detail.tsx:38:export function AssetDetail({ tenant, assetId, refresh, isCurrent, onAsset, onFailure }: DetailProps) {
+frontend/src/features/assets\asset-detail.tsx:68:    void getAssetHistory(tenant, assetId, historyRequest.cursor, controller.signal).then((result) => {
+frontend/src/features/assets\asset-detail.tsx:78:    void getAssetSnapshot(tenant, assetId, selectedSnapshotId, controller.signal).then((result) => { if (!controller.signal.aborted && isCurrent() && !unreadable.current) setSelectedSnapshot(result); }).catch((failure: unknown) => { if (controller.signal.aborted || !isCurrent()) return; const problem = publicProblem(failure); setSnapshotError(problem); failed(problem); });
+frontend/src/features/assets\asset-client.ts:2:import { isAssetIdentifier, parseAsset, parseAssetList, parseImportResult, parseSnapshot, parseSnapshotList, type Asset, type AssetImportResult, type AssetPage, type AssetSnapshot, type ManifestFormat, type SnapshotPage } from "./asset-contracts";
+frontend/src/features/assets\asset-client.ts:6:export interface AssetImportRequest { file: File; displayName: string; sourceVersion: string; observedAt: string; manifestFormat: ManifestFormat; assetId?: string; csvColumnMapping?: Record<string, string>; idempotencyKey: string }
+frontend/src/features/assets\asset-client.ts:14:export async function getAssetList(tenant: string, product = "", cursor: string | null = null, signal?: AbortSignal): Promise<AssetPage> {
+frontend/src/features/assets\asset-client.ts:27:export async function getAssetHistory(tenant: string, assetId: string, cursor: string | null = null, signal?: AbortSignal): Promise<SnapshotPage> {
+frontend/src/features/assets\asset-client.ts:32:export async function getAssetSnapshot(tenant: string, assetId: string, snapshotId: string, signal?: AbortSignal): Promise<AssetSnapshot> {
+frontend/src/features/assets\asset-client.ts:52:export async function importAsset(tenant: string, request: AssetImportRequest, signal?: AbortSignal, isCurrent: () => boolean = () => true): Promise<AssetImportResult> {
+frontend/src/features/assets\asset-contracts.ts:22:export interface AssetImportResult { asset_id: string; snapshot: AssetSnapshot; reused: boolean }
+frontend/src/features/assets\asset-contracts.ts:85:export function parseImportResult(value: unknown, tenant: string): AssetImportResult {
+frontend/src/features/assets\asset-contracts.test.ts:3:import { readAssetSelection, readWorkspacePage } from "../../app/workspace-navigation";
+frontend/src/features/assets\asset-contracts.test.ts:36:    expect(readAssetSelection(`#assets/${fixtureAssetId.toUpperCase()}`)).toEqual({ assetId: fixtureAssetId });
