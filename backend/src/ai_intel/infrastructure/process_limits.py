@@ -29,6 +29,8 @@ try:
         raise OSError('CPU guard lifetime unavailable')
     if not kernel.GetProcessTimes(target_handle, *(ctypes.byref(value) for value in times)):
         raise OSError('CPU accounting unavailable')
+    if times[2].value + times[3].value >= cpu_ticks:
+        raise OSError('CPU budget exhausted before readiness')
     if not kernel.SetEvent(ready_handle):
         raise OSError('CPU guard readiness unavailable')
     kernel.CloseHandle(ready_handle)
