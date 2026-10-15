@@ -73,6 +73,30 @@ auth_audit_events = Table(
 )
 
 
+def lock_authenticated_scope(
+    connection: Connection, session_token: str, now: datetime
+) -> AccessScope:
+    """在调用者事务内锁住会话与用户；撤销、角色和租户变更与提交顺序明确。"""
+    session_hash = hashlib.sha256(session_token.encode("utf-8")).hexdigest()
+    row = (
+        connection.execute(
+            select(auth_sessions.c.user_id, users.c.tenant_id, users.c.role)
+            .select_from(auth_sessions.join(users))
+            .where(
+                auth_sessions.c.session_hash == session_hash,
+                auth_sessions.c.revoked_at.is_(None),
+                auth_sessions.c.expires_at > now,
+            )
+            .with_for_update(read=True, of=(auth_sessions, users))
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:
+        raise SessionExpiredError("session is not valid")
+    return AccessScope.for_authenticated_user(row["user_id"], row["tenant_id"], Role(row["role"]))
+
+
 class PgAuthenticationStateStore:
     """跨服务实例共享会话、失败/在途限制及授权审计，IO错误交由HTTP边界转503。"""
 

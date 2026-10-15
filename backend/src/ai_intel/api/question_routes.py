@@ -112,6 +112,7 @@ def build_question_router(
                 payload,
                 lambda: authenticate(request, write=False),
                 request.headers.get("idempotency-key"),
+                session_token=request.cookies.get(SESSION_COOKIE_NAME, ""),
             )
         except (
             SessionExpiredError,
@@ -131,7 +132,12 @@ def build_question_router(
             scope = authenticate(request, write=False)
             if engine is None:
                 raise QuestionFailure("question_database_unavailable")
-            return read_grounded_answer(engine, scope, answer_id)
+            return read_grounded_answer(
+                engine,
+                scope,
+                answer_id,
+                session_token=request.cookies.get(SESSION_COOKIE_NAME, ""),
+            )
         except (
             SessionExpiredError,
             InvalidCredentialsError,

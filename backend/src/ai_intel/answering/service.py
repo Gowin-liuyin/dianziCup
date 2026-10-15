@@ -9,16 +9,17 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from sqlalchemy import select, update
+from sqlalchemy import DateTime, cast, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from ai_intel.answering.contracts import GroundedAnswerFailure
 from ai_intel.answering.grounding import generate_grounded_answer
+from ai_intel.api.auth_state import lock_authenticated_scope
 from ai_intel.api.authentication import InvalidCredentialsError, SessionExpiredError
 from ai_intel.api.knowledge_contracts import DataMode
 from ai_intel.api.knowledge_read_service import KnowledgeReadService
@@ -62,6 +63,66 @@ class QuestionFailure(RuntimeError):
         self.status = status
 
 
+ANSWER_RESERVATION_SECONDS = 420
+
+
+def _lock_answer_scope(session: Session, scope: AccessScope, session_token: str) -> AccessScope:
+    current = lock_authenticated_scope(session.connection(), session_token, datetime.now(UTC))
+    if current.user_id != scope.user_id or current.tenant_id != scope.tenant_id:
+        raise CrossTenantAccessError("resource not found")
+    current.requires(READ_PUBLIC)
+    return current
+
+
+def _expire_pending_answer(
+    engine: Engine, scope: AccessScope, answer_id: UUID, session_token: str
+) -> None:
+    """到期仅终止原预约，不重新发送付费请求；CAS不覆盖已完成或另一预约。"""
+    with Session(engine) as session, session.begin():
+        _lock_answer_scope(session, scope, session_token)
+        row = (
+            session.execute(
+                select(grounded_answers).where(
+                    grounded_answers.c.answer_id == str(answer_id),
+                    grounded_answers.c.user_id == scope.user_id,
+                    grounded_answers.c.tenant_id == scope.tenant_id,
+                )
+            )
+            .mappings()
+            .first()
+        )
+        if row is None or row["response"].get("kind") != "pending":
+            return
+        owner = row["model_trace"].get("reservation_id")
+        expires = row["model_trace"].get("reservation_expires_at")
+        if not isinstance(owner, str) or not isinstance(expires, str):
+            return
+        try:
+            deadline = datetime.fromisoformat(expires)
+        except ValueError:
+            return
+        if deadline.tzinfo is None or deadline > datetime.now(UTC):
+            return
+        session.execute(
+            update(grounded_answers)
+            .where(
+                grounded_answers.c.answer_id == str(answer_id),
+                grounded_answers.c.response["kind"].astext == "pending",
+                grounded_answers.c.model_trace["reservation_id"].astext == owner,
+                grounded_answers.c.model_trace["reservation_expires_at"].astext == expires,
+            )
+            .values(
+                response={"kind": "failed", "error_code": "answer_interrupted"},
+                model_trace={
+                    **row["model_trace"],
+                    "reservation_state": "expired",
+                    "usage_status": "incomplete_interrupted",
+                    "interruption_recorded_at": datetime.now(UTC).isoformat(),
+                },
+            )
+        )
+
+
 def _attempt_records(attempts: tuple[AttemptMetadata, ...]) -> list[dict[str, object]]:
     records: list[dict[str, object]] = []
     for attempt in attempts:
@@ -73,11 +134,13 @@ def _attempt_records(attempts: tuple[AttemptMetadata, ...]) -> list[dict[str, ob
 
 
 def read_grounded_answer(
-    engine: Engine, scope: AccessScope, answer_id: UUID
+    engine: Engine, scope: AccessScope, answer_id: UUID, *, session_token: str
 ) -> QuestionAnswerResponse:
     scope.requires(READ_PUBLIC)
+    _expire_pending_answer(engine, scope, answer_id, session_token)
     with Session(engine) as session:
         session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+        _lock_answer_scope(session, scope, session_token)
         row = (
             session.execute(
                 select(grounded_answers).where(
@@ -136,6 +199,8 @@ class GroundedQuestionService:
         payload: QuestionRequest,
         scope_provider: Callable[[], AccessScope],
         idempotency_key: str | None = None,
+        *,
+        session_token: str,
     ) -> QuestionAnswerResponse:
         started = datetime.now(UTC)
         timer = time.perf_counter()
@@ -150,18 +215,14 @@ class GroundedQuestionService:
             or payload.mode == "investigate"
         ):
             raise QuestionFailure("question_scope_not_supported", 422)
-        if idempotency_key is not None and not re.fullmatch(r"[\x21-\x7e]{1,200}", idempotency_key):
+        if idempotency_key is None or not re.fullmatch(r"[\x21-\x7e]{1,200}", idempotency_key):
             raise QuestionFailure("invalid_key", 422)
         request_digest = hashlib.sha256(
             json.dumps(payload.model_dump(mode="json"), sort_keys=True, ensure_ascii=False).encode()
         ).hexdigest()
-        answer_id = (
-            uuid4()
-            if idempotency_key is None
-            else uuid5(
-                NAMESPACE_URL,
-                json.dumps(["qa", scope.user_id, scope.tenant_id, idempotency_key]),
-            )
+        answer_id = uuid5(
+            NAMESPACE_URL,
+            json.dumps(["qa", scope.user_id, scope.tenant_id, idempotency_key]),
         )
         with Session(self.engine) as session:
             prior = session.execute(
@@ -174,13 +235,19 @@ class GroundedQuestionService:
         if prior is not None:
             if prior.get("request_sha256") != request_digest:
                 raise QuestionFailure("idempotency_conflict", 409)
-            return read_grounded_answer(self.engine, scope, answer_id)
+            return read_grounded_answer(self.engine, scope, answer_id, session_token=session_token)
         if not self._slot.acquire(blocking=False):
             raise QuestionFailure("question_capacity_busy", 429)
+        reservation_id = str(uuid4())
+        reservation_deadline = started + timedelta(seconds=ANSWER_RESERVATION_SECONDS)
         trace: dict[str, object] = {
             "request_sha256": request_digest,
             "attempts": [],
             "fee": "unknown",
+            "reservation_id": reservation_id,
+            "reservation_expires_at": reservation_deadline.isoformat(),
+            "reservation_state": "pending",
+            "usage_status": "not_yet_recorded",
         }
         reserved = False
         try:
@@ -212,10 +279,12 @@ class GroundedQuestionService:
             )
             draft = generate_grounded_answer(self.client, payload.question, selection.citations)
             trace["attempts"] = _attempt_records(draft.attempts)
+            trace["usage_status"] = "recorded"
             current_scope = scope_provider()
             if current_scope.user_id != scope.user_id or current_scope.tenant_id != scope.tenant_id:
                 raise CrossTenantAccessError("resource not found")
             with Session(self.engine) as session, session.begin():
+                current_scope = _lock_answer_scope(session, current_scope, session_token)
                 self.retriever.require_current(
                     session,
                     current_scope,
@@ -225,6 +294,8 @@ class GroundedQuestionService:
                     lock_epoch=True,
                 )
                 completed = datetime.now(UTC)
+                if completed >= reservation_deadline:
+                    raise QuestionFailure("answer_lease_expired", 409)
                 answer = QuestionAnswerResponse(
                     answer_id=answer_id,
                     answer_text=draft.answer_text,
@@ -248,19 +319,33 @@ class GroundedQuestionService:
                     completed_at=completed,
                     latency_milliseconds=int((time.perf_counter() - timer) * 1000),
                 )
-                session.execute(
+                trace["reservation_state"] = "completed"
+                completed_id = session.scalar(
                     update(grounded_answers)
-                    .where(grounded_answers.c.answer_id == str(answer_id))
+                    .where(
+                        grounded_answers.c.answer_id == str(answer_id),
+                        grounded_answers.c.response["kind"].astext == "pending",
+                        grounded_answers.c.model_trace["reservation_id"].astext == reservation_id,
+                        cast(
+                            grounded_answers.c.model_trace["reservation_expires_at"].astext,
+                            DateTime(timezone=True),
+                        )
+                        > func.clock_timestamp(),
+                    )
                     .values(
                         response=answer.model_dump(mode="json"),
                         scope_epochs={"public": selection.epoch},
                         model_trace=trace,
                     )
+                    .returning(grounded_answers.c.answer_id)
                 )
+                if completed_id is None:
+                    raise QuestionFailure("answer_failed", 409)
             return answer
         except Exception as error:
             if isinstance(error, (GroundedAnswerFailure, GenerationFailure)):
                 trace["attempts"] = _attempt_records(error.attempts)
+                trace["usage_status"] = "recorded"
             if isinstance(error, (GroundedAnswerFailure, GenerationFailure, QuestionFailure)):
                 code = error.code
             elif isinstance(error, RetrievalFailure):
@@ -283,11 +368,36 @@ class GroundedQuestionService:
                 code = "question_processing_failed"
             if reserved:
                 with Session(self.engine) as session, session.begin():
-                    session.execute(
+                    trace["reservation_state"] = "failed"
+                    failed_id = session.scalar(
                         update(grounded_answers)
-                        .where(grounded_answers.c.answer_id == str(answer_id))
+                        .where(
+                            grounded_answers.c.answer_id == str(answer_id),
+                            grounded_answers.c.response["kind"].astext == "pending",
+                            grounded_answers.c.model_trace["reservation_id"].astext
+                            == reservation_id,
+                        )
                         .values(response={"kind": "failed", "error_code": code}, model_trace=trace)
+                        .returning(grounded_answers.c.answer_id)
                     )
+                    if failed_id is None and trace["attempts"]:
+                        session.execute(
+                            update(grounded_answers)
+                            .where(
+                                grounded_answers.c.answer_id == str(answer_id),
+                                grounded_answers.c.model_trace["reservation_id"].astext
+                                == reservation_id,
+                            )
+                            .values(
+                                model_trace=grounded_answers.c.model_trace.op("||")(
+                                    {
+                                        "attempts": trace["attempts"],
+                                        "usage_status": "recorded_after_terminal",
+                                        "late_attempts_recorded_at": datetime.now(UTC).isoformat(),
+                                    }
+                                )
+                            )
+                        )
             if isinstance(
                 error,
                 (
