@@ -109,9 +109,12 @@ class _HttpResponse:
             "link",
             "transfer-encoding",
         }
+        rate_headers = {"retry-after", "x-ratelimit-remaining", "x-ratelimit-reset"}
         seen: set[str] = set()
         for key, _value in response_headers:
             name = key.lower()
+            if name in rate_headers and name in seen:
+                raise NetworkPolicyViolation("ambiguous duplicate rate-limit headers")
             if name in guarded_headers and name in seen:
                 raise NetworkRequestError("ambiguous duplicate response headers")
             seen.add(name)

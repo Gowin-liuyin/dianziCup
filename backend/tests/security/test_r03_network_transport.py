@@ -547,6 +547,23 @@ def test_cross_origin_location_cannot_forward_reflected_query_credentials(
     assert all(connection.closed for connection in sockets)
 
 
+@pytest.mark.parametrize("header", ["Retry-After", "X-RateLimit-Remaining", "X-RateLimit-Reset"])
+@pytest.mark.parametrize("mixed_case", [False, True])
+def test_duplicate_rate_headers_are_policy_blocked_before_values_can_be_lost(
+    monkeypatch: pytest.MonkeyPatch,
+    header: str,
+    mixed_case: bool,
+) -> None:
+    second = header.lower() if mixed_case else header
+    wire_headers = f"{header}: 9000\r\n{second}: 12\r\n".encode()
+    sockets, _ = _install_socket_fixtures(
+        monkeypatch, [_response(status=429, headers=wire_headers)]
+    )
+    with pytest.raises(NetworkPolicyViolation, match="ambiguous duplicate rate-limit headers"):
+        fetch_with_policy(NetworkPolicy(("source.example",)), "https://source.example/document")
+    assert len(sockets) == 1 and sockets[0].closed
+
+
 @pytest.mark.parametrize("header", ["Location", "Content-Location", "X-Trace-Echo"])
 @pytest.mark.parametrize(
     "value",

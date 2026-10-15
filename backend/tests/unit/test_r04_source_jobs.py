@@ -93,13 +93,16 @@ def test_failure_is_classified_without_reading_or_publishing_body(status, code, 
 
 
 @pytest.mark.parametrize(
-    ("header", "delay"), [("12", 12), ("9000", 300), ("0", 7), ("tomorrow", 30)]
+    ("header", "delay", "blocked"),
+    [("12", 12, False), ("9000", None, True), ("0", 7, False), ("tomorrow", None, True)],
 )
-def test_rate_limit_bounded_and_header_case_insensitive(header, delay):
+def test_rate_limit_bounded_and_header_case_insensitive(header, delay, blocked):
     result = FetchResult("https://api.github.com", 429, "", b"", {"Retry-After": header})
     with pytest.raises(JobExecutionError) as caught:
         _http_failure(result)
+    assert caught.value.error_code == "source_rate_limited"
     assert caught.value.retry_after_seconds == delay
+    assert caught.value.blocked is blocked
 
 
 @pytest.mark.parametrize(

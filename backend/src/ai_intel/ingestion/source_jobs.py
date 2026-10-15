@@ -6,6 +6,8 @@ import json
 import re
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
+from email.utils import parsedate_to_datetime
+from math import ceil
 from typing import Literal
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
@@ -175,24 +177,75 @@ def _next_position(
     return {"cursor_version": 2, "after": after}
 
 
-def _http_failure(result: FetchResult) -> None:
+def _http_failure(
+    result: FetchResult, *, clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+) -> None:
+    """限流期限不可确认或超出任务重试合同上限时阻塞，不能截短上游等待。"""
     if result.status_code == 200:
         return
-    if result.status_code in {401, 403}:
+    if result.status_code == 401:
         raise JobExecutionError("source_auth_denied", blocked=True)
-    if result.status_code == 429:
-        retry_after = next(
-            (
-                value
-                for name, value in result.redacted_headers.items()
-                if name.casefold() == "retry-after"
-            ),
-            None,
-        )
-        delay = 30.0
-        if retry_after is not None and retry_after.isdecimal():
-            delay = min(300.0, max(7.0, float(retry_after)))
-        raise JobExecutionError("source_rate_limited", retry_after_seconds=delay)
+    if result.status_code in {403, 429}:
+        if len(result.redacted_headers) > 128:
+            raise JobExecutionError("source_rate_limited", blocked=True)
+        headers: dict[str, str] = {}
+        for name, value in result.redacted_headers.items():
+            if len(name) > 128:
+                raise JobExecutionError("source_rate_limited", blocked=True)
+            field = name.casefold()
+            if field not in {"retry-after", "x-ratelimit-remaining", "x-ratelimit-reset"}:
+                continue
+            if field in headers or len(value) > 128 or not value.isascii():
+                raise JobExecutionError("source_rate_limited", blocked=True)
+            headers[field] = value.strip(" \t")
+        remaining = headers.get("x-ratelimit-remaining")
+        if remaining is not None and re.fullmatch(r"[0-9]{1,20}", remaining) is None:
+            raise JobExecutionError("source_rate_limited", blocked=True)
+        primary_limit = remaining is not None and int(remaining) == 0
+        retry_after = headers.get("retry-after")
+        if result.status_code == 403 and not primary_limit and retry_after is None:
+            raise JobExecutionError("source_auth_denied", blocked=True)
+        now = clock()
+        if now.tzinfo is None or now.utcoffset() is None:
+            raise JobExecutionError("source_rate_limited", blocked=True)
+        delay = 0.0
+        if primary_limit:
+            reset = headers.get("x-ratelimit-reset")
+            if reset is None or re.fullmatch(r"[0-9]{1,20}", reset) is None:
+                raise JobExecutionError("source_rate_limited", blocked=True)
+            delay = max(delay, int(reset) - now.timestamp())
+        if retry_after is not None:
+            if re.fullmatch(r"[0-9]{1,20}", retry_after):
+                delay = max(delay, int(retry_after))
+            else:
+                short_day = r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)"
+                long_day = r"(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)"
+                month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+                time = r"[0-9]{2}:[0-9]{2}:[0-9]{2}"
+                obsolete_date = rf"{long_day}, [0-9]{{2}}-{month}-[0-9]{{2}} {time} GMT"
+                date_patterns = (
+                    rf"{short_day}, [0-9]{{2}} {month} [0-9]{{4}} {time} GMT",
+                    obsolete_date,
+                    rf"{short_day} {month} (?: [0-9]|[0-9]{{2}}) {time} [0-9]{{4}}",
+                )
+                if not any(re.fullmatch(pattern, retry_after) for pattern in date_patterns):
+                    raise JobExecutionError("source_rate_limited", blocked=True)
+                try:
+                    retry_at = parsedate_to_datetime(retry_after)
+                    if retry_at.tzinfo is None:
+                        retry_at = retry_at.replace(tzinfo=UTC)
+                    if re.fullmatch(obsolete_date, retry_after):
+                        upper_year = now.year + 50
+                        year = upper_year - (upper_year - retry_at.year % 100) % 100
+                        retry_at = retry_at.replace(year=year)
+                    delay = max(delay, (retry_at - now).total_seconds())
+                except (ValueError, OverflowError):
+                    raise JobExecutionError("source_rate_limited", blocked=True) from None
+        elif not primary_limit:
+            delay = 30.0
+        if delay > 300:
+            raise JobExecutionError("source_rate_limited", blocked=True)
+        raise JobExecutionError("source_rate_limited", retry_after_seconds=max(7, ceil(delay)))
     if 400 <= result.status_code < 500:
         raise JobExecutionError("source_client_error", permanent=True)
     if result.status_code >= 500:
@@ -281,7 +334,7 @@ def build_source_page_handler(
                 raise JobExecutionError("source_poll_interval", retry_after_seconds=7)
             url = source_page_url(request.source_kind, lease.cursor_json)
             result = read_page(url)
-            _http_failure(result)
+            _http_failure(result, clock=clock)
             observed_at = clock()
             saved = persist_source_response(
                 session,
