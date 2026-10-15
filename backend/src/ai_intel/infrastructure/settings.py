@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -54,6 +55,12 @@ class ApplicationSettings(BaseSettings):
     minio_secret_key: SecretStr | None = None
     minio_secure: bool = True
     minio_ca_file: str | None = None
+    generation_provider: Literal["deepseek_openai", "deepseek_anthropic", "openai", "anthropic"] = (
+        "deepseek_openai"
+    )
+    generation_model: str = Field(default="deepseek-flash", min_length=1, max_length=200)
+    generation_api_key: SecretStr | None = None
+    semantic_model_cache_directory: Path | None = None
 
     @model_validator(mode="after")
     def validate_content_store_configuration(self) -> ApplicationSettings:
