@@ -314,7 +314,20 @@ def cleanup_unreferenced_object(session: Session, store: ContentStorage, content
     document_refs = session.execute(
         select(func.count()).select_from(documents).where(documents.c.content_hash == content_hash)
     ).scalar_one()
-    if int(revision_refs) > 0 or int(document_refs) > 0:
+    response_revision_refs = session.execute(
+        select(func.count())
+        .select_from(document_revisions)
+        .where(document_revisions.c.source_response_hash == content_hash)
+    ).scalar_one()
+    response_fetch_refs = session.execute(
+        select(func.count())
+        .select_from(fetch_attempts)
+        .where(fetch_attempts.c.response_content_hash == content_hash)
+    ).scalar_one()
+    if any(
+        int(count) > 0
+        for count in (revision_refs, document_refs, response_revision_refs, response_fetch_refs)
+    ):
         return False
     store.delete_object(content_hash)
     session.execute(content_objects.delete().where(content_objects.c.content_hash == content_hash))

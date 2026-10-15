@@ -1,22 +1,42 @@
-"""NVD 连接器: 字段不兼容/429 明确失败或有限重试, 不假成功; 与 CVE 分别实现。"""
+"""NVD CVE API 2.0实际wrapper与cvssData映射；网络重试仅由PG任务层负责。"""
 
 from __future__ import annotations
 
+import math
+import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from urllib.parse import urlsplit
 
 NVD_CONNECTOR_NAME = "nvd-cve-api"
-NVD_CONNECTOR_VERSION = "nvd-1.0.0"
-NVD_SOURCE_SCHEMA_VERSION = "nvd-schema-1"
-MAX_RETRY_AFTER_429 = 2
+NVD_CONNECTOR_VERSION = "nvd-2.0.0"
+NVD_SOURCE_SCHEMA_VERSION = "NVD_CVE:2.0"
 
 
 class NvdUnavailableError(RuntimeError):
-    """NVD 正文或权限不可得: 单独 blocked, 不影响 CVE 可用部分。"""
+    """上游状态由固定码传给唯一任务重试层，不回显错误正文。"""
+
+    def __init__(self, status_code: int) -> None:
+        self.status_code = status_code
+        super().__init__("nvd upstream request failed")
+
+
+@dataclass(frozen=True)
+class NvdMetric:
+    """同类多机构评分并列，JSON路径定位到实际数值而非标题。"""
+
+    metric_name: str
+    score: float
+    authority: str | None
+    vector: str | None
+    version: str | None
+    json_pointer: str
 
 
 @dataclass(frozen=True)
 class NvdRecord:
-    """NVD 标准化记录: 评分多来源保留, 弱点枚举一并保留。"""
+    """原始响应另行版本保存；这里不推断无证据的机构、时间或分数。"""
 
     cve_id: str
     published_at: str | None
@@ -25,69 +45,179 @@ class NvdRecord:
     scores: tuple[tuple[str, float], ...] = field(default_factory=tuple)
     weaknesses: tuple[str, ...] = field(default_factory=tuple)
     source_schema_version: str = NVD_SOURCE_SCHEMA_VERSION
+    metrics: tuple[NvdMetric, ...] = ()
+    references: tuple[str, ...] = ()
+    status: str | None = None
+    raw_published_at: str | None = None
+    raw_last_modified_at: str | None = None
 
 
-def normalize_nvd_record(payload: dict[str, object]) -> NvdRecord:
-    """标准化单条 NVD 漏洞; 缺 description 记 None 而非空串冒充。"""
-    vulnerability = payload.get("vulnerability")
-    if not isinstance(vulnerability, dict):
-        raise ValueError("missing vulnerability wrapper")
-    item = vulnerability.get("cve")
+@dataclass(frozen=True)
+class NvdPage:
+    records: tuple[NvdRecord, ...]
+    start_index: int
+    total_results: int
+    next_start_index: int | None
+
+
+def _optional_text(value: object, field_name: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"invalid NVD {field_name}")
+    value.encode("utf-8")
+    if "\x00" in value:
+        raise ValueError(f"invalid NVD {field_name}")
+    return value if value.strip() else None
+
+
+def _source_timestamp(value: object, field_name: str) -> str | None:
+    """只输出有明示时区的时间；无时区原值另存，不当作宿主时区或抓取时间。"""
+    text = _optional_text(value, field_name)
+    if text is None:
+        return None
+    try:
+        if "T" not in text:
+            raise ValueError
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        raise ValueError(f"invalid NVD {field_name} timestamp") from None
+    return parsed.astimezone(UTC).isoformat() if parsed.tzinfo is not None else None
+
+
+def _parse_metrics(value: object, prefix: str) -> tuple[NvdMetric, ...]:
+    if not isinstance(value, dict):
+        raise ValueError("invalid NVD metrics")
+    metrics: list[NvdMetric] = []
+    for name, entries in value.items():
+        if name not in ("cvssMetricV2", "cvssMetricV30", "cvssMetricV31", "cvssMetricV40"):
+            continue
+        if not isinstance(entries, list):
+            raise ValueError("invalid NVD CVSS entries")
+        for index, entry in enumerate(entries):
+            if not isinstance(entry, dict) or not isinstance(entry.get("cvssData"), dict):
+                raise ValueError("missing NVD cvssData")
+            details = entry["cvssData"]
+            score = details.get("baseScore")
+            if type(score) not in (int, float) or not math.isfinite(score) or not 0 <= score <= 10:
+                raise ValueError("invalid NVD CVSS score")
+            metrics.append(
+                NvdMetric(
+                    metric_name=name,
+                    score=float(score),
+                    authority=_optional_text(entry.get("source"), "scoring source"),
+                    vector=_optional_text(details.get("vectorString"), "CVSS vector"),
+                    version=_optional_text(details.get("version"), "CVSS version"),
+                    json_pointer=f"{prefix}/cve/metrics/{name}/{index}/cvssData/baseScore",
+                )
+            )
+    return tuple(metrics)
+
+
+def normalize_nvd_record(payload: dict[str, object], *, json_pointer: str = "") -> NvdRecord:
+    """接受真实vulnerabilities数组中的{cve:...}项，不兼容伪造vulnerability wrapper。"""
+    item = payload.get("cve")
     if not isinstance(item, dict):
-        raise ValueError("missing cve body")
+        raise ValueError("missing NVD cve body")
     cve_id = item.get("id")
-    if not isinstance(cve_id, str):
-        raise ValueError("missing cve id")
-    description = None
+    if not isinstance(cve_id, str) or re.fullmatch(r"CVE-[0-9]{4}-[0-9]{4,}", cve_id) is None:
+        raise ValueError("invalid NVD cve id")
     descriptions = item.get("descriptions", [])
-    if isinstance(descriptions, list):
-        for entry in descriptions:
-            if (
-                isinstance(entry, dict)
-                and entry.get("lang") == "en"
-                and isinstance(entry.get("value"), str)
-            ):
-                description = str(entry["value"])
-                break
-    scores: list[tuple[str, float]] = []
-    metrics = item.get("metrics", {})
-    if isinstance(metrics, dict):
-        for metric_name, entries in metrics.items():
-            if isinstance(entries, list):
-                for entry in entries:
-                    if isinstance(entry, dict) and isinstance(entry.get("baseScore"), (int, float)):
-                        scores.append((str(metric_name), float(entry["baseScore"])))
+    if not isinstance(descriptions, list):
+        raise ValueError("invalid NVD descriptions")
+    description = next(
+        (
+            entry["value"]
+            for entry in descriptions
+            if isinstance(entry, dict)
+            and entry.get("lang") == "en"
+            and isinstance(entry.get("value"), str)
+            and entry["value"].strip()
+        ),
+        None,
+    )
+    metrics = _parse_metrics(item.get("metrics", {}), json_pointer)
     weaknesses: list[str] = []
-    weaknesses_raw = item.get("weaknesses", [])
-    if isinstance(weaknesses_raw, list):
-        for weakness in weaknesses_raw:
-            if isinstance(weakness, dict):
-                for description_entry in weakness.get("description", []):
-                    if isinstance(description_entry, dict) and isinstance(
-                        description_entry.get("value"), str
-                    ):
-                        weaknesses.append(str(description_entry["value"]))
+    weakness_entries = item.get("weaknesses", [])
+    if not isinstance(weakness_entries, list):
+        raise ValueError("invalid NVD weaknesses")
+    for entry in weakness_entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("description", []), list):
+            raise ValueError("invalid NVD weakness description")
+        for text in entry.get("description", []):
+            if isinstance(text, dict) and isinstance(text.get("value"), str):
+                weaknesses.append(text["value"])
+    references: list[str] = []
+    reference_entries = item.get("references", [])
+    if not isinstance(reference_entries, list):
+        raise ValueError("invalid NVD references")
+    for entry in reference_entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("url"), str):
+            raise ValueError("invalid NVD reference")
+        link = entry["url"]
+        try:
+            parts = urlsplit(link)
+            if (
+                parts.scheme not in ("https", "http")
+                or not parts.hostname
+                or parts.username is not None
+            ):
+                raise ValueError("invalid NVD reference URL")
+        except ValueError:
+            raise ValueError("invalid NVD reference URL") from None
+        references.append(link)
     return NvdRecord(
         cve_id=cve_id,
-        published_at=str(item["published"]) if item.get("published") is not None else None,
-        last_modified_at=str(item["lastModified"])
-        if item.get("lastModified") is not None
-        else None,
+        published_at=_source_timestamp(item.get("published"), "published"),
+        last_modified_at=_source_timestamp(item.get("lastModified"), "lastModified"),
         description=description,
-        scores=tuple(scores),
-        weaknesses=tuple(weaknesses),
+        metrics=metrics,
+        scores=tuple((metric.metric_name, metric.score) for metric in metrics),
+        weaknesses=tuple(dict.fromkeys(weaknesses)),
+        references=tuple(dict.fromkeys(references)),
+        status=_optional_text(item.get("vulnStatus"), "vulnStatus"),
+        raw_published_at=_optional_text(item.get("published"), "published"),
+        raw_last_modified_at=_optional_text(item.get("lastModified"), "lastModified"),
     )
 
 
-def fetch_with_rate_limit_guard(fetch_once: object) -> dict[str, object]:
-    """429 有限重试后明确失败; 字段不兼容不假成功。"""
-    for _attempt in range(MAX_RETRY_AFTER_429 + 1):
-        response = fetch_once()  # type: ignore[operator]
-        if not isinstance(response, dict):
-            raise ValueError("response must be an object")
-        if response.get("status_code") == 429:
-            continue
-        if response.get("status_code") != 200:
-            raise NvdUnavailableError(f"nvd unavailable: {response.get('status_code')}")
-        return response
-    raise NvdUnavailableError("nvd rate limited persistently (429)")
+def normalize_nvd_page(payload: dict[str, object]) -> NvdPage:
+    """真实分页元数据决定下一偏移；中途空页必须失败，不能静默宣称完成。"""
+    entries = payload.get("vulnerabilities")
+    start, total, size = (
+        payload.get("startIndex"),
+        payload.get("totalResults"),
+        payload.get("resultsPerPage"),
+    )
+    if not isinstance(entries, list) or any(
+        type(number) is not int or number < 0 for number in (start, total, size)
+    ):
+        raise ValueError("invalid NVD API page")
+    if not isinstance(start, int) or not isinstance(total, int) or not isinstance(size, int):
+        raise ValueError("invalid NVD pagination metadata")
+    if size != len(entries) or len(entries) > 2000 or (not entries and start < total):
+        raise ValueError("incomplete or unbounded NVD API page")
+    if payload.get("format") != "NVD_CVE" or payload.get("version") != "2.0":
+        raise ValueError("unsupported NVD API schema")
+    records: list[NvdRecord] = []
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise ValueError("invalid NVD vulnerability entry")
+        records.append(normalize_nvd_record(entry, json_pointer=f"/vulnerabilities/{index}"))
+    following = start + len(entries)
+    if entries and following > total:
+        raise ValueError("inconsistent NVD total count")
+    return NvdPage(tuple(records), start, total, following if following < total else None)
+
+
+def fetch_with_rate_limit_guard(fetch_once: Callable[[], dict[str, object]]) -> dict[str, object]:
+    """一次调用后保留HTTP状态；429退避由PG调度，不再嵌套立即重试。"""
+    response = fetch_once()
+    if not isinstance(response, dict) or type(response.get("status_code")) is not int:
+        raise ValueError("invalid NVD response envelope")
+    status = response["status_code"]
+    if not isinstance(status, int):
+        raise ValueError("invalid NVD status")
+    if status != 200:
+        raise NvdUnavailableError(status)
+    return response

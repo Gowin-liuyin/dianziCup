@@ -1,0 +1,82 @@
+E501 Line too long (105 > 100)
+   --> backend\src\ai_intel\ingestion\sources\nvd.py:132:101
+    |
+130 |         try:
+131 |             parts = urlsplit(link)
+132 |             if parts.scheme not in ("https", "http") or not parts.hostname or parts.username is not None:
+    |                                                                                                     ^^^^^
+133 |                 raise ValueError("invalid NVD reference URL")
+134 |         except ValueError:
+    |
+
+E501 Line too long (110 > 100)
+   --> backend\src\ai_intel\ingestion\sources\nvd.py:150:101
+    |
+148 |     """真实分页元数据决定下一偏移；中途空页必须失败，不能静默宣称完成。"""
+149 |     entries = payload.get("vulnerabilities")
+150 |     start, total, size = payload.get("startIndex"), payload.get("totalResults"), payload.get("resultsPerPage")
+    |                                                                                                     ^^^^^^^^^^
+151 |     if not isinstance(entries, list) or any(type(number) is not int or number < 0 for number in (start, total, size)):
+152 |         raise ValueError("invalid NVD API page")
+    |
+
+E501 Line too long (118 > 100)
+   --> backend\src\ai_intel\ingestion\sources\nvd.py:151:101
+    |
+149 |     entries = payload.get("vulnerabilities")
+150 |     start, total, size = payload.get("startIndex"), payload.get("totalResults"), payload.get("resultsPerPage")
+151 |     if not isinstance(entries, list) or any(type(number) is not int or number < 0 for number in (start, total, size)):
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^
+152 |         raise ValueError("invalid NVD API page")
+153 |     if not isinstance(start, int) or not isinstance(total, int) or not isinstance(size, int):
+    |
+
+E501 Line too long (105 > 100)
+  --> backend\tests\unit\test_r04_nvd_actual_schema.py:35:101
+   |
+33 |     assert len(record.references) == 3
+34 |     outcome = parse_json_document(SAMPLE.read_bytes())
+35 |     block = next(block for block in outcome.blocks if block.block_type == "field:" + metric.json_pointer)
+   |                                                                                                     ^^^^^
+36 |     span = locate_evidence_span(outcome.blocks, "6.6", block_id=block.block_id)
+37 |     assert outcome.normalized_text[span.start_offset:span.end_offset] == "6.6"
+   |
+
+E501 Line too long (133 > 100)
+  --> backend\tests\unit\test_r04_nvd_actual_schema.py:55:101
+   |
+53 | def test_invalid_or_boolean_cvss_is_not_silently_a_score(invalid: object) -> None:
+54 |     with pytest.raises(ValueError, match="score"):
+55 |         normalize_nvd_record({"cve": {"id": "CVE-2026-12345", "metrics": {"cvssMetricV31": [{"cvssData": {"baseScore": invalid}}]}}})
+   |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+E501 Line too long (215 > 100)
+  --> backend\tests\unit\test_r04_nvd_actual_schema.py:65:101
+   |
+65 | …{"cve": {"id": "CVE-２０２６-12345"}}, {"cve": {"id": "CVE-2026-12345", "metrics": {"cvssMetricV31": [{"baseScore": 8}]}}}])
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+66 | …, object]) -> None:
+67 | …
+   |
+
+E501 Line too long (110 > 100)
+  --> backend\tests\unit\test_r04_nvd_actual_schema.py:66:101
+   |
+65 | @pytest.mark.parametrize("payload", [{"vulnerability": {"cve": {"id": "CVE-2026-12345"}}}, {"cve": {"id": "CVE-２０２６-12345"}}, {"cv…
+66 | def test_fake_legacy_wrapper_or_score_path_and_non_ascii_ids_are_rejected(payload: dict[str, object]) -> None:
+   |                                                                                                     ^^^^^^^^^^
+67 |     with pytest.raises(ValueError):
+68 |         normalize_nvd_record(payload)
+   |
+
+E501 Line too long (130 > 100)
+  --> backend\tests\unit\test_r04_nvd_actual_schema.py:72:101
+   |
+71 | def test_empty_intermediate_page_cannot_silently_advance_past_missing_results() -> None:
+72 |     page = {"format": "NVD_CVE", "version": "2.0", "startIndex": 0, "totalResults": 5, "resultsPerPage": 0, "vulnerabilities": []}
+   |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+73 |     with pytest.raises(ValueError, match="incomplete"):
+74 |         normalize_nvd_page(page)
+   |
+
+Found 10 errors (2 fixed, 8 remaining).

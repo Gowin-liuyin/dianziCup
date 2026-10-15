@@ -12,6 +12,7 @@ from sqlalchemy.schema import CreateSchema, DropSchema
 from ai_intel.enrichment.persistence_models import enrichment_results
 from ai_intel.infrastructure.database import run_migrations
 from ai_intel.knowledge import persistence_models
+from ai_intel.knowledge.models import document_revisions, fetch_attempts, text_blocks
 
 pytestmark = pytest.mark.real_pg
 
@@ -83,10 +84,14 @@ def test_empty_and_legacy_upgrade_keep_columns_and_old_claims(
         assert actual_columns == set(mapped_table.c.keys()), table_name
     with empty_schema_engine.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert revision == "0012_source_page_fingerprint"
+        assert revision == "0013_revision_source_metadata"
         assert {column["name"] for column in inspector.get_columns("enrichment_results")} == set(
             enrichment_results.c.keys()
         )
+        for mapped_table in (document_revisions, text_blocks, fetch_attempts):
+            assert {column["name"] for column in inspector.get_columns(mapped_table.name)} == set(
+                mapped_table.c.keys()
+            )
         if previous_revision:
             old_claim = (
                 connection.execute(

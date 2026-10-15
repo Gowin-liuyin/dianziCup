@@ -75,7 +75,21 @@ document_revisions = Table(
     ),
     Column("visibility", Text(), nullable=False),
     Column("tenant_id", Text(), nullable=True),
+    Column("canonical_uri", Text()),
+    Column("source_published_at", DateTime(timezone=True)),
+    Column("source_modified_at", DateTime(timezone=True)),
+    Column("first_observed_at", DateTime(timezone=True)),
+    Column("ingested_at", DateTime(timezone=True)),
+    Column("parser_version", Text()),
+    Column("normalizer_version", Text()),
+    Column("parse_status", Text(), nullable=False, server_default="legacy_unverified"),
+    Column("source_response_hash", Text(), ForeignKey("content_objects.content_hash")),
+    Column("source_json_pointer", Text()),
     UniqueConstraint("document_id", "revision_number", name="uq_revision_per_document"),
+    CheckConstraint(
+        "parse_status IN ('pending','parsed','partial','failed','legacy_unverified')",
+        name="ck_revision_parse_status",
+    ),
     CheckConstraint(VISIBILITY_DOMAIN, name="ck_document_revisions_visibility"),
     CheckConstraint(TENANT_XOR, name="ck_document_revisions_tenant_xor"),
 )
@@ -90,8 +104,12 @@ text_blocks = Table(
     Column("end_offset", Integer(), nullable=False),
     Column("text_sha256", Text(), nullable=False),
     Column("block_text", Text(), nullable=False),
+    Column("block_type", Text(), nullable=False, server_default="paragraph"),
+    Column("page_number", Integer()),
+    Column("json_pointer", Text()),
     UniqueConstraint("revision_id", "ordinal", name="uq_block_ordinal_per_revision"),
     CheckConstraint("end_offset >= start_offset", name="ck_block_span_not_inverted"),
+    CheckConstraint("page_number IS NULL OR page_number >= 1", name="ck_block_page_number"),
 )
 
 evidence = Table(
@@ -240,6 +258,8 @@ fetch_attempts = Table(
     Column("outcome", Text(), nullable=False),
     Column("http_status", Integer(), nullable=True),
     Column("new_event_count", Integer(), nullable=False, server_default="0"),
+    Column("response_content_hash", Text(), ForeignKey("content_objects.content_hash")),
+    Column("final_url", Text()),
 )
 
 runtime_observations = Table(

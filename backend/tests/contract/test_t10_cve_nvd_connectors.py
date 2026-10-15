@@ -95,7 +95,7 @@ def test_rejected_record_keeps_state_distinct_from_active_t10_c05() -> None:
 
 
 def test_incompatible_fields_and_rate_limit_fail_explicitly_t10_c06() -> None:
-    """T10-C06: 字段不兼容契约失败; 429 有限重试后明确失败, 无假成功。"""
+    """T10-C06: 字段不兼容契约失败; 429 单次失败交PG有限重试, 无假成功。"""
     with pytest.raises(ConnectorContractError):
         normalize_cve_record({"unexpected": "shape"})
     attempts = {"count": 0}
@@ -106,6 +106,6 @@ def test_incompatible_fields_and_rate_limit_fail_explicitly_t10_c06() -> None:
 
     with pytest.raises(NvdUnavailableError):
         fetch_with_rate_limit_guard(always_429)
-    assert attempts["count"] == 3
+    assert attempts["count"] == 1
     with pytest.raises(ConnectorContractError):
         discover_cve_pages(lambda index: {"items": [], "status_code": 429})
