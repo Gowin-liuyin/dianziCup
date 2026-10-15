@@ -8,7 +8,7 @@
 
 1. [OpenCTI Pivot and investigate](https://docs.opencti.io/latest/usage/pivoting/)（实际读取官方页面）：实体/关系选择与右侧详情联动；扩展会使关系密集，需要明确上下文。本轮借选择和检视的布局，不实现未经合同提供的扩展、撤销、写关系或导出。
 2. [Graphistry UI Guide](https://hub.graphistry.com/docs/ui/index/)（实际读取官方页面）：画布、选择工具和数据检视分工；底层表可选中相应图元素。本轮借有界工具栏、图与关系列表双向选择，不使用其 GPU/远程服务，也不冒充百万节点性能。
-3. Neo4j 官方资料搜索返回 Bloom 场景、分类图例与地图的介绍；直接打开两个推测地址未成功，不将未读页面当设计依据。初始 Graphistry tutorials 地址同样不可访问，随后取得上列官方 UI Guide。共4次只读 web 调用（3 open、1 search），没有下载图像、登录或付费。
+3. Neo4j 官方资料搜索返回 Bloom 场景、分类图例与地图的介绍；直接打开两个推测地址未成功，不将未读页面当设计依据。初始 Graphistry tutorials 地址同样不可访问，随后取得上列官方 UI Guide。共3次只读 web 调用（2 open、1 search），没有下载图像、登录或付费。
 
 用户 `E:/wechatData/xwechat_files/wxid_c14weta2ez6m22_03f5/msg/file/2026-10/ui-design.md` 仅作为审美材料。采用微网格、类型形状、关系检视；其时间滑块、跳数、隐藏邻居、置信度、Critic、PNG/STIX 没有冻结输入，不生成对应按钮或假数值。Ponytail 5.2 full 采用现有 React/native CSS/SVG，不新增库；Industrial Brutalist UI 只取 Tactical Telemetry 网格与终端排版，沿用现有暗绿品牌，不套红色重品牌、巨大营销标题、伪随机遥测或背景重写。
 
