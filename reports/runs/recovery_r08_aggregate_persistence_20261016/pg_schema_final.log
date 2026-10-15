@@ -1,0 +1,1931 @@
+FFFFFFFFFFFFFFFFFFFF                                                     [100%]
+================================== FAILURES ===================================
+______________ test_pg_normal_zero_and_missing[0-available-None] ______________
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F02C1790>
+policy = AggregateServerPolicy(authorization_profile='test-c64dd3ed24e74a42a31d7d827e01abba', data_mode='fixture', collection_authorized=True, visibility='public')
+total = 0, outcome = 'available', error = None
+
+    @pytest.mark.parametrize(
+        "total,outcome,error",
+        [(0, "available", None), (57, "available", None), (None, "unknown", "missing_total")],
+    )
+    def test_pg_normal_zero_and_missing(repository, policy, total, outcome, error):
+        observation = total_result("hunter", "ollama", total, NOW, "fixture")
+>       stored = repository.save_observation(observation, ADMIN, policy, recorded_at=NOW)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r08_aggregate_persistence_pg.py:48: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F02C1790>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='hunter', query_id='ollama', query_version...on time.', 'Only the search total is retained; provider asset records are discarded in memory.')), data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='test-c64dd3ed24e74a42a31d7d827e01abba', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+_____________ test_pg_normal_zero_and_missing[57-available-None] ______________
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0AB6D50>
+policy = AggregateServerPolicy(authorization_profile='test-636fe6a3a29b494f8af5d9ffbdd9af21', data_mode='fixture', collection_authorized=True, visibility='public')
+total = 57, outcome = 'available', error = None
+
+    @pytest.mark.parametrize(
+        "total,outcome,error",
+        [(0, "available", None), (57, "available", None), (None, "unknown", "missing_total")],
+    )
+    def test_pg_normal_zero_and_missing(repository, policy, total, outcome, error):
+        observation = total_result("hunter", "ollama", total, NOW, "fixture")
+>       stored = repository.save_observation(observation, ADMIN, policy, recorded_at=NOW)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r08_aggregate_persistence_pg.py:48: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0AB6D50>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='hunter', query_id='ollama', query_version...on time.', 'Only the search total is retained; provider asset records are discarded in memory.')), data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='test-636fe6a3a29b494f8af5d9ffbdd9af21', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+_________ test_pg_normal_zero_and_missing[None-unknown-missing_total] _________
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0B325A0>
+policy = AggregateServerPolicy(authorization_profile='test-392341276a694c419067d1bf8e064155', data_mode='fixture', collection_authorized=True, visibility='public')
+total = None, outcome = 'unknown', error = 'missing_total'
+
+    @pytest.mark.parametrize(
+        "total,outcome,error",
+        [(0, "available", None), (57, "available", None), (None, "unknown", "missing_total")],
+    )
+    def test_pg_normal_zero_and_missing(repository, policy, total, outcome, error):
+        observation = total_result("hunter", "ollama", total, NOW, "fixture")
+>       stored = repository.save_observation(observation, ADMIN, policy, recorded_at=NOW)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r08_aggregate_persistence_pg.py:48: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0B325A0>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='hunter', query_id='ollama', query_version..., 20, 0, tzinfo=datetime.timezone.utc), outcome='unknown', error_code='missing_total', value=None, data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='test-392341276a694c419067d1bf8e064155', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+_ test_pg_failed_outcomes_do_not_hide_behind_old_value[unauthorized-provider_unauthorized] _
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F06A7FE0>
+policy = AggregateServerPolicy(authorization_profile='test-a25ab820e216423aadb6163a62085f46', data_mode='fixture', collection_authorized=True, visibility='public')
+outcome = 'unauthorized', error = 'provider_unauthorized'
+
+    @pytest.mark.parametrize(
+        "outcome,error",
+        [
+            ("unauthorized", "provider_unauthorized"),
+            ("rate_limited", "provider_rate_limited"),
+            ("failed", "network_timeout"),
+            ("not_configured", "credential_missing"),
+        ],
+    )
+    def test_pg_failed_outcomes_do_not_hide_behind_old_value(repository, policy, outcome, error):
+>       old = repository.save_observation(
+            total_result("hunter", "ollama", 13, NOW - timedelta(hours=1), "fixture"),
+            ADMIN,
+            policy,
+            recorded_at=NOW,
+        )
+
+tests\integration\test_r08_aggregate_persistence_pg.py:70: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F06A7FE0>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='hunter', query_id='ollama', query_version...on time.', 'Only the search total is retained; provider asset records are discarded in memory.')), data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='test-a25ab820e216423aadb6163a62085f46', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+_ test_pg_failed_outcomes_do_not_hide_behind_old_value[rate_limited-provider_rate_limited] _
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0714DA0>
+policy = AggregateServerPolicy(authorization_profile='test-8362c422a6a542f2bfd3e88594552949', data_mode='fixture', collection_authorized=True, visibility='public')
+outcome = 'rate_limited', error = 'provider_rate_limited'
+
+    @pytest.mark.parametrize(
+        "outcome,error",
+        [
+            ("unauthorized", "provider_unauthorized"),
+            ("rate_limited", "provider_rate_limited"),
+            ("failed", "network_timeout"),
+            ("not_configured", "credential_missing"),
+        ],
+    )
+    def test_pg_failed_outcomes_do_not_hide_behind_old_value(repository, policy, outcome, error):
+>       old = repository.save_observation(
+            total_result("hunter", "ollama", 13, NOW - timedelta(hours=1), "fixture"),
+            ADMIN,
+            policy,
+            recorded_at=NOW,
+        )
+
+tests\integration\test_r08_aggregate_persistence_pg.py:70: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0714DA0>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='hunter', query_id='ollama', query_version...on time.', 'Only the search total is retained; provider asset records are discarded in memory.')), data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='test-8362c422a6a542f2bfd3e88594552949', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+_ test_pg_failed_outcomes_do_not_hide_behind_old_value[failed-network_timeout] _
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0B5FD70>
+policy = AggregateServerPolicy(authorization_profile='test-07ad10ea4f204ad2bec002d6668e79eb', data_mode='fixture', collection_authorized=True, visibility='public')
+outcome = 'failed', error = 'network_timeout'
+
+    @pytest.mark.parametrize(
+        "outcome,error",
+        [
+            ("unauthorized", "provider_unauthorized"),
+            ("rate_limited", "provider_rate_limited"),
+            ("failed", "network_timeout"),
+            ("not_configured", "credential_missing"),
+        ],
+    )
+    def test_pg_failed_outcomes_do_not_hide_behind_old_value(repository, policy, outcome, error):
+>       old = repository.save_observation(
+            total_result("hunter", "ollama", 13, NOW - timedelta(hours=1), "fixture"),
+            ADMIN,
+            policy,
+            recorded_at=NOW,
+        )
+
+tests\integration\test_r08_aggregate_persistence_pg.py:70: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0B5FD70>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='hunter', query_id='ollama', query_version...on time.', 'Only the search total is retained; provider asset records are discarded in memory.')), data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='test-07ad10ea4f204ad2bec002d6668e79eb', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+_ test_pg_failed_outcomes_do_not_hide_behind_old_value[not_configured-credential_missing] _
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0B5C4D0>
+policy = AggregateServerPolicy(authorization_profile='test-fafae59a984a4f999ffcda4c1a5cc17b', data_mode='fixture', collection_authorized=True, visibility='public')
+outcome = 'not_configured', error = 'credential_missing'
+
+    @pytest.mark.parametrize(
+        "outcome,error",
+        [
+            ("unauthorized", "provider_unauthorized"),
+            ("rate_limited", "provider_rate_limited"),
+            ("failed", "network_timeout"),
+            ("not_configured", "credential_missing"),
+        ],
+    )
+    def test_pg_failed_outcomes_do_not_hide_behind_old_value(repository, policy, outcome, error):
+>       old = repository.save_observation(
+            total_result("hunter", "ollama", 13, NOW - timedelta(hours=1), "fixture"),
+            ADMIN,
+            policy,
+            recorded_at=NOW,
+        )
+
+tests\integration\test_r08_aggregate_persistence_pg.py:70: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0B5C4D0>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='hunter', query_id='ollama', query_version...on time.', 'Only the search total is retained; provider asset records are discarded in memory.')), data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='test-fafae59a984a4f999ffcda4c1a5cc17b', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+________ test_pg_replay_is_idempotent_and_collision_preserves_original ________
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0B625A0>
+policy = AggregateServerPolicy(authorization_profile='test-308e75781ef44d65bd3af466686fb842', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def test_pg_replay_is_idempotent_and_collision_preserves_original(repository, policy):
+        identifier = uuid4()
+        observation = total_result("hunter", "ollama", 7, NOW, "fixture")
+>       first = repository.save_observation(
+            observation, ADMIN, policy, recorded_at=NOW, observation_id=identifier
+        )
+
+tests\integration\test_r08_aggregate_persistence_pg.py:96: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0B625A0>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='hunter', query_id='ollama', query_version...on time.', 'Only the search total is retained; provider asset records are discarded in memory.')), data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='test-308e75781ef44d65bd3af466686fb842', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+_____________ test_pg_parallel_same_uuid_is_one_immutable_record ______________
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0AB41A0>
+policy = AggregateServerPolicy(authorization_profile='test-db160c47cfac49b4b2f798bc095339da', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def test_pg_parallel_same_uuid_is_one_immutable_record(repository, policy):
+        identifier = uuid4()
+        observation = total_result("quake", "vllm", 9, NOW, "fixture")
+    
+        def save():
+            return repository.save_observation(
+                observation, ADMIN, policy, recorded_at=NOW, observation_id=identifier
+            )
+    
+        with ThreadPoolExecutor(max_workers=8) as pool:
+>           results = list(pool.map(lambda _: save(), range(8)))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r08_aggregate_persistence_pg.py:130: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\concurrent\futures\_base.py:619: in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\concurrent\futures\_base.py:317: in _result_or_cancel
+    return fut.result(timeout)
+           ^^^^^^^^^^^^^^^^^^^
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\concurrent\futures\_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\concurrent\futures\thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\integration\test_r08_aggregate_persistence_pg.py:130: in <lambda>
+    results = list(pool.map(lambda _: save(), range(8)))
+                                      ^^^^^^
+tests\integration\test_r08_aggregate_persistence_pg.py:125: in save
+    return repository.save_observation(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0AB41A0>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='quake', query_id='vllm', query_version='r...on time.', 'Only the search total is retained; provider asset records are discarded in memory.')), data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='test-db160c47cfac49b4b2f798bc095339da', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+____________ test_pg_rollback_after_insert_does_not_leave_success _____________
+
+self = <sqlalchemy.engine.base.Connection object at 0x000001D5F0715D90>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x000001D5F02C10D0>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x000001D5F0B62BD0>
+statement = <sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x000001D5F0C20770>
+parameters = [{'observation_id_1': UUID('4cf1b3df-e660-482e-87c4-cb03ddb30850')}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r08_aggregate_persistence_v2_20261016) at 0x1d5f05c3410>
+query = 'SELECT count(*) AS count_1 \nFROM r08_aggregate_observations \nWHERE r08_aggregate_observations.observation_id = %(observation_id_1)s::UUID'
+params = {'observation_id_1': UUID('4cf1b3df-e660-482e-87c4-cb03ddb30850')}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.UndefinedTable: relation "r08_aggregate_observations" does not exist
+E           LINE 2: FROM r08_aggregate_observations 
+E                        ^
+
+D:\dianzi\backend\.venv\Lib\site-packages\psycopg\cursor.py:117: UndefinedTable
+
+The above exception was the direct cause of the following exception:
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F07159A0>
+policy = AggregateServerPolicy(authorization_profile='test-452a5ea40be0461ebecb9a4faf6898be', data_mode='fixture', collection_authorized=True, visibility='public')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001D5F0AB60F0>
+
+    def test_pg_rollback_after_insert_does_not_leave_success(repository, policy, monkeypatch):
+        identifier = uuid4()
+    
+        def reject(_row):
+            raise AggregatePersistenceError("forced typed integrity failure")
+    
+        with monkeypatch.context() as patch:
+            patch.setattr(aggregate_repository, "stored_aggregate", reject)
+            with pytest.raises(AggregatePersistenceError):
+                repository.save_observation(
+                    total_result("hunter", "ollama", 7, NOW, "fixture"),
+                    ADMIN,
+                    policy,
+                    recorded_at=NOW,
+                    observation_id=identifier,
+                )
+        with repository.engine.connect() as connection:
+            assert (
+>               connection.execute(
+                    select(func.count())
+                    .select_from(aggregate_observations)
+                    .where(aggregate_observations.c.observation_id == identifier)
+                ).scalar()
+                == 0
+            )
+
+tests\integration\test_r08_aggregate_persistence_pg.py:161: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context
+    return self._exec_single_context(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r08_aggregate_persistence_v2_20261016) at 0x1d5f05c3410>
+query = 'SELECT count(*) AS count_1 \nFROM r08_aggregate_observations \nWHERE r08_aggregate_observations.observation_id = %(observation_id_1)s::UUID'
+params = {'observation_id_1': UUID('4cf1b3df-e660-482e-87c4-cb03ddb30850')}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.UndefinedTable) relation "r08_aggregate_observations" does not exist
+E           LINE 2: FROM r08_aggregate_observations 
+E                        ^
+E           [SQL: SELECT count(*) AS count_1 
+E           FROM r08_aggregate_observations 
+E           WHERE r08_aggregate_observations.observation_id = %(observation_id_1)s::UUID]
+E           [parameters: {'observation_id_1': UUID('4cf1b3df-e660-482e-87c4-cb03ddb30850')}]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+D:\dianzi\backend\.venv\Lib\site-packages\psycopg\cursor.py:117: ProgrammingError
+__________________ test_pg_rejects_history_mutation[update] ___________________
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0C9F410>
+policy = AggregateServerPolicy(authorization_profile='test-63ec94a4efe04d5185f3374c837afd2e', data_mode='fixture', collection_authorized=True, visibility='public')
+mutation = 'update'
+
+    @pytest.mark.parametrize("mutation", ["update", "delete"])
+    def test_pg_rejects_history_mutation(repository, policy, mutation):
+>       stored = repository.save_observation(
+            total_result("hunter", "ollama", 7, NOW, "fixture"), ADMIN, policy, recorded_at=NOW
+        )
+
+tests\integration\test_r08_aggregate_persistence_pg.py:172: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0C9F410>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='hunter', query_id='ollama', query_version...on time.', 'Only the search total is retained; provider asset records are discarded in memory.')), data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='test-63ec94a4efe04d5185f3374c837afd2e', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+__________________ test_pg_rejects_history_mutation[delete] ___________________
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0B30CB0>
+policy = AggregateServerPolicy(authorization_profile='test-ad507272063e4f2e8a540fd0729b9015', data_mode='fixture', collection_authorized=True, visibility='public')
+mutation = 'delete'
+
+    @pytest.mark.parametrize("mutation", ["update", "delete"])
+    def test_pg_rejects_history_mutation(repository, policy, mutation):
+>       stored = repository.save_observation(
+            total_result("hunter", "ollama", 7, NOW, "fixture"), ADMIN, policy, recorded_at=NOW
+        )
+
+tests\integration\test_r08_aggregate_persistence_pg.py:172: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0B30CB0>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='hunter', query_id='ollama', query_version...on time.', 'Only the search total is retained; provider asset records are discarded in memory.')), data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='test-ad507272063e4f2e8a540fd0729b9015', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+_________ test_pg_older_and_future_observations_never_replace_present _________
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0C234D0>
+policy = AggregateServerPolicy(authorization_profile='test-8c14c0bdbe024344b1495984ee16c4e4', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def test_pg_older_and_future_observations_never_replace_present(repository, policy):
+>       present = repository.save_observation(
+            total_result("hunter", "ollama", 7, NOW, "fixture"), ADMIN, policy, recorded_at=NOW
+        )
+
+tests\integration\test_r08_aggregate_persistence_pg.py:189: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0C234D0>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='hunter', query_id='ollama', query_version...on time.', 'Only the search total is retained; provider asset records are discarded in memory.')), data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='test-8c14c0bdbe024344b1495984ee16c4e4', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+____________ test_pg_public_shared_but_tenant_scope_never_crosses _____________
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F10482C0>
+
+    def test_pg_public_shared_but_tenant_scope_never_crosses(repository):
+        public = AggregateServerPolicy("public-" + uuid4().hex, "fixture", True)
+        private = AggregateServerPolicy("tenant-" + uuid4().hex, "fixture", True, "tenant")
+        other = AccessScope.for_authenticated_user("other", "tenant-b", Role.TENANT_ADMIN)
+        record = total_result("hunter", "ollama", 3, NOW, "fixture")
+>       shared = repository.save_observation(record, ADMIN, public, recorded_at=NOW)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r08_aggregate_persistence_pg.py:212: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F10482C0>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='hunter', query_id='ollama', query_version...on time.', 'Only the search total is retained; provider asset records are discarded in memory.')), data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='public-acb01f67c6954bcb9add28dfda4ed82c', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+____________ test_pg_mode_isolation_and_mismatched_payload_denied _____________
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F1015C40>
+policy = AggregateServerPolicy(authorization_profile='test-9f837a16a0594841918817e85c86cad8', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def test_pg_mode_isolation_and_mismatched_payload_denied(repository, policy):
+        fixture = total_result("hunter", "ollama", 3, NOW, "fixture")
+>       repository.save_observation(fixture, ADMIN, policy, recorded_at=NOW)
+
+tests\integration\test_r08_aggregate_persistence_pg.py:223: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F1015C40>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='hunter', query_id='ollama', query_version...on time.', 'Only the search total is retained; provider asset records are discarded in memory.')), data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='test-9f837a16a0594841918817e85c86cad8', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+______________ test_pg_detects_json_and_index_corruption_on_read ______________
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F1016F60>
+policy = AggregateServerPolicy(authorization_profile='test-48ff5f95dfb64e48a6422f006643a585', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def test_pg_detects_json_and_index_corruption_on_read(repository, policy):
+>       stored = repository.save_observation(
+            total_result("hunter", "ollama", 7, NOW, "fixture"), ADMIN, policy, recorded_at=NOW
+        )
+
+tests\integration\test_r08_aggregate_persistence_pg.py:231: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F1016F60>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='hunter', query_id='ollama', query_version...on time.', 'Only the search total is retained; provider asset records are discarded in memory.')), data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='test-48ff5f95dfb64e48a6422f006643a585', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+______ test_pg_safe_aggregate_does_not_emit_public_outbox_or_raw_records ______
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0C20A40>
+policy = AggregateServerPolicy(authorization_profile='test-4a3a93d5992d4d26b5927b318b196fac', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def test_pg_safe_aggregate_does_not_emit_public_outbox_or_raw_records(repository, policy):
+        with repository.engine.connect() as connection:
+            before = connection.execute(text("SELECT count(*) FROM outbox_events")).scalar()
+        observation = total_result("hunter", "ollama", 7, NOW, "fixture")
+>       stored = repository.save_observation(observation, ADMIN, policy, recorded_at=NOW)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r08_aggregate_persistence_pg.py:256: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0C20A40>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='hunter', query_id='ollama', query_version...on time.', 'Only the search total is retained; provider asset records are discarded in memory.')), data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='test-4a3a93d5992d4d26b5927b318b196fac', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+_______ test_pg_service_reuses_safe_record_without_second_adapter_call ________
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0D88CB0>
+policy = AggregateServerPolicy(authorization_profile='test-8d53f01ed221429cbc185cb198e8c85f', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def test_pg_service_reuses_safe_record_without_second_adapter_call(repository, policy):
+        gateway = RawProviderFixtureGateway()
+        service = AggregateService(
+            repository, {"hunter": HunterAggregateConnector(fixture_gateway=gateway)}, policy
+        )
+        first = service.collect_provider_aggregate_observation("hunter", "ollama", ADMIN, now=NOW)
+        second = service.collect_provider_aggregate_observation("hunter", "ollama", ADMIN, now=NOW)
+>       assert first.status == second.status == "available"
+E       AssertionError: assert 'failed' == 'available'
+E         
+E         - available
+E         + failed
+
+tests\integration\test_r08_aggregate_persistence_pg.py:293: AssertionError
+______ test_pg_equal_retrieval_timestamps_choose_failure_conservatively _______
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0C21F10>
+policy = AggregateServerPolicy(authorization_profile='test-aeff2c71fd154a7797e78a76ec983015', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def test_pg_equal_retrieval_timestamps_choose_failure_conservatively(repository, policy):
+        failure = AggregateObservation(
+            provider="hunter",
+            query_id="ollama",
+            retrieved_at=NOW,
+            outcome="failed",
+            error_code="network_timeout",
+            data_mode="fixture",
+        )
+>       repository.save_observation(failure, ADMIN, policy, recorded_at=NOW)
+
+tests\integration\test_r08_aggregate_persistence_pg.py:315: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0C21F10>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='hunter', query_id='ollama', query_version... 20, 0, tzinfo=datetime.timezone.utc), outcome='failed', error_code='network_timeout', value=None, data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='test-aeff2c71fd154a7797e78a76ec983015', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+________ test_pg_error_check_rejects_null_error_in_an_unavailable_row _________
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0AB6900>
+policy = AggregateServerPolicy(authorization_profile='test-40fd5f61802a450296cc18e211919c32', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def test_pg_error_check_rejects_null_error_in_an_unavailable_row(repository, policy):
+>       stored = repository.save_observation(
+            total_result("hunter", "ollama", 7, NOW, "fixture"), ADMIN, policy, recorded_at=NOW
+        )
+
+tests\integration\test_r08_aggregate_persistence_pg.py:326: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D5F0AB6900>
+observation = AggregateObservation(schema_version='r08-aggregate-observation-1', provider='hunter', query_id='ollama', query_version...on time.', 'Only the search total is retained; provider asset records are discarded in memory.')), data_mode='fixture')
+scope = AccessScope(user_id='operator', tenant_id='tenant-a', role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...nage:public_sources', 'manage:users', 'read:audit', 'write:asset', 'read:public', 'read:asset'}), permission_version=1)
+policy = AggregateServerPolicy(authorization_profile='test-40fd5f61802a450296cc18e211919c32', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def save_observation(
+        self,
+        observation: AggregateObservation,
+        scope: AccessScope,
+        policy: AggregateServerPolicy,
+        *,
+        recorded_at: datetime,
+        observation_id: UUID | None = None,
+    ) -> StoredAggregate:
+        canonical, digest = canonical_observation(observation)
+        if observation.data_mode != policy.data_mode:
+            raise ValueError("aggregate observation mode must match server policy")
+        scope_key = aggregate_scope_key(scope, policy)
+        scope.requires(MANAGE_PUBLIC_SOURCES if policy.visibility == "public" else WRITE_ASSET)
+        record_id = observation_id or uuid4()
+        if type(record_id) is not UUID:
+            raise ValueError("aggregate observation identity requires UUID")
+        values = {
+            "observation_id": record_id,
+            "schema_version": observation.schema_version,
+            "canonical_json": json.loads(canonical),
+            "payload_sha256": digest,
+            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+            "provider": observation.provider,
+            "query_id": observation.query_id,
+            "query_version": observation.query_version,
+            "retrieved_at": observation.retrieved_at,
+            "observed_at": observation.value.observed_at if observation.value else None,
+            "recorded_at": retrieval_time(recorded_at),
+            "outcome": observation.outcome,
+            "error_code": observation.error_code,
+            "data_mode": observation.data_mode,
+            "fee_status": "unknown",
+            "visibility": policy.visibility,
+            "tenant_id": scope.tenant_id if policy.visibility == "tenant" else None,
+            "scope_key": scope_key,
+        }
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(
+                    insert(aggregate_observations)
+                    .values(**values)
+                    .on_conflict_do_nothing(index_elements=["observation_id"])
+                )
+                row = (
+                    connection.execute(
+                        select(aggregate_observations).where(
+                            aggregate_observations.c.observation_id == record_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    row["payload_sha256"] != digest
+                    or row["canonical_json"] != json.loads(canonical)
+                    or row["call_key"] != values["call_key"]
+                    or row["scope_key"] != scope_key
+                ):
+                    raise AggregateIdentityCollision("aggregate observation identity collision")
+                stored = stored_aggregate(row)
+            return stored
+        except SQLAlchemyError:
+>           raise AggregatePersistenceError("aggregate persistence failed") from None
+E           ai_intel.assets.aggregate_repository.AggregatePersistenceError: aggregate persistence failed
+
+src\ai_intel\assets\aggregate_repository.py:236: AggregatePersistenceError
+- generated xml file: D:\wt\r08-aggregate-persistence\reports\runs\recovery_r08_aggregate_persistence_20261016\pg.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_normal_zero_and_missing[0-available-None]
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_normal_zero_and_missing[57-available-None]
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_normal_zero_and_missing[None-unknown-missing_total]
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_failed_outcomes_do_not_hide_behind_old_value[unauthorized-provider_unauthorized]
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_failed_outcomes_do_not_hide_behind_old_value[rate_limited-provider_rate_limited]
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_failed_outcomes_do_not_hide_behind_old_value[failed-network_timeout]
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_failed_outcomes_do_not_hide_behind_old_value[not_configured-credential_missing]
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_replay_is_idempotent_and_collision_preserves_original
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_parallel_same_uuid_is_one_immutable_record
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_rollback_after_insert_does_not_leave_success
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_rejects_history_mutation[update]
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_rejects_history_mutation[delete]
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_older_and_future_observations_never_replace_present
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_public_shared_but_tenant_scope_never_crosses
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_mode_isolation_and_mismatched_payload_denied
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_detects_json_and_index_corruption_on_read
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_safe_aggregate_does_not_emit_public_outbox_or_raw_records
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_service_reuses_safe_record_without_second_adapter_call
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_equal_retrieval_timestamps_choose_failure_conservatively
+FAILED tests/integration/test_r08_aggregate_persistence_pg.py::test_pg_error_check_rejects_null_error_in_an_unavailable_row
+20 failed in 1.38s
