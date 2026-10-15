@@ -4,7 +4,7 @@ import { graphFixture, graphFixtureEventId, graphFixtureEvidenceId, graphFixture
 import { graphNodeKinds, graphRelationKinds, type GraphSnapshot } from "../src/features/graph/graph-contracts";
 
 const fixtureUrl = "/e2e/graph-fixture/index.html";
-async function isolateApi(page: Page, snapshot = graphFixture()) {
+async function isolateApi(page: Page, snapshot = graphFixture("r10-graph-1.1.0")) {
   const state: { graphStatus: number; authStatus: number; requests: string[] } = { graphStatus: 200, authStatus: 200, requests: [] };
   await page.route("**/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname; state.requests.push(path);
@@ -35,7 +35,7 @@ for (const width of [1366, 390]) {
     const relation = page.getByRole("button", { name: "图关系 2：影响组件版本", exact: true });
     await relation.focus(); await page.keyboard.press("Enter"); await expect(relation).toHaveAttribute("aria-pressed", "true");
     const inspector = page.getByRole("complementary", { name: "关系检视", exact: true });
-    await expect(inspector.getByText("r10-graph-1.0.0", { exact: true })).toBeVisible();
+    await expect(inspector.getByText("r10-graph-1.1.0", { exact: true })).toBeVisible();
     await inspector.getByText("支持断言 · 1", { exact: true }).click(); await expect(inspector.getByText(fixtureGraphId(32), { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "放大图", exact: true }).click(); await expect(page.getByLabel("图缩放比例")).toHaveText("120%");
     await page.getByRole("button", { name: "向右平移", exact: true }).click(); expect(await page.locator(".graph-canvas").evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
@@ -59,7 +59,7 @@ for (const [status, title] of [[401, "登录后查看证据图"], [403, "没有�
   });
 }
 test("R17 Edge fixture root-only unknown, truncation and view filters", async ({ page }, info) => {
-  const snapshot = graphFixture(); snapshot.nodes = snapshot.nodes.slice(0, 1); snapshot.edges = []; snapshot.truncated = true;
+  const snapshot = graphFixture("r10-graph-1.1.0"); snapshot.nodes = snapshot.nodes.slice(0, 1); snapshot.edges = []; snapshot.truncated = true;
   snapshot.gaps = graphRelationKinds.map((relation_type) => ({ relation_type, status: "unknown", reason: "truncated" }));
   await isolateApi(page, snapshot); await page.goto(fixtureUrl); await expect(page.getByRole("heading", { name: "目前只有事件上下文" })).toBeVisible();
   await expect(page.getByText("关系缺口 · 6 项未知")).toBeVisible(); await expect(page.getByText("暂无风险")).toHaveCount(0);
@@ -71,7 +71,7 @@ test("R17 Edge fixture clears graph after new request and session revocation", a
   state.authStatus = 401; await page.getByRole("button", { name: "测试重新验证会话", exact: true }).click(); await expect(page.getByRole("heading", { name: "登录后查看证据图" })).toBeVisible(); await expect(page.locator(".graph-scene")).toHaveCount(0);
 });
 test("R17 Edge fixture 200 nodes / 400 edges remains operable; synthetic timing only", async ({ page }, info) => {
-  const snapshot: GraphSnapshot = graphFixture(); const root = snapshot.nodes[0]; const firstEdge = snapshot.edges[0]; if (!root || !firstEdge) throw new Error("fixture root missing");
+  const snapshot: GraphSnapshot = graphFixture("r10-graph-1.1.0"); const root = snapshot.nodes[0]; const firstEdge = snapshot.edges[0]; if (!root || !firstEdge) throw new Error("fixture root missing");
   snapshot.nodes = [root, ...Array.from({ length: 199 }, (_, index) => {
     const kind = graphNodeKinds[(index % 5) + 1]; if (!kind) throw new Error("fixture kind missing");
     return { id: fixtureGraphId(index + 100), kind, label: `合成大图 · ${kind} · ${index} · 完整标签核查`, scope: root.scope };

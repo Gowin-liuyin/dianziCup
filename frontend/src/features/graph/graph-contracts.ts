@@ -4,16 +4,17 @@ export const graphNodeKinds = ["event", "source_revision", "component_version", 
 export const graphRelationKinds = ["same_event", "affects_component_version", "mapped_atlas", "related_paper", "remediated_by", "component_version_vulnerability"] as const;
 export type GraphNodeKind = typeof graphNodeKinds[number];
 export type GraphRelationKind = typeof graphRelationKinds[number];
+export type GraphRuleVersion = "r10-graph-1.0.0" | "r10-graph-1.1.0";
 export interface GraphScope { visibility: "public" | "tenant"; tenant_id: string | null }
 export interface GraphNode { id: string; kind: GraphNodeKind; label: string; scope: GraphScope }
 export interface GraphEdge {
   id: string; relation_type: GraphRelationKind; subject_id: string; object_id: string; scope: GraphScope;
   source_revision_ids: string[]; evidence_span_ids: string[]; supporting_claim_ids: string[];
-  rule_or_model_version: "r10-graph-1.0.0"; reason: string; status: "supported";
+  rule_or_model_version: GraphRuleVersion; reason: string; status: "supported";
 }
 export interface GraphGap { relation_type: GraphRelationKind; status: "unknown"; reason: "no_current_supported_relation" | "truncated" }
 export interface GraphSnapshot {
-  schema_version: 1; event_id: string; business_version: number; rule_version: "r10-graph-1.0.0";
+  schema_version: 1; event_id: string; business_version: number; rule_version: GraphRuleVersion;
   nodes: GraphNode[]; edges: GraphEdge[]; truncated: boolean; gaps: GraphGap[]; content_sha256: string;
 }
 
@@ -53,8 +54,8 @@ function scope(value: unknown): GraphScope {
   if ((visibility === "public" && tenant !== null) || (visibility === "tenant" && tenant === null)) return invalidGraph();
   return { visibility, tenant_id: tenant };
 }
-function ruleVersion(value: unknown): "r10-graph-1.0.0" {
-  return value === "r10-graph-1.0.0" ? value : invalidGraph();
+function ruleVersion(value: unknown): GraphRuleVersion {
+  return enumeration(value, ["r10-graph-1.0.0", "r10-graph-1.1.0"]);
 }
 function node(value: unknown): GraphNode {
   const fields = record(value, ["id", "kind", "label", "scope"]);
