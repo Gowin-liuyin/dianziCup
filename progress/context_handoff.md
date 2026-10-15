@@ -1,3 +1,9 @@
+## 独立阶段通过登记 · 2026-10-15T15:32:37+08:00
+
+本卡G-A能力切片accepted/complete，依据新独立reviewer固定代码b27a79d、文档a8362ba及reports/reviews/recovery/G-A-checkpoint-review-1.md第8节Ship，独立封存2026-10-15T15:29:12+08:00。原T整卡合并验收、各层not_run、正式live/人工/云CI及后段范围保持；下面各旧状态仅历史。阶段push写作时尚未发生，实际收据见reports/push/recovery_push_log.jsonl。
+
+当前阶段G-B；源码尚未集成的来源UI fccc包处于新独立review，semantic/资源helper在独立WT，未由G-A意见背书。root后续继续采集/模型/检索接线，不能因本阶段放行结束完整目标。
+
 ## 当前阶段候选 · 2026-10-15T15:15:03+08:00
 
 G-A候选b27已新非作者独立1200组合、686纯unit、98同库两遍、Linux双worker强杀/重投2与API重启4、MinIO7实测；代码与三个组合测试Must关闭，最终阶段文档固定差异仍待复核。阶段awaiting_review，无阶段push。当前报告历史以下保留，旧等待新授权/未提交/未接线句子不能覆盖本段。

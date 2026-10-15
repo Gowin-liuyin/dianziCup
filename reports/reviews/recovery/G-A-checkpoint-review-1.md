@@ -2,9 +2,11 @@
 
 本次改动做了什么：把合同恢复切片、默认认证 API、PG 事实与任务、内容存储、受控网络和实际 Celery 消费组合成可运行底座。审查检查完整产品调用链，并在独立资源中复跑事务、权限、重启、分页与进程死亡恢复。
 
+**最终独立意见：Ship，G-A限定阶段门可通过。** 已测业务候选b27、最终文档候选a836；初审失败与修复、文档归档和最终范围详见第8节。manual、云CI实际执行及后段正式live/评测不在通过范围。
+
 首次创建时刻未单独采集；本次写作开始实际读钟：2026-10-15T15:09:58+08:00；最后更新与完成时间见报告末尾。审查者 `/root/g_a_checkpoint_review` 未参与本批实现，只写本报告及专属运行目录，未改业务、合同、进度、验收状态或 push。
 
-**当前结论：代码与三个组合回归修复已取得独立通过；阶段文档和证据归档仍待固定提交复核。初始 `8f6bd9f` 不能直接 ship。** 本文不登记 accepted。后续文档复核结果追加于末尾，不覆盖初始失败。
+**初审时结论：代码与三个组合回归修复已取得独立通过；阶段文档和证据归档仍待固定提交复核。初始 `8f6bd9f` 不能直接 ship。** 本文不登记 accepted。后续文档复核结果追加于末尾，不覆盖初始失败。
 
 ## 1. 固定对象、授权与审查边界
 
@@ -108,3 +110,35 @@ Not checked：上述后段、生产部署和正式live/人工范围。已测底�
 本轮代码/测试复核证据截止：2026-10-15T15:12:52+08:00。最终资源收据 `resource_closure_after_combined.json`：PG head0013、DB10空、全部自有PID不存活、真实私密值及secret连续8字符无命中、access identity精确值无命中。
 
 **Verdict: needs_changes — 只剩第4项的固定证据与阶段文档归档复核；第1–3项在b27已closed。** 未签accepted、未push。文档固定提交送审后可由本reviewer定向复核，不必重跑源码未变的1200项。
+
+## 8. 固定文档归档与平台归属定向复核 · 最终阶段意见
+
+本节是上一轮 needs_changes 后的独立复核，保留原始失败和原结论，不倒写8f6为通过。文档候选 `44ad5db344dfc0a1c8c4e2a5a507bf08cc36ac25`、tree `813bf70125044eb713ac8a6d904d4728eb8749b4`，在新干净WT `D:/dianzi-ga-checkpoint-review-1-docs`、分支 `codex/ga-checkpoint-review-1-docs` 核查。最终文字修正候选 **`a8362baa7ea042075ca53125495a080d86274bae`**、tree **`b3cc655265170ddd014454db4a76c96ead7cca2c`**，再在新干净WT `D:/dianzi-ga-checkpoint-review-1-final-docs`、分支 `codex/ga-checkpoint-review-1-final-docs` 核对。两WT未改业务、状态或原测试，最终clean。
+
+### 文档及状态一致性
+
+- `b27→44ad` 的2364个变更路径全在docs/reports/progress；backend/frontend/scripts/config/contracts/infra/CI及锁文件实际diff0。`44ad→a836`只有 G-A.md 的平台说明、实际修订时刻和修订记录，业务与测试仍无变化。因此代码层沿用本报告b27的1200组合、686纯unit及同库两遍98证据，不重复不受影响测试。
+- 初审列出的11份缺失证据全部进入固定提交，第4项closed。`verify_plan.py --root <固定WT>` 在44ad **15:19:15–15:19:15**，在最终a836 **15:23:54–15:23:54** 均实际exit0/PLAN_OK；cwd/完整argv分别见docs_plan_44ad.command.json、docs_plan_a836.command.json。
+- requirements、manifest和state均严格JSON解析，无重复键。原60个T状态字典与b27完全一致，没有借阶段意见把整T提前accepted；recovery accepted集合前后只有R00。R01–R03是complete/awaiting_review，manual/live仍not_run，旧记录完整加入history，未由实现者自签accepted。
+- 旧阶段全文归档的Git内容与本审初始、hash38d63的可变文档副本经CRLF→LF规范化完全相同；首次创建时间仍2026-10-14T20:56:36+08:00。先前辅助检查错误地拿d9的较早tracked阶段文档作比对，产生工具assert失败；改用真正已审38d63副本后证明内容保留，没有将错误比对算成文档缺陷。
+- 独立确认d9有1909变更路径；主控记录6533523字节归档时文件统计，独立Git保存blob统计为6477931字节。工作区与Git换行规范口径不同，不能相互冒用；本审不以大小数字替代文件内容或业务证明。G-A现文明确8f6运行初审、b27整组合、旧专项浏览器各自版本，保留云CI/正式指标/人工双标及后段live未运行，不把各版本拼成持续运行。
+
+### 新增文档问题及关闭
+
+**GA-DOC-001：单次公网GET的平台误写。** 44ad的 G-A.md:43/58 将15:05:58–15:06:00 NVD GET称Linux；实际gateway_one_get.command.json的argv是Windows `.venv/Scripts/python.exe`、cwd在D盘，只证明Windows显式DoH访问。预期平台归属与原命令一致，不能据此宣布WSL来源出网恢复。主控9f635/a836只将两处改为Windows，并明确Linux实际证明限于本机API/prefork/beat；首创建时刻保留，新的写作时点15:21:37据实际记录。已对精确diff复核，**closed at a836**；Linux API、强杀恢复和原2worker测试结果没有变化。
+
+### 归档扫描边界
+
+扫描脚本仅为reports中的归档工具，未改变产品网关或秘密处理。gzip最大展开64MiB，超限和损坏均阻断；PS1只将新增隔离PG/MinIO引用放入子进程环境，finally清理新增变量，没有值进入argv或日志。本审未读取产品provider/测绘key，主控“9引用/321模式0命中”仍是其原始扫描证据，不冒充本审的新实际key扫描。
+
+本审对44ad固定扫描脚本实际执行 **6组** 独立合成边界（docs_scanner_synthetic_probes.json有每组cwd/argv/起止/exit）：9个完整合成秘密均exit1/9命中；9个随机部分8字节均exit1/9命中；gzip内合成PG秘密exit1/1命中；仅公开MinIO identity prefix exit0/0命中；>64MiB展开及坏gzip均exit1明确拒绝。所有输出不含完整合成值。公开prefix排除只对MinIO access identity的既定前缀适用，完整identity和随机suffix片段仍检查，未对password/secret/provider key放宽；不把这个有限工具叫通用DLP或全面匿名验收。
+
+### 最终结论与授权登记边界
+
+**Verdict: Ship — G-A（R00–R03已批准能力切片）阶段门可以通过。** 被审业务版本为b27，最终文档候选为a836；第1–4项及GA-DOC-001均已取得本审独立关闭证据，当前没有仍影响本阶段门的已证实Must。
+
+该意见允许主控按用户既有授权据独立报告登记G-A与R01–R03的有限accepted，并执行既有origin/codex工作分支的阶段交付流程；本reviewer没有修改accepted或push。纯登记提交仍应保持原T最终合并条件、各层not_run、后段阻塞与历史；可再简短核对登记diff，不需要新业务测试或新的用户批准。
+
+**边界：** manual、云端CI实际运行、正式评测/指标、Linux来源出网稳定性、生产TLS/完整备份恢复、后续来源广度/九维/模型embedding-rerank/多跳/Agent/插件/资产/推荐均不由本阶段意见判passed。G-B模型四次调用的两轮metadata已读：首轮两协议failed_quote_not_supported、次轮两协议passed，费用unknown，均标product_e2e not_run和accuracy not_evaluated；它们只作为后续准备历史，不能提高G-A或正式问答分数。未经本审的新未提交或后段代码没有被此报告背书。
+
+最终审查完成与封存：2026-10-15T15:29:12+08:00。
