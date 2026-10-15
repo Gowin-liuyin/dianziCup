@@ -270,6 +270,18 @@ def test_boolean_and_number_metadata_changes_preserve_distinct_history(catalog_e
         assert [type(row["upstream_flag"]) for row in rows] == [bool, int, bool]
 
 
+@pytest.mark.parametrize("number", [1e16, 1e20, -0.0])
+def test_jsonb_equivalent_number_replay_does_not_create_new_revision(
+    catalog_engine, tmp_path, number
+):
+    original = replace(paper(), metadata={"upstream_number": number})
+    store = ContentStore(tmp_path / "raw")
+    first = save(catalog_engine, store, (original,))
+    replay = save(catalog_engine, store, (original,), at=NOW + timedelta(seconds=1))
+    assert first.new_revision_count == 1 and replay.new_revision_count == 0
+    assert replay.revision_ids == first.revision_ids
+
+
 def test_mid_page_storage_failure_cannot_commit_first_member(catalog_engine, tmp_path):
     second_payload = b'{"title":"Second synthetic paper","abstract":"storage failure"}'
     second = replace(
