@@ -1,27 +1,16 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiProblem, publicProblem } from "../../api/client";
 import { getEventDetail, getEventList, getEvidence, type EventFilters } from "../../api/knowledge-client";
-import type { ClaimOrigin, ClaimStatus, DimensionName, DimensionStatus, EventDetailResponse, EventListResponse, EvidenceResponse, Freshness } from "../../api/knowledge-contracts";
+import type { EventDetailResponse, EventListResponse, EvidenceResponse } from "../../api/knowledge-contracts";
 import { useAuthSession } from "../../app/auth-session";
-import { formatShanghaiTimestamp } from "../../app/date-time";
 import { readEventSelection } from "../../app/workspace-navigation";
 import { EmptyState, ErrorPanel, StatusBadge } from "../../components/status";
 import { PreparedEventWorkspace } from "../preparation/capability-workspace";
+import { EventDetailView } from "./event-detail-view";
+import { FreshnessBadge, SavedTime } from "./event-display";
+import "./events.css";
 
 type Resource<T> = { kind: "loading" } | { kind: "loaded"; value: T } | { kind: "failed"; error: ApiProblem };
-const dimensionLabels: Record<DimensionName, string> = { cvss: "CVSS 评分", epss: "EPSS 可能性", kev: "KEV 目录", cwe: "CWE 弱点", atlas: "ATLAS 映射", versions: "影响版本", literature: "论文关联", poc: "PoC 核查", exposure: "暴露统计" };
-const dimensionStatusLabels: Record<DimensionStatus, string> = { available: "已取得", not_found: "未发现", not_applicable: "不适用", conflict: "有冲突", blocked: "受阻", failed: "失败", pending: "待处理" };
-const claimStatusLabels: Record<ClaimStatus, string> = { supported: "有证据支持", disputed: "有争议", unverified: "未核验", superseded: "已被新版本替代", withdrawn: "已撤回" };
-const originLabels: Record<ClaimOrigin, string> = { source_explicit: "原文明示", structured_source: "结构化来源", rule_derived: "规则推导", model_hypothesis: "模型假设", human_confirmed: "人工确认" };
-const freshnessLabels: Record<Freshness, string> = { current: "当前", stale: "已过期", unknown: "时效未知" };
-
-function SavedTime({ value }: { value: string | null }) {
-  return value === null ? <span className="unknown-value">未知 / 未留存</span> : <time dateTime={value}>{formatShanghaiTimestamp(value)}</time>;
-}
-
-function FreshnessBadge({ value }: { value: Freshness }) {
-  return <span className={`freshness-label freshness-${value}`}>{freshnessLabels[value]}</span>;
-}
 
 function eventListStatus(resource: Resource<EventListResponse>): string {
   if (resource.kind === "loading") return "loading";
@@ -52,9 +41,10 @@ function ResourceError({ error, collection, onRetry }: { error: ApiProblem; coll
   return <div className="resource-error"><h3>{title}</h3><ErrorPanel error={error} message={message} onRetry={error.status === 403 ? undefined : onRetry} retryLabel="重新查询" /></div>;
 }
 
-function EventDetail({ id, onSessionExpired, isCurrent }: { id: string; onSessionExpired: () => void; isCurrent: () => boolean }) {
+function EventDetail({ id, selectedEvidenceId, selectedRevisionId, onSessionExpired, isCurrent }: { id: string; selectedEvidenceId: string | null; selectedRevisionId: string | null; onSessionExpired: () => void; isCurrent: () => boolean }) {
   const [resource, setResource] = useState<Resource<EventDetailResponse>>({ kind: "loading" });
   const [retry, setRetry] = useState(0);
+  const detailSection = useRef<HTMLElement>(null);
   useEffect(() => {
     const controller = new AbortController();
     setResource({ kind: "loading" });
@@ -67,27 +57,17 @@ function EventDetail({ id, onSessionExpired, isCurrent }: { id: string; onSessio
     return () => controller.abort();
   }, [id, retry, onSessionExpired, isCurrent]);
 
-  return <section className="panel event-detail" aria-labelledby="event-detail-title">
+  useEffect(() => {
+    if (resource.kind !== "loaded" || selectedEvidenceId !== null) return;
+    detailSection.current?.focus({ preventScroll: true });
+    detailSection.current?.scrollIntoView?.({ block: "start", behavior: "instant" });
+  }, [resource.kind, selectedEvidenceId]);
+
+  return <section ref={detailSection} tabIndex={-1} className="panel event-detail" aria-labelledby="event-detail-title">
     <div className="panel-heading"><div><p className="eyebrow">EVENT DETAIL / 事实与修订</p><h2 id="event-detail-title">事件详情</h2></div><a className="text-link" href="#events">返回列表</a></div>
-    {resource.kind === "loading" && <p className="loading-state" role="status">正在取得事件事实与历史版本…</p>}
+    {resource.kind === "loading" && <div className="event-detail-loading" aria-busy="true"><p className="loading-state" role="status">正在取得事件事实与历史版本…</p><div className="event-loading-placeholder" aria-hidden="true"><span /><span /><span /></div></div>}
     {resource.kind === "failed" && <ResourceError error={resource.error} onRetry={() => setRetry((value) => value + 1)} />}
-    {resource.kind === "loaded" && <div className="event-detail-body">
-      <div className="event-title"><h3>{resource.value.event.title}</h3><FreshnessBadge value={resource.value.event.freshness} /><span className="small-note">{resource.value.data_mode === "fixture" ? "合成 / Fixture" : "真实 / Live"}</span></div>
-      <code className="record-id">{resource.value.event.event_id}</code>
-      <a className="button secondary" href={`#questions/${resource.value.event.event_id}`}>基于此事件提问 →</a>
-      <h3 className="detail-section-title">九维富化</h3>
-      <p className="small-note">各维度独立记录状态。未返回的维度没有结果，不能解释为不适用或完成。</p>
-      {Object.entries(dimensionLabels).map(([name, label]) => {
-        const dimensions = resource.value.dimensions.filter((dimension) => dimension.dimension === name);
-        return <div className="dimension-row" key={name}><div className="dimension-name">{label}</div><div>{dimensions.length === 0 ? <span className="unknown-value">未提供该维度</span> : dimensions.map((dimension, index) => <div className="dimension-result" key={`${name}-${index}`}><span className="dimension-status">{dimensionStatusLabels[dimension.status]}</span><FreshnessBadge value={dimension.freshness} />{dimension.error_code && <code className="small-note">{dimension.error_code}</code>}<div className="citation-links">{dimension.citations.map((citation) => <a key={citation.evidence_id} href={`#events/${id}/evidence/${citation.evidence_id}/revision/${citation.revision_id}`}>查看引用：{citation.locator}</a>)}</div></div>)}</div></div>;
-      })}
-      <h3 className="detail-section-title">事实与来源断言</h3>
-      {resource.value.claims.length === 0 && <EmptyState title="尚未取得事实记录" description="没有事实记录不代表不存在相关风险。" />}
-      {resource.value.claims.map((claim) => <article className="claim-row" key={claim.claim_id}><div><code>{claim.predicate}</code><span className="claim-status">{claimStatusLabels[claim.status]}</span><span className="small-note">{originLabels[claim.origin]}</span></div><p>{claim.display_value}</p><div className="citation-links">{claim.evidence_ids.map((evidenceId, index) => <a key={evidenceId} href={`#events/${id}/evidence/${evidenceId}${claim.source_revision_id === null ? "" : `/revision/${claim.source_revision_id}`}`}>原文片段 [{index + 1}]</a>)}</div></article>)}
-      <h3 className="detail-section-title">原文修订时间线</h3>
-      {resource.value.revisions.length === 0 && <EmptyState title="尚未取得修订记录" description="历史版本需要保存的原文与修订记录，不能由当前来源信息推测。" />}
-      {resource.value.revisions.map((revision) => <article className="revision-entry" key={revision.revision_id}><div className="revision-entry-title"><strong>修订 {revision.revision_number}</strong><span className="small-note">解析：{revision.parse_status}</span></div><code className="record-id">{revision.revision_id}</code><dl className="evidence-metadata"><dt>源发布时间</dt><dd><SavedTime value={revision.source_published_at} /></dd><dt>源修订时间</dt><dd><SavedTime value={revision.source_modified_at} /></dd><dt>首次观察</dt><dd><SavedTime value={revision.first_observed_at} /></dd><dt>入库完成</dt><dd><SavedTime value={revision.ingested_at} /></dd></dl>{revision.canonical_uri ? <a className="text-link" href={revision.canonical_uri} target="_blank" rel="noopener noreferrer">打开该版本来源地址 ↗</a> : <p className="small-note">该历史版本原文地址未留存</p>}</article>)}
-    </div>}
+    {resource.kind === "loaded" && <EventDetailView detail={resource.value} selectedEvidenceId={selectedEvidenceId} selectedRevisionId={selectedRevisionId} />}
   </section>;
 }
 
@@ -118,7 +98,7 @@ function EvidenceInspector({ id, revisionId, onSessionExpired, isCurrent }: { id
     {id === null ? <EmptyState title="选择原文引用" description="打开事件后，选择事实或维度引用，查看指定修订版本的准确片段。" /> : <>
       {resource.kind === "loading" && <p className="loading-state" role="status">正在取得指定版本证据…</p>}
       {resource.kind === "failed" && <ResourceError error={resource.error} onRetry={() => setRetry((value) => value + 1)} />}
-      {resource.kind === "loaded" && <div className="evidence-body"><p className="small-note">{resource.value.data_mode === "fixture" ? "合成 / Fixture" : "真实 / Live"}</p><blockquote>{resource.value.quote_text}</blockquote><p className="boundary-note">引文存在 ≠ 内容支持</p><dl className="evidence-metadata"><dt>证据标识</dt><dd><code>{resource.value.span_id}</code></dd><dt>原文修订</dt><dd><code>{resource.value.revision_id}</code></dd><dt>定位类型</dt><dd>{resource.value.locator_kind === "legacy_unverified" ? "历史定位未核验" : resource.value.locator_kind}</dd><dt>Unicode 范围</dt><dd><code>[{resource.value.start_offset}, {resource.value.end_offset})</code></dd><dt>PDF 页码</dt><dd>{resource.value.page_number ?? "不适用 / 未留存"}</dd><dt>JSON 位置</dt><dd><code>{resource.value.json_pointer ?? "不适用 / 未留存"}</code></dd><dt>定位核验</dt><dd><SavedTime value={resource.value.verified_at} /></dd><dt>源发布时间</dt><dd><SavedTime value={resource.value.source_published_at} /></dd><dt>源修订时间</dt><dd><SavedTime value={resource.value.source_modified_at} /></dd><dt>首次观察</dt><dd><SavedTime value={resource.value.first_observed_at} /></dd><dt>入库完成</dt><dd><SavedTime value={resource.value.ingested_at} /></dd></dl>{resource.value.source_uri ? <a className="button secondary" href={resource.value.source_uri} target="_blank" rel="noopener noreferrer">打开来源地址 ↗</a> : <p className="small-note">该历史版本原文地址未留存</p>}</div>}
+      {resource.kind === "loaded" && <div className="evidence-body"><p className="small-note">{resource.value.data_mode === "fixture" ? "合成 / Fixture" : "真实 / Live"}</p><blockquote>{resource.value.quote_text}</blockquote><p className="boundary-note">引文存在 ≠ 内容支持</p><dl className="evidence-metadata"><dt>证据标识</dt><dd><code>{resource.value.span_id}</code></dd><dt>原文修订</dt><dd><code>{resource.value.revision_id}</code></dd><dt>定位类型</dt><dd>{resource.value.locator_kind === "legacy_unverified" ? "历史定位未核验" : resource.value.locator_kind}</dd><dt>Unicode 范围</dt><dd><code>[{resource.value.start_offset}, {resource.value.end_offset})</code></dd><dt>PDF 页码</dt><dd>{resource.value.page_number ?? "未提供 / 未留存"}</dd><dt>JSON 位置</dt><dd><code>{resource.value.json_pointer ?? "未提供 / 未留存"}</code></dd><dt>定位核验</dt><dd><SavedTime value={resource.value.verified_at} /></dd><dt>源发布时间</dt><dd><SavedTime value={resource.value.source_published_at} /></dd><dt>源修订时间</dt><dd><SavedTime value={resource.value.source_modified_at} /></dd><dt>首次观察</dt><dd><SavedTime value={resource.value.first_observed_at} /></dd><dt>入库完成</dt><dd><SavedTime value={resource.value.ingested_at} /></dd></dl>{resource.value.source_uri ? <a className="button secondary" href={resource.value.source_uri} target="_blank" rel="noopener noreferrer">打开留存来源地址 ↗</a> : <p className="small-note">该历史版本原文地址未留存</p>}</div>}
     </>}
   </aside>;
 }
@@ -176,6 +156,6 @@ export function EventWorkspace() {
       {resource.kind === "loaded" && <div className="list-pagination"><span className="small-note">本页 {resource.value.items.length} 条 · {resource.value.data_mode === "fixture" ? "合成 / Fixture" : "真实 / Live"}</span><button className="button secondary" disabled={resource.value.next_cursor === null} onClick={() => { if (resource.value.next_cursor !== null) setFilters((current) => ({ ...current, cursor: resource.value.next_cursor ?? undefined })); }}>下一页</button></div>}
       <div className="panel-actions"><a className="button secondary" href="#sources">查看来源工作区</a></div>
     </section>
-    {selection !== null && <EventDetail key={`${state.user.user_id}-${state.user.permission_version}-${selection.eventId}`} id={selection.eventId} onSessionExpired={expired} isCurrent={isCurrent} />}
+    {selection !== null && <EventDetail key={`${state.user.user_id}-${state.user.permission_version}-${selection.eventId}`} id={selection.eventId} selectedEvidenceId={selection.evidenceId} selectedRevisionId={selection.revisionId} onSessionExpired={expired} isCurrent={isCurrent} />}
   </div><EvidenceInspector key={`${state.user.user_id}-${state.user.permission_version}-${selection?.evidenceId ?? "none"}-${selection?.revisionId ?? "none"}`} id={selection?.evidenceId ?? null} revisionId={selection?.revisionId ?? null} onSessionExpired={expired} isCurrent={isCurrent} /></div>;
 }

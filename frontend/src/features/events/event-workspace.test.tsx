@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../App";
 
@@ -104,7 +104,7 @@ describe("R04 event/detail/evidence — isolated fixture mode only", () => {
     expect(screen.getByText("未核验")).toBeTruthy();
     expect(screen.getByText("fixture_upstream_failure")).toBeTruthy();
     expect(screen.getAllByText("未提供该维度")).toHaveLength(7);
-    expect(screen.getAllByText("未知 / 未留存")).toHaveLength(4);
+    expect(within(screen.getByRole("article", { name: `修订 1 ${revisionId}` })).getAllByText("未知 / 未留存")).toHaveLength(4);
     expect(screen.getByText("<img src=x onerror=alert('fixture')>")).toBeTruthy();
     expect(document.querySelector("img")).toBeNull();
   });
@@ -113,7 +113,7 @@ describe("R04 event/detail/evidence — isolated fixture mode only", () => {
     render(<App />);
     await screen.findByRole("link", { name: eventFixture.title });
     navigate(`#events/${eventId}/evidence/${evidenceId}/revision/${revisionId}`);
-    await screen.findByText("历史原文片段");
+    await screen.findByText("历史原文片段", { selector: "blockquote" });
     expect(screen.getByText("[10, 16)")).toBeTruthy();
     expect(screen.getByText("历史定位未核验")).toBeTruthy();
     expect(screen.getAllByText(revisionId).length).toBeGreaterThan(0);
