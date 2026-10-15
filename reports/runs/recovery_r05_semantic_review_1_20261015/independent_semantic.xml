@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="18" time="13.897" timestamp="2026-10-15T15:47:31.844933+08:00" hostname="yin"><testcase classname="" name="test_pipe_creation_failure_releases_capacity" time="0.011"><failure message="AssertionError: one Pipe failure permanently consumes capacity&#10;assert not True&#10; +  where True = &lt;built-in method locked of _thread.lock object at 0x000002B6D0B3C800&gt;()&#10; +    where &lt;built-in method locked of _thread.lock object at 0x000002B6D0B3C800&gt; = &lt;locked _thread.lock object at 0x000002B6D0B3C800&gt;.locked&#10; +      where &lt;locked _thread.lock object at 0x000002B6D0B3C800&gt; = semantic._WORKER_LOCK">tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-397/test_pipe_creation_failure_rel0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002B6D0B74980&gt;
+
+    def test_pipe_creation_failure_releases_capacity(tmp_path, monkeypatch):
+        class FailingContext:
+            def Pipe(self, *, duplex):
+                raise OSError("synthetic pipe resource exhaustion")
+    
+        monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda _: FailingContext())
+        try:
+            with pytest.raises((OSError, semantic.SemanticRuntimeError)):
+                semantic.LocalSemanticModels(tmp_path).embed_query("synthetic private question")
+&gt;           assert not semantic._WORKER_LOCK.locked(), "one Pipe failure permanently consumes capacity"
+E           AssertionError: one Pipe failure permanently consumes capacity
+E           assert not True
+E            +  where True = &lt;built-in method locked of _thread.lock object at 0x000002B6D0B3C800&gt;()
+E            +    where &lt;built-in method locked of _thread.lock object at 0x000002B6D0B3C800&gt; = &lt;locked _thread.lock object at 0x000002B6D0B3C800&gt;.locked
+E            +      where &lt;locked _thread.lock object at 0x000002B6D0B3C800&gt; = semantic._WORKER_LOCK
+
+D:\dianzi\reports\runs\recovery_r05_semantic_review_1_20261015\test_independent_semantic.py:26: AssertionError</failure></testcase><testcase classname="" name="test_additional_malformed_public_inputs[None]" time="0.003" /><testcase classname="" name="test_additional_malformed_public_inputs[True]" time="0.002" /><testcase classname="" name="test_additional_malformed_public_inputs[3]" time="0.002" /><testcase classname="" name="test_additional_malformed_public_inputs[text]" time="0.002" /><testcase classname="" name="test_additional_malformed_public_inputs[text4]" time="0.002" /><testcase classname="" name="test_additional_malformed_public_inputs[\udc00]" time="0.002" /><testcase classname="" name="test_public_boundary_rejects_bad_backend_scalars[True]" time="0.002" /><testcase classname="" name="test_public_boundary_rejects_bad_backend_scalars[1]" time="0.002" /><testcase classname="" name="test_public_boundary_rejects_bad_backend_scalars[nan]" time="0.002" /><testcase classname="" name="test_public_boundary_rejects_bad_backend_scalars[inf]" time="0.002" /><testcase classname="" name="test_public_boundary_rejects_bad_backend_scalars[-inf]" time="0.002" /><testcase classname="" name="test_real_missing_cache_error_is_safe_and_child_is_reaped" time="0.204" /><testcase classname="" name="test_real_short_deadline_reaps_worker_and_releases_lock" time="0.016" /><testcase classname="" name="test_real_same_size_corruption_is_rejected_before_inference" time="0.008" /><testcase classname="" name="test_real_directory_junction_outside_cache_is_rejected" time="0.031" /><testcase classname="" name="test_real_padding_batch_order_duplicate_and_rerank" time="7.769" /><testcase classname="" name="test_real_maximum_batch_at_512_tokens_and_513_rejection" time="5.578" /></testsuite></testsuites>

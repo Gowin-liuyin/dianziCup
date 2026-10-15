@@ -1,0 +1,62 @@
+{
+  "observed_at": "2026-10-15T15:27:29+08:00",
+  "status": 200,
+  "body": {
+    "schema_version": 2,
+    "event": {
+      "event_id": "ffbda7a3-3406-5252-b858-9388cbe17225",
+      "event_type": "vulnerability",
+      "title": "Cross-tenant DoS via uninitialized LogprobsTensors with prompt_logprobs",
+      "external_ids": [
+        "GHSA-RHCX-5729-88VG"
+      ],
+      "primary_product_ids": [],
+      "first_seen_at": "2026-10-15T07:27:26.546087Z",
+      "status": "active",
+      "source_count": 1,
+      "latest_revision_id": "cd37981f-e7b8-49d5-aee0-6af287e030fd",
+      "freshness": "unknown"
+    },
+    "dimensions": [],
+    "revisions": [
+      {
+        "revision_id": "cd37981f-e7b8-49d5-aee0-6af287e030fd",
+        "document_id": "3e7e6d0b-237f-58de-ae36-dd71830d752f",
+        "revision_number": 1,
+        "source_id": "64f0f40e-912c-571b-9d63-6f5f3362f46f",
+        "source_published_at": "2026-10-09T06:39:02Z",
+        "source_modified_at": "2026-10-09T06:39:02Z",
+        "first_observed_at": "2026-10-15T07:27:26.545519Z",
+        "ingested_at": "2026-10-15T07:27:26.546087Z",
+        "parse_status": "parsed",
+        "document_kind": "advisory",
+        "canonical_uri": "https://github.com/vllm-project/vllm/security/advisories/GHSA-rhcx-5729-88vg"
+      }
+    ],
+    "claims": [
+      {
+        "claim_id": "7a963612-799f-5e2a-a1bf-7da7ec0e39a8",
+        "predicate": "source_excerpt",
+        "display_value": "<!--\r\n  Drop the body below into the \"Description\" field of the GHSA form at\r\n  https://github.com/vllm-project/vllm/security/advisories/new\r\n\r\n  Map the sidebar fields as listed in \"Form sidebar values\" at the end\r\n  of this file (Title, Severity / CVSS, CWE, Affected products / versions,\r\n  Patched versions).  Those go in the structured form fields, not the\r\n  description body.\r\n-->\r\n\r\n### Summary\r\n\r\n`LogprobsTensors.empty_cpu()` in `vllm/v1/outputs.py` allocates the backing int32 tensor with `torch.empty()`, leaving it uninitialized.  When the V1 model runner fills logprobs for a request whose prefix is reported as externally computed by a `KVConnectorBase_V1` subclass, positions `[0 .. num_computed_tokens - 1]` are never written.  Downstream `tokenizer.decode()` on those positions hits garbage int32 values and raises `OverflowError`.  The exception propagates out of `EngineCore`, the engine process dies, and every in-flight request on that engine — including co-tenant traffic — is lost.\r\n\r\nA single API request with `prompt_logprobs` (or `logprobs` + `echo=true`) against a connector-cached prefix is sufficient to trigger the crash.  The trigger is cross-tenant: an attacker only needs to share an `EngineCore` with the victim.\r\n\r\n### Details\r\n\r\n**Affected configuration**\r\n\r\n- V1 engine\r\n- Any `KVConnectorBase_V1` subclass whose `get_num_new_matched_tokens()` returns `num_new > 0`\r\n- A client request with `sampling_params.prompt_logprobs is not None` (or `echo=true` + `logprobs` over the OpenAI-compatible API)\r\n\r\nIn-tree connectors that meet this condition:\r\n\r\n- `LMCacheConnectorV1` (`vllm/distributed/kv_transfer/kv_connector/v1/lmcache_connector.py`) — fires on any prefix cache hit.\r\n- `NixlConnector` (`.../nixl_connector.py`) — fires on the decode side of disaggregated P/D (`do_remote_prefill=True`).\r\n- `SharedStorageConnector`, `P2pNcclConnector`, `OffloadingConnector`, `MultiConnector` — same shape.\r\n- Any out-of-tree `KVConnectorBase_V1` subclass.\r\n\r\nThe local ",
+        "origin": "structured_source",
+        "status": "supported",
+        "source_revision_id": "cd37981f-e7b8-49d5-aee0-6af287e030fd",
+        "evidence_ids": [
+          "452ee46e-fb7b-414f-9835-6296a9647aa3"
+        ]
+      },
+      {
+        "claim_id": "a4106835-418b-58f8-bed4-25fafedec47e",
+        "predicate": "affected_product",
+        "display_value": "vllm",
+        "origin": "structured_source",
+        "status": "supported",
+        "source_revision_id": "cd37981f-e7b8-49d5-aee0-6af287e030fd",
+        "evidence_ids": [
+          "ad56716f-3f7f-49f8-823f-5d0aa52beebe"
+        ]
+      }
+    ],
+    "data_mode": "live"
+  }
+}

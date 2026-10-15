@@ -1,0 +1,30 @@
+F...............{'kind': 'independent_real_smoke', 'ranked': [(0, 3.510960102081299), (3, 3.510960102081299), (1, 3.3030545711517334), (2, -9.028312683105469)], 'quality_threshold': None}
+.{'kind': 'independent_max_batch', 'batch': 8, 'tokens': 512, 'seconds': 3.5939999999973224}
+.
+================================== FAILURES ===================================
+________________ test_pipe_creation_failure_releases_capacity _________________
+
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-397/test_pipe_creation_failure_rel0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002B6D0B74980>
+
+    def test_pipe_creation_failure_releases_capacity(tmp_path, monkeypatch):
+        class FailingContext:
+            def Pipe(self, *, duplex):
+                raise OSError("synthetic pipe resource exhaustion")
+    
+        monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda _: FailingContext())
+        try:
+            with pytest.raises((OSError, semantic.SemanticRuntimeError)):
+                semantic.LocalSemanticModels(tmp_path).embed_query("synthetic private question")
+>           assert not semantic._WORKER_LOCK.locked(), "one Pipe failure permanently consumes capacity"
+E           AssertionError: one Pipe failure permanently consumes capacity
+E           assert not True
+E            +  where True = <built-in method locked of _thread.lock object at 0x000002B6D0B3C800>()
+E            +    where <built-in method locked of _thread.lock object at 0x000002B6D0B3C800> = <locked _thread.lock object at 0x000002B6D0B3C800>.locked
+E            +      where <locked _thread.lock object at 0x000002B6D0B3C800> = semantic._WORKER_LOCK
+
+D:\dianzi\reports\runs\recovery_r05_semantic_review_1_20261015\test_independent_semantic.py:26: AssertionError
+- generated xml file: D:\dianzi\reports\runs\recovery_r05_semantic_review_1_20261015\independent_semantic.xml -
+=========================== short test summary info ===========================
+FAILED ::test_pipe_creation_failure_releases_capacity - AssertionError: one P...
+1 failed, 17 passed in 13.94s

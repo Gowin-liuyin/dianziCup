@@ -1,8 +1,8 @@
-import { defineConfig } from "file:///C:/Users/yinha/.codex/worktrees/r04-real-pipeline/dianzi/frontend/node_modules/@playwright/test/index.mjs";
+import { defineConfig } from "file:///D:/dianzi/frontend/node_modules/@playwright/test/index.mjs";
 
 export default defineConfig({
   testDir: "D:/dianzi/frontend/e2e",
-  testMatch: "r04_real_sources.spec.ts",
+  testMatch: ["r04_real_sources.spec.ts", "r17_real_source_workspace.spec.ts"],
   workers: 1,
   timeout: 60_000,
   expect: { timeout: 15_000 },

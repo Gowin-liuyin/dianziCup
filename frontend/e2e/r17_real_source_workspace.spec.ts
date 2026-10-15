@@ -1,0 +1,44 @@
+import fs from "node:fs/promises";
+import process from "node:process";
+import { expect, test } from "@playwright/test";
+
+test("R17 actual administrator submits one bounded vendor page and reads PG status", async ({ page }, testInfo) => {
+  const username = process.env.DIANZI_E2E_USERNAME;
+  const password = process.env.DIANZI_E2E_PASSWORD;
+  if (!username || !password) throw new Error("isolated browser identity unavailable");
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto("/#session");
+  await page.getByLabel("用户名", { exact: true }).fill(`${username}-r04-admin`);
+  await page.getByLabel("密码", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "登录工作台", exact: true }).click();
+  await expect(page.getByRole("button", { name: "退出登录", exact: true })).toBeVisible();
+  await page.goto("/#sources");
+  await expect(page.getByRole("heading", { name: "提交采集轮次", exact: true })).toBeVisible();
+  await page.getByRole("combobox", { name: "固定来源", exact: true }).selectOption("vllm_vendor");
+  await page.getByRole("spinbutton", { name: "本轮页上限", exact: true }).fill("1");
+  await page.getByRole("textbox", { name: "观察窗口截止（含时区）", exact: true }).fill(new Date(Date.now() - 1000).toISOString());
+  const receipt = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith("/sources/vllm_vendor/collect"));
+  await page.getByRole("button", { name: "提交本轮采集", exact: true }).click();
+  const submitted = await receipt;
+  expect(submitted.status()).toBe(202);
+  const first: unknown = await submitted.json();
+  await fs.writeFile(testInfo.outputPath("actual_submission.json"), JSON.stringify({ observed_at: new Date().toISOString(), body: first }, null, 2));
+  await expect(page.getByRole("heading", { name: "本轮已受理", exact: true })).toBeVisible();
+  await expect(page.getByRole("article", { name: "当前单页任务", exact: true })).toBeVisible();
+  const readouts: unknown[] = [];
+  await expect(async () => {
+    const response = page.waitForResponse((result) => result.request().method() === "GET" && /\/jobs\/[a-f0-9-]{36}$/.test(result.url()));
+    await page.getByRole("button", { name: "查询 / 刷新任务", exact: true }).click();
+    const result = await response;
+    expect(result.status()).toBe(200);
+    const body: unknown = await result.json();
+    readouts.push({ observed_at: new Date().toISOString(), body });
+    expect(await page.getByRole("article", { name: "当前单页任务", exact: true }).getByRole("heading").innerText()).toMatch(/^(部分完成|本页处理完成)$/);
+  }).toPass({ timeout: 45_000, intervals: [7000] });
+  await fs.writeFile(testInfo.outputPath("actual_job_observations.json"), JSON.stringify(readouts, null, 2));
+  await expect(page.getByText(/仅本页任务成功|本轮页数上限已到/)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("real-source-workspace-1366.png"), fullPage: true });
+  await page.goto("/#session");
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await expect(page.getByRole("button", { name: "登录工作台", exact: true })).toBeVisible();
+});

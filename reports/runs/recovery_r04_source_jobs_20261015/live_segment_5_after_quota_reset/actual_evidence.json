@@ -1,0 +1,24 @@
+{
+  "observed_at": "2026-10-15T15:27:29+08:00",
+  "status": 200,
+  "body": {
+    "schema_version": 2,
+    "span_id": "452ee46e-fb7b-414f-9835-6296a9647aa3",
+    "revision_id": "cd37981f-e7b8-49d5-aee0-6af287e030fd",
+    "block_id": "42f4ace7-0328-4e52-b56b-1f2ba34e709e",
+    "start_offset": 316,
+    "end_offset": 2316,
+    "quote_text": "<!--\r\n  Drop the body below into the \"Description\" field of the GHSA form at\r\n  https://github.com/vllm-project/vllm/security/advisories/new\r\n\r\n  Map the sidebar fields as listed in \"Form sidebar values\" at the end\r\n  of this file (Title, Severity / CVSS, CWE, Affected products / versions,\r\n  Patched versions).  Those go in the structured form fields, not the\r\n  description body.\r\n-->\r\n\r\n### Summary\r\n\r\n`LogprobsTensors.empty_cpu()` in `vllm/v1/outputs.py` allocates the backing int32 tensor with `torch.empty()`, leaving it uninitialized.  When the V1 model runner fills logprobs for a request whose prefix is reported as externally computed by a `KVConnectorBase_V1` subclass, positions `[0 .. num_computed_tokens - 1]` are never written.  Downstream `tokenizer.decode()` on those positions hits garbage int32 values and raises `OverflowError`.  The exception propagates out of `EngineCore`, the engine process dies, and every in-flight request on that engine — including co-tenant traffic — is lost.\r\n\r\nA single API request with `prompt_logprobs` (or `logprobs` + `echo=true`) against a connector-cached prefix is sufficient to trigger the crash.  The trigger is cross-tenant: an attacker only needs to share an `EngineCore` with the victim.\r\n\r\n### Details\r\n\r\n**Affected configuration**\r\n\r\n- V1 engine\r\n- Any `KVConnectorBase_V1` subclass whose `get_num_new_matched_tokens()` returns `num_new > 0`\r\n- A client request with `sampling_params.prompt_logprobs is not None` (or `echo=true` + `logprobs` over the OpenAI-compatible API)\r\n\r\nIn-tree connectors that meet this condition:\r\n\r\n- `LMCacheConnectorV1` (`vllm/distributed/kv_transfer/kv_connector/v1/lmcache_connector.py`) — fires on any prefix cache hit.\r\n- `NixlConnector` (`.../nixl_connector.py`) — fires on the decode side of disaggregated P/D (`do_remote_prefill=True`).\r\n- `SharedStorageConnector`, `P2pNcclConnector`, `OffloadingConnector`, `MultiConnector` — same shape.\r\n- Any out-of-tree `KVConnectorBase_V1` subclass.\r\n\r\nThe local ",
+    "quote_sha256": "21cb332d36f3bc5dbbc29b315ddccaf107f31690b9dcf4d727504f8720e2a843",
+    "locator_kind": "json_pointer",
+    "page_number": null,
+    "json_pointer": "/description",
+    "verified_at": "2026-10-15T07:27:26.546087Z",
+    "source_uri": "https://github.com/vllm-project/vllm/security/advisories/GHSA-rhcx-5729-88vg",
+    "source_published_at": "2026-10-09T06:39:02Z",
+    "source_modified_at": "2026-10-09T06:39:02Z",
+    "first_observed_at": "2026-10-15T07:27:26.545519Z",
+    "ingested_at": "2026-10-15T07:27:26.546087Z",
+    "data_mode": "live"
+  }
+}

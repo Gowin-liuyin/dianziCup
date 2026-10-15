@@ -1,3 +1,19 @@
+## 当前权威快照 · 2026-10-15T16:17:02+08:00
+
+集成分支codex/full-delivery-recovery，HEAD fd01ea3e0205361c1f446d6fb97694aa3aa715cf；远端最后核实为G-A fa5deb0d0b519869ca92d34d9ffe7d8e39b06fb4，2026-10-15T15:41:48+08:00成功推送并ls-remote核对，见reports/push/recovery_push_log.jsonl。G-A范围已独立accepted；当前G-B in_progress/partial，未阶段push；原T整卡状态与最终范围不变。
+
+当前来源分页e6/c3与空package/API Must已独立关闭；8f6真实after游标5页新增40，15:27观测95事件/414证据且厂商partial。afe工作台15:56桌面/移动原文证据2pass，15:59管理员真实提交/PG partial状态1pass。403/429提前重试语义修复仍在独立WT；整卡未验收。
+
+31c生成metadata/nested/defer Must均独立关闭；两wire共4次真实调用，首轮2次因CRLF精确引用失败，single-line-v2两次通过，费用unknown。1e77语义锁Must独立关闭并集成fd01ea3；root102回归、6真PG/0014保历史/mypy75通过；新retrieval草稿10真PG通过但未冻结/未审。模型/PG/问答/API/UI完整链尚未接通，整卡未验收。
+
+afe来源工作台已独立限定Ship，root178前端通过；真实浏览器桌面/390宽度证据2pass，管理员来源一页提交→PG partial1pass。暗色青绿/低亮拓扑/减少动画/指针焦点已验证。首轮admin selector错误已保留，按role改测试后复验通过；完整问答/资产/图谱/推荐等工作台仍未完成。
+
+真实受控Windows段6固定afe490：API/worker/beat 15:55:43至16:10:43，前端15:55:45至16:10:46，均到期结束；不同代码/中断绝不拼连续运行。MinIO段2 14:55:48至16:55:48硬截止；Docker总截止2026-10-17T21:49:15+08。模型缓存/凭据/连接只在仓外，holdout不索引；双人金标/裁决与FOFA授权范围仍缺，PPT按用户后置。
+
+并行：root独占公共schema/迁移0014/依赖锁/集成/进度/推送及retrieval/API接线；r05_grounded_answer_core拥有answering/contracts.py、grounding.py、直接测试/自有报告，禁止改API/PG；r04_source_rate_limits拥有source_jobs._http_failure/直接测试/自有报告（旧单个错误断言授权纠正）；新的r05_vector_foundation_review只审冻结fd01ea3并复跑，不改业务。总4槽位，子Agent不得自行扩大文件所有权/再spawn/签accepted/push。
+
+下一步：完成单事件真实向量检索→严格引用生成/核验→PG用户答案→API→问答页面；新小批独立review后真实全链验证；限流修复新review。G-B通过后才安排新的整阶段review/push。下面旧段落仅历史，不覆盖本快照。
+
 ## 独立阶段通过登记 · 2026-10-15T15:32:37+08:00
 
 本卡G-A能力切片accepted/complete，依据新独立reviewer固定代码b27a79d、文档a8362ba及reports/reviews/recovery/G-A-checkpoint-review-1.md第8节Ship，独立封存2026-10-15T15:29:12+08:00。原T整卡合并验收、各层not_run、正式live/人工/云CI及后段范围保持；下面各旧状态仅历史。阶段push写作时尚未发生，实际收据见reports/push/recovery_push_log.jsonl。

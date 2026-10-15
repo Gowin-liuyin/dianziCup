@@ -1,0 +1,507 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="10" skipped="0" tests="10" time="0.496" timestamp="2026-10-15T15:52:13.718818+08:00" hostname="yin"><testcase classname="tests.unit.test_r05_semantic" name="test_initialization_failure_releases_capacity_and_allows_next_call[OSError-get_context]" time="0.010"><failure message="OSError: sensitive initialization details">client = LocalSemanticModels(model_cache_directory=WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-399/test_initialization_failure_re0'), timeout_seconds=30.0)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001F4A733C740&gt;
+stage = 'get_context', failure = &lt;class 'OSError'&gt;
+
+    @pytest.mark.parametrize("stage", ["get_context", "pipe", "process", "start"])
+    @pytest.mark.parametrize("failure", [OSError, RuntimeError])
+    def test_initialization_failure_releases_capacity_and_allows_next_call(
+        client: LocalSemanticModels,
+        monkeypatch: pytest.MonkeyPatch,
+        stage: str,
+        failure: type[Exception],
+    ) -&gt; None:
+        context = WorkerContext(("ok", [vector(0)]))
+    
+        def unavailable(*args: object, **kwargs: object) -&gt; None:
+            raise failure("sensitive initialization details")
+    
+        if stage == "get_context":
+            monkeypatch.setattr(semantic.multiprocessing, "get_context", unavailable)
+        else:
+            monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda *args: context)
+            target = context.process if stage == "start" else context
+            name = {"pipe": "Pipe", "process": "Process", "start": "start"}[stage]
+            monkeypatch.setattr(target, name, unavailable)
+        try:
+            with pytest.raises(semantic.SemanticRuntimeError) as captured:
+&gt;               client.embed_query("private question")
+
+tests\unit\test_r05_semantic.py:289: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\models\semantic.py:196: in embed_query
+    return self._embed((query,), "query")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\semantic.py:205: in _embed
+    payload = _run_worker(self, E5_MODEL, prefix, texts, None)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\semantic.py:234: in _run_worker
+    context = multiprocessing.get_context("spawn")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = ('spawn',), kwargs = {}
+
+    def unavailable(*args: object, **kwargs: object) -&gt; None:
+&gt;       raise failure("sensitive initialization details")
+E       OSError: sensitive initialization details
+
+tests\unit\test_r05_semantic.py:278: OSError</failure></testcase><testcase classname="tests.unit.test_r05_semantic" name="test_initialization_failure_releases_capacity_and_allows_next_call[OSError-pipe]" time="0.005"><failure message="OSError: sensitive initialization details">client = LocalSemanticModels(model_cache_directory=WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-399/test_initialization_failure_re1'), timeout_seconds=30.0)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001F4A733ECC0&gt;
+stage = 'pipe', failure = &lt;class 'OSError'&gt;
+
+    @pytest.mark.parametrize("stage", ["get_context", "pipe", "process", "start"])
+    @pytest.mark.parametrize("failure", [OSError, RuntimeError])
+    def test_initialization_failure_releases_capacity_and_allows_next_call(
+        client: LocalSemanticModels,
+        monkeypatch: pytest.MonkeyPatch,
+        stage: str,
+        failure: type[Exception],
+    ) -&gt; None:
+        context = WorkerContext(("ok", [vector(0)]))
+    
+        def unavailable(*args: object, **kwargs: object) -&gt; None:
+            raise failure("sensitive initialization details")
+    
+        if stage == "get_context":
+            monkeypatch.setattr(semantic.multiprocessing, "get_context", unavailable)
+        else:
+            monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda *args: context)
+            target = context.process if stage == "start" else context
+            name = {"pipe": "Pipe", "process": "Process", "start": "start"}[stage]
+            monkeypatch.setattr(target, name, unavailable)
+        try:
+            with pytest.raises(semantic.SemanticRuntimeError) as captured:
+&gt;               client.embed_query("private question")
+
+tests\unit\test_r05_semantic.py:289: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\models\semantic.py:196: in embed_query
+    return self._embed((query,), "query")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\semantic.py:205: in _embed
+    payload = _run_worker(self, E5_MODEL, prefix, texts, None)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\semantic.py:235: in _run_worker
+    receiving, sending = context.Pipe(duplex=False)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (), kwargs = {'duplex': False}
+
+    def unavailable(*args: object, **kwargs: object) -&gt; None:
+&gt;       raise failure("sensitive initialization details")
+E       OSError: sensitive initialization details
+
+tests\unit\test_r05_semantic.py:278: OSError</failure></testcase><testcase classname="tests.unit.test_r05_semantic" name="test_initialization_failure_releases_capacity_and_allows_next_call[OSError-process]" time="0.005"><failure message="OSError: sensitive initialization details">client = LocalSemanticModels(model_cache_directory=WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-399/test_initialization_failure_re2'), timeout_seconds=30.0)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001F4A733EB40&gt;
+stage = 'process', failure = &lt;class 'OSError'&gt;
+
+    @pytest.mark.parametrize("stage", ["get_context", "pipe", "process", "start"])
+    @pytest.mark.parametrize("failure", [OSError, RuntimeError])
+    def test_initialization_failure_releases_capacity_and_allows_next_call(
+        client: LocalSemanticModels,
+        monkeypatch: pytest.MonkeyPatch,
+        stage: str,
+        failure: type[Exception],
+    ) -&gt; None:
+        context = WorkerContext(("ok", [vector(0)]))
+    
+        def unavailable(*args: object, **kwargs: object) -&gt; None:
+            raise failure("sensitive initialization details")
+    
+        if stage == "get_context":
+            monkeypatch.setattr(semantic.multiprocessing, "get_context", unavailable)
+        else:
+            monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda *args: context)
+            target = context.process if stage == "start" else context
+            name = {"pipe": "Pipe", "process": "Process", "start": "start"}[stage]
+            monkeypatch.setattr(target, name, unavailable)
+        try:
+            with pytest.raises(semantic.SemanticRuntimeError) as captured:
+&gt;               client.embed_query("private question")
+
+tests\unit\test_r05_semantic.py:289: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\models\semantic.py:196: in embed_query
+    return self._embed((query,), "query")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\semantic.py:205: in _embed
+    payload = _run_worker(self, E5_MODEL, prefix, texts, None)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\semantic.py:236: in _run_worker
+    process = context.Process(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = ()
+kwargs = {'args': (&lt;test_r05_semantic.WorkerPipe object at 0x000001F4A733C710&gt;, WindowsPath('C:/Users/yinha/AppData/Local/Temp/...'), 'query', ('private question',), None), 'daemon': True, 'target': &lt;function _semantic_worker at 0x000001F4A7464220&gt;}
+
+    def unavailable(*args: object, **kwargs: object) -&gt; None:
+&gt;       raise failure("sensitive initialization details")
+E       OSError: sensitive initialization details
+
+tests\unit\test_r05_semantic.py:278: OSError</failure></testcase><testcase classname="tests.unit.test_r05_semantic" name="test_initialization_failure_releases_capacity_and_allows_next_call[OSError-start]" time="0.005"><failure message="assert False&#10; +  where False = &lt;test_r05_semantic.WorkerProcess object at 0x000001F4A733D7F0&gt;.closed&#10; +    where &lt;test_r05_semantic.WorkerProcess object at 0x000001F4A733D7F0&gt; = &lt;test_r05_semantic.WorkerContext object at 0x000001F4A733D3D0&gt;.process">client = LocalSemanticModels(model_cache_directory=WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-399/test_initialization_failure_re3'), timeout_seconds=30.0)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001F4A733D9A0&gt;
+stage = 'start', failure = &lt;class 'OSError'&gt;
+
+    @pytest.mark.parametrize("stage", ["get_context", "pipe", "process", "start"])
+    @pytest.mark.parametrize("failure", [OSError, RuntimeError])
+    def test_initialization_failure_releases_capacity_and_allows_next_call(
+        client: LocalSemanticModels,
+        monkeypatch: pytest.MonkeyPatch,
+        stage: str,
+        failure: type[Exception],
+    ) -&gt; None:
+        context = WorkerContext(("ok", [vector(0)]))
+    
+        def unavailable(*args: object, **kwargs: object) -&gt; None:
+            raise failure("sensitive initialization details")
+    
+        if stage == "get_context":
+            monkeypatch.setattr(semantic.multiprocessing, "get_context", unavailable)
+        else:
+            monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda *args: context)
+            target = context.process if stage == "start" else context
+            name = {"pipe": "Pipe", "process": "Process", "start": "start"}[stage]
+            monkeypatch.setattr(target, name, unavailable)
+        try:
+            with pytest.raises(semantic.SemanticRuntimeError) as captured:
+                client.embed_query("private question")
+            assert "sensitive" not in str(captured.value)
+            assert "private" not in str(captured.value)
+            assert not semantic._WORKER_LOCK.locked()
+            if stage in ("process", "start"):
+                assert context.receiver.closed and context.sender.closed
+            if stage == "start":
+&gt;               assert context.process.closed
+E               assert False
+E                +  where False = &lt;test_r05_semantic.WorkerProcess object at 0x000001F4A733D7F0&gt;.closed
+E                +    where &lt;test_r05_semantic.WorkerProcess object at 0x000001F4A733D7F0&gt; = &lt;test_r05_semantic.WorkerContext object at 0x000001F4A733D3D0&gt;.process
+
+tests\unit\test_r05_semantic.py:296: AssertionError</failure></testcase><testcase classname="tests.unit.test_r05_semantic" name="test_initialization_failure_releases_capacity_and_allows_next_call[RuntimeError-get_context]" time="0.004"><failure message="RuntimeError: sensitive initialization details">client = LocalSemanticModels(model_cache_directory=WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-399/test_initialization_failure_re4'), timeout_seconds=30.0)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001F4A733E660&gt;
+stage = 'get_context', failure = &lt;class 'RuntimeError'&gt;
+
+    @pytest.mark.parametrize("stage", ["get_context", "pipe", "process", "start"])
+    @pytest.mark.parametrize("failure", [OSError, RuntimeError])
+    def test_initialization_failure_releases_capacity_and_allows_next_call(
+        client: LocalSemanticModels,
+        monkeypatch: pytest.MonkeyPatch,
+        stage: str,
+        failure: type[Exception],
+    ) -&gt; None:
+        context = WorkerContext(("ok", [vector(0)]))
+    
+        def unavailable(*args: object, **kwargs: object) -&gt; None:
+            raise failure("sensitive initialization details")
+    
+        if stage == "get_context":
+            monkeypatch.setattr(semantic.multiprocessing, "get_context", unavailable)
+        else:
+            monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda *args: context)
+            target = context.process if stage == "start" else context
+            name = {"pipe": "Pipe", "process": "Process", "start": "start"}[stage]
+            monkeypatch.setattr(target, name, unavailable)
+        try:
+            with pytest.raises(semantic.SemanticRuntimeError) as captured:
+&gt;               client.embed_query("private question")
+
+tests\unit\test_r05_semantic.py:289: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\models\semantic.py:196: in embed_query
+    return self._embed((query,), "query")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\semantic.py:205: in _embed
+    payload = _run_worker(self, E5_MODEL, prefix, texts, None)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\semantic.py:234: in _run_worker
+    context = multiprocessing.get_context("spawn")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = ('spawn',), kwargs = {}
+
+    def unavailable(*args: object, **kwargs: object) -&gt; None:
+&gt;       raise failure("sensitive initialization details")
+E       RuntimeError: sensitive initialization details
+
+tests\unit\test_r05_semantic.py:278: RuntimeError</failure></testcase><testcase classname="tests.unit.test_r05_semantic" name="test_initialization_failure_releases_capacity_and_allows_next_call[RuntimeError-pipe]" time="0.004"><failure message="RuntimeError: sensitive initialization details">client = LocalSemanticModels(model_cache_directory=WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-399/test_initialization_failure_re5'), timeout_seconds=30.0)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001F4A733FDA0&gt;
+stage = 'pipe', failure = &lt;class 'RuntimeError'&gt;
+
+    @pytest.mark.parametrize("stage", ["get_context", "pipe", "process", "start"])
+    @pytest.mark.parametrize("failure", [OSError, RuntimeError])
+    def test_initialization_failure_releases_capacity_and_allows_next_call(
+        client: LocalSemanticModels,
+        monkeypatch: pytest.MonkeyPatch,
+        stage: str,
+        failure: type[Exception],
+    ) -&gt; None:
+        context = WorkerContext(("ok", [vector(0)]))
+    
+        def unavailable(*args: object, **kwargs: object) -&gt; None:
+            raise failure("sensitive initialization details")
+    
+        if stage == "get_context":
+            monkeypatch.setattr(semantic.multiprocessing, "get_context", unavailable)
+        else:
+            monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda *args: context)
+            target = context.process if stage == "start" else context
+            name = {"pipe": "Pipe", "process": "Process", "start": "start"}[stage]
+            monkeypatch.setattr(target, name, unavailable)
+        try:
+            with pytest.raises(semantic.SemanticRuntimeError) as captured:
+&gt;               client.embed_query("private question")
+
+tests\unit\test_r05_semantic.py:289: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\models\semantic.py:196: in embed_query
+    return self._embed((query,), "query")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\semantic.py:205: in _embed
+    payload = _run_worker(self, E5_MODEL, prefix, texts, None)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\semantic.py:235: in _run_worker
+    receiving, sending = context.Pipe(duplex=False)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (), kwargs = {'duplex': False}
+
+    def unavailable(*args: object, **kwargs: object) -&gt; None:
+&gt;       raise failure("sensitive initialization details")
+E       RuntimeError: sensitive initialization details
+
+tests\unit\test_r05_semantic.py:278: RuntimeError</failure></testcase><testcase classname="tests.unit.test_r05_semantic" name="test_initialization_failure_releases_capacity_and_allows_next_call[RuntimeError-process]" time="0.005"><failure message="RuntimeError: sensitive initialization details">client = LocalSemanticModels(model_cache_directory=WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-399/test_initialization_failure_re6'), timeout_seconds=30.0)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001F4A7343BC0&gt;
+stage = 'process', failure = &lt;class 'RuntimeError'&gt;
+
+    @pytest.mark.parametrize("stage", ["get_context", "pipe", "process", "start"])
+    @pytest.mark.parametrize("failure", [OSError, RuntimeError])
+    def test_initialization_failure_releases_capacity_and_allows_next_call(
+        client: LocalSemanticModels,
+        monkeypatch: pytest.MonkeyPatch,
+        stage: str,
+        failure: type[Exception],
+    ) -&gt; None:
+        context = WorkerContext(("ok", [vector(0)]))
+    
+        def unavailable(*args: object, **kwargs: object) -&gt; None:
+            raise failure("sensitive initialization details")
+    
+        if stage == "get_context":
+            monkeypatch.setattr(semantic.multiprocessing, "get_context", unavailable)
+        else:
+            monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda *args: context)
+            target = context.process if stage == "start" else context
+            name = {"pipe": "Pipe", "process": "Process", "start": "start"}[stage]
+            monkeypatch.setattr(target, name, unavailable)
+        try:
+            with pytest.raises(semantic.SemanticRuntimeError) as captured:
+&gt;               client.embed_query("private question")
+
+tests\unit\test_r05_semantic.py:289: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\models\semantic.py:196: in embed_query
+    return self._embed((query,), "query")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\semantic.py:205: in _embed
+    payload = _run_worker(self, E5_MODEL, prefix, texts, None)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\semantic.py:236: in _run_worker
+    process = context.Process(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = ()
+kwargs = {'args': (&lt;test_r05_semantic.WorkerPipe object at 0x000001F4A7343C80&gt;, WindowsPath('C:/Users/yinha/AppData/Local/Temp/...'), 'query', ('private question',), None), 'daemon': True, 'target': &lt;function _semantic_worker at 0x000001F4A7464220&gt;}
+
+    def unavailable(*args: object, **kwargs: object) -&gt; None:
+&gt;       raise failure("sensitive initialization details")
+E       RuntimeError: sensitive initialization details
+
+tests\unit\test_r05_semantic.py:278: RuntimeError</failure></testcase><testcase classname="tests.unit.test_r05_semantic" name="test_initialization_failure_releases_capacity_and_allows_next_call[RuntimeError-start]" time="0.004"><failure message="RuntimeError: sensitive initialization details">client = LocalSemanticModels(model_cache_directory=WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-399/test_initialization_failure_re7'), timeout_seconds=30.0)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001F4A7341250&gt;
+stage = 'start', failure = &lt;class 'RuntimeError'&gt;
+
+    @pytest.mark.parametrize("stage", ["get_context", "pipe", "process", "start"])
+    @pytest.mark.parametrize("failure", [OSError, RuntimeError])
+    def test_initialization_failure_releases_capacity_and_allows_next_call(
+        client: LocalSemanticModels,
+        monkeypatch: pytest.MonkeyPatch,
+        stage: str,
+        failure: type[Exception],
+    ) -&gt; None:
+        context = WorkerContext(("ok", [vector(0)]))
+    
+        def unavailable(*args: object, **kwargs: object) -&gt; None:
+            raise failure("sensitive initialization details")
+    
+        if stage == "get_context":
+            monkeypatch.setattr(semantic.multiprocessing, "get_context", unavailable)
+        else:
+            monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda *args: context)
+            target = context.process if stage == "start" else context
+            name = {"pipe": "Pipe", "process": "Process", "start": "start"}[stage]
+            monkeypatch.setattr(target, name, unavailable)
+        try:
+            with pytest.raises(semantic.SemanticRuntimeError) as captured:
+&gt;               client.embed_query("private question")
+
+tests\unit\test_r05_semantic.py:289: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\models\semantic.py:196: in embed_query
+    return self._embed((query,), "query")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\semantic.py:205: in _embed
+    payload = _run_worker(self, E5_MODEL, prefix, texts, None)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\semantic.py:244: in _run_worker
+    process.start()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (), kwargs = {}
+
+    def unavailable(*args: object, **kwargs: object) -&gt; None:
+&gt;       raise failure("sensitive initialization details")
+E       RuntimeError: sensitive initialization details
+
+tests\unit\test_r05_semantic.py:278: RuntimeError</failure></testcase><testcase classname="tests.unit.test_r05_semantic" name="test_cleanup_failure_preserves_primary_error_and_releases_capacity" time="0.004"><failure message="OSError: sensitive cleanup details">client = LocalSemanticModels(model_cache_directory=WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-399/test_cleanup_failure_preserves0'), timeout_seconds=30.0)
+model = LocalModel(folder='e5', repository='intfloat/multilingual-e5-small', revision='614241f622f53c4eeff9890bdc4f31cfecc418b...17082730, sha256='0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39')), output_name='last_hidden_state')
+operation = 'query', texts = ('private question',), query = None
+
+    def _run_worker(
+        client: LocalSemanticModels,
+        model: LocalModel,
+        operation: Literal["query", "passage", "rerank"],
+        texts: tuple[str, ...],
+        query: str | None,
+    ) -&gt; object:
+        if not _WORKER_LOCK.acquire(blocking=False):
+            raise SemanticRuntimeError("local semantic inference is already busy")
+        context = multiprocessing.get_context("spawn")
+        receiving, sending = context.Pipe(duplex=False)
+        process = context.Process(
+            target=_semantic_worker,
+            args=(sending, client.model_cache_directory, model, operation, texts, query),
+            daemon=True,
+        )
+        deadline = time.monotonic() + client.timeout_seconds
+        try:
+            try:
+                process.start()
+            except OSError:
+                raise SemanticRuntimeError("local semantic worker could not start") from None
+            sending.close()
+            if not receiving.poll(max(0.0, deadline - time.monotonic())):
+                raise SemanticTimeoutError("local semantic worker exceeded total deadline")
+            try:
+                response: object = receiving.recv()
+            except EOFError:
+                raise SemanticRuntimeError("local semantic worker exited without a result") from None
+            if not isinstance(response, tuple) or len(response) != 2:
+                raise ModelContractError("local worker returned an invalid envelope")
+            status, payload = response
+            if status == "input":
+&gt;               raise SemanticInputError("input exceeds the 512 token limit; no truncation applied")
+E               ai_intel.infrastructure.models.semantic.SemanticInputError: input exceeds the 512 token limit; no truncation applied
+
+src\ai_intel\infrastructure\models\semantic.py:258: SemanticInputError
+
+During handling of the above exception, another exception occurred:
+
+client = LocalSemanticModels(model_cache_directory=WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-399/test_cleanup_failure_preserves0'), timeout_seconds=30.0)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001F4A7342B10&gt;
+
+    def test_cleanup_failure_preserves_primary_error_and_releases_capacity(
+        client: LocalSemanticModels, monkeypatch: pytest.MonkeyPatch
+    ) -&gt; None:
+        context = WorkerContext(("input", None))
+    
+        def close_unavailable() -&gt; None:
+            raise OSError("sensitive cleanup details")
+    
+        monkeypatch.setattr(context.receiver, "close", close_unavailable)
+        monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda *args: context)
+        with pytest.raises(SemanticInputError) as captured:
+&gt;           client.embed_query("private question")
+
+tests\unit\test_r05_semantic.py:318: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\models\semantic.py:196: in embed_query
+    return self._embed((query,), "query")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\semantic.py:205: in _embed
+    payload = _run_worker(self, E5_MODEL, prefix, texts, None)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\semantic.py:268: in _run_worker
+    receiving.close()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def close_unavailable() -&gt; None:
+&gt;       raise OSError("sensitive cleanup details")
+E       OSError: sensitive cleanup details
+
+tests\unit\test_r05_semantic.py:313: OSError</failure></testcase><testcase classname="tests.unit.test_r05_semantic" name="test_cleanup_failure_on_success_is_visible_and_releases_capacity" time="0.005"><failure message="AssertionError: Regex pattern did not match.&#10; Regex: 'cleanup'&#10; Input: 'local semantic inference is already busy'">client = LocalSemanticModels(model_cache_directory=WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-399/test_cleanup_failure_on_succes0'), timeout_seconds=30.0)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001F4A7341640&gt;
+
+    def test_cleanup_failure_on_success_is_visible_and_releases_capacity(
+        client: LocalSemanticModels, monkeypatch: pytest.MonkeyPatch
+    ) -&gt; None:
+        context = WorkerContext(("ok", [vector(0)]))
+    
+        def close_unavailable() -&gt; None:
+            raise OSError("sensitive cleanup details")
+    
+        monkeypatch.setattr(context.receiver, "close", close_unavailable)
+        monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda *args: context)
+        with pytest.raises(semantic.SemanticRuntimeError, match="cleanup"):
+&gt;           client.embed_query("question")
+
+tests\unit\test_r05_semantic.py:335: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\models\semantic.py:196: in embed_query
+    return self._embed((query,), "query")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\semantic.py:205: in _embed
+    payload = _run_worker(self, E5_MODEL, prefix, texts, None)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = LocalSemanticModels(model_cache_directory=WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-399/test_cleanup_failure_on_succes0'), timeout_seconds=30.0)
+model = LocalModel(folder='e5', repository='intfloat/multilingual-e5-small', revision='614241f622f53c4eeff9890bdc4f31cfecc418b...17082730, sha256='0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39')), output_name='last_hidden_state')
+operation = 'query', texts = ('question',), query = None
+
+    def _run_worker(
+        client: LocalSemanticModels,
+        model: LocalModel,
+        operation: Literal["query", "passage", "rerank"],
+        texts: tuple[str, ...],
+        query: str | None,
+    ) -&gt; object:
+        if not _WORKER_LOCK.acquire(blocking=False):
+&gt;           raise SemanticRuntimeError("local semantic inference is already busy")
+E           ai_intel.infrastructure.models.semantic.SemanticRuntimeError: local semantic inference is already busy
+
+src\ai_intel\infrastructure\models\semantic.py:233: SemanticRuntimeError
+
+During handling of the above exception, another exception occurred:
+
+client = LocalSemanticModels(model_cache_directory=WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-399/test_cleanup_failure_on_succes0'), timeout_seconds=30.0)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001F4A7341640&gt;
+
+    def test_cleanup_failure_on_success_is_visible_and_releases_capacity(
+        client: LocalSemanticModels, monkeypatch: pytest.MonkeyPatch
+    ) -&gt; None:
+        context = WorkerContext(("ok", [vector(0)]))
+    
+        def close_unavailable() -&gt; None:
+            raise OSError("sensitive cleanup details")
+    
+        monkeypatch.setattr(context.receiver, "close", close_unavailable)
+        monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda *args: context)
+&gt;       with pytest.raises(semantic.SemanticRuntimeError, match="cleanup"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'cleanup'
+E        Input: 'local semantic inference is already busy'
+
+tests\unit\test_r05_semantic.py:334: AssertionError</failure></testcase></testsuite></testsuites>
