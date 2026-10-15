@@ -1,0 +1,1276 @@
+{
+  "schema": "test_r11_forward_a3863f98947d47499d45686b25f21f13",
+  "tables": {
+    "condition_rule_versions": {
+      "columns": [
+        {
+          "name": "rule_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "version",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "event_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "visibility",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "tenant_id",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "rule_kind",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "condition_sha256",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "rule_payload",
+          "type": "JSONB",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "author_user_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "published_by",
+          "type": "TEXT",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "published_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "retired_at",
+          "type": "TIMESTAMP",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        }
+      ],
+      "primary_key": {
+        "constrained_columns": [
+          "rule_id",
+          "version"
+        ],
+        "name": "condition_rule_versions_pkey",
+        "comment": null,
+        "dialect_options": {
+          "postgresql_include": []
+        }
+      },
+      "foreign_keys": [
+        {
+          "name": "condition_rule_versions_author_user_id_fkey",
+          "constrained_columns": [
+            "author_user_id"
+          ],
+          "referred_schema": null,
+          "referred_table": "users",
+          "referred_columns": [
+            "user_id"
+          ],
+          "options": {},
+          "comment": null
+        },
+        {
+          "name": "condition_rule_versions_event_id_fkey",
+          "constrained_columns": [
+            "event_id"
+          ],
+          "referred_schema": null,
+          "referred_table": "events",
+          "referred_columns": [
+            "event_id"
+          ],
+          "options": {},
+          "comment": null
+        },
+        {
+          "name": "condition_rule_versions_published_by_fkey",
+          "constrained_columns": [
+            "published_by"
+          ],
+          "referred_schema": null,
+          "referred_table": "users",
+          "referred_columns": [
+            "user_id"
+          ],
+          "options": {},
+          "comment": null
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_condition_rule_kind",
+          "sqltext": "rule_kind = ANY (ARRAY['software_applicability'::text, 'observed_path'::text, 'research_prerequisites'::text])",
+          "comment": null
+        },
+        {
+          "name": "ck_condition_rule_status",
+          "sqltext": "status = ANY (ARRAY['candidate'::text, 'validated'::text, 'published'::text, 'retired'::text])",
+          "comment": null
+        },
+        {
+          "name": "ck_condition_rule_tenant",
+          "sqltext": "visibility = 'public'::text AND tenant_id IS NULL OR visibility = 'tenant'::text AND tenant_id IS NOT NULL",
+          "comment": null
+        },
+        {
+          "name": "ck_condition_rule_version",
+          "sqltext": "version > 0",
+          "comment": null
+        },
+        {
+          "name": "ck_condition_rule_visibility",
+          "sqltext": "visibility = ANY (ARRAY['public'::text, 'tenant'::text])",
+          "comment": null
+        },
+        {
+          "name": "ck_rule_condition_digest",
+          "sqltext": "condition_sha256 ~ '^[0-9a-f]{64}$'::text",
+          "comment": null
+        },
+        {
+          "name": "ck_rule_payload",
+          "sqltext": "jsonb_typeof(rule_payload) = 'object'::text",
+          "comment": null
+        },
+        {
+          "name": "ck_rule_published_time",
+          "sqltext": "(status = ANY (ARRAY['published'::text, 'retired'::text])) = (published_at IS NOT NULL)",
+          "comment": null
+        },
+        {
+          "name": "ck_rule_retired_time",
+          "sqltext": "(status = 'retired'::text) = (retired_at IS NOT NULL)",
+          "comment": null
+        },
+        {
+          "name": "ck_rule_reviewer",
+          "sqltext": "published_by IS NULL OR published_by <> author_user_id",
+          "comment": null
+        }
+      ],
+      "unique": [],
+      "indexes": [
+        {
+          "name": "uq_current_published_rule_family",
+          "unique": true,
+          "column_names": [
+            "rule_id"
+          ],
+          "dialect_options": {
+            "postgresql_where": "(status = 'published'::text)",
+            "postgresql_include": []
+          }
+        }
+      ]
+    },
+    "rule_support_bindings": {
+      "columns": [
+        {
+          "name": "rule_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "rule_version",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "node_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "claim_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "evidence_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "condition_sha256",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        }
+      ],
+      "primary_key": {
+        "constrained_columns": [
+          "rule_id",
+          "rule_version",
+          "node_id",
+          "claim_id",
+          "evidence_id"
+        ],
+        "name": "rule_support_bindings_pkey",
+        "comment": null,
+        "dialect_options": {
+          "postgresql_include": []
+        }
+      },
+      "foreign_keys": [
+        {
+          "name": "fk_rule_support_version",
+          "constrained_columns": [
+            "rule_id",
+            "rule_version"
+          ],
+          "referred_schema": null,
+          "referred_table": "condition_rule_versions",
+          "referred_columns": [
+            "rule_id",
+            "version"
+          ],
+          "options": {},
+          "comment": null
+        },
+        {
+          "name": "rule_support_bindings_claim_id_fkey",
+          "constrained_columns": [
+            "claim_id"
+          ],
+          "referred_schema": null,
+          "referred_table": "claims",
+          "referred_columns": [
+            "claim_id"
+          ],
+          "options": {},
+          "comment": null
+        },
+        {
+          "name": "rule_support_bindings_evidence_id_fkey",
+          "constrained_columns": [
+            "evidence_id"
+          ],
+          "referred_schema": null,
+          "referred_table": "evidence",
+          "referred_columns": [
+            "evidence_id"
+          ],
+          "options": {},
+          "comment": null
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_binding_condition_digest",
+          "sqltext": "condition_sha256 ~ '^[0-9a-f]{64}$'::text",
+          "comment": null
+        }
+      ],
+      "unique": [],
+      "indexes": []
+    },
+    "rule_leaf_reviews": {
+      "columns": [
+        {
+          "name": "review_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "rule_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "rule_version",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "node_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "claim_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "evidence_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "input_digest",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "decision",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "range_complete",
+          "type": "BOOLEAN",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "reason",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "actor_user_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "actor_role",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        }
+      ],
+      "primary_key": {
+        "constrained_columns": [
+          "review_id"
+        ],
+        "name": "rule_leaf_reviews_pkey",
+        "comment": null,
+        "dialect_options": {
+          "postgresql_include": []
+        }
+      },
+      "foreign_keys": [
+        {
+          "name": "fk_rule_review_binding",
+          "constrained_columns": [
+            "rule_id",
+            "rule_version",
+            "node_id",
+            "claim_id",
+            "evidence_id"
+          ],
+          "referred_schema": null,
+          "referred_table": "rule_support_bindings",
+          "referred_columns": [
+            "rule_id",
+            "rule_version",
+            "node_id",
+            "claim_id",
+            "evidence_id"
+          ],
+          "options": {},
+          "comment": null
+        },
+        {
+          "name": "rule_leaf_reviews_actor_user_id_fkey",
+          "constrained_columns": [
+            "actor_user_id"
+          ],
+          "referred_schema": null,
+          "referred_table": "users",
+          "referred_columns": [
+            "user_id"
+          ],
+          "options": {},
+          "comment": null
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_rule_review_decision",
+          "sqltext": "decision = ANY (ARRAY['supports'::text, 'refutes'::text])",
+          "comment": null
+        },
+        {
+          "name": "ck_rule_review_digest",
+          "sqltext": "input_digest ~ '^[0-9a-f]{64}$'::text",
+          "comment": null
+        },
+        {
+          "name": "ck_rule_review_reason",
+          "sqltext": "length(reason) >= 1 AND length(reason) <= 2000",
+          "comment": null
+        }
+      ],
+      "unique": [
+        {
+          "column_names": [
+            "rule_id",
+            "rule_version",
+            "node_id",
+            "claim_id",
+            "evidence_id",
+            "input_digest",
+            "actor_user_id",
+            "decision",
+            "range_complete",
+            "reason"
+          ],
+          "name": "uq_rule_review_replay",
+          "comment": null,
+          "dialect_options": {
+            "postgresql_include": [],
+            "postgresql_nulls_not_distinct": false
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "uq_rule_review_replay",
+          "unique": true,
+          "column_names": [
+            "rule_id",
+            "rule_version",
+            "node_id",
+            "claim_id",
+            "evidence_id",
+            "input_digest",
+            "actor_user_id",
+            "decision",
+            "range_complete",
+            "reason"
+          ],
+          "duplicates_constraint": "uq_rule_review_replay",
+          "dialect_options": {
+            "postgresql_include": []
+          }
+        }
+      ]
+    },
+    "rule_validation_receipts": {
+      "columns": [
+        {
+          "name": "receipt_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "rule_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "rule_version",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "actor_user_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "input_digest",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "policy_version",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "validator_version",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "input_snapshot",
+          "type": "JSONB",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "prepared_assessment",
+          "type": "JSONB",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        }
+      ],
+      "primary_key": {
+        "constrained_columns": [
+          "receipt_id"
+        ],
+        "name": "rule_validation_receipts_pkey",
+        "comment": null,
+        "dialect_options": {
+          "postgresql_include": []
+        }
+      },
+      "foreign_keys": [
+        {
+          "name": "fk_rule_validation_version",
+          "constrained_columns": [
+            "rule_id",
+            "rule_version"
+          ],
+          "referred_schema": null,
+          "referred_table": "condition_rule_versions",
+          "referred_columns": [
+            "rule_id",
+            "version"
+          ],
+          "options": {},
+          "comment": null
+        },
+        {
+          "name": "rule_validation_receipts_actor_user_id_fkey",
+          "constrained_columns": [
+            "actor_user_id"
+          ],
+          "referred_schema": null,
+          "referred_table": "users",
+          "referred_columns": [
+            "user_id"
+          ],
+          "options": {},
+          "comment": null
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_rule_validation_digest",
+          "sqltext": "input_digest ~ '^[0-9a-f]{64}$'::text",
+          "comment": null
+        },
+        {
+          "name": "ck_rule_validation_snapshot",
+          "sqltext": "jsonb_typeof(input_snapshot) = 'object'::text",
+          "comment": null
+        }
+      ],
+      "unique": [],
+      "indexes": []
+    },
+    "assessment_results": {
+      "columns": [
+        {
+          "name": "assessment_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "tenant_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "asset_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "asset_snapshot_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "event_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "rule_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "rule_version",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "knowledge_epoch",
+          "type": "BIGINT",
+          "nullable": true,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "scope_epoch_map",
+          "type": "JSONB",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "policy_version",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "input_digest",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "freshness",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "result_payload",
+          "type": "JSONB",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        }
+      ],
+      "primary_key": {
+        "constrained_columns": [
+          "assessment_id"
+        ],
+        "name": "assessment_results_pkey",
+        "comment": null,
+        "dialect_options": {
+          "postgresql_include": []
+        }
+      },
+      "foreign_keys": [
+        {
+          "name": "assessment_results_event_id_fkey",
+          "constrained_columns": [
+            "event_id"
+          ],
+          "referred_schema": null,
+          "referred_table": "events",
+          "referred_columns": [
+            "event_id"
+          ],
+          "options": {},
+          "comment": null
+        },
+        {
+          "name": "fk_assessment_asset_snapshot_tenant",
+          "constrained_columns": [
+            "asset_id",
+            "tenant_id",
+            "asset_snapshot_id"
+          ],
+          "referred_schema": null,
+          "referred_table": "asset_snapshots",
+          "referred_columns": [
+            "asset_id",
+            "tenant_id",
+            "snapshot_id"
+          ],
+          "options": {},
+          "comment": null
+        },
+        {
+          "name": "fk_assessment_rule_version",
+          "constrained_columns": [
+            "rule_id",
+            "rule_version"
+          ],
+          "referred_schema": null,
+          "referred_table": "condition_rule_versions",
+          "referred_columns": [
+            "rule_id",
+            "version"
+          ],
+          "options": {},
+          "comment": null
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_assessment_freshness",
+          "sqltext": "freshness = ANY (ARRAY['current'::text, 'stale'::text, 'unknown'::text])",
+          "comment": null
+        },
+        {
+          "name": "ck_assessment_input_digest",
+          "sqltext": "input_digest ~ '^[0-9a-f]{64}$'::text",
+          "comment": null
+        },
+        {
+          "name": "ck_assessment_payload",
+          "sqltext": "jsonb_typeof(result_payload) = 'object'::text",
+          "comment": null
+        },
+        {
+          "name": "ck_assessment_status",
+          "sqltext": "status = ANY (ARRAY['supported_applicability'::text, 'excluded_with_evidence'::text, 'insufficient_evidence'::text, 'conflicting_evidence'::text])",
+          "comment": null
+        }
+      ],
+      "unique": [
+        {
+          "column_names": [
+            "tenant_id",
+            "asset_snapshot_id",
+            "rule_id",
+            "rule_version",
+            "input_digest",
+            "policy_version"
+          ],
+          "name": "uq_assessment_execution",
+          "comment": null,
+          "dialect_options": {
+            "postgresql_include": [],
+            "postgresql_nulls_not_distinct": false
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_assessment_tenant_asset",
+          "unique": false,
+          "column_names": [
+            "tenant_id",
+            "asset_id",
+            "created_at"
+          ],
+          "dialect_options": {
+            "postgresql_include": []
+          }
+        },
+        {
+          "name": "uq_assessment_execution",
+          "unique": true,
+          "column_names": [
+            "tenant_id",
+            "asset_snapshot_id",
+            "rule_id",
+            "rule_version",
+            "input_digest",
+            "policy_version"
+          ],
+          "duplicates_constraint": "uq_assessment_execution",
+          "dialect_options": {
+            "postgresql_include": []
+          }
+        }
+      ]
+    },
+    "assessment_scope_watches": {
+      "columns": [
+        {
+          "name": "assessment_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "tenant_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "event_ids",
+          "type": "JSONB",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "package_keys",
+          "type": "JSONB",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "rule_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "rule_version",
+          "type": "INTEGER",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "rule_kind",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "scope_epoch_map",
+          "type": "JSONB",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "selected_rule_ids",
+          "type": "JSONB",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "no_published_rule",
+          "type": "BOOLEAN",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        }
+      ],
+      "primary_key": {
+        "constrained_columns": [
+          "assessment_id"
+        ],
+        "name": "assessment_scope_watches_pkey",
+        "comment": null,
+        "dialect_options": {
+          "postgresql_include": []
+        }
+      },
+      "foreign_keys": [
+        {
+          "name": "assessment_scope_watches_assessment_id_fkey",
+          "constrained_columns": [
+            "assessment_id"
+          ],
+          "referred_schema": null,
+          "referred_table": "assessment_results",
+          "referred_columns": [
+            "assessment_id"
+          ],
+          "options": {},
+          "comment": null
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_assessment_watch_event",
+          "sqltext": "jsonb_array_length(event_ids) > 0",
+          "comment": null
+        }
+      ],
+      "unique": [],
+      "indexes": []
+    },
+    "asset_snapshot_sbom_sidecars": {
+      "columns": [
+        {
+          "name": "snapshot_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "asset_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "tenant_id",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "adapter_version",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "spec_version",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "sidecar_sha256",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "combined_semantic_sha256",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        },
+        {
+          "name": "canonical_payload",
+          "type": "JSONB",
+          "nullable": false,
+          "default": null,
+          "autoincrement": false,
+          "comment": null
+        }
+      ],
+      "primary_key": {
+        "constrained_columns": [
+          "snapshot_id"
+        ],
+        "name": "asset_snapshot_sbom_sidecars_pkey",
+        "comment": null,
+        "dialect_options": {
+          "postgresql_include": []
+        }
+      },
+      "foreign_keys": [
+        {
+          "name": "fk_sbom_sidecar_snapshot_tenant",
+          "constrained_columns": [
+            "asset_id",
+            "tenant_id",
+            "snapshot_id"
+          ],
+          "referred_schema": null,
+          "referred_table": "asset_snapshots",
+          "referred_columns": [
+            "asset_id",
+            "tenant_id",
+            "snapshot_id"
+          ],
+          "options": {},
+          "comment": null
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_sbom_adapter_version",
+          "sqltext": "length(adapter_version) >= 1 AND length(adapter_version) <= 200",
+          "comment": null
+        },
+        {
+          "name": "ck_sbom_combined_sha256",
+          "sqltext": "combined_semantic_sha256 ~ '^[0-9a-f]{64}$'::text",
+          "comment": null
+        },
+        {
+          "name": "ck_sbom_sidecar_payload",
+          "sqltext": "jsonb_typeof(canonical_payload) = 'object'::text",
+          "comment": null
+        },
+        {
+          "name": "ck_sbom_sidecar_sha256",
+          "sqltext": "sidecar_sha256 ~ '^[0-9a-f]{64}$'::text",
+          "comment": null
+        },
+        {
+          "name": "ck_sbom_sidecar_tenant",
+          "sqltext": "length(tenant_id) >= 1 AND length(tenant_id) <= 200",
+          "comment": null
+        },
+        {
+          "name": "ck_sbom_spec_version",
+          "sqltext": "length(spec_version) >= 1 AND length(spec_version) <= 200",
+          "comment": null
+        }
+      ],
+      "unique": [],
+      "indexes": []
+    }
+  },
+  "triggers": [
+    {
+      "relname": "assessment_results",
+      "tgname": "assessment_results_immutable",
+      "tgtype": 27,
+      "proname": "r11_require_append_only",
+      "definition": "CREATE TRIGGER assessment_results_immutable BEFORE DELETE OR UPDATE ON test_r11_forward_a3863f98947d47499d45686b25f21f13.assessment_results FOR EACH ROW EXECUTE FUNCTION r11_require_append_only()"
+    },
+    {
+      "relname": "assessment_scope_watches",
+      "tgname": "assessment_scope_watches_immutable",
+      "tgtype": 27,
+      "proname": "r11_require_append_only",
+      "definition": "CREATE TRIGGER assessment_scope_watches_immutable BEFORE DELETE OR UPDATE ON test_r11_forward_a3863f98947d47499d45686b25f21f13.assessment_scope_watches FOR EACH ROW EXECUTE FUNCTION r11_require_append_only()"
+    },
+    {
+      "relname": "asset_snapshot_sbom_sidecars",
+      "tgname": "asset_snapshot_sbom_sidecars_immutable",
+      "tgtype": 27,
+      "proname": "prevent_sbom_sidecar_changes",
+      "definition": "CREATE TRIGGER asset_snapshot_sbom_sidecars_immutable BEFORE DELETE OR UPDATE ON test_r11_forward_a3863f98947d47499d45686b25f21f13.asset_snapshot_sbom_sidecars FOR EACH ROW EXECUTE FUNCTION prevent_sbom_sidecar_changes()"
+    },
+    {
+      "relname": "condition_rule_versions",
+      "tgname": "condition_rule_versions_immutable",
+      "tgtype": 27,
+      "proname": "r11_require_immutable_rule",
+      "definition": "CREATE TRIGGER condition_rule_versions_immutable BEFORE DELETE OR UPDATE ON test_r11_forward_a3863f98947d47499d45686b25f21f13.condition_rule_versions FOR EACH ROW EXECUTE FUNCTION r11_require_immutable_rule()"
+    },
+    {
+      "relname": "rule_leaf_reviews",
+      "tgname": "rule_leaf_reviews_immutable",
+      "tgtype": 27,
+      "proname": "r11_require_append_only",
+      "definition": "CREATE TRIGGER rule_leaf_reviews_immutable BEFORE DELETE OR UPDATE ON test_r11_forward_a3863f98947d47499d45686b25f21f13.rule_leaf_reviews FOR EACH ROW EXECUTE FUNCTION r11_require_append_only()"
+    },
+    {
+      "relname": "rule_support_bindings",
+      "tgname": "rule_support_bindings_immutable",
+      "tgtype": 27,
+      "proname": "r11_require_append_only",
+      "definition": "CREATE TRIGGER rule_support_bindings_immutable BEFORE DELETE OR UPDATE ON test_r11_forward_a3863f98947d47499d45686b25f21f13.rule_support_bindings FOR EACH ROW EXECUTE FUNCTION r11_require_append_only()"
+    },
+    {
+      "relname": "rule_validation_receipts",
+      "tgname": "rule_validation_receipts_immutable",
+      "tgtype": 27,
+      "proname": "r11_require_append_only",
+      "definition": "CREATE TRIGGER rule_validation_receipts_immutable BEFORE DELETE OR UPDATE ON test_r11_forward_a3863f98947d47499d45686b25f21f13.rule_validation_receipts FOR EACH ROW EXECUTE FUNCTION r11_require_append_only()"
+    }
+  ],
+  "functions": [
+    {
+      "proname": "prevent_sbom_sidecar_changes",
+      "prosrc": " BEGIN\nRAISE EXCEPTION 'SBOM sidecars are immutable' USING ERRCODE = '23514';\nEND "
+    },
+    {
+      "proname": "r11_require_append_only",
+      "prosrc": "\nBEGIN RAISE EXCEPTION 'rule and assessment receipts are append only' USING ERRCODE='23514';\nEND "
+    },
+    {
+      "proname": "r11_require_immutable_rule",
+      "prosrc": "\nBEGIN\nIF TG_OP='DELETE' THEN RAISE EXCEPTION 'rule versions are immutable' USING ERRCODE='23514';\nEND IF;\nIF (to_jsonb(OLD)-'status'-'published_at'-'retired_at'-'published_by') <>\n(to_jsonb(NEW)-'status'-'published_at'-'retired_at'-'published_by') THEN\nRAISE EXCEPTION 'rule content is immutable' USING ERRCODE='23514'; END IF;\nIF (OLD.status<>NEW.status AND NOT\n((OLD.status='candidate' AND NEW.status='validated') OR\n(OLD.status='validated' AND NEW.status='published') OR\n(OLD.status='published' AND NEW.status='retired'))) OR\n(OLD.published_at IS NOT NULL AND OLD.published_at IS DISTINCT FROM NEW.published_at) OR\n(OLD.published_by IS NOT NULL AND OLD.published_by IS DISTINCT FROM NEW.published_by) OR\n(OLD.retired_at IS NOT NULL AND OLD.retired_at IS DISTINCT FROM NEW.retired_at) THEN\nRAISE EXCEPTION 'rule lifecycle is forward only' USING ERRCODE='23514'; END IF;\nRETURN NEW; END "
+    }
+  ],
+  "captured_at": "2026-10-16T07:22:57+08:00"
+}

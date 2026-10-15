@@ -1,0 +1,117 @@
+E402 Module level import not at top of file
+  --> tests\integration\test_r11_forward_assessment_regression.py:14:1
+   |
+13 | sys.modules.setdefault("test_r11_pg_assessments", original)
+14 | from tests.integration import test_r11_assessment_raw_rechecks_pg as raw_original
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+15 |
+16 | pytestmark = pytest.mark.real_pg
+   |
+help: Move module level imports to top of file
+
+SIM117 [*] Use a single `with` statement with multiple contexts instead of nested `with` statements
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:289:9
+    |
+287 |           config.set_main_option("script_location", str(MIGRATIONS_DIR))
+288 |           scripts = ScriptDirectory.from_config(config)
+289 | /         with (
+290 | |             pytest.raises(RuntimeError, match="synthetic deployment failure"),
+291 | |             engine.connect() as connection,
+292 | |         ):
+293 | |             with connection.begin():
+    | |____________________________________^
+294 |                   context = MigrationContext.configure(connection)
+295 |                   with Operations.context(context):
+    |
+help: Combine `with` statements
+    |
+290 |             pytest.raises(RuntimeError, match="synthetic deployment failure"),
+    -             engine.connect() as connection,
+291 +             engine.connect() as connection,connection.begin()
+292 |         ):
+    -             with connection.begin():
+    -                 context = MigrationContext.configure(connection)
+    -                 with Operations.context(context):
+    -                     revision_module("0021_condition_assessments").upgrade()
+    -                     revision_module(HEAD).upgrade()
+    -                 context.stamp(scripts, HEAD)
+    -                 assert connection.scalar(text("SELECT version_num FROM alembic_version")) == HEAD
+    -                 raise RuntimeError("synthetic deployment failure")
+293 +             context = MigrationContext.configure(connection)
+294 +             with Operations.context(context):
+295 +                 revision_module("0021_condition_assessments").upgrade()
+296 +                 revision_module(HEAD).upgrade()
+297 +             context.stamp(scripts, HEAD)
+298 +             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == HEAD
+299 +             raise RuntimeError("synthetic deployment failure")
+300 |         with engine.connect() as connection:
+    |
+
+E501 Line too long (101 > 100)
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:314:101
+    |
+312 |                 connection.scalar(
+313 |                     text(
+314 |                         "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace "
+    |                                                                                                     ^
+315 |                         "WHERE n.nspname=current_schema() AND p.proname IN "
+316 |                         "('r11_require_append_only','r11_require_immutable_rule','prevent_sbom_sidecar_changes')"
+    |
+
+E501 Line too long (104 > 100)
+  --> tests\r11_forward_fixtures.py:62:101
+   |
+60 |     runtime_url = url.update_query_dict(
+61 |         {
+62 |             "options": f"-c search_path={schema},public -c statement_timeout=15000 -c lock_timeout=5000"
+   |                                                                                                     ^^^^
+63 |         }
+64 |     )
+   |
+
+E501 Line too long (102 > 100)
+  --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\generate_ddl_snapshot.py:61:101
+   |
+59 |     source += (
+60 |         "\n\ndef downgrade() -> None:\n"
+61 |         + '    """Preserve evidence history; disable writers and use an approved forward repair."""\n'
+   |                                                                                                     ^^
+62 |         + '    raise RuntimeError("R11 immutable history cannot be downgraded; use forward repair")\n'
+63 |     )
+   |
+
+E501 Line too long (102 > 100)
+  --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\generate_ddl_snapshot.py:62:101
+   |
+60 |         "\n\ndef downgrade() -> None:\n"
+61 |         + '    """Preserve evidence history; disable writers and use an approved forward repair."""\n'
+62 |         + '    raise RuntimeError("R11 immutable history cannot be downgraded; use forward repair")\n'
+   |                                                                                                     ^^
+63 |     )
+64 |     path.write_text(source, encoding="utf-8", newline="\n")
+   |
+
+E501 Line too long (107 > 100)
+  --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\run_checks.py:40:101
+   |
+38 |             "-NonInteractive",
+39 |             "-Command",
+40 |             "(Get-Content -LiteralPath 'D:/dianzi-private/test-runtime-resource-reference-20261016.dpapi' "
+   |                                                                                                     ^^^^^^^
+41 |             "-Raw).Trim() | ConvertTo-SecureString | ConvertFrom-SecureString -AsPlainText",
+42 |         ],
+   |
+
+E501 Line too long (103 > 100)
+   --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\run_checks.py:109:101
+    |
+107 |                 "postgres_version": version,
+108 |                 "vector_version": vector,
+109 |                 "source_reference": "D:/dianzi-private/test-runtime-resource-reference-20261016.dpapi",
+    |                                                                                                     ^^^
+110 |                 "expires_at": "2026-10-17T21:49:15+08:00",
+111 |                 "fixture_data": True,
+    |
+
+Found 8 errors.
+[*] 1 fixable with the `--fix` option.

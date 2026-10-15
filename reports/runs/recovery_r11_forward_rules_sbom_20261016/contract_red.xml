@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="5" skipped="0" tests="5" time="0.507" timestamp="2026-10-16T07:11:22.156781+08:00" hostname="yin"><testcase classname="tests.contract.test_r11_forward_rules_sbom_migrations" name="test_forward_snapshot_preserves_every_column_constraint_and_index[0021_condition_assessments-0020_hybrid_retrieval-tables0-trigger_sql0]" time="0.001"><failure message="FileNotFoundError: [Errno 2] No such file or directory: 'D:\\wt\\r11-forward-rules-sbom\\backend\\migrations\\versions\\0021_condition_assessments.py'">revision = '0021_condition_assessments', previous = '0020_hybrid_retrieval'
+tables = (Table('condition_rule_versions', MetaData(), Column('rule_id', Text(), table=&lt;condition_rule_versions&gt;, primary_key=T...ullable=False), Column('no_published_rule', Boolean(), table=&lt;assessment_scope_watches&gt;, nullable=False), schema=None))
+trigger_sql = ("\nCREATE OR REPLACE FUNCTION r11_require_immutable_rule() RETURNS trigger LANGUAGE plpgsql AS $$\nBEGIN\nIF TG_OP='D... plpgsql AS $$\nBEGIN RAISE EXCEPTION 'rule and assessment receipts are append only' USING ERRCODE='23514'; END $$;\n")
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001DAD91D85F0&gt;
+
+    @pytest.mark.parametrize("revision,previous,tables,trigger_sql", [
+        ("0021_condition_assessments", "0020_hybrid_retrieval", (*RULE_TABLES, *ASSESSMENT_TABLES),
+         (RULE_LIFECYCLE_SQL, APPEND_ONLY_SQL)),
+        ("0022_sbom_sidecars", "0021_condition_assessments", (asset_snapshot_sbom_sidecars,),
+         (SIDECAR_IMMUTABILITY_SQL,)),
+    ])
+    def test_forward_snapshot_preserves_every_column_constraint_and_index(
+        revision, previous, tables, trigger_sql, monkeypatch
+    ):
+&gt;       module = migration(revision)
+                 ^^^^^^^^^^^^^^^^^^^
+
+tests\contract\test_r11_forward_rules_sbom_migrations.py:43: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\contract\test_r11_forward_rules_sbom_migrations.py:25: in migration
+    spec.loader.exec_module(module)
+&lt;frozen importlib._bootstrap_external&gt;:995: in exec_module
+    ???
+&lt;frozen importlib._bootstrap_external&gt;:1132: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;_frozen_importlib_external.SourceFileLoader object at 0x000001DAD91D8650&gt;
+path = 'D:\\wt\\r11-forward-rules-sbom\\backend\\migrations\\versions\\0021_condition_assessments.py'
+
+&gt;   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: 'D:\\wt\\r11-forward-rules-sbom\\backend\\migrations\\versions\\0021_condition_assessments.py'
+
+&lt;frozen importlib._bootstrap_external&gt;:1190: FileNotFoundError</failure></testcase><testcase classname="tests.contract.test_r11_forward_rules_sbom_migrations" name="test_forward_snapshot_preserves_every_column_constraint_and_index[0022_sbom_sidecars-0021_condition_assessments-tables1-trigger_sql1]" time="0.001"><failure message="FileNotFoundError: [Errno 2] No such file or directory: 'D:\\wt\\r11-forward-rules-sbom\\backend\\migrations\\versions\\0022_sbom_sidecars.py'">revision = '0022_sbom_sidecars', previous = '0021_condition_assessments'
+tables = (Table('asset_snapshot_sbom_sidecars', MetaData(), Column('snapshot_id', Text(), ForeignKey('asset_snapshots.snapshot_...n('canonical_payload', JSONB(astext_type=Text()), table=&lt;asset_snapshot_sbom_sidecars&gt;, nullable=False), schema=None),)
+trigger_sql = ('\nCREATE OR REPLACE FUNCTION prevent_sbom_sidecar_changes() RETURNS trigger\nLANGUAGE plpgsql AS $$ BEGIN\nRAISE EXC...RE UPDATE OR DELETE\nON asset_snapshot_sbom_sidecars FOR EACH ROW EXECUTE FUNCTION prevent_sbom_sidecar_changes();\n',)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001DAD91D92E0&gt;
+
+    @pytest.mark.parametrize("revision,previous,tables,trigger_sql", [
+        ("0021_condition_assessments", "0020_hybrid_retrieval", (*RULE_TABLES, *ASSESSMENT_TABLES),
+         (RULE_LIFECYCLE_SQL, APPEND_ONLY_SQL)),
+        ("0022_sbom_sidecars", "0021_condition_assessments", (asset_snapshot_sbom_sidecars,),
+         (SIDECAR_IMMUTABILITY_SQL,)),
+    ])
+    def test_forward_snapshot_preserves_every_column_constraint_and_index(
+        revision, previous, tables, trigger_sql, monkeypatch
+    ):
+&gt;       module = migration(revision)
+                 ^^^^^^^^^^^^^^^^^^^
+
+tests\contract\test_r11_forward_rules_sbom_migrations.py:43: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\contract\test_r11_forward_rules_sbom_migrations.py:25: in migration
+    spec.loader.exec_module(module)
+&lt;frozen importlib._bootstrap_external&gt;:995: in exec_module
+    ???
+&lt;frozen importlib._bootstrap_external&gt;:1132: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;_frozen_importlib_external.SourceFileLoader object at 0x000001DAD91D9370&gt;
+path = 'D:\\wt\\r11-forward-rules-sbom\\backend\\migrations\\versions\\0022_sbom_sidecars.py'
+
+&gt;   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: 'D:\\wt\\r11-forward-rules-sbom\\backend\\migrations\\versions\\0022_sbom_sidecars.py'
+
+&lt;frozen importlib._bootstrap_external&gt;:1190: FileNotFoundError</failure></testcase><testcase classname="tests.contract.test_r11_forward_rules_sbom_migrations" name="test_history_downgrade_is_explicitly_refused[0021_condition_assessments]" time="0.001"><failure message="FileNotFoundError: [Errno 2] No such file or directory: 'D:\\wt\\r11-forward-rules-sbom\\backend\\migrations\\versions\\0021_condition_assessments.py'">revision = '0021_condition_assessments'
+
+    @pytest.mark.parametrize("revision", ["0021_condition_assessments", "0022_sbom_sidecars"])
+    def test_history_downgrade_is_explicitly_refused(revision):
+        with pytest.raises(RuntimeError, match="immutable history"):
+&gt;           migration(revision).downgrade()
+            ^^^^^^^^^^^^^^^^^^^
+
+tests\contract\test_r11_forward_rules_sbom_migrations.py:66: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\contract\test_r11_forward_rules_sbom_migrations.py:25: in migration
+    spec.loader.exec_module(module)
+&lt;frozen importlib._bootstrap_external&gt;:995: in exec_module
+    ???
+&lt;frozen importlib._bootstrap_external&gt;:1132: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;_frozen_importlib_external.SourceFileLoader object at 0x000001DAD91DA0C0&gt;
+path = 'D:\\wt\\r11-forward-rules-sbom\\backend\\migrations\\versions\\0021_condition_assessments.py'
+
+&gt;   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: 'D:\\wt\\r11-forward-rules-sbom\\backend\\migrations\\versions\\0021_condition_assessments.py'
+
+&lt;frozen importlib._bootstrap_external&gt;:1190: FileNotFoundError</failure></testcase><testcase classname="tests.contract.test_r11_forward_rules_sbom_migrations" name="test_history_downgrade_is_explicitly_refused[0022_sbom_sidecars]" time="0.001"><failure message="FileNotFoundError: [Errno 2] No such file or directory: 'D:\\wt\\r11-forward-rules-sbom\\backend\\migrations\\versions\\0022_sbom_sidecars.py'">revision = '0022_sbom_sidecars'
+
+    @pytest.mark.parametrize("revision", ["0021_condition_assessments", "0022_sbom_sidecars"])
+    def test_history_downgrade_is_explicitly_refused(revision):
+        with pytest.raises(RuntimeError, match="immutable history"):
+&gt;           migration(revision).downgrade()
+            ^^^^^^^^^^^^^^^^^^^
+
+tests\contract\test_r11_forward_rules_sbom_migrations.py:66: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\contract\test_r11_forward_rules_sbom_migrations.py:25: in migration
+    spec.loader.exec_module(module)
+&lt;frozen importlib._bootstrap_external&gt;:995: in exec_module
+    ???
+&lt;frozen importlib._bootstrap_external&gt;:1132: in get_code
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;_frozen_importlib_external.SourceFileLoader object at 0x000001DAD91DAD50&gt;
+path = 'D:\\wt\\r11-forward-rules-sbom\\backend\\migrations\\versions\\0022_sbom_sidecars.py'
+
+&gt;   ???
+E   FileNotFoundError: [Errno 2] No such file or directory: 'D:\\wt\\r11-forward-rules-sbom\\backend\\migrations\\versions\\0022_sbom_sidecars.py'
+
+&lt;frozen importlib._bootstrap_external&gt;:1190: FileNotFoundError</failure></testcase><testcase classname="tests.contract.test_r11_forward_rules_sbom_migrations" name="test_production_snapshots_have_no_dynamic_metadata_or_automatic_creation" time="0.001"><failure message="FileNotFoundError: [Errno 2] No such file or directory: 'D:\\wt\\r11-forward-rules-sbom\\backend\\migrations\\versions\\0021_condition_assessments.py'">def test_production_snapshots_have_no_dynamic_metadata_or_automatic_creation():
+        for revision in ("0021_condition_assessments", "0022_sbom_sidecars"):
+&gt;           source = (Path(MIGRATIONS_DIR) / "versions" / (revision + ".py")).read_text()
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\contract\test_r11_forward_rules_sbom_migrations.py:71: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\pathlib.py:1027: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = WindowsPath('D:/wt/r11-forward-rules-sbom/backend/migrations/versions/0021_condition_assessments.py')
+mode = 'r', buffering = -1, encoding = 'locale', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+&gt;       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: 'D:\\wt\\r11-forward-rules-sbom\\backend\\migrations\\versions\\0021_condition_assessments.py'
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\pathlib.py:1013: FileNotFoundError</failure></testcase></testsuite></testsuites>
