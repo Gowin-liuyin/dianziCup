@@ -3,21 +3,30 @@
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import create_engine, func, insert, select, text
+from sqlalchemy import create_engine, func, insert, select, text, update
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.schema import CreateSchema, DropSchema
 
-from ai_intel.domain.access import AccessScope, Role
+from ai_intel.domain.access import AccessScope, CrossTenantAccessError, Role
 from ai_intel.infrastructure.content_store import ContentStore
 from ai_intel.infrastructure.database import run_migrations
+from ai_intel.infrastructure.models.clients import EmbeddingResult
+from ai_intel.infrastructure.models.semantic import (
+    E5_MODEL,
+    RERANK_MODEL,
+    RankedPassage,
+    RerankResult,
+)
 from ai_intel.ingestion.source_documents import SourceResponse, persist_source_response
 from ai_intel.knowledge.models import document_revisions, evidence
+from ai_intel.knowledge.persistence_models import claims, events
 from ai_intel.retrieval.persistence_models import retrieval_chunks
+from ai_intel.retrieval.service import EventEvidenceRetriever, RetrievalFailure
 
 pytestmark = pytest.mark.real_pg
 
@@ -158,3 +167,111 @@ def test_chunk_coordinates_are_not_permanent_evidence_coordinates(vector_databas
         values["end_offset"] = 5
         with pytest.raises(IntegrityError):
             session.execute(insert(retrieval_chunks).values(values))
+
+
+class FixtureSemanticModels:
+    """仅用于PG接线合同，固定向量不计语义模型或召回率证据。"""
+
+    def __init__(self) -> None:
+        self.passage_calls = 0
+
+    def embed_query(self, query: str) -> EmbeddingResult:
+        return EmbeddingResult(((1.0,) + (0.0,) * 383,), E5_MODEL.model_version, 384)
+
+    def embed_passages(self, passages: tuple[str, ...]) -> EmbeddingResult:
+        self.passage_calls += 1
+        return EmbeddingResult(
+            tuple((1.0,) + (0.0,) * 383 for _ in passages), E5_MODEL.model_version, 384
+        )
+
+    def rerank(self, query: str, passages: tuple[str, ...]) -> RerankResult:
+        return RerankResult(
+            tuple(RankedPassage(index, float(-index)) for index in range(len(passages))),
+            RERANK_MODEL.model_version,
+        )
+
+
+def public_event_id(engine: Engine) -> UUID:
+    with engine.connect() as connection:
+        return UUID(connection.scalar(select(events.c.event_id)))
+
+
+def test_event_retrieval_reuses_real_pg_vectors_and_exact_evidence(vector_database: Engine) -> None:
+    models = FixtureSemanticModels()
+    scope = AccessScope.for_authenticated_user("fixture-analyst", "test-tenant", Role.ANALYST)
+    retriever = EventEvidenceRetriever(vector_database, models)
+    result = retriever.retrieve(scope, public_event_id(vector_database), "请给出原文风险")
+    assert result.citations and result.embedding_model == E5_MODEL.model_version
+    with Session(vector_database) as session:
+        assert session.scalar(select(func.count()).select_from(retrieval_chunks)) > 0
+        for citation in result.citations:
+            quote = session.scalar(
+                select(evidence.c.quote).where(evidence.c.evidence_id == str(citation.evidence_id))
+            )
+            assert citation.quote in quote
+    calls = models.passage_calls
+    repeated = retriever.retrieve(scope, public_event_id(vector_database), "同一事件的修复信息")
+    assert models.passage_calls == calls
+    assert repeated.citations
+
+
+def test_private_event_is_rejected_before_model_or_index(vector_database: Engine) -> None:
+    event_id = public_event_id(vector_database)
+    with vector_database.begin() as connection:
+        connection.execute(
+            update(events).values(
+                visibility="tenant", tenant_id="tenant-private", scope_key="tenant:tenant-private"
+            )
+        )
+    models = FixtureSemanticModels()
+    retriever = EventEvidenceRetriever(vector_database, models)
+    with pytest.raises(CrossTenantAccessError):
+        retriever.retrieve(
+            AccessScope.for_authenticated_user("other", "tenant-other", Role.ANALYST),
+            event_id,
+            "风险",
+        )
+    assert models.passage_calls == 0
+
+
+def test_removing_only_current_revision_cannot_generate_a_fact(vector_database: Engine) -> None:
+    with vector_database.begin() as connection:
+        connection.execute(update(document_revisions).values(is_current=False))
+    models = FixtureSemanticModels()
+    with pytest.raises(RetrievalFailure, match="answer_evidence_unavailable"):
+        EventEvidenceRetriever(vector_database, models).retrieve(
+            AccessScope.for_authenticated_user("reader", "tenant", Role.VIEWER),
+            public_event_id(vector_database),
+            "风险",
+        )
+    assert models.passage_calls == 0
+
+
+def test_corrupt_derived_chunk_is_rejected_instead_of_cited(vector_database: Engine) -> None:
+    models = FixtureSemanticModels()
+    scope = AccessScope.for_authenticated_user("fixture-reader", "tenant", Role.VIEWER)
+    retriever = EventEvidenceRetriever(vector_database, models)
+    event_id = public_event_id(vector_database)
+    retriever.retrieve(scope, event_id, "风险")
+    with vector_database.begin() as connection:
+        connection.execute(update(retrieval_chunks).values(text_sha256="f" * 64))
+    with pytest.raises(RetrievalFailure, match="answer_index_integrity_unavailable"):
+        retriever.retrieve(scope, event_id, "风险")
+
+
+def test_withdrawn_claims_cannot_be_resurrected_from_old_source_quotes(
+    vector_database: Engine,
+) -> None:
+    with vector_database.begin() as connection:
+        before = connection.scalar(select(func.count()).select_from(evidence))
+        connection.execute(update(claims).values(claim_status="withdrawn"))
+    models = FixtureSemanticModels()
+    with pytest.raises(RetrievalFailure, match="answer_evidence_unavailable"):
+        EventEvidenceRetriever(vector_database, models).retrieve(
+            AccessScope.for_authenticated_user("reader", "tenant", Role.VIEWER),
+            public_event_id(vector_database),
+            "风险",
+        )
+    with vector_database.connect() as connection:
+        assert connection.scalar(select(func.count()).select_from(evidence)) == before
+    assert models.passage_calls == 0
