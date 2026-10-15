@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { getLiveness, getReadiness, publicProblem, type ApiProblem, type CurrentUser, type Readiness } from "./api/client";
 import { AuthProvider, useAuthSession } from "./app/auth-session";
 import { formatShanghaiTimestamp } from "./app/date-time";
-import { readGraphSelection, readWorkspacePage, workspacePages, type WorkspacePage } from "./app/workspace-navigation";
+import { readAssetSelection, readGraphSelection, readWorkspacePage, workspacePages, type WorkspacePage } from "./app/workspace-navigation";
 import { EmptyState, ErrorPanel, StatusBadge } from "./components/status";
 import { AmbientBackdrop } from "./components/ambient-backdrop";
 import { CapabilityWorkspace } from "./features/preparation/capability-workspace";
@@ -12,6 +12,7 @@ import { SourceWorkspace } from "./features/sources/source-workspace";
 import { QuestionWorkspace } from "./features/questions/question-workspace";
 import { DocumentWorkspace } from "./features/documents/document-workspace";
 import { GraphExplorerView } from "./features/graph/graph-explorer-view";
+import { AssetWorkspace } from "./features/assets/asset-workspace";
 import { readQuestionRoute } from "./api/question-contracts";
 import "./styles.css";
 
@@ -122,6 +123,7 @@ function Workbench() {
   const [hash, setHash] = useState(() => window.location.hash);
   const questionRoute = readQuestionRoute(hash);
   const graphRoute = readGraphSelection(hash);
+  const assetRoute = readAssetSelection(hash);
   const page: WorkspacePage | "missing" = questionRoute === null ? readWorkspacePage(hash) : "questions";
   const [health, setHealth] = useState<HealthState>({ kind: "loading" });
   const healthGeneration = useRef(0);
@@ -197,8 +199,9 @@ function Workbench() {
           {page === "sources" && <SourceWorkspace key={sessionScopeKey} />}
           {page === "documents" && <DocumentWorkspace key={sessionScopeKey} />}
           {page === "questions" && <QuestionWorkspace key={`${sessionScopeKey}:${hash}`} eventId={questionRoute?.eventId} />}
+          {page === "assets" && <AssetWorkspace key={sessionScopeKey} assetId={assetRoute?.assetId} />}
           {page === "graph" && (graphRoute === null ? <section className="panel"><EmptyState title="先选择一个事件" description="从情报详情进入证据关系图，核查该事件的关联理由与原文。" /><a className="button secondary" href="#events">进入情报列表</a></section> : <GraphExplorerView key={`${sessionScopeKey}:${graphRoute.eventId}`} eventId={graphRoute.eventId} dataMode={state.kind === "authenticated" ? state.user.data_mode : "unknown"} />)}
-          {page !== "runtime" && page !== "session" && page !== "events" && page !== "sources" && page !== "documents" && page !== "questions" && page !== "graph" && page !== "missing" && <CapabilityWorkspace page={page} authenticated={state.kind === "authenticated"} />}
+          {page !== "runtime" && page !== "session" && page !== "events" && page !== "sources" && page !== "documents" && page !== "questions" && page !== "assets" && page !== "graph" && page !== "missing" && <CapabilityWorkspace page={page} authenticated={state.kind === "authenticated"} />}
           {page === "missing" && <section className="panel missing-page"><EmptyState title="工作区不存在" description="请通过导航选择已登记页面。该地址没有触发业务请求。" /><a className="button secondary" href="#runtime">返回运行状态</a></section>}
           {state.kind === "authenticated" && <footer className="workspace-footer"><span>{state.user.app_env ? `环境 ${state.user.app_env}` : "环境未由服务端标明"}</span><span>{state.user.platform_version ? `版本 ${state.user.platform_version}` : "版本未由服务端标明"}</span></footer>}
         </main>

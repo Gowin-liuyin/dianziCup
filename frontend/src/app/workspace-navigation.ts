@@ -39,6 +39,13 @@ export function readGraphSelection(hash: string): { eventId: string } | null {
   return eventId === undefined ? null : { eventId: eventId.toLowerCase() };
 }
 
+/** 资产导航使用后端 UUID；租户与权限不从 hash 读取。 */
+export function readAssetSelection(hash: string): { assetId: string } | null {
+  const match = /^#assets\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(hash);
+  const assetId = match?.[1];
+  return assetId === undefined ? null : { assetId: assetId.toLowerCase() };
+}
+
 /** Hash 导航仅表示页面，不持久化私有数据；未知页面保留可解释的返回路径。 */
 export function readWorkspacePage(hash: string): WorkspacePage | "missing" {
   const page = hash.replace(/^#/, "");
@@ -46,5 +53,6 @@ export function readWorkspacePage(hash: string): WorkspacePage | "missing" {
   if (readEventSelection(hash) !== null) return "events";
   if (readDocumentSelection(hash) !== null) return "documents";
   if (readGraphSelection(hash) !== null) return "graph";
+  if (readAssetSelection(hash) !== null) return "assets";
   return isWorkspacePage(page) ? page : "missing";
 }
