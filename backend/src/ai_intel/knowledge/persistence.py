@@ -709,6 +709,36 @@ class KnowledgeRepository:
                 raise KnowledgePublicationError("relation scope differs from publication")
         if left["subject"] != right["subject"] or left["predicate"] != right["predicate"]:
             raise KnowledgePublicationError("relation requires matching subject and predicate")
+        for row in (left, right):
+            if (
+                row["claim_origin"] == "model_hypothesis"
+                or row["provenance_status"] != "source_verified"
+                or row["claim_status"] not in {"supported", "disputed"}
+            ):
+                raise KnowledgePublicationError("relation requires verified factual claims")
+        assertion_rows = self.session.execute(
+            select(claim_assertions.c.claim_id, claim_assertions.c.scoring_authority).where(
+                claim_assertions.c.claim_id.in_((left_id, right_id))
+            )
+        ).all()
+        authorities = {row[0]: row[1] for row in assertion_rows}
+        if (
+            left_id not in authorities
+            or right_id not in authorities
+            or authorities[left_id] != authorities[right_id]
+        ):
+            raise KnowledgePublicationError("different scoring authorities remain parallel")
+        left_value, right_value = left["object_json"], right["object_json"]
+        if isinstance(left_value, dict) and isinstance(right_value, dict):
+            if left_value.get("kind") == right_value.get("kind") == "version_range" and (
+                left_value.get("branch") != right_value.get("branch")
+                or left_value.get("ecosystem") != right_value.get("ecosystem")
+            ):
+                raise KnowledgePublicationError("different version branches remain parallel")
+            if left_value.get("kind") == right_value.get("kind") == "score" and left_value.get(
+                "authority"
+            ) != right_value.get("authority"):
+                raise KnowledgePublicationError("different scoring authorities remain parallel")
         if relation.relation_type == "supersedes":
             if left["claim_status"] != "supported" or right["claim_status"] != "supported":
                 raise KnowledgePublicationError("supersede requires supported claims")
@@ -762,21 +792,6 @@ class KnowledgeRepository:
                 raise KnowledgePublicationError("dispute requires incompatible conditions")
             if left["asserted_at"] != right["asserted_at"]:
                 raise KnowledgePublicationError("different effective times remain parallel")
-            assertions = self.session.execute(
-                select(claim_assertions.c.claim_id, claim_assertions.c.scoring_authority).where(
-                    claim_assertions.c.claim_id.in_((left_id, right_id)),
-                )
-            ).all()
-            authorities = {row[0]: row[1] for row in assertions}
-            if authorities[left_id] != authorities[right_id]:
-                raise KnowledgePublicationError("different scoring authorities remain parallel")
-            left_value, right_value = left["object_json"], right["object_json"]
-            if (
-                isinstance(left_value, dict)
-                and isinstance(right_value, dict)
-                and left_value.get("branch") != right_value.get("branch")
-            ):
-                raise KnowledgePublicationError("different version branches remain parallel")
             for claim_id in (left_id, right_id):
                 self.session.execute(
                     update(claims)

@@ -196,7 +196,9 @@ class EventRepository:
                     str(next(iter(matched_ids))) if matched_ids else submission.event_id.value
                 )
                 existing = (
-                    self.session.execute(select(events).where(events.c.event_id == event_id))
+                    self.session.execute(
+                        select(events).where(events.c.event_id == event_id).with_for_update()
+                    )
                     .mappings()
                     .first()
                 )
@@ -222,6 +224,21 @@ class EventRepository:
                 elif existing["status"] != "active":
                     raise EventLinkingError("merged event requires explicit association repair")
                 else:
+                    known_cves: set[str] = set(
+                        self.session.execute(
+                            select(event_external_ids.c.id_value).where(
+                                event_external_ids.c.event_id == event_id,
+                                event_external_ids.c.id_type == "cve",
+                            )
+                        ).scalars()
+                    )
+                    known_cves.update(
+                        item.id_value.upper()
+                        for item in submission.external_ids
+                        if item.id_type == "cve"
+                    )
+                    if len(known_cves) > 1:
+                        raise EventLinkingError("one event cannot contain distinct CVE identifiers")
                     self.session.execute(
                         update(events)
                         .where(events.c.event_id == event_id)
