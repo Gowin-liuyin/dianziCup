@@ -34,7 +34,7 @@ def upgrade() -> None:
         sa.Column(
             "response_content_hash", sa.Text(), sa.ForeignKey("content_objects.content_hash")
         ),
-        sa.Column("response_size_bytes", sa.Bigsa.Integer()),
+        sa.Column("response_size_bytes", sa.BigInteger()),
         sa.Column("parse_outcome", sa.Text(), nullable=False),
         sa.Column("error_code", sa.Text()),
         sa.UniqueConstraint(

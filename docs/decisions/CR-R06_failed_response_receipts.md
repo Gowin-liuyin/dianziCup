@@ -15,3 +15,5 @@ parse_outcome四态received/normalized/normalization_failed/transport_failed。n
 迁移：先备份/确认任务专用库，服务暂停相关写入后向前执行0016，再部署接线代码；不得升级旧1927 collector库/把不同版本窗拼起来。重启PG后原对象/receipt可读。回滚：关新source handler写入、保留0016表/读层/原对象，用前向修复或已验证备份恢复；downgrade显式拒绝，不删审计历史。
 
 任务/测试影响：R06/T08/T49原文与失败留证；原成功页游标合同不变。必须覆盖解析失败独立commit、PG业务rollback、storage failure不推进、收据写失败不进入parse、重复与并发、AVID tree/blob各次序、public管理员边界与敏感字段不落盘、真实PG表/模型一致及GC拒删、进程重启再读。当前schema准备片静态检查通过，真实PG/业务接线由实现包及新独立review补齐，不能单独验收整R06或G-C。
+
+2026-10-16T00:39:47+08:00 真实0016迁移首次26setup错误由实现者发现，root生成显式SQL源码时类型名替换顺序把BigInteger误写成Bigsa.Integer。src-only mypy未覆盖migration升级函数，不能称迁移已验证；原日志保留，最小改为sa.BigInteger并补独立migration mypy/真实PG升级复验。
