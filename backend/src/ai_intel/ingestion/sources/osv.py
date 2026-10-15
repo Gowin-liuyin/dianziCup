@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass, field
+from datetime import datetime
+
+from ai_intel.infrastructure.models.json_output import strict_json_object
 
 OSV_CONNECTOR_NAME = "osv-vulnerability"
 OSV_CONNECTOR_VERSION = "osv-1.0.0"
@@ -22,8 +27,18 @@ class VersionRangeEvent:
 
 
 @dataclass(frozen=True)
+class PackageRange:
+    """独立范围分支；不同版本体系及仓库不能依据扁平兼容字段合并。"""
+
+    range_type: str | None
+    events: tuple[VersionRangeEvent, ...] = field(default_factory=tuple)
+    repository_uri: str | None = None
+    unsupported_scheme: bool = False
+
+
+@dataclass(frozen=True)
 class AffectedPackage:
-    """受影响包: ecosystem/package/ranges/events/explicit versions 原样保留。"""
+    """range_branches 为逐分支输入；旧 ranges_type/events 仅保留调用兼容。"""
 
     ecosystem: str | None
     package_name: str | None
@@ -31,6 +46,7 @@ class AffectedPackage:
     events: tuple[VersionRangeEvent, ...] = field(default_factory=tuple)
     explicit_versions: tuple[str, ...] = field(default_factory=tuple)
     unsupported_scheme: bool = False
+    range_branches: tuple[PackageRange, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -48,60 +64,103 @@ class OsvRecord:
     raw_record: dict[str, object] = field(default_factory=dict, repr=False)
 
 
-def _string_tuple(value: object) -> tuple[str, ...]:
-    """把任意 JSON 数组收敛为字符串元组; 非列表返回空而不猜测。"""
-    if not isinstance(value, list):
+def _string_tuple(value: object, field_name: str) -> tuple[str, ...]:
+    if value is None:
         return ()
-    return tuple(str(item) for item in value if isinstance(item, str))
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise OsvContractError(f"{field_name} must be an array of strings")
+    return tuple(value)
+
+
+def _optional_text(value: object, field_name: str) -> str | None:
+    if value is not None and not isinstance(value, str):
+        raise OsvContractError(f"{field_name} must be a string when present")
+    return value
+
+
+def _timestamp(value: object, field_name: str) -> str | None:
+    text = _optional_text(value, field_name)
+    if text is not None:
+        try:
+            timestamp = datetime.fromisoformat(text)
+            if timestamp.utcoffset() is None or "T" not in text:
+                raise ValueError("timestamp lacks explicit timezone")
+        except ValueError:
+            raise OsvContractError(f"{field_name} must be a timezone-aware timestamp") from None
+    return text
+
+
+def _objects(value: object, field_name: str) -> list[dict[str, object]]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or len(value) > 1000:
+        raise OsvContractError(f"{field_name} must be a bounded array")
+    result: list[dict[str, object]] = []
+    for entry in value:
+        if not isinstance(entry, dict):
+            raise OsvContractError(f"{field_name} entry must be an object")
+        result.append(entry)
+    return result
 
 
 def normalize_osv_record(payload: dict[str, object]) -> OsvRecord:
     """按固定 OSV schema 标准化; 未知 scheme 标 unsupported 不静默转换。"""
+    try:
+        strict_json_object(json.dumps(payload, ensure_ascii=False, allow_nan=False), 2097152)
+    except (ValueError, TypeError, UnicodeError, RecursionError):
+        raise OsvContractError("invalid or oversized OSV JSON record") from None
     osv_id = payload.get("id")
     if not isinstance(osv_id, str) or not osv_id:
         raise OsvContractError("missing osv id; raw record preserved by caller")
     schema_version = payload.get("schema_version")
     if schema_version is not None and not isinstance(schema_version, str):
         raise OsvContractError("schema_version must be a string when present")
-    aliases = _string_tuple(payload.get("aliases"))
-    related = _string_tuple(payload.get("related"))
-    upstream = _string_tuple(payload.get("upstream"))
+    if schema_version is not None and not re.fullmatch(
+        r"1\.(0|[1-9]\d*)\.(0|[1-9]\d*)", schema_version
+    ):
+        raise OsvContractError("unsupported OSV schema major version or malformed version")
+    aliases = _string_tuple(payload.get("aliases"), "aliases")
+    related = _string_tuple(payload.get("related"), "related")
+    upstream = _string_tuple(payload.get("upstream"), "upstream")
+    modified_at = _timestamp(payload.get("modified"), "modified")
+    _timestamp(payload.get("published"), "published")
+    withdrawn_at = _timestamp(payload.get("withdrawn"), "withdrawn")
     affected_packages: list[AffectedPackage] = []
-    raw_affected = payload.get("affected")
-    for entry in raw_affected if isinstance(raw_affected, list) else []:
-        if not isinstance(entry, dict):
-            raise OsvContractError("affected entry must be an object")
+    for entry in _objects(payload.get("affected"), "affected"):
         package = entry.get("package")
         ecosystem: str | None = None
         package_name: str | None = None
+        if package is not None and not isinstance(package, dict):
+            raise OsvContractError("package must be an object when present")
         if isinstance(package, dict):
-            ecosystem = str(package["ecosystem"]) if package.get("ecosystem") is not None else None
-            package_name = str(package["name"]) if package.get("name") is not None else None
+            ecosystem = _optional_text(package.get("ecosystem"), "package.ecosystem")
+            package_name = _optional_text(package.get("name"), "package.name")
         events: list[VersionRangeEvent] = []
         ranges_type: str | None = None
         unsupported_scheme = False
-        for version_range in entry.get("ranges", []):
-            if not isinstance(version_range, dict):
-                raise OsvContractError("range entry must be an object")
-            ranges_type = (
-                str(version_range.get("type")) if version_range.get("type") is not None else None
-            )
-            if ranges_type not in ("SEMVER", "ECOSYSTEM", "GIT") and ranges_type is not None:
-                unsupported_scheme = True
-            for event in version_range.get("events", []):
-                if not isinstance(event, dict) or len(event) != 1:
+        range_branches: list[PackageRange] = []
+        for version_range in _objects(entry.get("ranges"), "ranges"):
+            ranges_type = _optional_text(version_range.get("type"), "ranges.type")
+            repository_uri = _optional_text(version_range.get("repo"), "ranges.repo")
+            branch_unsupported = ranges_type not in ("SEMVER", "ECOSYSTEM", "GIT")
+            branch_events: list[VersionRangeEvent] = []
+            for event in _objects(version_range.get("events"), "ranges.events"):
+                if len(event) != 1:
                     raise OsvContractError("range event must carry exactly one boundary")
                 boundary_type, boundary_value = next(iter(event.items()))
-                if boundary_type not in ("introduced", "fixed", "last_affected"):
-                    unsupported_scheme = True
-                events.append(
-                    VersionRangeEvent(
-                        event_type=str(boundary_type), version_value=str(boundary_value)
-                    )
+                if not isinstance(boundary_value, str) or not boundary_value:
+                    raise OsvContractError("range boundary value must be a nonempty string")
+                if boundary_type not in ("introduced", "fixed", "last_affected", "limit"):
+                    branch_unsupported = True
+                branch_events.append(
+                    VersionRangeEvent(event_type=boundary_type, version_value=boundary_value)
                 )
-        explicit_versions = tuple(
-            str(item) for item in entry.get("versions", []) if isinstance(item, str)
-        )
+            range_branches.append(
+                PackageRange(ranges_type, tuple(branch_events), repository_uri, branch_unsupported)
+            )
+            events.extend(branch_events)
+            unsupported_scheme = unsupported_scheme or branch_unsupported
+        explicit_versions = _string_tuple(entry.get("versions"), "versions")
         affected_packages.append(
             AffectedPackage(
                 ecosystem=ecosystem,
@@ -110,16 +169,17 @@ def normalize_osv_record(payload: dict[str, object]) -> OsvRecord:
                 events=tuple(events),
                 explicit_versions=explicit_versions,
                 unsupported_scheme=unsupported_scheme,
+                range_branches=tuple(range_branches),
             )
         )
     return OsvRecord(
         osv_id=osv_id,
-        modified_at=str(payload["modified"]) if payload.get("modified") is not None else None,
+        modified_at=modified_at,
         aliases=aliases,
         related=related,
         upstream=upstream,
         affected=tuple(affected_packages),
-        withdrawn=payload.get("withdrawn") is not None,
+        withdrawn=withdrawn_at is not None,
         raw_record=payload,
     )
 
@@ -133,4 +193,4 @@ def bounded_package_query(
     results = query_allowed_packages(ecosystem, package_name)  # type: ignore[operator]
     if not isinstance(results, list):
         raise OsvContractError("query results must be a list")
-    return [item for item in results if isinstance(item, dict)]
+    return _objects(results, "query results")
