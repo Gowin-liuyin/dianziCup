@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Literal
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue
 from sqlalchemy import func, select, update
@@ -32,6 +33,7 @@ from ai_intel.ingestion.source_documents import (
     SourceResponse,
     ensure_source_registration,
     persist_source_response,
+    validate_vendor_after,
 )
 from ai_intel.ingestion.sources.nvd import normalize_nvd_page
 from ai_intel.knowledge.models import fetch_attempts, outbox_events
@@ -44,6 +46,12 @@ from ai_intel.workers.executor import (
 
 SOURCE_JOB_TYPE = "collect_public_source_page"
 SOURCE_PAGE_DELAY_SECONDS = 7
+VENDOR_ADVISORY_PATH = "/repos/vllm-project/vllm/security-advisories"
+VENDOR_NUMERIC_ADVISORY_PATH = "/repositories/599547518/security-advisories"
+VENDOR_LINK = re.compile(
+    r'<([^<>\s]+)> *; *rel *= *(?:"([A-Za-z][A-Za-z0-9. -]*)"|([A-Za-z][A-Za-z0-9.-]*)) *',
+    re.IGNORECASE,
+)
 SourceKind = Literal["nvd_ollama", "vllm_vendor"]
 SourceFetcher = Callable[[str], FetchResult]
 
@@ -59,26 +67,96 @@ class SourcePageRequest(BaseModel):
 
 
 def source_page_url(source_kind: SourceKind, cursor: dict[str, JsonValue]) -> str:
-    """游标仅是已校验整数位置，不能变成任意 URL 或修改固定查询。"""
+    """重建固定来源 URL；GitHub 的不透明游标只作为查询值。"""
     if source_kind not in {"nvd_ollama", "vllm_vendor"}:
         raise SourceDocumentError("unknown fixed source")
-    key, initial = ("offset", 0) if source_kind == "nvd_ollama" else ("page", 1)
-    position = cursor.get(key, initial)
-    if set(cursor) - {key} or type(position) is not int or position < initial:
-        raise SourceDocumentError("invalid fixed source cursor")
-    if position > 1_000_000:
-        raise SourceDocumentError("source cursor position limit exceeded")
     if source_kind == "nvd_ollama":
+        position = cursor.get("offset", 0)
+        if set(cursor) - {"offset"} or type(position) is not int or position < 0:
+            raise SourceDocumentError("invalid fixed source cursor")
+        if position > 1_000_000:
+            raise SourceDocumentError("source cursor position limit exceeded")
         parameters = {"keywordSearch": "ollama", "resultsPerPage": 20, "startIndex": position}
         return "https://services.nvd.nist.gov/rest/json/cves/2.0?" + urlencode(parameters)
-    parameters = {"per_page": 10, "state": "published", "page": position}
-    return "https://api.github.com/repos/vllm-project/vllm/security-advisories?" + urlencode(
-        parameters
-    )
+    vendor_parameters = {"per_page": "10", "state": "published"}
+    if set(cursor) == {"page"} and type(cursor["page"]) is int:
+        if cursor["page"] > 1:
+            raise JobExecutionError("legacy_vendor_cursor_requires_restart", blocked=True)
+        if cursor["page"] != 1:
+            raise SourceDocumentError("invalid legacy vendor cursor")
+    elif cursor:
+        if (
+            set(cursor) != {"cursor_version", "after"}
+            or type(cursor["cursor_version"]) is not int
+            or cursor["cursor_version"] != 2
+        ):
+            raise SourceDocumentError("invalid vendor cursor")
+        vendor_parameters["after"] = validate_vendor_after(cursor["after"])
+    return "https://api.github.com" + VENDOR_ADVISORY_PATH + "?" + urlencode(vendor_parameters)
+
+
+def _vendor_next_after(headers: Mapping[str, str]) -> str | None:
+    """只解析 GitHub 的有界 Link 形态，并拒绝被字典解析掩盖的重复 next。"""
+    values = [value for name, value in headers.items() if name.casefold() == "link"]
+    if not values:
+        return None
+    if len(values) != 1:
+        raise SourceDocumentError("ambiguous vendor Link headers")
+    value = values[0]
+    if (
+        not value
+        or len(value) > 8192
+        or not value.isascii()
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+    ):
+        raise SourceDocumentError("invalid vendor Link header")
+    links = value.split(",")
+    if len(links) > 16:
+        raise SourceDocumentError("vendor Link count limit exceeded")
+    next_uri: str | None = None
+    for link in links:
+        match = VENDOR_LINK.fullmatch(link.strip())
+        if match is None:
+            raise SourceDocumentError("malformed vendor Link")
+        relations = (match[2] or match[3]).casefold().split()
+        if "next" in relations:
+            if next_uri is not None or relations.count("next") != 1:
+                raise SourceDocumentError("duplicate vendor next Link")
+            next_uri = match[1]
+    if next_uri is None:
+        return None
+    try:
+        parts = urlsplit(next_uri)
+        allowed_origin = (
+            parts.scheme == "https"
+            and parts.hostname == "api.github.com"
+            and parts.netloc.casefold() in {"api.github.com", "api.github.com:443"}
+            and parts.port in {None, 443}
+            and parts.username is None
+            and parts.password is None
+        )
+        pairs = parse_qsl(parts.query, strict_parsing=True, keep_blank_values=True, errors="strict")
+    except (ValueError, UnicodeError):
+        raise SourceDocumentError("invalid vendor next Link URI") from None
+    parameters = dict(pairs)
+    if (
+        not allowed_origin
+        or parts.fragment
+        or parts.path not in {VENDOR_ADVISORY_PATH, VENDOR_NUMERIC_ADVISORY_PATH}
+        or len(pairs) != len(parameters)
+        or set(parameters) != {"per_page", "state", "after"}
+        or parameters["per_page"] != "10"
+        or parameters["state"] != "published"
+    ):
+        raise SourceDocumentError("vendor next Link is outside approved scope")
+    return validate_vendor_after(parameters["after"])
 
 
 def _next_position(
-    source_kind: SourceKind, body: bytes, cursor: dict[str, JsonValue]
+    source_kind: SourceKind,
+    body: bytes,
+    cursor: dict[str, JsonValue],
+    headers: Mapping[str, str] | None = None,
 ) -> dict[str, JsonValue]:
     """只在来源写服务已严格验证同一原始响应后读取分页元数据。"""
     payload: object = json.loads(body)
@@ -89,10 +167,12 @@ def _next_position(
         return {} if following is None else {"offset": following}
     if not isinstance(payload, list) or len(payload) > 10:
         raise SourceDocumentError("invalid vendor page")
-    page = cursor.get("page", 1)
-    if type(page) is not int:
-        raise SourceDocumentError("invalid vendor cursor")
-    return {"page": page + 1} if len(payload) == 10 else {}
+    after = _vendor_next_after(headers or {})
+    if after is None:
+        return {}
+    if after == cursor.get("after"):
+        raise SourceDocumentError("vendor next cursor did not advance")
+    return {"cursor_version": 2, "after": after}
 
 
 def _http_failure(result: FetchResult) -> None:
@@ -210,7 +290,9 @@ def build_source_page_handler(
                 SourceResponse(request.source_kind, result.body, url, observed_at),
                 ingested_at=clock(),
             )
-            following = _next_position(request.source_kind, result.body, lease.cursor_json)
+            following = _next_position(
+                request.source_kind, result.body, lease.cursor_json, result.redacted_headers
+            )
             entries: tuple[dict[str, object], ...] = tuple(
                 {
                     "entry_id": revision_id,

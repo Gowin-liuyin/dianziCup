@@ -123,12 +123,26 @@ def _aware_time(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
+def validate_vendor_after(value: object) -> str:
+    """Treat GitHub's opaque cursor as a bounded value, never a decoded instruction."""
+    if (
+        not isinstance(value, str)
+        or not 1 <= len(value) <= 2048
+        or any(
+            character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_/+="
+            for character in value
+        )
+    ):
+        raise SourceDocumentError("invalid vendor after cursor")
+    return value
+
+
 def _request_parameters(response: SourceResponse) -> dict[str, str]:
     if response.source_kind not in SOURCE_DEFINITIONS:
         raise SourceDocumentError("unsupported source kind")
     if (
         not isinstance(response.request_url, str)
-        or len(response.request_url) > 2000
+        or len(response.request_url) > (6500 if response.source_kind == "vllm_vendor" else 2000)
         or response.request_url != response.request_url.strip()
         or any(ord(character) < 32 or ord(character) == 127 for character in response.request_url)
     ):
@@ -148,7 +162,12 @@ def _request_parameters(response: SourceResponse) -> dict[str, str]:
         count_key, position_key, minimum = "resultsPerPage", "startIndex", 0
     else:
         base = "https://api.github.com/repos/vllm-project/vllm/security-advisories"
-        allowed = {"per_page", "state", "page"}
+        allowed = {"per_page", "state"}
+        if "after" in parameters:
+            allowed.add("after")
+            validate_vendor_after(parameters["after"])
+        elif "page" in parameters:
+            allowed.add("page")
         fixed = parameters.get("state") == "published"
         count_key, position_key, minimum = "per_page", "page", 1
     if (
@@ -157,11 +176,13 @@ def _request_parameters(response: SourceResponse) -> dict[str, str]:
         or not fixed
     ):
         raise SourceDocumentError("source request URL is outside approved scope")
-    for key in (count_key, position_key):
+    for key in (count_key, position_key) if position_key in parameters else (count_key,):
         number = parameters[key]
         if not number.isascii() or not number.isdigit() or len(number) > 18:
             raise SourceDocumentError("invalid source request URL pagination")
-    if not 1 <= int(parameters[count_key]) <= 100 or int(parameters[position_key]) < minimum:
+    if not 1 <= int(parameters[count_key]) <= 100 or (
+        position_key in parameters and int(parameters[position_key]) < minimum
+    ):
         raise SourceDocumentError("invalid source request URL pagination")
     return parameters
 
