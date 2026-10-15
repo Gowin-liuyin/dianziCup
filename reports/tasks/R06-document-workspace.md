@@ -60,6 +60,8 @@ F1/R1：资料分类与明确正文覆盖/日期精度；F2/F3：指定revision�
 
 ## 独立初审两项 Must 修复（2026-10-15 第二轮）
 
+第二轮源码冻结：e492a8fb6b58465c60cf3b355caacbd077483967，基于475f71e48f93e9888dfcf09954a7ce13e590add5。两个改动源码的Git blob / SHA256 / 字节数与检查计数见review_fix_1_source_freeze.json。第二轮源码/设计/报告`git diff --check`实际exit0。此处补元数据不改源码。
+
 状态仍 awaiting_review，待原独立 reviewer 定向复核；本文作者复跑独立用例不等于独立验收。原 aa17db32/475f71e 冻结、原295/4browser和全部失败报告均保留。
 
 初审确认：①已取得正文后历史分页403/404只隐藏history，旧正文仍展示；②初始当前地址在证据分页期间变历史，当前链接仍为相同hash，点击没有新GET。根因是detail/history只有各自错误状态，以及hash被用作唯一重读触发。
@@ -80,5 +82,7 @@ F1/R1：资料分类与明确正文覆盖/日期精度；F2/F3：指定revision�
 | 原 `playwright.documents.config.ts`，独占25376 Edge | 原四项不删改 | exit0，4/4，0skip/flaky | review_fix_1_original_browser_delivery |
 
 每条完整参数/真实起止/exit见追加commands.jsonl；上表`...`仅为报告省略日志输出参数，不是未执行命令。原样copies与红绿JSON/失败message均保留。新增永久回归包含403/404后已在途证据晚到、catalog/title/history清空，503部分保留及同hash当前新GET。六browser也覆盖新版本后旧证据丢弃、退出→重新登录→刷新时旧会话晚到结果不复活、390长title/license/notes/raw日期注入与动效开关。未伪造live或将失败改skip。
+
+末版真实时间窗（+08:00）：独立36unit20:04:54.6298737–20:04:56.7733704；独立6browser20:04:54.6298737–20:05:02.0550406；原4browser20:05:39.8184006–20:05:48.1506510；lint/typecheck/build20:05:39.8711446–20:05:50.2211009；299unit20:05:39.8711118–20:05:59.9377796。CBM本次新增src索引后的DocumentInspector入站确认DocumentWorkspace（1跳）与App.Workbench（2跳），均lsp0.95，rg调用日志复核；此前baseline图保留，不把图当测试通过。原独立assert文件copies末次hash仍一致，见review_fix_1_copy_hashes.json。
 
 实际查看修复截图：history-403-stale.png中资料列表已清除且检视区仅有无权限；current-link-stale.png中已出现新当前revision3/原文，无旧版正文。文件名来自原独立测试，不代表修复后仍stale。截图在review_fix_1_browser_artifacts/。源码/文档diff检查仅排除原生日志，不清洗原工具输出；末版源冻结随后登记。下一步由原独立reviewer对新SHA复核，真实资料API/browser依旧由主控接续，不自行accepted。

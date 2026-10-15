@@ -46,6 +46,8 @@ strict DTO 字段/枚举/日期/安全URL/版本归属；只读请求/cursor/fil
 
 ## 初审修复的状态转换
 
+修复源码冻结e492a8fb6b58465c60cf3b355caacbd077483967；完整红绿与末版时间见任务报告第二轮。
+
 独立初审发现两个真实缺陷并已复现：历史403/404残留正文、同hash当前链接没有新GET。修复后资料detail/history共享读取代次与取消范围，权限/资源确定丢失时清空所有检视事实，同时清父列表快照和阻止在途list复活；503保持部分结果说明。当前版本链接显式重置检视组件、所选revision及正文/history分页，并发起不带revision的当前GET，不依赖hashchange。普通临时错误重试仍保留原选修订。
 
 原样独立36unit和6browser由作者复跑红→绿，新增永久4回归红→绿，完整299unit、原4browser与lint/typecheck/build真实通过；不是独立accepted或live。详见任务报告第二轮与review_fix_1_*日志。外观tokens/背景/旧功能不变，实际检查无权限清空和新当前版本截图。
