@@ -1,11 +1,11 @@
 # G-B · 真实来源、原文证据与模型问答
 
 文档首次创建时间：2026-10-15T13:48:37+08:00
-本次写作开始时间：2026-10-15T18:22:57+08:00
-本次写作结束时间：2026-10-15T18:22:57+08:00
-最后更新时间：2026-10-15T18:22:57+08:00
+本次写作开始时间：2026-10-15T18:43:56+08:00
+本次写作结束时间：2026-10-15T18:43:56+08:00
+最后更新时间：2026-10-15T18:43:56+08:00
 阶段实际开始/结束时间：历史未单独记录，首个来源GET观测为2026-10-15T11:53:40+08:00，不能冒称阶段起点 / 尚未结束
-本报告证据截止时间：2026-10-15T18:22:57+08:00
+本报告证据截止时间：2026-10-15T18:43:56+08:00
 主控/实现Agent：/root；各作者、工作树、文件所有权与冻结版本见progress/recovery_workstreams.md及任务报告
 独立审查Agent与报告：/root/g_b_checkpoint_review，固定1ff54965a0dd2e4f4a13245cee8dd59d2b3fdcfc初审在途；专项已封存；新发现精确字节缺陷待修复版本复核
 阶段状态：awaiting_review
@@ -118,3 +118,12 @@ U03–U05/U07–U09/U11–U14当前仅原规划与部分骨架/准备，不由�
 修订：2026-10-15T18:06:30+08:00，/root保留首次创建时间与所有红例；核对独立分类校正为15条/11文件/13 span和第三方55/47、实际原单测复验及完整缓存搬迁hash。精确manifest 51条，原36条不变，没有改扫描器/规则/ignore。阶段仅awaiting_review，未accepted、未push。
 
 修订：2026-10-15T18:22:57+08:00，/root记录新阶段初审1418pass/1fail（旧fixture clean checkout行尾），独立49来源/权限PG、35向量/问答PG及254前端通过。修复按51条记录的18个精确path保留原字节；manifest全文不变，scanner/pattern/span/value/ignore不变，每个暂存blob SHA与已审记录相同。root原安全单测复验见gb_fixture_checkout_bytes_recheck.*；其初次档案EOF diff-check失败与新helper label未登记的ValueError均为控制脚本错误，确切历史时刻未单独记录，未运行业务，不计业务通过。修正精确raw属性/合法新label后才运行真正复验。首次创建时间保持。
+
+## 阶段初审新增问题与修复候选 · 2026-10-15T18:43:56+08:00
+
+- 新检出精确字节问题在8c809c4独立关闭：1419pass/10PG deselected、coverage73.80%，51/51 raw/hash/span、0拒绝，254前端与type/lint/build再通过。两份历史probe.py为混合行尾，root另外按精确source_path保留已审字节，见fixture_origin_bytes_freeze.json；51记录不改。
+- 公开Schema原无时区日期负例在独立环境55pass/1fail，新增官方dev格式extra后root原56检查exit0/56pass。原因/兼容/迁移/回滚见CR-R04_schema_format_checks.md，待独立锁定环境复核；未改负例/阈值。
+- 新confirmed来源HTTP三Must与认证竞态：缺key仍202、跨admin同job、跨source202/409、初始scope后撤销仍可受理。root原11PG回归8fail/3pass，修复后11pass；见CR-R04-R04_source_commit.md和source_http_red/green.*。完整原unit/contract/security1419pass/10另测PG deselected，coverage73.71%；mypy82/Ruff通过。不能拿前一SHA的阶段意见替新来源边界，等新候选复核。
+- 实际产品live仍明确分别属于23c与dc014运行段；新候选只有source_routes.py来源HTTP边界及开发校验环境变化，问答/模型/检索/来源writer与worker逻辑未改。新来源POST/GET用真实PG回归证明，当前新候选完整外部IO/浏览器live未重跑，不拼同版本持续运行或性能。
+
+本轮尚不能阶段push或accepted。已有原PG49/35、原文25/删证据1、PG434 span/114 MinIO对象与dc014答案核对是独立阶段审查者亲自执行，其最终报告和新SHA复验结论待落盘。仅有限切片通过不替代R12/R17/R19–24。

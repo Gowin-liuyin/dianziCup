@@ -1,5 +1,8 @@
 """固定公开来源调度与 PG 任务查询；认证身份不来自业务请求。"""
 
+import hashlib
+import json
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Literal
@@ -14,6 +17,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ai_intel.api.auth_routes import CSRF_HEADER_NAME, SESSION_COOKIE_NAME
+from ai_intel.api.auth_state import lock_authenticated_scope
 from ai_intel.api.authentication import (
     AuthenticationSessionService,
     CsrfRejectionError,
@@ -121,6 +125,20 @@ def build_source_router(
             return None
         return SourceJobResponse.model_validate(dict(row))
 
+    def lock_source_scope(session: Session, request: Request, initial: AccessScope) -> AccessScope:
+        """来源任务读写与当前认证同事务，撤销/角色变化不能越过提交点。"""
+        current = lock_authenticated_scope(
+            session.connection(), request.cookies.get(SESSION_COOKIE_NAME, ""), datetime.now(UTC)
+        )
+        if (
+            current.user_id != initial.user_id
+            or current.tenant_id != initial.tenant_id
+            or current.role != Role.SYSTEM_ADMIN
+            or current.tenant_id is not None
+        ):
+            raise PermissionDeniedError("source authorization changed")
+        return current
+
     @router.post(
         "/sources/{source_kind}/collect", status_code=202, response_model=SourceJobResponse
     )
@@ -130,14 +148,24 @@ def build_source_router(
         at = datetime.now(UTC)
         if payload.window_end > at:
             return problem_response(request, 422, "invalid_window", "future source window denied")
-        key = request.headers.get("idempotency-key")
-        if key is not None and (not key.strip() or len(key) > 200 or not key.isascii()):
-            return problem_response(request, 422, "invalid_key", "invalid idempotency key")
         try:
             scope = authenticate(request, write=True)
+            key = request.headers.get("idempotency-key")
+            if key is None or re.fullmatch(r"[\x21-\x7e]{1,200}", key) is None:
+                return problem_response(request, 422, "invalid_key", "invalid idempotency key")
             if engine is None:
                 raise RuntimeError("source database unavailable")
             with Session(engine) as session, session.begin():
+                scope = lock_source_scope(session, request, scope)
+                scoped_key = (
+                    "http-source-v1-"
+                    + hashlib.sha256(
+                        json.dumps(
+                            ["source-collect", scope.user_id, scope.tenant_id, source_kind, key],
+                            separators=(",", ":"),
+                        ).encode("utf-8")
+                    ).hexdigest()
+                )
                 ensure_source_registration(session, scope, source_kind, at)
                 job_id = enqueue_source_page(
                     session,
@@ -148,7 +176,7 @@ def build_source_router(
                         remaining_pages=payload.max_pages,
                     ),
                     at,
-                    idempotency_key=key,
+                    idempotency_key=scoped_key,
                 )
                 response = read_job(session, UUID(job_id))
                 if response is None:
@@ -169,10 +197,11 @@ def build_source_router(
     @router.get("/jobs/{job_id}", response_model=SourceJobResponse)
     def source_job(request: Request, job_id: UUID) -> SourceJobResponse | Response:
         try:
-            authenticate(request, write=False)
+            scope = authenticate(request, write=False)
             if engine is None:
                 raise RuntimeError("source database unavailable")
-            with Session(engine) as session:
+            with Session(engine) as session, session.begin():
+                lock_source_scope(session, request, scope)
                 response = read_job(session, job_id)
             if response is None:
                 return problem_response(request, 404, "not_found", "job is not available")
