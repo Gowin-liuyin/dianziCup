@@ -1,0 +1,87 @@
+......FF                                                                 [100%]
+================================== FAILURES ===================================
+__ test_default_api_to_registered_worker_publishes_atomic_structured_results __
+
+execution_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_api_a2349c3327fd40408c0d25d5598b6647)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-739/test_default_api_to_registered0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001BB338B47A0>
+
+    def test_default_api_to_registered_worker_publishes_atomic_structured_results(
+        execution_engine, tmp_path, monkeypatch
+    ):
+        _, scope, _, event_id, _, _ = setup(execution_engine, tmp_path)
+        runtime = worker_runtime(execution_engine, tmp_path, monkeypatch)
+        with application_client(execution_engine, tmp_path, scope) as client:
+            response = client.post(
+                f"/v1/events/{event_id}/enrichment-jobs",
+                json={"expected_event_version": 1, "dimensions": ["cvss", "versions"]},
+                headers={
+                    "origin": ORIGIN,
+                    CSRF_HEADER_NAME: "synthetic-csrf",
+                    "Idempotency-Key": "registered-worker",
+                },
+            )
+            assert response.status_code == 202
+            workflow_id = response.json()["workflow_id"]
+            parent_job_id = response.json()["parent_job_id"]
+            assert runtime.consume_job(parent_job_id)["outcome"] == "succeeded"
+            with execution_engine.connect() as connection:
+                steps = (
+                    connection.execute(
+                        select(enrichment_job_steps).where(
+                            enrichment_job_steps.c.workflow_id == workflow_id
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+            assert len(steps) == 3
+            for step in steps:
+                if step["dimension"] is not None:
+>                   assert runtime.consume_job(step["job_id"])["outcome"] == "succeeded"
+E                   AssertionError: assert 'blocked' == 'succeeded'
+E                     
+E                     - succeeded
+E                     + blocked
+
+tests\integration\test_r07_enrichment_api_pg.py:200: AssertionError
+_ test_registered_worker_rechecks_changed_actor_role_before_creating_children _
+
+execution_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_api_2e1879a0b51a4126bcd1eafef60caa7a)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-739/test_registered_worker_recheck0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001BB339B16D0>
+
+    def test_registered_worker_rechecks_changed_actor_role_before_creating_children(
+        execution_engine, tmp_path, monkeypatch
+    ):
+        _, scope, _, _, _, receipt = setup(execution_engine, tmp_path)
+        runtime = worker_runtime(execution_engine, tmp_path, monkeypatch)
+        with execution_engine.begin() as connection:
+            connection.execute(
+                update(users)
+                .where(users.c.user_id == scope.user_id)
+                .values(role="viewer", tenant_id="synthetic-changed-tenant")
+            )
+        assert runtime.consume_job(str(receipt.parent_job_id))["outcome"] == "blocked"
+        with execution_engine.connect() as connection:
+            assert not connection.execute(select(enrichment_job_steps)).all()
+>           assert not connection.execute(select(enrichment_results)).all()
+E           AssertionError: assert not [('8f4adb7f-4c8d-4658-aed7-16a35b60167e', '5a731f03-38c2-5ead-bb66-2d241b0ed112', 'cvss', 'available', ['17bfed49-cd50...9c9f17794a55d92', 1, datetime.datetime(2026, 10, 15, 10, 0, tzinfo=zoneinfo.ZoneInfo(key='Etc/UTC')), None, 'current')]
+E            +  where [('8f4adb7f-4c8d-4658-aed7-16a35b60167e', '5a731f03-38c2-5ead-bb66-2d241b0ed112', 'cvss', 'available', ['17bfed49-cd50...9c9f17794a55d92', 1, datetime.datetime(2026, 10, 15, 10, 0, tzinfo=zoneinfo.ZoneInfo(key='Etc/UTC')), None, 'current')] = all()
+E            +    where all = <sqlalchemy.engine.cursor.CursorResult object at 0x000001BB33F99400>.all
+E            +      where <sqlalchemy.engine.cursor.CursorResult object at 0x000001BB33F99400> = execute(<sqlalchemy.sql.selectable.Select object at 0x000001BB333CC650>)
+E            +        where execute = <sqlalchemy.engine.base.Connection object at 0x000001BB33B5DD30>.execute
+E            +        and   <sqlalchemy.sql.selectable.Select object at 0x000001BB333CC650> = select(Table('enrichment_results', MetaData(), Column('result_id', Text(), table=<enrichment_results>, primary_key=True, null...ce_version', Text(), table=<enrichment_results>), Column('freshness', Text(), table=<enrichment_results>), schema=None))
+
+tests\integration\test_r07_enrichment_api_pg.py:241: AssertionError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\wt\r07-enrichment-jobs\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\r07-enrichment-jobs\reports\runs\recovery_r07_enrichment_jobs_20261016\api_wiring_pg_v4.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r07_enrichment_api_pg.py::test_default_api_to_registered_worker_publishes_atomic_structured_results
+FAILED tests/integration/test_r07_enrichment_api_pg.py::test_registered_worker_rechecks_changed_actor_role_before_creating_children
+2 failed, 6 passed, 1 warning in 12.05s

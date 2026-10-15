@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="6" time="7.104" timestamp="2026-10-16T05:32:06.384210+08:00" hostname="yin"><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_default_api_queues_and_reads_workflow_without_model_or_content_io" time="1.219" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_http_body_does_not_supply_identity_or_external_authority[extra0]" time="1.012" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_http_body_does_not_supply_identity_or_external_authority[extra1]" time="1.142" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_http_body_does_not_supply_identity_or_external_authority[extra2]" time="1.052" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_missing_csrf_and_current_role_change_prevent_scheduling" time="1.404"><failure message="self = &lt;sqlalchemy.engine.base.Connection object at 0x000002B3AA7A63C0&gt;&#10;dialect = &lt;sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x000002B3AABEA5A0&gt;&#10;context = &lt;sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x000002B3A8028980&gt;&#10;statement = &lt;sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x000002B3AA827DD0&gt;&#10;parameters = [{'role': '[redacted test credential]', 'user_id_1': '[redacted test credential]'}]&#10;&#10;    def _exec_single_context(&#10;        self,&#10;        dialect: Dialect,&#10;        context: ExecutionContext,&#10;        statement: Union[str, Compiled],&#10;        parameters: Optional[_AnyMultiExecuteParams],&#10;    ) -&gt; CursorResult[Unpack[TupleAny]]:&#10;        &quot;&quot;&quot;continue the _execute_context() method for a single DBAPI&#10;        cursor.execute() or cursor.executemany() call.&#10;    &#10;        &quot;&quot;&quot;&#10;        if dialect.bind_typing is BindTyping.SETINPUTSIZES:&#10;            generic_setinputsizes = context._prepare_set_input_sizes()&#10;    &#10;            if generic_setinputsizes:&#10;                try:&#10;                    dialect.do_set_input_sizes(&#10;                        context.cursor, generic_setinputsizes, context&#10;                    )&#10;                except BaseException as e:&#10;                    self._handle_dbapi_exception(&#10;                        e, str(statement), parameters, None, context&#10;                    )&#10;    &#10;        cursor, str_statement, parameters = (&#10;            context.cursor,&#10;            context.statement,&#10;            context.parameters,&#10;        )&#10;    &#10;        effective_parameters: Optional[_AnyExecuteParams]&#10;    &#10;        if not context.executemany:&#10;            effective_parameters = parameters[0]&#10;        else:&#10;            effective_parameters = parameters&#10;    &#10;        evt_handled: bool = False&#10;        try:&#10;            if self._has_events or self.engine._has_events:&#10;                for fn in self.dispatch.before_cursor_execute:&#10;                    str_statement, effective_parameters = fn(&#10;                        self,&#10;                        cursor,&#10;                        str_statement,&#10;                        effective_parameters,&#10;                        context,&#10;                        context.executemany,&#10;                    )&#10;    &#10;            if self._echo:&#10;                self._log_info(str_statement)&#10;    &#10;                stats = context._get_cache_stats()&#10;    &#10;                if not self.engine.hide_parameters:&#10;                    self._log_info(&#10;                        &quot;[%s] %r&quot;,&#10;                        stats,&#10;                        sql_util._repr_params(&#10;                            effective_parameters,&#10;                            batches=10,&#10;                            ismulti=context.executemany,&#10;                        ),&#10;                    )&#10;                else:&#10;                    self._log_info(&#10;                        &quot;[%s] [SQL parameters hidden due to &quot;&#10;                        &quot;hide_parameters=True]&quot;,&#10;                        stats,&#10;                    )&#10;            if context.execute_style is ExecuteStyle.EXECUTEMANY:&#10;                effective_parameters = cast(&#10;                    &quot;_CoreMultiExecuteParams&quot;, effective_parameters&#10;                )&#10;                if self.dialect._has_events:&#10;                    for fn in self.dialect.dispatch.do_executemany:&#10;                        if fn(&#10;                            cursor,&#10;                            str_statement,&#10;                            effective_parameters,&#10;                            context,&#10;                        ):&#10;                            evt_handled = True&#10;                            break&#10;                if not evt_handled:&#10;                    self.dialect.do_executemany(&#10;                        cursor,&#10;                        str_statement,&#10;                        effective_parameters,&#10;                        context,&#10;                    )&#10;            elif not effective_parameters and context.no_parameters:&#10;                if self.dialect._has_events:&#10;                    for fn in self.dialect.dispatch.do_execute_no_params:&#10;                        if fn(cursor, str_statement, context):&#10;                            evt_handled = True&#10;                            break&#10;                if not evt_handled:&#10;                    self.dialect.do_execute_no_params(&#10;                        cursor, str_statement, context&#10;                    )&#10;            else:&#10;                effective_parameters = cast(&#10;                    &quot;_CoreSingleExecuteParams&quot;, effective_parameters&#10;                )&#10;                if self.dialect._has_events:&#10;                    for fn in self.dialect.dispatch.do_execute:&#10;                        if fn(&#10;                            cursor,&#10;                            str_statement,&#10;                            effective_parameters,&#10;                            context,&#10;                        ):&#10;                            evt_handled = True&#10;                            break&#10;                if not evt_handled:&#10;&gt;                   self.dialect.do_execute(&#10;                        cursor, str_statement, effective_parameters, context&#10;                    )&#10;&#10;.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: &#10;_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _&#10;.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute&#10;    cursor.execute(statement, parameters)&#10;_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _&#10;&#10;self = &lt;psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_api_2eb28c06a6804381b864711f4b0c3af4) at 0x2b3aa92ef90&gt;&#10;query = 'UPDATE users SET role=%(role)s::VARCHAR WHERE users.user_id = %(user_id_1)s::VARCHAR'&#10;params = {'role': '[redacted test credential]', 'user_id_1': '[redacted test credential]'}&#10;&#10;    def execute(&#10;        self,&#10;        query: Query,&#10;        params: Params | None = None,&#10;        *,&#10;        prepare: bool | None = None,&#10;        binary: bool | None = None,&#10;    ) -&gt; Self:&#10;        &quot;&quot;&quot;&#10;        Execute a query or command to the database.&#10;        &quot;&quot;&quot;&#10;        try:&#10;            with self._conn.lock:&#10;                self._conn.wait(&#10;                    self._execute_gen(query, params, prepare=prepare, binary=binary)&#10;                )&#10;        except e._NO_TRACEBACK as ex:&#10;&gt;           raise ex.with_traceback(None)&#10;E           psycopg.errors.CheckViolation: new row for relation &quot;users&quot; violates check constraint &quot;ck_users_tenant_admin_requires_tenant&quot;&#10;E           DETAIL:  Failing row contains ([redacted test credential], synthetic-r07-[redacted test credential], unusable synthetic hash, null, [redacted test credential], 2026-10-15 21:32:06.950678+00).&#10;&#10;.venv\Lib\site-packages\psycopg\cursor.py:117: CheckViolation&#10;&#10;The above exception was the direct cause of the following exception:&#10;&#10;execution_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_api_2eb28c06a6804381b864711f4b0c3af4)&#10;tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-724/test_missing_csrf_and_current_0')&#10;&#10;    def test_missing_csrf_and_current_role_change_prevent_scheduling(execution_engine, tmp_path):&#10;        _, scope, _, event_id, _, _ = setup(execution_engine, tmp_path)&#10;        with application_client(execution_engine, tmp_path, scope) as client:&#10;            target = f&quot;/v1/events/{event_id}/enrichment-jobs&quot;&#10;            assert client.post(target, json={&quot;expected_event_version&quot;: 1}).status_code == 403&#10;            with execution_engine.begin() as connection:&#10;&gt;               connection.execute(&#10;                    update(users).where(users.c.user_id == scope.user_id).values(role=&quot;[redacted test credential]&quot;)&#10;                )&#10;&#10;tests\integration\test_r07_enrichment_api_pg.py:123: &#10;_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _&#10;.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute&#10;    return meth(&#10;.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection&#10;    return connection._execute_clauseelement(&#10;.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement&#10;    ret = self._execute_context(&#10;.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context&#10;    return self._exec_single_context(&#10;.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context&#10;    self._handle_dbapi_exception(&#10;.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception&#10;    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e&#10;.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context&#10;    self.dialect.do_execute(&#10;.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute&#10;    cursor.execute(statement, parameters)&#10;_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _&#10;&#10;self = &lt;psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_api_2eb28c06a6804381b864711f4b0c3af4) at 0x2b3aa92ef90&gt;&#10;query = 'UPDATE users SET role=%(role)s::VARCHAR WHERE users.user_id = %(user_id_1)s::VARCHAR'&#10;params = {'role': '[redacted test credential]', 'user_id_1': '[redacted test credential]'}&#10;&#10;    def execute(&#10;        self,&#10;        query: Query,&#10;        params: Params | None = None,&#10;        *,&#10;        prepare: bool | None = None,&#10;        binary: bool | None = None,&#10;    ) -&gt; Self:&#10;        &quot;&quot;&quot;&#10;        Execute a query or command to the database.&#10;        &quot;&quot;&quot;&#10;        try:&#10;            with self._conn.lock:&#10;                self._conn.wait(&#10;                    self._execute_gen(query, params, prepare=prepare, binary=binary)&#10;                )&#10;        except e._NO_TRACEBACK as ex:&#10;&gt;           raise ex.with_traceback(None)&#10;E           sqlalchemy.exc.IntegrityError: (psycopg.errors.CheckViolation) new row for relation &quot;users&quot; violates check constraint &quot;ck_users_tenant_admin_requires_tenant&quot;&#10;E           DETAIL:  Failing row contains ([redacted test credential], synthetic-r07-[redacted test credential], unusable synthetic hash, null, [redacted test credential], 2026-10-15 21:32:06.950678+00).&#10;E           [SQL: UPDATE users SET role=%(role)s::VARCHAR WHERE users.user_id = %(user_id_1)s::VARCHAR]&#10;E           [parameters: {'role': '[redacted test credential]', 'user_id_1': '[redacted test credential]'}]&#10;E           (Background on this error at: https://sqlalche.me/e/21/gkpj)&#10;&#10;.venv\Lib\site-packages\psycopg\cursor.py:117: IntegrityError">self = &lt;sqlalchemy.engine.base.Connection object at 0x000002B3AA7A63C0&gt;
+dialect = &lt;sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x000002B3AABEA5A0&gt;
+context = &lt;sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x000002B3A8028980&gt;
+statement = &lt;sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x000002B3AA827DD0&gt;
+parameters = [{'role': '[redacted test credential]', 'user_id_1': '[redacted test credential]'}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -&gt; CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+&gt;                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_api_2eb28c06a6804381b864711f4b0c3af4) at 0x2b3aa92ef90&gt;
+query = 'UPDATE users SET role=%(role)s::VARCHAR WHERE users.user_id = %(user_id_1)s::VARCHAR'
+params = {'role': '[redacted test credential]', 'user_id_1': '[redacted test credential]'}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -&gt; Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+&gt;           raise ex.with_traceback(None)
+E           psycopg.errors.CheckViolation: new row for relation "users" violates check constraint "ck_users_tenant_admin_requires_tenant"
+E           DETAIL:  Failing row contains ([redacted test credential], synthetic-r07-[redacted test credential], unusable synthetic hash, null, [redacted test credential], 2026-10-15 21:32:06.950678+00).
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: CheckViolation
+
+The above exception was the direct cause of the following exception:
+
+execution_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_api_2eb28c06a6804381b864711f4b0c3af4)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-724/test_missing_csrf_and_current_0')
+
+    def test_missing_csrf_and_current_role_change_prevent_scheduling(execution_engine, tmp_path):
+        _, scope, _, event_id, _, _ = setup(execution_engine, tmp_path)
+        with application_client(execution_engine, tmp_path, scope) as client:
+            target = f"/v1/events/{event_id}/enrichment-jobs"
+            assert client.post(target, json={"expected_event_version": 1}).status_code == 403
+            with execution_engine.begin() as connection:
+&gt;               connection.execute(
+                    update(users).where(users.c.user_id == scope.user_id).values(role="[redacted test credential]")
+                )
+
+tests\integration\test_r07_enrichment_api_pg.py:123: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_api_2eb28c06a6804381b864711f4b0c3af4) at 0x2b3aa92ef90&gt;
+query = 'UPDATE users SET role=%(role)s::VARCHAR WHERE users.user_id = %(user_id_1)s::VARCHAR'
+params = {'role': '[redacted test credential]', 'user_id_1': '[redacted test credential]'}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -&gt; Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+&gt;           raise ex.with_traceback(None)
+E           sqlalchemy.exc.IntegrityError: (psycopg.errors.CheckViolation) new row for relation "users" violates check constraint "ck_users_tenant_admin_requires_tenant"
+E           DETAIL:  Failing row contains ([redacted test credential], synthetic-r07-[redacted test credential], unusable synthetic hash, null, [redacted test credential], 2026-10-15 21:32:06.950678+00).
+E           [SQL: UPDATE users SET role=%(role)s::VARCHAR WHERE users.user_id = %(user_id_1)s::VARCHAR]
+E           [parameters: {'role': '[redacted test credential]', 'user_id_1': '[redacted test credential]'}]
+E           (Background on this error at: https://sqlalche.me/e/21/gkpj)
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: IntegrityError</failure></testcase><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_default_application_has_one_job_reader_and_unauthenticated_workflow_denial" time="0.110" /></testsuite></testsuites>

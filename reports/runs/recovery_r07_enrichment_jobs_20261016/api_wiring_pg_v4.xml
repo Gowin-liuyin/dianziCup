@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="8" time="12.049" timestamp="2026-10-16T05:57:45.198546+08:00" hostname="yin"><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_default_api_queues_and_reads_workflow_without_model_or_content_io" time="1.541" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_http_body_does_not_supply_identity_or_external_authority[extra0]" time="1.350" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_http_body_does_not_supply_identity_or_external_authority[extra1]" time="1.202" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_http_body_does_not_supply_identity_or_external_authority[extra2]" time="1.435" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_missing_csrf_and_current_role_change_prevent_scheduling" time="1.745" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_default_application_has_one_job_reader_and_unauthenticated_workflow_denial" time="0.103" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_default_api_to_registered_worker_publishes_atomic_structured_results" time="2.062"><failure message="AssertionError: assert 'blocked' == 'succeeded'&#10;  &#10;  - succeeded&#10;  + blocked">execution_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_api_a2349c3327fd40408c0d25d5598b6647)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-739/test_default_api_to_registered0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001BB338B47A0&gt;
+
+    def test_default_api_to_registered_worker_publishes_atomic_structured_results(
+        execution_engine, tmp_path, monkeypatch
+    ):
+        _, scope, _, event_id, _, _ = setup(execution_engine, tmp_path)
+        runtime = worker_runtime(execution_engine, tmp_path, monkeypatch)
+        with application_client(execution_engine, tmp_path, scope) as client:
+            response = client.post(
+                f"/v1/events/{event_id}/enrichment-jobs",
+                json={"expected_event_version": 1, "dimensions": ["cvss", "versions"]},
+                headers={
+                    "origin": ORIGIN,
+                    CSRF_HEADER_NAME: "synthetic-csrf",
+                    "Idempotency-Key": "registered-worker",
+                },
+            )
+            assert response.status_code == 202
+            workflow_id = response.json()["workflow_id"]
+            parent_job_id = response.json()["parent_job_id"]
+            assert runtime.consume_job(parent_job_id)["outcome"] == "succeeded"
+            with execution_engine.connect() as connection:
+                steps = (
+                    connection.execute(
+                        select(enrichment_job_steps).where(
+                            enrichment_job_steps.c.workflow_id == workflow_id
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+            assert len(steps) == 3
+            for step in steps:
+                if step["dimension"] is not None:
+&gt;                   assert runtime.consume_job(step["job_id"])["outcome"] == "succeeded"
+E                   AssertionError: assert 'blocked' == 'succeeded'
+E                     
+E                     - succeeded
+E                     + blocked
+
+tests\integration\test_r07_enrichment_api_pg.py:200: AssertionError</failure></testcase><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_registered_worker_rechecks_changed_actor_role_before_creating_children" time="1.351"><failure message="AssertionError: assert not [('8f4adb7f-4c8d-4658-aed7-16a35b60167e', '5a731f03-38c2-5ead-bb66-2d241b0ed112', 'cvss', 'available', ['17bfed49-cd50...9c9f17794a55d92', 1, datetime.datetime(2026, 10, 15, 10, 0, tzinfo=zoneinfo.ZoneInfo(key='Etc/UTC')), None, 'current')]&#10; +  where [('8f4adb7f-4c8d-4658-aed7-16a35b60167e', '5a731f03-38c2-5ead-bb66-2d241b0ed112', 'cvss', 'available', ['17bfed49-cd50...9c9f17794a55d92', 1, datetime.datetime(2026, 10, 15, 10, 0, tzinfo=zoneinfo.ZoneInfo(key='Etc/UTC')), None, 'current')] = all()&#10; +    where all = &lt;sqlalchemy.engine.cursor.CursorResult object at 0x000001BB33F99400&gt;.all&#10; +      where &lt;sqlalchemy.engine.cursor.CursorResult object at 0x000001BB33F99400&gt; = execute(&lt;sqlalchemy.sql.selectable.Select object at 0x000001BB333CC650&gt;)&#10; +        where execute = &lt;sqlalchemy.engine.base.Connection object at 0x000001BB33B5DD30&gt;.execute&#10; +        and   &lt;sqlalchemy.sql.selectable.Select object at 0x000001BB333CC650&gt; = select(Table('enrichment_results', MetaData(), Column('result_id', Text(), table=&lt;enrichment_results&gt;, primary_key=True, null...ce_version', Text(), table=&lt;enrichment_results&gt;), Column('freshness', Text(), table=&lt;enrichment_results&gt;), schema=None))">execution_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_api_2e1879a0b51a4126bcd1eafef60caa7a)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-739/test_registered_worker_recheck0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001BB339B16D0&gt;
+
+    def test_registered_worker_rechecks_changed_actor_role_before_creating_children(
+        execution_engine, tmp_path, monkeypatch
+    ):
+        _, scope, _, _, _, receipt = setup(execution_engine, tmp_path)
+        runtime = worker_runtime(execution_engine, tmp_path, monkeypatch)
+        with execution_engine.begin() as connection:
+            connection.execute(
+                update(users)
+                .where(users.c.user_id == scope.user_id)
+                .values(role="viewer", tenant_id="synthetic-changed-tenant")
+            )
+        assert runtime.consume_job(str(receipt.parent_job_id))["outcome"] == "blocked"
+        with execution_engine.connect() as connection:
+            assert not connection.execute(select(enrichment_job_steps)).all()
+&gt;           assert not connection.execute(select(enrichment_results)).all()
+E           AssertionError: assert not [('8f4adb7f-4c8d-4658-aed7-16a35b60167e', '5a731f03-38c2-5ead-bb66-2d241b0ed112', 'cvss', 'available', ['17bfed49-cd50...9c9f17794a55d92', 1, datetime.datetime(2026, 10, 15, 10, 0, tzinfo=zoneinfo.ZoneInfo(key='Etc/UTC')), None, 'current')]
+E            +  where [('8f4adb7f-4c8d-4658-aed7-16a35b60167e', '5a731f03-38c2-5ead-bb66-2d241b0ed112', 'cvss', 'available', ['17bfed49-cd50...9c9f17794a55d92', 1, datetime.datetime(2026, 10, 15, 10, 0, tzinfo=zoneinfo.ZoneInfo(key='Etc/UTC')), None, 'current')] = all()
+E            +    where all = &lt;sqlalchemy.engine.cursor.CursorResult object at 0x000001BB33F99400&gt;.all
+E            +      where &lt;sqlalchemy.engine.cursor.CursorResult object at 0x000001BB33F99400&gt; = execute(&lt;sqlalchemy.sql.selectable.Select object at 0x000001BB333CC650&gt;)
+E            +        where execute = &lt;sqlalchemy.engine.base.Connection object at 0x000001BB33B5DD30&gt;.execute
+E            +        and   &lt;sqlalchemy.sql.selectable.Select object at 0x000001BB333CC650&gt; = select(Table('enrichment_results', MetaData(), Column('result_id', Text(), table=&lt;enrichment_results&gt;, primary_key=True, null...ce_version', Text(), table=&lt;enrichment_results&gt;), Column('freshness', Text(), table=&lt;enrichment_results&gt;), schema=None))
+
+tests\integration\test_r07_enrichment_api_pg.py:241: AssertionError</failure></testcase></testsuite></testsuites>

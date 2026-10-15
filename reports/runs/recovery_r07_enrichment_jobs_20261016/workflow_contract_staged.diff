@@ -1,0 +1,749 @@
+diff --git a/backend/migrations/versions/0017_enrichment_job_workflows.py b/backend/migrations/versions/0017_enrichment_job_workflows.py
+new file mode 100644
+index 0000000..eece510
+--- /dev/null
++++ b/backend/migrations/versions/0017_enrichment_job_workflows.py
+@@ -0,0 +1,160 @@
++"""Persist enrichment workflow relations and irreversible external-call reservations.
++
++Revision ID: 0017_enrichment_job_workflows
++Revises: 0016_source_response_receipts
++"""
++
++import hashlib
++
++import sqlalchemy as sa
++from alembic import op
++from sqlalchemy.dialects.postgresql import JSONB
++
++revision = "0017_enrichment_job_workflows"
++down_revision = "0016_source_response_receipts"
++branch_labels = None
++depends_on = None
++
++
++def upgrade() -> None:
++    """Existing jobs and facts retain authority; metadata stores no duplicate job status."""
++    op.create_table(
++        "enrichment_workflows",
++        sa.Column("workflow_id", sa.Text(), primary_key=True),
++        sa.Column("parent_job_id", sa.Text(), sa.ForeignKey("job_runs.job_id"), nullable=False),
++        sa.Column("actor_user_id", sa.Text(), sa.ForeignKey("users.user_id"), nullable=False),
++        sa.Column("actor_session_hash", sa.Text(), nullable=False),
++        sa.Column("actor_tenant_id", sa.Text()),
++        sa.Column("actor_role", sa.Text(), nullable=False),
++        sa.Column("actor_permission_version", sa.Integer(), nullable=False, server_default="1"),
++        sa.Column("event_id", sa.Text(), sa.ForeignKey("events.event_id"), nullable=False),
++        sa.Column("visibility", sa.Text(), nullable=False),
++        sa.Column("tenant_id", sa.Text()),
++        sa.Column("request_payload", JSONB(), nullable=False),
++        sa.Column("request_sha256", sa.Text(), nullable=False),
++        sa.Column("rule_version", sa.Text(), nullable=False),
++        sa.Column(
++            "execution_policy", JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")
++        ),
++        sa.Column(
++            "execution_policy_sha256",
++            sa.Text(),
++            nullable=False,
++            server_default=hashlib.sha256(b"{}").hexdigest(),
++        ),
++        sa.Column("input_context", JSONB()),
++        sa.Column("input_fingerprint", sa.Text()),
++        sa.Column("initialized_at", sa.DateTime(timezone=True)),
++        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
++        sa.UniqueConstraint("parent_job_id", name="uq_enrichment_workflow_parent_job"),
++        sa.CheckConstraint(
++            "visibility IN ('public','tenant')", name="ck_enrichment_workflow_visibility"
++        ),
++        sa.CheckConstraint(
++            "(visibility='public' AND tenant_id IS NULL) OR "
++            "(visibility='tenant' AND tenant_id IS NOT NULL)",
++            name="ck_enrichment_workflow_tenant",
++        ),
++        sa.CheckConstraint(
++            "actor_session_hash ~ '^[0-9a-f]{64}$' AND request_sha256 ~ '^[0-9a-f]{64}$'",
++            name="ck_enrichment_workflow_digests",
++        ),
++        sa.CheckConstraint(
++            "actor_role IN ('system_admin','tenant_admin','analyst','viewer')",
++            name="ck_enrichment_workflow_actor_role",
++        ),
++        sa.CheckConstraint(
++            "actor_permission_version>0 AND execution_policy_sha256 ~ '^[0-9a-f]{64}$' AND "
++            "jsonb_typeof(execution_policy)='object' "
++            "AND octet_length(execution_policy::text)<=16384",
++            name="ck_enrichment_workflow_execution_policy",
++        ),
++        sa.CheckConstraint(
++            "jsonb_typeof(request_payload)='object' AND octet_length(request_payload::text)<=8192",
++            name="ck_enrichment_workflow_request",
++        ),
++        sa.CheckConstraint(
++            "(input_context IS NULL AND input_fingerprint IS NULL AND initialized_at IS NULL) OR "
++            "(input_context IS NOT NULL AND jsonb_typeof(input_context)='object' AND "
++            "input_fingerprint IS NOT NULL AND input_fingerprint ~ '^[0-9a-f]{64}$' "
++            "AND initialized_at IS NOT NULL)",
++            name="ck_enrichment_workflow_initialized",
++        ),
++    )
++    op.create_index(
++        "ix_enrichment_workflow_event", "enrichment_workflows", ["event_id", "created_at"]
++    )
++    op.create_index(
++        "ix_enrichment_workflow_actor", "enrichment_workflows", ["actor_user_id", "created_at"]
++    )
++    op.create_table(
++        "enrichment_job_steps",
++        sa.Column("job_id", sa.Text(), sa.ForeignKey("job_runs.job_id"), primary_key=True),
++        sa.Column(
++            "workflow_id",
++            sa.Text(),
++            sa.ForeignKey("enrichment_workflows.workflow_id"),
++            nullable=False,
++        ),
++        sa.Column("step_key", sa.Text(), nullable=False),
++        sa.Column("dimension", sa.Text()),
++        sa.Column("provider", sa.Text()),
++        sa.Column("output_token_budget", sa.Integer(), nullable=False, server_default="0"),
++        sa.Column("model_call_reserved_at", sa.DateTime(timezone=True)),
++        sa.Column("model_call_completed_at", sa.DateTime(timezone=True)),
++        sa.Column("model_trace", JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
++        sa.Column("result_payload", JSONB()),
++        sa.Column("result_sha256", sa.Text()),
++        sa.Column("result_recorded_at", sa.DateTime(timezone=True)),
++        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
++        sa.UniqueConstraint("workflow_id", "step_key", name="uq_enrichment_workflow_step"),
++        sa.CheckConstraint(
++            "dimension IS NULL OR dimension IN "
++            "('cvss','epss','kev','cwe','atlas','versions','literature','poc','exposure')",
++            name="ck_enrichment_step_dimension",
++        ),
++        sa.CheckConstraint(
++            "(step_key='publication' AND dimension IS NULL AND provider IS NULL) OR "
++            "(dimension IS NOT NULL AND step_key=dimension AND provider IS NULL) OR "
++            "(dimension IS NOT NULL AND dimension='exposure' AND provider IS NOT NULL "
++            "AND provider IN ('hunter','quake') AND "
++            "step_key='exposure:' || provider)",
++            name="ck_enrichment_step_identity",
++        ),
++        sa.CheckConstraint(
++            "(dimension IN ('atlas','versions','literature','poc') "
++            "AND output_token_budget=1024) OR "
++            "((dimension IS NULL OR dimension NOT IN ('atlas','versions','literature','poc')) "
++            "AND output_token_budget=0)",
++            name="ck_enrichment_step_token_budget",
++        ),
++        sa.CheckConstraint(
++            "jsonb_typeof(model_trace)='array' AND octet_length(model_trace::text)<=65536",
++            name="ck_enrichment_step_model_trace",
++        ),
++        sa.CheckConstraint(
++            "(dimension IS NOT NULL AND dimension IN ('atlas','versions','literature','poc')) OR "
++            "(model_call_reserved_at IS NULL AND model_call_completed_at IS NULL "
++            "AND model_trace='[]'::jsonb)",
++            name="ck_enrichment_step_model_call_scope",
++        ),
++        sa.CheckConstraint(
++            "model_call_completed_at IS NULL OR (model_call_reserved_at IS NOT NULL AND "
++            "model_call_completed_at>=model_call_reserved_at)",
++            name="ck_enrichment_step_call_times",
++        ),
++        sa.CheckConstraint(
++            "(result_payload IS NULL AND result_sha256 IS NULL AND result_recorded_at IS NULL) OR "
++            "(result_payload IS NOT NULL AND jsonb_typeof(result_payload)='object' AND "
++            "octet_length(result_payload::text)<=2097152 AND "
++            "result_sha256 IS NOT NULL AND result_sha256 ~ '^[0-9a-f]{64}$' "
++            "AND result_recorded_at IS NOT NULL)",
++            name="ck_enrichment_step_result",
++        ),
++    )
++    op.create_index("ix_enrichment_steps_workflow", "enrichment_job_steps", ["workflow_id"])
++
++
++def downgrade() -> None:
++    """Paid-call reservations and historical inputs require forward repair or backup recovery."""
++    raise RuntimeError("enrichment workflow history requires forward-only recovery")
+diff --git a/backend/src/ai_intel/enrichment/job_contracts.py b/backend/src/ai_intel/enrichment/job_contracts.py
+new file mode 100644
+index 0000000..a571621
+--- /dev/null
++++ b/backend/src/ai_intel/enrichment/job_contracts.py
+@@ -0,0 +1,72 @@
++"""Bounded business requests select dimensions without granting identity or egress authority."""
++
++from typing import Literal
++
++from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
++
++from ai_intel.domain.enrichment_values import DimensionName
++from ai_intel.infrastructure.models.generation import Provider
++
++ALL_ENRICHMENT_DIMENSIONS: tuple[DimensionName, ...] = (
++    "cvss",
++    "epss",
++    "kev",
++    "cwe",
++    "atlas",
++    "versions",
++    "literature",
++    "poc",
++    "exposure",
++)
++
++
++class EnrichmentExecutionPolicy(BaseModel):
++    """Only server configuration creates this policy; no HTTP request grants model egress."""
++
++    model_config = ConfigDict(extra="forbid", frozen=True, strict=True, hide_input_in_errors=True)
++
++    generation_enabled: bool = False
++    generation_provider: Provider | None = None
++    approved_model: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_.:/-]{1,200}$")
++    private_egress_granted: bool = False
++    aggregate_enabled: bool = False
++    data_mode: Literal["live", "fixture"] = "live"
++
++    @model_validator(mode="after")
++    def validate_model_authority(self) -> "EnrichmentExecutionPolicy":
++        if self.generation_enabled and (
++            self.generation_provider is None or self.approved_model is None
++        ):
++            raise ValueError("enabled generation requires an approved provider and model")
++        if self.private_egress_granted and not self.generation_enabled:
++            raise ValueError("private model egress requires enabled server generation")
++        return self
++
++
++class EventEnrichmentRequest(BaseModel):
++    """Unknown product selection is retained; it never becomes an arbitrary provider query."""
++
++    model_config = ConfigDict(extra="forbid", frozen=True, strict=True, hide_input_in_errors=True)
++
++    expected_event_version: int = Field(strict=True, ge=1)
++    dimensions: tuple[DimensionName, ...] = Field(
++        default=ALL_ENRICHMENT_DIMENSIONS, min_length=1, max_length=9
++    )
++    product_query_id: Literal["ollama", "vllm"] | None = None
++
++    @field_validator("dimensions", mode="before")
++    @classmethod
++    def validate_selected_dimensions(cls, value: object) -> object:
++        if not isinstance(value, (list, tuple)) or not 1 <= len(value) <= 9:
++            raise ValueError("one to nine dimensions are required")
++        if any(type(item) is not str or item not in ALL_ENRICHMENT_DIMENSIONS for item in value):
++            raise ValueError("only registered dimensions are permitted")
++        if len(set(value)) != len(value):
++            raise ValueError("duplicate dimension selection")
++        return tuple(dimension for dimension in ALL_ENRICHMENT_DIMENSIONS if dimension in value)
++
++    @model_validator(mode="after")
++    def validate_product_selection(self) -> "EventEnrichmentRequest":
++        if self.product_query_id is not None and "exposure" not in self.dimensions:
++            raise ValueError("product selection requires the exposure dimension")
++        return self
+diff --git a/backend/src/ai_intel/enrichment/job_models.py b/backend/src/ai_intel/enrichment/job_models.py
+new file mode 100644
+index 0000000..bd28b0e
+--- /dev/null
++++ b/backend/src/ai_intel/enrichment/job_models.py
+@@ -0,0 +1,147 @@
++"""Workflow relations and external-call receipts reuse PostgreSQL's existing job authority."""
++
++import hashlib
++
++from sqlalchemy import (
++    CheckConstraint,
++    Column,
++    DateTime,
++    ForeignKey,
++    Index,
++    Integer,
++    Table,
++    Text,
++    UniqueConstraint,
++)
++from sqlalchemy.dialects.postgresql import JSONB
++
++from ai_intel.knowledge.models import TENANT_XOR, VISIBILITY_DOMAIN, metadata
++
++enrichment_workflows = Table(
++    "enrichment_workflows",
++    metadata,
++    Column("workflow_id", Text, primary_key=True),
++    Column("parent_job_id", Text, ForeignKey("job_runs.job_id"), nullable=False),
++    Column("actor_user_id", Text, ForeignKey("users.user_id"), nullable=False),
++    Column("actor_session_hash", Text, nullable=False),
++    Column("actor_tenant_id", Text),
++    Column("actor_role", Text, nullable=False),
++    Column("actor_permission_version", Integer, nullable=False, server_default="1"),
++    Column("event_id", Text, ForeignKey("events.event_id"), nullable=False),
++    Column("visibility", Text, nullable=False),
++    Column("tenant_id", Text),
++    Column("request_payload", JSONB, nullable=False),
++    Column("request_sha256", Text, nullable=False),
++    Column("rule_version", Text, nullable=False),
++    Column("execution_policy", JSONB, nullable=False, server_default="{}"),
++    Column(
++        "execution_policy_sha256",
++        Text,
++        nullable=False,
++        server_default=hashlib.sha256(b"{}").hexdigest(),
++    ),
++    Column("input_context", JSONB),
++    Column("input_fingerprint", Text),
++    Column("initialized_at", DateTime(timezone=True)),
++    Column("created_at", DateTime(timezone=True), nullable=False),
++    UniqueConstraint("parent_job_id", name="uq_enrichment_workflow_parent_job"),
++    CheckConstraint(VISIBILITY_DOMAIN, name="ck_enrichment_workflow_visibility"),
++    CheckConstraint(TENANT_XOR, name="ck_enrichment_workflow_tenant"),
++    CheckConstraint(
++        "actor_session_hash ~ '^[0-9a-f]{64}$' AND request_sha256 ~ '^[0-9a-f]{64}$'",
++        name="ck_enrichment_workflow_digests",
++    ),
++    CheckConstraint(
++        "actor_role IN ('system_admin','tenant_admin','analyst','viewer')",
++        name="ck_enrichment_workflow_actor_role",
++    ),
++    CheckConstraint(
++        "actor_permission_version>0 AND execution_policy_sha256 ~ '^[0-9a-f]{64}$' AND "
++        "jsonb_typeof(execution_policy)='object' AND octet_length(execution_policy::text)<=16384",
++        name="ck_enrichment_workflow_execution_policy",
++    ),
++    CheckConstraint(
++        "jsonb_typeof(request_payload)='object' AND octet_length(request_payload::text)<=8192",
++        name="ck_enrichment_workflow_request",
++    ),
++    CheckConstraint(
++        "(input_context IS NULL AND input_fingerprint IS NULL AND initialized_at IS NULL) OR "
++        "(input_context IS NOT NULL AND jsonb_typeof(input_context)='object' AND "
++        "input_fingerprint IS NOT NULL AND input_fingerprint ~ '^[0-9a-f]{64}$' "
++        "AND initialized_at IS NOT NULL)",
++        name="ck_enrichment_workflow_initialized",
++    ),
++)
++Index(
++    "ix_enrichment_workflow_event",
++    enrichment_workflows.c.event_id,
++    enrichment_workflows.c.created_at,
++)
++Index(
++    "ix_enrichment_workflow_actor",
++    enrichment_workflows.c.actor_user_id,
++    enrichment_workflows.c.created_at,
++)
++
++enrichment_job_steps = Table(
++    "enrichment_job_steps",
++    metadata,
++    Column("job_id", Text, ForeignKey("job_runs.job_id"), primary_key=True),
++    Column("workflow_id", Text, ForeignKey("enrichment_workflows.workflow_id"), nullable=False),
++    Column("step_key", Text, nullable=False),
++    Column("dimension", Text),
++    Column("provider", Text),
++    Column("output_token_budget", Integer, nullable=False, server_default="0"),
++    Column("model_call_reserved_at", DateTime(timezone=True)),
++    Column("model_call_completed_at", DateTime(timezone=True)),
++    Column("model_trace", JSONB, nullable=False, server_default="[]"),
++    Column("result_payload", JSONB),
++    Column("result_sha256", Text),
++    Column("result_recorded_at", DateTime(timezone=True)),
++    Column("created_at", DateTime(timezone=True), nullable=False),
++    UniqueConstraint("workflow_id", "step_key", name="uq_enrichment_workflow_step"),
++    CheckConstraint(
++        "dimension IS NULL OR dimension IN "
++        "('cvss','epss','kev','cwe','atlas','versions','literature','poc','exposure')",
++        name="ck_enrichment_step_dimension",
++    ),
++    CheckConstraint(
++        "(step_key='publication' AND dimension IS NULL AND provider IS NULL) OR "
++        "(dimension IS NOT NULL AND step_key=dimension AND provider IS NULL) OR "
++        "(dimension IS NOT NULL AND dimension='exposure' AND provider IS NOT NULL "
++        "AND provider IN ('hunter','quake') AND "
++        "step_key='exposure:' || provider)",
++        name="ck_enrichment_step_identity",
++    ),
++    CheckConstraint(
++        "(dimension IN ('atlas','versions','literature','poc') AND output_token_budget=1024) OR "
++        "((dimension IS NULL OR dimension NOT IN ('atlas','versions','literature','poc')) "
++        "AND output_token_budget=0)",
++        name="ck_enrichment_step_token_budget",
++    ),
++    CheckConstraint(
++        "jsonb_typeof(model_trace)='array' AND octet_length(model_trace::text)<=65536",
++        name="ck_enrichment_step_model_trace",
++    ),
++    CheckConstraint(
++        "(dimension IS NOT NULL AND dimension IN ('atlas','versions','literature','poc')) OR "
++        "(model_call_reserved_at IS NULL AND model_call_completed_at IS NULL "
++        "AND model_trace='[]'::jsonb)",
++        name="ck_enrichment_step_model_call_scope",
++    ),
++    CheckConstraint(
++        "model_call_completed_at IS NULL OR "
++        "(model_call_reserved_at IS NOT NULL AND "
++        "model_call_completed_at>=model_call_reserved_at)",
++        name="ck_enrichment_step_call_times",
++    ),
++    CheckConstraint(
++        "(result_payload IS NULL AND result_sha256 IS NULL AND result_recorded_at IS NULL) OR "
++        "(result_payload IS NOT NULL AND jsonb_typeof(result_payload)='object' AND "
++        "octet_length(result_payload::text)<=2097152 AND "
++        "result_sha256 IS NOT NULL AND result_sha256 ~ '^[0-9a-f]{64}$' "
++        "AND result_recorded_at IS NOT NULL)",
++        name="ck_enrichment_step_result",
++    ),
++)
++Index("ix_enrichment_steps_workflow", enrichment_job_steps.c.workflow_id)
+diff --git a/backend/tests/contract/test_r07_enrichment_execution_policy.py b/backend/tests/contract/test_r07_enrichment_execution_policy.py
+new file mode 100644
+index 0000000..9f7d172
+--- /dev/null
++++ b/backend/tests/contract/test_r07_enrichment_execution_policy.py
+@@ -0,0 +1,49 @@
++"""Execution policy is a bounded server decision, separate from user selection."""
++
++import pytest
++from pydantic import ValidationError
++
++from ai_intel.enrichment.job_contracts import EnrichmentExecutionPolicy, EventEnrichmentRequest
++
++
++def test_disabled_default_grants_no_external_authority():
++    policy = EnrichmentExecutionPolicy()
++    assert not policy.generation_enabled and not policy.private_egress_granted
++    assert not policy.aggregate_enabled
++    assert policy.generation_provider is None and policy.approved_model is None
++
++
++def test_explicit_server_model_preserves_provider_and_data_mode():
++    policy = EnrichmentExecutionPolicy(
++        generation_enabled=True,
++        generation_provider="deepseek_openai",
++        approved_model="deepseek-v4-flash",
++        data_mode="fixture",
++    )
++    assert policy.data_mode == "fixture" and not policy.private_egress_granted
++
++
++@pytest.mark.parametrize(
++    "value",
++    [
++        {"generation_enabled": True},
++        {"generation_enabled": True, "generation_provider": "openai"},
++        {"generation_enabled": True, "approved_model": "approved-test-model"},
++        {"generation_enabled": "true"},
++        {"private_egress_granted": True},
++        {"generation_provider": "arbitrary_endpoint"},
++        {"approved_model": "name with unsafe whitespace"},
++        {"generation_api_key": "synthetic-forbidden-value"},
++    ],
++)
++def test_invalid_or_secret_bearing_policy_is_rejected(value):
++    with pytest.raises(ValidationError):
++        EnrichmentExecutionPolicy.model_validate(value)
++
++
++@pytest.mark.parametrize(
++    "field", ["generation_enabled", "private_egress_granted", "aggregate_enabled"]
++)
++def test_user_request_cannot_supply_execution_authority(field):
++    with pytest.raises(ValidationError):
++        EventEnrichmentRequest.model_validate({"expected_event_version": 1, field: True})
+diff --git a/backend/tests/contract/test_r07_enrichment_job_request.py b/backend/tests/contract/test_r07_enrichment_job_request.py
+new file mode 100644
+index 0000000..0fb5dbf
+--- /dev/null
++++ b/backend/tests/contract/test_r07_enrichment_job_request.py
+@@ -0,0 +1,67 @@
++"""Workflow requests carry business choices, never tenant identity or model credentials."""
++
++import pytest
++from pydantic import ValidationError
++
++from ai_intel.enrichment.job_contracts import (
++    ALL_ENRICHMENT_DIMENSIONS,
++    EventEnrichmentRequest,
++)
++
++
++def test_default_request_preserves_all_nine_dimensions():
++    request = EventEnrichmentRequest.model_validate_json('{"expected_event_version":1}')
++    assert request.dimensions == ALL_ENRICHMENT_DIMENSIONS
++    assert len(request.dimensions) == 9
++    assert request.product_query_id is None
++
++
++def test_dimension_order_is_canonical_but_selection_is_not_expanded():
++    request = EventEnrichmentRequest.model_validate_json(
++        '{"expected_event_version":4,"dimensions":["versions","cvss"]}'
++    )
++    assert request.dimensions == ("cvss", "versions")
++    assert request.expected_event_version == 4
++
++
++@pytest.mark.parametrize("dimension", ALL_ENRICHMENT_DIMENSIONS)
++def test_every_dimension_has_an_independent_request(dimension):
++    request = EventEnrichmentRequest.model_validate_json(
++        '{"expected_event_version":1,"dimensions":["' + dimension + '"]}'
++    )
++    assert request.dimensions == (dimension,)
++
++
++@pytest.mark.parametrize(
++    "body",
++    [
++        '{"expected_event_version":true}',
++        '{"expected_event_version":0}',
++        '{"expected_event_version":"1"}',
++        '{"expected_event_version":1,"dimensions":[]}',
++        '{"expected_event_version":1,"dimensions":["cvss","cvss"]}',
++        '{"expected_event_version":1,"dimensions":["made_up"]}',
++        '{"expected_event_version":1,"dimensions":"atlas"}',
++        '{"expected_event_version":1,"dimensions":[null]}',
++        '{"expected_event_version":1,"tenant_id":"self_reported"}',
++        '{"expected_event_version":1,"role":"system_admin"}',
++        '{"expected_event_version":1,"api_key":"untrusted_request_field"}',
++        '{"expected_event_version":1,"model":"arbitrary_provider_model"}',
++        '{"expected_event_version":1,"product_query_id":"arbitrary_product"}',
++        '{"expected_event_version":1,"dimensions":["atlas"],"product_query_id":"ollama"}',
++    ],
++)
++def test_invalid_or_authority_bearing_requests_are_rejected(body):
++    with pytest.raises(ValidationError):
++        EventEnrichmentRequest.model_validate_json(body)
++
++
++@pytest.mark.parametrize("query_id", ["ollama", "vllm"])
++def test_aggregate_product_choices_are_closed_and_separate_from_asset_scope(query_id):
++    request = EventEnrichmentRequest.model_validate_json(
++        '{"expected_event_version":1,"dimensions":["exposure"],"product_query_id":"'
++        + query_id
++        + '"}'
++    )
++    assert request.product_query_id == query_id
++    assert request.dimensions == ("exposure",)
+diff --git a/backend/tests/integration/test_r07_enrichment_job_metadata_pg.py b/backend/tests/integration/test_r07_enrichment_job_metadata_pg.py
+new file mode 100644
+index 0000000..5f3a15f
+--- /dev/null
++++ b/backend/tests/integration/test_r07_enrichment_job_metadata_pg.py
+@@ -0,0 +1,162 @@
++"""Real forward migration and independent reservations preserve the existing job authority."""
++
++import hashlib
++from concurrent.futures import ThreadPoolExecutor
++from datetime import UTC, datetime
++from uuid import uuid4
++
++import pytest
++from sqlalchemy import insert, inspect, select, text, update
++from sqlalchemy.exc import IntegrityError
++from sqlalchemy.orm import Session
++from test_r06_catalog_documents_pg import catalog_engine as catalog_engine
++from test_r07_enrichment_inputs_pg import seeded_event
++
++from ai_intel.enrichment.job_models import enrichment_job_steps, enrichment_workflows
++from ai_intel.infrastructure.outbox import enqueue_job
++from ai_intel.knowledge.models import job_runs, users
++
++pytestmark = pytest.mark.real_pg
++NOW = datetime(2026, 10, 16, tzinfo=UTC)
++
++
++def seed_workflow(engine, tmp_path):
++    _, event_id = seeded_event(engine, tmp_path)
++    actor, workflow = str(uuid4()), str(uuid4())
++    with Session(engine) as session, session.begin():
++        session.execute(
++            insert(users).values(
++                user_id=actor,
++                username="synthetic-job-" + actor,
++                password_hash="unusable synthetic hash",
++                tenant_id=None,
++                role="system_admin",
++                created_at=NOW,
++            )
++        )
++        parent = enqueue_job(session, None, "event_enrichment_dispatch", b"{}", NOW)
++        session.execute(
++            insert(enrichment_workflows).values(
++                workflow_id=workflow,
++                parent_job_id=parent,
++                actor_user_id=actor,
++                actor_session_hash=hashlib.sha256(b"synthetic-session").hexdigest(),
++                actor_role="system_admin",
++                event_id=str(event_id),
++                visibility="public",
++                request_payload={"expected_event_version": 1, "dimensions": ["versions"]},
++                request_sha256="a" * 64,
++                rule_version="r07-enrichment-workflow-1",
++                created_at=NOW,
++            )
++        )
++        child = enqueue_job(session, None, "event_enrichment_dimension", b"{}", NOW, max_attempts=1)
++        session.execute(
++            insert(enrichment_job_steps).values(
++                job_id=child,
++                workflow_id=workflow,
++                step_key="versions",
++                dimension="versions",
++                output_token_budget=1024,
++                created_at=NOW,
++            )
++        )
++    return workflow, parent, child
++
++
++def test_forward_migration_exposes_metadata_without_a_duplicate_job_status(catalog_engine):
++    tables = set(inspect(catalog_engine).get_table_names())
++    assert {"enrichment_workflows", "enrichment_job_steps", "job_runs"} <= tables
++    for name in ("enrichment_workflows", "enrichment_job_steps"):
++        assert "status" not in {row["name"] for row in inspect(catalog_engine).get_columns(name)}
++    with catalog_engine.connect() as connection:
++        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
++            "0017_enrichment_job_workflows"
++        )
++
++
++@pytest.mark.parametrize(
++    "changes",
++    [
++        {"input_context": {}},
++        {"input_context": {}, "initialized_at": NOW},
++        {"input_context": {}, "input_fingerprint": "b" * 64},
++        {"input_fingerprint": "b" * 64},
++        {"actor_session_hash": "raw-cookie-is-not-a-hash"},
++        {"visibility": "tenant", "tenant_id": None},
++        {"visibility": "public", "tenant_id": "other"},
++        {"actor_permission_version": 0},
++        {"execution_policy": []},
++        {"execution_policy_sha256": "unknown"},
++    ],
++)
++def test_workflow_incomplete_or_invalid_identity_is_rejected(catalog_engine, tmp_path, changes):
++    workflow, _, _ = seed_workflow(catalog_engine, tmp_path)
++    with pytest.raises(IntegrityError), catalog_engine.begin() as connection:
++        connection.execute(
++            update(enrichment_workflows)
++            .where(enrichment_workflows.c.workflow_id == workflow)
++            .values(**changes)
++        )
++
++
++@pytest.mark.parametrize(
++    "changes",
++    [
++        {"dimension": None, "step_key": "invalid"},
++        {"dimension": None, "step_key": "exposure:hunter", "provider": "hunter"},
++        {"dimension": "exposure", "step_key": "exposure:unknown", "provider": "unknown"},
++        {"result_payload": {}, "result_recorded_at": NOW},
++        {"result_payload": {}, "result_sha256": "a" * 64},
++        {"model_call_completed_at": NOW},
++        {"output_token_budget": 4096},
++        {
++            "dimension": "exposure",
++            "step_key": "exposure",
++            "output_token_budget": 0,
++            "model_call_reserved_at": NOW,
++        },
++    ],
++)
++def test_step_invalid_nullable_combinations_do_not_bypass_pg_checks(
++    catalog_engine, tmp_path, changes
++):
++    _, _, child = seed_workflow(catalog_engine, tmp_path)
++    with pytest.raises(IntegrityError), catalog_engine.begin() as connection:
++        connection.execute(
++            update(enrichment_job_steps)
++            .where(enrichment_job_steps.c.job_id == child)
++            .values(**changes)
++        )
++
++
++def test_external_reservation_does_not_wait_for_the_handler_job_row(catalog_engine, tmp_path):
++    _, _, child = seed_workflow(catalog_engine, tmp_path)
++
++    def reserve():
++        with catalog_engine.begin() as connection:
++            connection.execute(text("SET LOCAL lock_timeout = '1000ms'"))
++            changed = connection.execute(
++                update(enrichment_job_steps)
++                .where(
++                    enrichment_job_steps.c.job_id == child,
++                    enrichment_job_steps.c.model_call_reserved_at.is_(None),
++                )
++                .values(model_call_reserved_at=NOW)
++                .returning(enrichment_job_steps.c.job_id)
++            ).scalar_one()
++            return changed
++
++    with Session(catalog_engine) as session, session.begin():
++        session.execute(select(job_runs).where(job_runs.c.job_id == child).with_for_update()).one()
++        with ThreadPoolExecutor(max_workers=1) as executor:
++            assert executor.submit(reserve).result(timeout=3) == child
++    with catalog_engine.connect() as connection:
++        assert (
++            connection.scalar(
++                select(enrichment_job_steps.c.model_call_reserved_at).where(
++                    enrichment_job_steps.c.job_id == child
++                )
++            )
++            == NOW
++        )
+diff --git a/docs/decisions/CR-R07_enrichment_jobs.md b/docs/decisions/CR-R07_enrichment_jobs.md
+new file mode 100644
+index 0000000..548f897
+--- /dev/null
++++ b/docs/decisions/CR-R07_enrichment_jobs.md
+@@ -0,0 +1,50 @@
++# CR-R07 · 九维异步任务与真实调用轨迹
++
++状态：awaiting_review。本变更实现已批准R07九维与R03持久任务目标，不削减原T卡、评分或盲测。
++
++## 输入输出与权限
++
++新增POST `/v1/events/{event_id}/enrichment-jobs`接收expected_event_version、
++dimensions（默认九维、明确子集不扩展）、product_query_id（仅ollama/vllm或未知）。
++不接收tenant、role、模型名、密钥或自报egress授权；会话、Origin/CSRF及Idempotency-Key沿用05合同。
++公共事件写入须公共管理员，私有事件须现有WRITE_ASSET，身份来自认证上下文；
++分析员的资产写权限合同冲突另在R11处理，不能在此悄然增加权限。
++
++202返回调度父job和workflow标识；GET工作流明确区分调度完成与九维完成。
++子任务状态只读PG job_runs，不按动画计进度。默认仍九维；未知产品查询不发送测绘请求，
++暴露维度明确unknown/blocked，不用零或资产受影响数量替代服务统计。
++
++## 有界执行与持久化
++
++父任务冻结实际事件/原文版本再产生逐维子任务。每个模型子任务最多一次wirecall、
++默认1024输出、客户端20秒，与现有Celery 25/30秒边界协调；四模型默认总4096。
++模型失败与未验证候选保留原状态。租约丢失/版本变化不发布半写结果。
++外部模型调用前独立PG记录预约，调用后保留实际provider/model/token/时间/hash；
++未知费用unknown，worker中断且无回执记incomplete_interrupted，不重发付费请求假装幂等。
++任何新独立事务不得等待handler持有的job/原文锁；metadata预创建、预约只更新自己的元数据。
++
++PG job_runs是任务状态权威；enrichment_results/claims仍为事实权威。
++新工作流和调用元数据仅保存关系、不可变请求与轨迹，不复制另一套业务状态或事实。
++请求之外另冻结服务器execution policy及hash、actor permission_version；provider/approved model、
++generation/aggregate开关与private egress均不从用户body取得。执行时当前配置、权限或会话不符
++原快照就阻断，不能复用旧幂等键悄悄换模型或扩大权限；凭据与其hash不写policy。
++exposure两个provider使用独立20秒子步骤，再由最终发布汇合成逻辑一个维度；物理子job
++数量可以多于九，前端仍明确九维状态，不能将调度父任务成功当全部维度成功。
++原会话hash用于执行时撤销/过期/当前角色复查，原token、CSRF、密钥不写job payload或公开响应。
++
++## 兼容、迁移与回滚
++
++计划0017增加工作流/子任务元数据，两表与既有job/事实关联；原来源任务、问答与维度读格式不改。
++认证会话不做可破坏历史的外键；原文、资产明细和model prompt不写公开轨迹。
++前向迁移只建新表/索引，不downgrade删除调用证据。回滚接线可停止新调度，
++已有job/事实与费用轨迹保留，未完成工作流不能包装完成。
++新增REST与实际worker handler须同批接到app/runtime并独立审查，只有定义不算产品验收。
++
++## 验收影响
++
++R07/R03/T07/T18/T19/T20/T35/T41能力切片。覆盖严格输入/九维不遗漏、
++租户与当前角色、撤权/重放/幂等冲突、真实PG+默认worker、每维预算/部分失败/费用轨迹、
++重启与任务接管。fixture只unit/contract，真实模型/source/browser另分live/e2e；
++模型候选仍不可进入supported事实或强边，引用存在不当作内容支持。
++
++首次创建的实际写作时间将由任务报告绑定；此前编写时长未完整记录，不依mtime补写。

@@ -1,0 +1,95 @@
+FF..FF                                                                   [100%]
+================================== FAILURES ===================================
+___ test_default_api_queues_and_reads_workflow_without_model_or_content_io ____
+
+execution_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_execution_api_20261016?options=-c+search_path%3Dtest_r07_execution_c28eb207b0ca44678bd011f3fe97372f+-c+statement_timeout%3D15000+-c+lock_timeout%3D3000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-723/test_default_api_queues_and_re0')
+
+    def test_default_api_queues_and_reads_workflow_without_model_or_content_io(
+        execution_engine, tmp_path
+    ):
+        service, scope, _, event_id, _, original = setup(execution_engine, tmp_path)
+        with application_client(execution_engine, tmp_path, scope) as client:
+            initial = client.get("/v1/enrichment-workflows/" + str(original.workflow_id))
+>           assert initial.status_code == 200
+E           assert 503 == 200
+E            +  where 503 = <Response [503 Service Unavailable]>.status_code
+
+tests\integration\test_r07_enrichment_api_pg.py:41: AssertionError
+____ test_http_body_does_not_supply_identity_or_external_authority[extra0] ____
+
+execution_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_execution_api_20261016?options=-c+search_path%3Dtest_r07_execution_2f228ab2d9e94755a7653feb09923458+-c+statement_timeout%3D15000+-c+lock_timeout%3D3000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-723/test_http_body_does_not_supply0')
+extra = {'tenant_id': 'forged'}
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"tenant_id": "forged"},
+            {"generation_enabled": True},
+            {"product_query_id": "arbitrary-query"},
+        ],
+    )
+    def test_http_body_does_not_supply_identity_or_external_authority(
+        execution_engine, tmp_path, extra
+    ):
+        _, scope, _, event_id, _, _ = setup(execution_engine, tmp_path)
+        with application_client(execution_engine, tmp_path, scope) as client:
+            response = client.post(
+                f"/v1/events/{event_id}/enrichment-jobs", json={"expected_event_version": 1, **extra}
+            )
+>           assert response.status_code == 422
+E           assert 503 == 422
+E            +  where 503 = <Response [503 Service Unavailable]>.status_code
+
+tests\integration\test_r07_enrichment_api_pg.py:94: AssertionError
+________ test_missing_csrf_and_current_role_change_prevent_scheduling _________
+
+execution_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_execution_api_20261016?options=-c+search_path%3Dtest_r07_execution_c1c03ab22bb44cef9e4f8dd9a1449f7a+-c+statement_timeout%3D15000+-c+lock_timeout%3D3000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-723/test_missing_csrf_and_current_0')
+
+    def test_missing_csrf_and_current_role_change_prevent_scheduling(execution_engine, tmp_path):
+        _, scope, _, event_id, _, _ = setup(execution_engine, tmp_path)
+        with application_client(execution_engine, tmp_path, scope) as client:
+            target = f"/v1/events/{event_id}/enrichment-jobs"
+>           assert client.post(target, json={"expected_event_version": 1}).status_code == 403
+E           AssertionError: assert 503 == 403
+E            +  where 503 = <Response [503 Service Unavailable]>.status_code
+E            +    where <Response [503 Service Unavailable]> = post('/v1/events/5a731f03-38c2-5ead-bb66-2d241b0ed112/enrichment-jobs', json={'expected_event_version': 1})
+E            +      where post = <starlette.testclient.TestClient object at 0x000001AB44783470>.post
+
+tests\integration\test_r07_enrichment_api_pg.py:101: AssertionError
+_ test_default_application_has_one_job_reader_and_unauthenticated_workflow_denial _
+
+    def test_default_application_has_one_job_reader_and_unauthenticated_workflow_denial():
+        application = create_application(
+            settings=ApplicationSettings(app_env="test", data_mode="fixture")
+        )
+        for prefix in ("/v1", "/api/v1"):
+>           assert (
+                len(
+                    [
+                        route
+                        for route in application.routes
+                        if getattr(route, "path", "") == prefix + "/jobs/{job_id}"
+                    ]
+                )
+                == 1
+            )
+E           assert 0 == 1
+E            +  where 0 = len([])
+
+tests\integration\test_r07_enrichment_api_pg.py:124: AssertionError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\wt\r07-enrichment-jobs\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\r07-enrichment-jobs\reports\runs\recovery_r07_enrichment_jobs_20261016\api_wiring_pg.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r07_enrichment_api_pg.py::test_default_api_queues_and_reads_workflow_without_model_or_content_io
+FAILED tests/integration/test_r07_enrichment_api_pg.py::test_http_body_does_not_supply_identity_or_external_authority[extra0]
+FAILED tests/integration/test_r07_enrichment_api_pg.py::test_missing_csrf_and_current_role_change_prevent_scheduling
+FAILED tests/integration/test_r07_enrichment_api_pg.py::test_default_application_has_one_job_reader_and_unauthenticated_workflow_denial
+4 failed, 2 passed, 1 warning in 13.90s
