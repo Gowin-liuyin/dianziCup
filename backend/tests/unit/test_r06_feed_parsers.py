@@ -445,3 +445,82 @@ def test_arxiv_del_is_rejected_in_text_or_uri_licence_identifiers(value: str) ->
 def test_rss_del_is_rejected_by_all_official_uri_paths(replacement: tuple[str, str]) -> None:
     with pytest.raises(FeedParseError):
         parse_trailofbits_rss(rss_page().decode().replace(*replacement).encode())
+
+
+@pytest.mark.parametrize(
+    "date",
+    [
+        "Wed, 14 Oct 2026 07:00:0 +1260",
+        "Wed, 14 Oct 2026 7:0:0 +1260",
+        "Wed, 14 Oct 2026 7:0 +1260",
+        "Wed, 14 Oct 2026 7.0.0 +1260",
+        "Wed, 14 Oct 2026 007:000:000 +1260",
+        "Wed, 14 Oct 2026 7:0:0,+1260",
+        "Wed, 14-Oct-26 7:0:0 +1260",
+        "Wed, 14 Oct 7:0:0 +1260 2026",
+        "Wed,14 Oct 2026 7:0:0 +1260",
+        "Wed, 14 Oct 2026 7:0:0 1260",
+        "Wed, 14 Oct 2026 7:0:0 +12_60",
+        "Wed, 14 Oct 2026 7:0:0 +١٢٦٠",
+        "Wed, 14 Oct 2026 ٧:٠:٠ +1260",
+    ],
+    ids=[
+        "single-second",
+        "single-fields",
+        "no-seconds",
+        "dot-clock",
+        "zero-padded",
+        "attached-zone",
+        "rfc850",
+        "ctime",
+        "weekday-fws",
+        "unsigned-zone",
+        "integer-underscore",
+        "integer-unicode",
+        "clock-unicode",
+    ],
+)
+def test_invalid_timezone_is_rejected_for_all_stdlib_clock_shapes(date: str) -> None:
+    payload = rss_page().replace(b"Wed, 14 Oct 2026 07:00:00 -0400", date.encode())
+    with pytest.raises(FeedParseError):
+        parse_trailofbits_rss(payload)
+
+
+@pytest.mark.parametrize(
+    "date,expected",
+    [
+        ("Wed, 14 Oct 2026 7:0:0 -0400", "2026-10-14T11:00:00Z"),
+        ("Wed, 14 Oct 2026 7:0 -0400", "2026-10-14T11:00:00Z"),
+        ("Wed, 14 Oct 2026 7.0.0 -0400", "2026-10-14T11:00:00Z"),
+        ("Wed, 14 Oct 2026 007:000:000 -0400", "2026-10-14T11:00:00Z"),
+        ("Wed, 14 Oct 2026 7:0:0,-0400", "2026-10-14T11:00:00Z"),
+        ("Wed, 14-Oct-26 7:0:0 -0400", "2026-10-14T11:00:00Z"),
+        ("Wed, 14 Oct 7:0:0 -0400 2026", "2026-10-14T11:00:00Z"),
+        ("Wed,14 Oct 2026 7:0:0 -0400", "2026-10-14T11:00:00Z"),
+        ("Wed, 14 Oct 2026 ٧:٠:٠ -0400", "2026-10-14T11:00:00Z"),
+        ("Wed, 14 Oct 2026 7:0:0 -0400 (source +1260)", "2026-10-14T11:00:00Z"),
+        ("Wed, 14 Oct 2026 7.0.0 GMT (source +1260)", "2026-10-14T07:00:00Z"),
+        ("Wed, 14 Oct 2026 7:0:0 -0400 source +1260", "2026-10-14T11:00:00Z"),
+        ("Wed, 14-Oct-2060 7:0:0 -2100", "2060-10-15T04:00:00Z"),
+    ],
+    ids=[
+        "single-fields",
+        "no-seconds",
+        "dot-clock",
+        "zero-padded",
+        "attached-zone",
+        "rfc850",
+        "ctime",
+        "weekday-fws",
+        "unicode-clock",
+        "comment",
+        "gmt-comment",
+        "ignored-trailing-token",
+        "future-rfc850-year",
+    ],
+)
+def test_valid_timezone_and_comments_are_independent_of_clock_shape(
+    date: str, expected: str
+) -> None:
+    payload = rss_page().replace(b"Wed, 14 Oct 2026 07:00:00 -0400", date.encode())
+    assert parse_trailofbits_rss(payload)[0].published_at == expected

@@ -91,15 +91,60 @@ def _official_uri(raw_uri: str) -> str:
     return raw_uri
 
 
+def _timezone_token(raw_value: str) -> str | None:
+    """Select the zone using Python 3.12's field layout, leaving date interpretation to stdlib."""
+    fields = raw_value.split()
+    if not fields:
+        return None
+    if fields[0].endswith(",") or fields[0].lower() in (
+        "mon",
+        "tue",
+        "wed",
+        "thu",
+        "fri",
+        "sat",
+        "sun",
+    ):
+        fields = fields[1:]
+    else:
+        comma = fields[0].rfind(",")
+        if comma >= 0:
+            fields[0] = fields[0][comma + 1 :]
+    if len(fields) == 3:
+        date_fields = fields[0].split("-")
+        if len(date_fields) == 3:
+            fields = date_fields + fields[1:]
+    if len(fields) == 4:
+        zone_start = fields[3].find("+")
+        if zone_start < 0:
+            zone_start = fields[3].find("-")
+        if zone_start > 0:
+            fields[3:] = [fields[3][:zone_start], fields[3][zone_start:]]
+        else:
+            fields.append("")
+    if len(fields) < 5:
+        return None
+    year = fields[2]
+    if year.find(":") > 0:
+        year = fields[3]
+    year = year.removesuffix(",")
+    if not year:
+        return None
+    return fields[4] if year[0].isdigit() else year
+
+
 def _published_at(raw_value: str | None) -> str | None:
     if raw_value is None:
         return None
-    numeric_zone = re.search(
-        r"\b[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s+[+-]([0-9]{2})([0-9]{2})\b",
-        raw_value,
-    )
-    if numeric_zone is not None and (int(numeric_zone[1]) > 23 or int(numeric_zone[2]) > 59):
-        raise FeedParseError("Trail of Bits numeric timezone fields are out of range")
+    zone = _timezone_token(raw_value)
+    if zone is not None:
+        try:
+            numeric_zone = abs(int(zone))
+        except ValueError:
+            pass
+        else:
+            if numeric_zone // 100 > 23 or numeric_zone % 100 > 59:
+                raise FeedParseError("Trail of Bits numeric timezone fields are out of range")
     try:
         value = parsedate_to_datetime(raw_value)
         if value.tzinfo is None or value.utcoffset() is None:
