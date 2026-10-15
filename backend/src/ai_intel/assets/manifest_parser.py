@@ -9,7 +9,7 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timezone
 from typing import Literal
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -317,6 +317,19 @@ def _csv_rows(
     return rows
 
 
+def _require_utc_timestamp(timestamp: datetime, locator: str) -> datetime:
+    """读取一次明确偏移再归一；不能按宿主时区解释缺偏移或不可表示的时间。"""
+    if not isinstance(timestamp, datetime) or timestamp.tzinfo is None:
+        raise ManifestValidationError("timezone_required", locator)
+    try:
+        offset = timestamp.utcoffset()
+        if offset is not None:
+            return timestamp.replace(tzinfo=timezone(offset)).astimezone(UTC)
+    except (ValueError, OverflowError, TypeError):
+        raise ManifestValidationError("invalid_timestamp", locator) from None
+    raise ManifestValidationError("timezone_required", locator)
+
+
 def parse_manifest(
     raw_bytes: bytes,
     *,
@@ -355,9 +368,8 @@ def parse_manifest(
     except (ValueError, AttributeError, TypeError):
         raise ManifestValidationError("invalid_asset_id") from None
     _text(source_version, "/source_version", nullable=False)
-    for timestamp in (observed_at, recorded_at):
-        if not isinstance(timestamp, datetime) or timestamp.tzinfo is None:
-            raise ManifestValidationError("timezone_required")
+    observed_at = _require_utc_timestamp(observed_at, "/observed_at")
+    recorded_at = _require_utc_timestamp(recorded_at, "/recorded_at")
     if manifest_format == "json_manifest_v1":
         if csv_column_mapping is not None:
             raise ManifestValidationError("unexpected_csv_mapping")
@@ -415,7 +427,7 @@ def parse_manifest(
         completeness,
         sorted(declared_scope),
         [(value.name, value.value) for value in configuration],
-        tool_permissions,
+        None if tool_permissions is None else sorted(tool_permissions),
         None if input_channels is None else [(value.name, value.value) for value in input_channels],
         None
         if network_exposure is None
@@ -433,8 +445,8 @@ def parse_manifest(
         asset_id,
         scope.tenant_id,
         snapshot_number,
-        observed_at.astimezone(UTC),
-        recorded_at.astimezone(UTC),
+        observed_at,
+        recorded_at,
         manifest_format,
         completeness,
         declared_scope,
