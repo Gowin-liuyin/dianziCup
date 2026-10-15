@@ -40,7 +40,7 @@ R00纠正历史accepted证据、CR-R01–R09、T00–T59完整映射及合并验
 | GA-CP-002 | 知识发布后或同库复跑job负载引用测试，硬写public epoch1冲突；不是产品历史丢失 | b27复用PG原子bump_scope_epoch；独立同库98两遍通过，限定已修复 |
 | GA-CP-003 | C盘tmp/D盘WT的nested pytest未固定rootdir，误扫系统目录WinError5，exit2而非预期断言失败1 | b27显式rootdir=probe.parent；保留实际失败/脱敏校验，不降低断言；独立98两遍通过 |
 | GA-CP-004 | 固定8f6缺11条引用证据文件，root工作区文件存在不等于候选可复现 | d9b8d6归档1909个R01/R02审查/任务/run文件，6533523字节，9实际秘密/321模式零命中；独立固定commit结构复核待完成 |
-| GA-ENV-001 | WSL来源DNS失败而Windows网关可达；不能放松TLS/私网限制或伪装在线 | 新阶段Linux显式已批准DoH单NVD真实200；完整多来源持续运行、生产网络稳定性仍未证明，留R06/R20/R22 |
+| GA-ENV-001 | WSL来源DNS失败而Windows网关可达；不能放松TLS/私网限制或伪装在线 | 新阶段Windows显式已批准DoH单NVD真实200；Linux实际仅证明本机API/prefork/beat，未证明来源出网恢复；完整多来源持续运行、生产网络稳定性仍未证明，留R06/R20/R22 |
 
 问题首次发现的精确时刻以新阶段原命令收据为准；未单独记录的写作/发现秒不回填。本报告不重述为新的发现时间。旧auth/PG/MinIO/network专项问题、触发输入/修复SHA/复验和关闭证据见各原始报告，保留历史全文于progress/history/G-A_pre_checkpoint_d9b8d6.md。
 
@@ -55,7 +55,7 @@ R00纠正历史accepted证据、CR-R01–R09、T00–T59完整映射及合并验
 | 真实Linux worker/beat | 2026-10-15T14:59:00+08:00–15:00:40+08:00，2/2；PG隔离库/RedisDB10、双prefork竞争/重复、强杀后60s租约接管2attempt、broker断线outbox一个效果 | 独立run_linux_worker/test_linux_executor与资源适配收据 |
 | Linux API重启/撤销/观测 | 独立4观察passed，真实共享PG/Redis/OpenSearch；MinIO配置实际装配；合成账号/任务明确fixture，不计外部来源live | 同目录Linux API原始收据 |
 | MinIO | 新阶段7/7真实通过；此前SDK/对象重启及PG知识引用专项另有日志，不累计成独立总数 | 独立MinIO命令与旧专项 |
-| 单源真实网关 | 2026-10-15T15:05:58+08:00–15:06:00+08:00，Linux显式DoH NVD HTTP200/3105bytes；不是持续采集或生产负载 | 新阶段gateway原始收据 |
+| 单源真实网关 | 2026-10-15T15:05:58+08:00–15:06:00+08:00，Windows显式DoH NVD HTTP200/3105bytes；不是持续采集或生产负载 | 新阶段gateway原始收据 |
 | 前端/浏览器 | d391与当前b27前端不变，120unit/类型/lint通过；真实UI41交互归属7184，时间修复10交互归属d391+7184，不能跨版本拼新同版e2e | G-B-R04-live-ui-review-1.md与相应PNG/run；G-A认证专项另留档 |
 
 每条命令cwd、完整参数、开始/结束/退出码、实际JUnit与配置/资源身份在reports/runs/recovery_ga_checkpoint_review_1_20261015/，本表不替代raw。正式评分/性能P50/P95/max、六小时观察、完整恢复、人工双标与云端CI执行均not_run，本阶段不声称这些已达标。新阶段自己的API/worker/beat/DB10均已结束/清空，非无限后台。
