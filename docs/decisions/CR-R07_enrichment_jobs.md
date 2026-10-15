@@ -40,6 +40,14 @@ exposure两个provider使用独立20秒子步骤，再由最终发布汇合成�
 已有job/事实与费用轨迹保留，未完成工作流不能包装完成。
 新增REST与实际worker handler须同批接到app/runtime并独立审查，只有定义不算产品验收。
 
+默认GET `/jobs/{job_id}`由单一路由服务处理来源与富化任务，避免shadow注册。
+原独立source router默认保留旧reader；app显式关闭旧reader再注册共享reader。
+来源任务仍仅无租户system_admin可读，原403拒绝语义保留；富化workflow原actor还须
+当前会话、当前对象范围和读权限复查。未获job读权的主体对未知/不可见job均403，
+公共管理员未知job404；新GET enrichment-workflows对不存在/不可见统一404。
+同一用户的新会话可在当前权限下读历史，但原会话撤销仍阻断未完成执行，不能隐式换执行身份。
+0017是新增路由运行的前向迁移前置，未升级旧库健康状态migration_required，不伪造就绪。
+
 ## 验收影响
 
 R07/R03/T07/T18/T19/T20/T35/T41能力切片。覆盖严格输入/九维不遗漏、

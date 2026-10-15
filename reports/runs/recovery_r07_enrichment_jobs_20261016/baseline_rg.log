@@ -1,0 +1,168 @@
+backend/tests\unit\test_r03_jobs_contract.py:8:from ai_intel.infrastructure.outbox import enqueue_job
+backend/tests\unit\test_r03_jobs_contract.py:48:            enqueue_job(NoDatabase(), **arguments)
+backend/src\ai_intel\workers\jobs.py:15:from ai_intel.knowledge.models import job_payloads, job_runs, job_transitions, outbox_events
+backend/src\ai_intel\workers\jobs.py:326:            select(job_payloads.c.payload).where(job_payloads.c.job_id == job_id)
+backend/src\ai_intel\workers\executor.py:36:class JobExecutionContext:
+backend/src\ai_intel\workers\executor.py:77:JobHandler = Callable[[Session, JobExecutionContext, bytes], JobExecutionResult]
+backend/src\ai_intel\workers\executor.py:100:    context = JobExecutionContext(job_id, worker_id, attempt_count, tenant_id)
+backend/src\ai_intel\workers\executor.py:161:    context: JobExecutionContext,
+backend/src\ai_intel\answering\service.py:22:from ai_intel.api.auth_state import lock_authenticated_scope
+backend/src\ai_intel\answering\service.py:70:    current = lock_authenticated_scope(session.connection(), session_token, datetime.now(UTC))
+backend/src\ai_intel\answering\service.py:96:        owner = row["model_trace"].get("reservation_id")
+backend/src\ai_intel\answering\service.py:97:        expires = row["model_trace"].get("reservation_expires_at")
+backend/src\ai_intel\answering\service.py:111:                grounded_answers.c.model_trace["reservation_id"].astext == owner,
+backend/src\ai_intel\answering\service.py:112:                grounded_answers.c.model_trace["reservation_expires_at"].astext == expires,
+backend/src\ai_intel\answering\service.py:116:                model_trace={
+backend/src\ai_intel\answering\service.py:117:                    **row["model_trace"],
+backend/src\ai_intel\answering\service.py:229:                select(grounded_answers.c.model_trace).where(
+backend/src\ai_intel\answering\service.py:264:                        model_trace=trace,
+backend/src\ai_intel\answering\service.py:328:                        grounded_answers.c.model_trace["reservation_id"].astext == reservation_id,
+backend/src\ai_intel\answering\service.py:330:                            grounded_answers.c.model_trace["reservation_expires_at"].astext,
+backend/src\ai_intel\answering\service.py:338:                        model_trace=trace,
+backend/src\ai_intel\answering\service.py:377:                            grounded_answers.c.model_trace["reservation_id"].astext
+backend/src\ai_intel\answering\service.py:380:                        .values(response={"kind": "failed", "error_code": code}, model_trace=trace)
+backend/src\ai_intel\answering\service.py:388:                                grounded_answers.c.model_trace["reservation_id"].astext
+backend/src\ai_intel\answering\service.py:392:                                model_trace=grounded_answers.c.model_trace.op("||")(
+backend/tests\unit\test_r04_source_rate_limits.py:19:from ai_intel.workers.executor import JobExecutionContext, JobExecutionError
+backend/tests\unit\test_r04_source_rate_limits.py:342:    context = JobExecutionContext("synthetic-job", "synthetic-worker", 1, None)
+backend/src\ai_intel\api\auth_state.py:76:def lock_authenticated_scope(
+backend/src\ai_intel\api\document_routes.py:16:from ai_intel.api.auth_state import lock_authenticated_scope
+backend/src\ai_intel\api\document_routes.py:66:                current = lock_authenticated_scope(session.connection(), token, datetime.now(UTC))
+backend/src\ai_intel\enrichment\publication.py:35:from ai_intel.enrichment.persistence_models import enrichment_results
+backend/src\ai_intel\enrichment\publication.py:326:                    select(enrichment_results).where(
+backend/src\ai_intel\enrichment\publication.py:327:                        enrichment_results.c.event_id == str(loaded.context.event_id),
+backend/src\ai_intel\enrichment\publication.py:328:                        enrichment_results.c.dimension == attempt.dimension,
+backend/src\ai_intel\enrichment\publication.py:329:                        enrichment_results.c.publication_key == key,
+backend/src\ai_intel\api\source_routes.py:20:from ai_intel.api.auth_state import lock_authenticated_scope
+backend/src\ai_intel\api\source_routes.py:130:        current = lock_authenticated_scope(
+backend/src\ai_intel\api\knowledge_read_service.py:35:from ai_intel.enrichment.persistence_models import enrichment_results
+backend/src\ai_intel\api\knowledge_read_service.py:559:                select(enrichment_results)
+backend/src\ai_intel\api\knowledge_read_service.py:561:                    enrichment_results.c.event_id == event_row["event_id"],
+backend/src\ai_intel\api\knowledge_read_service.py:562:                    enrichment_results.c.is_current.is_(True),
+backend/src\ai_intel\api\knowledge_read_service.py:564:                .order_by(enrichment_results.c.dimension)
+backend/src\ai_intel\enrichment\persistence_models.py:8:enrichment_results = Table(
+backend/src\ai_intel\enrichment\persistence_models.py:9:    "enrichment_results",
+backend/src\ai_intel\enrichment\persistence.py:26:from ai_intel.enrichment.persistence_models import enrichment_results
+backend/src\ai_intel\enrichment\persistence.py:210:                    select(enrichment_results.c.result_id).where(
+backend/src\ai_intel\enrichment\persistence.py:211:                        enrichment_results.c.event_id == str(submission.event_id),
+backend/src\ai_intel\enrichment\persistence.py:212:                        enrichment_results.c.dimension == submission.dimension,
+backend/src\ai_intel\enrichment\persistence.py:213:                        enrichment_results.c.publication_key == publication_key,
+backend/src\ai_intel\enrichment\persistence.py:228:                update(enrichment_results)
+backend/src\ai_intel\enrichment\persistence.py:230:                    enrichment_results.c.event_id == str(submission.event_id),
+backend/src\ai_intel\enrichment\persistence.py:231:                    enrichment_results.c.dimension == submission.dimension,
+backend/src\ai_intel\enrichment\persistence.py:232:                    enrichment_results.c.is_current.is_(True),
+backend/src\ai_intel\enrichment\persistence.py:237:                enrichment_results.insert().values(
+backend/src\ai_intel\enrichment\persistence.py:277:        query = select(enrichment_results).where(enrichment_results.c.event_id == event_id)
+backend/src\ai_intel\enrichment\persistence.py:279:            query = query.where(enrichment_results.c.is_current.is_(True))
+backend/src\ai_intel\enrichment\persistence.py:282:                query.order_by(enrichment_results.c.recorded_at, enrichment_results.c.result_id)
+backend/src\ai_intel\retrieval\persistence_models.py:33:    Column("model_trace", JSONB(), nullable=False),
+backend/tests\security\test_r03_executor_authorization.py:12:from ai_intel.infrastructure.outbox import enqueue_job
+backend/tests\security\test_r03_executor_authorization.py:39:        job_id = enqueue_job(
+backend/tests\security\test_r03_executor_authorization.py:74:        job_id = enqueue_job(session, None, "fixture_supported", b"{}", now)
+backend/src\ai_intel\knowledge\models.py:202:job_payloads = Table(
+backend/src\ai_intel\knowledge\models.py:203:    "job_payloads",
+backend/tests\integration\test_r02_dimension_migration.py:14:    run_migrations(connection_url, "0009_enrichment_results")
+backend/tests\integration\test_r02_dimension_migration.py:28:                "INSERT INTO enrichment_results(result_id,event_id,dimension,status,claim_ids,"
+backend/tests\integration\test_r02_dimension_migration.py:39:                text("SELECT * FROM enrichment_results WHERE result_id=:id"), {"id": result_id}
+backend/src\ai_intel\infrastructure\outbox.py:13:from ai_intel.knowledge.models import job_payloads, job_runs, outbox_events
+backend/src\ai_intel\infrastructure\outbox.py:23:def enqueue_job(
+backend/src\ai_intel\infrastructure\outbox.py:88:        insert(job_payloads).values(
+backend/src\ai_intel\ingestion\cursor_repository.py:30:    job_payloads,
+backend/src\ai_intel\ingestion\cursor_repository.py:530:                select(job_runs, job_payloads.c.payload)
+backend/src\ai_intel\ingestion\cursor_repository.py:531:                .join(job_payloads, job_payloads.c.job_id == job_runs.c.job_id)
+backend/src\ai_intel\ingestion\source_polling.py:25:from ai_intel.knowledge.models import job_payloads, job_runs
+backend/src\ai_intel\ingestion\source_polling.py:68:                    func.octet_length(job_payloads.c.payload) <= MAX_SOURCE_REQUEST_BYTES,
+backend/src\ai_intel\ingestion\source_polling.py:69:                    job_payloads.c.payload,
+backend/src\ai_intel\ingestion\source_polling.py:74:        .select_from(job_runs.outerjoin(job_payloads, job_payloads.c.job_id == job_runs.c.job_id))
+backend/tests\integration\test_r02_schema_migration.py:13:from ai_intel.enrichment.persistence_models import enrichment_results
+backend/tests\integration\test_r02_schema_migration.py:89:        assert {column["name"] for column in inspector.get_columns("enrichment_results")} == set(
+backend/tests\integration\test_r02_schema_migration.py:90:            enrichment_results.c.keys()
+backend/tests\integration\test_r03_cursor_persistence.py:22:from ai_intel.infrastructure.outbox import enqueue_job
+backend/tests\integration\test_r03_cursor_persistence.py:36:    job_payloads,
+backend/tests\integration\test_r03_cursor_persistence.py:296:        job_id = enqueue_job(
+backend/tests\integration\test_r03_cursor_persistence.py:313:            select(job_payloads.c.payload).where(job_payloads.c.job_id == receipt.failed_job_ids[0])
+backend/tests\integration\test_r03_cursor_persistence.py:339:        job_id = enqueue_job(
+backend/tests\integration\test_r03_cursor_persistence.py:348:            session.execute(job_payloads.delete().where(job_payloads.c.job_id == job_id))
+backend/src\ai_intel\ingestion\source_failure_receipts.py:27:from ai_intel.workers.executor import JobExecutionContext, JobExecutionError
+backend/src\ai_intel\ingestion\source_failure_receipts.py:75:    context: JobExecutionContext
+backend/src\ai_intel\ingestion\source_jobs.py:30:from ai_intel.infrastructure.outbox import enqueue_job
+backend/src\ai_intel\ingestion\source_jobs.py:66:    JobExecutionContext,
+backend/src\ai_intel\ingestion\source_jobs.py:303:    job_id = enqueue_job(
+backend/src\ai_intel\ingestion\source_jobs.py:429:        session: Session, context: JobExecutionContext, payload: bytes
+backend/tests\integration\test_r03_cursor_review_fixes.py:21:from ai_intel.infrastructure.outbox import enqueue_job
+backend/tests\integration\test_r03_cursor_review_fixes.py:29:    job_payloads,
+backend/tests\integration\test_r03_cursor_review_fixes.py:43:    return enqueue_job(
+backend/tests\integration\test_r03_cursor_review_fixes.py:313:                select(job_payloads.c.job_id).where(job_payloads.c.job_id == job_id)
+backend/tests\integration\test_r03_cursor_review_negative.py:14:from ai_intel.infrastructure.outbox import enqueue_job
+backend/tests\integration\test_r03_cursor_review_negative.py:79:        job_id = enqueue_job(
+backend/tests\integration\test_r03_cursor_review_negative.py:165:            job_id = enqueue_job(
+backend/tests\integration\test_r03_executor_celery.py:25:from ai_intel.infrastructure.outbox import enqueue_job, relay_pending_events
+backend/tests\integration\test_r03_executor_celery.py:255:        job_id = enqueue_job(
+backend/tests\integration\test_r03_jobs_pg.py:17:from ai_intel.infrastructure.outbox import enqueue_job, relay_pending_events
+backend/tests\integration\test_r03_jobs_pg.py:20:    job_payloads,
+backend/tests\integration\test_r03_jobs_pg.py:51:        return enqueue_job(
+backend/tests\integration\test_r03_jobs_pg.py:84:            return enqueue_job(session, "tenant-a", "parse", b"same", NOW, idempotency_key=key)
+backend/tests\integration\test_r03_jobs_pg.py:91:        other_tenant = enqueue_job(session, "tenant-b", "parse", b"same", NOW, idempotency_key=key)
+backend/tests\integration\test_r03_jobs_pg.py:92:        other_type = enqueue_job(session, "tenant-a", "enrich", b"same", NOW, idempotency_key=key)
+backend/tests\integration\test_r03_jobs_pg.py:105:        first = enqueue_job(session, None, "parse", b"old", NOW, idempotency_key=key)
+backend/tests\integration\test_r03_jobs_pg.py:108:        second = enqueue_job(session, None, "parse", b"new", NOW, idempotency_key=key)
+backend/tests\integration\test_r03_jobs_pg.py:112:                select(job_payloads.c.job_id).where(job_payloads.c.job_id == first)
+backend/tests\integration\test_r03_jobs_pg.py:216:            update(job_payloads).where(job_payloads.c.job_id == job_id).values(payload=b"bad")
+backend/tests\integration\test_r03_jobs_pg.py:262:        job_id = enqueue_job(session, None, "record_source_fetch_failure", payload, NOW)
+backend/tests\integration\test_r03_schema_migration.py:13:        "job_payloads",
+backend/tests\integration\test_r04_api_review_regressions.py:20:from ai_intel.enrichment.persistence_models import enrichment_results
+backend/tests\integration\test_r04_api_review_regressions.py:128:            update(enrichment_results)
+backend/tests\integration\test_r04_api_review_regressions.py:129:            .where(enrichment_results.c.result_id == dimension)
+backend/tests\integration\test_r04_api_review_regressions.py:164:            update(enrichment_results)
+backend/tests\integration\test_r04_api_review_regressions.py:165:            .where(enrichment_results.c.result_id == dimension)
+backend/tests\integration\test_r04_api_review_regressions.py:187:            update(enrichment_results)
+backend/tests\integration\test_r04_api_review_regressions.py:188:            .where(enrichment_results.c.result_id == dimension)
+backend/tests\integration\test_r04_knowledge_api_pg.py:21:from ai_intel.enrichment.persistence_models import enrichment_results
+backend/tests\integration\test_r04_knowledge_api_pg.py:580:            enrichment_results.insert().values(
+backend/tests\integration\test_r04_source_documents.py:17:from ai_intel.enrichment.persistence_models import enrichment_results
+backend/tests\integration\test_r04_source_documents.py:477:        dimension = connection.execute(select(enrichment_results)).mappings().one()
+backend/tests\integration\test_r04_source_documents.py:507:        assert connection.scalar(select(enrichment_results.c.status)) == "available"
+backend/tests\contract\test_t07_jobs_outbox.py:12:from ai_intel.infrastructure.outbox import enqueue_job
+backend/tests\contract\test_t07_jobs_outbox.py:24:        job_id = enqueue_job(connection, None, job_type, b"payload-retry", now)
+backend/tests\integration\test_r05_question_api_pg.py:203:    assert len(persisted["model_trace"]["attempts"]) == 2
+backend/tests\integration\test_r05_question_api_pg.py:204:    assert persisted["model_trace"]["fee"] == "unknown"
+backend/tests\integration\test_r05_question_api_pg.py:300:    assert row["model_trace"]["attempts"] == [] and row["model_trace"]["fee"] == "unknown"
+backend/tests\integration\test_r05_question_api_pg.py:324:    assert len(row["model_trace"]["attempts"]) == 2
+backend/tests\integration\test_r05_question_api_pg.py:350:    trace = row["model_trace"]
+backend/tests\integration\test_r05_question_api_pg.py:482:            reservation_id = pending["model_trace"]["reservation_id"]
+backend/tests\integration\test_r05_question_api_pg.py:486:                        model_trace={
+backend/tests\integration\test_r05_question_api_pg.py:487:                            **pending["model_trace"],
+backend/tests\integration\test_r05_question_api_pg.py:503:                assert expired["model_trace"]["reservation_state"] == "expired"
+backend/tests\integration\test_r05_question_api_pg.py:504:                assert expired["model_trace"]["usage_status"] == "incomplete_interrupted"
+backend/tests\integration\test_r05_question_api_pg.py:505:                assert expired["model_trace"]["fee"] == "unknown"
+backend/tests\integration\test_r05_question_api_pg.py:517:    assert terminal["model_trace"]["reservation_id"] == reservation_id
+backend/tests\integration\test_r05_question_api_pg.py:518:    assert terminal["model_trace"]["reservation_state"] == "expired"
+backend/tests\integration\test_r05_question_api_pg.py:519:    assert terminal["model_trace"]["usage_status"] == "recorded_after_terminal"
+backend/tests\integration\test_r05_question_api_pg.py:520:    assert len(terminal["model_trace"]["attempts"]) == 2
+backend/tests\integration\test_r05_question_api_pg.py:521:    assert all(attempt["fee"] == "unknown" for attempt in terminal["model_trace"]["attempts"])
+backend/tests\integration\test_r06_failed_response_persistence_pg.py:48:from ai_intel.workers.executor import JobExecutionContext, JobExecutionError, execute_job
+backend/tests\integration\test_r06_failed_response_persistence_pg.py:220:        JobExecutionContext(job_id, "receipt-fixture-worker", claimed["attempt_count"], None),
+backend/tests\integration\test_r06_source_polling_pg.py:17:from ai_intel.infrastructure.outbox import enqueue_job
+backend/tests\integration\test_r06_source_polling_pg.py:29:from ai_intel.knowledge.models import job_payloads, job_runs, outbox_events
+backend/tests\integration\test_r06_source_polling_pg.py:55:            for value in session.scalars(select(job_payloads.c.payload))
+backend/tests\integration\test_r06_source_polling_pg.py:77:            select(job_payloads.c.payload).where(job_payloads.c.job_id == later.queued_job_ids[0])
+backend/tests\integration\test_r06_source_polling_pg.py:123:        enqueue_job(
+backend/tests\integration\test_r06_source_polling_pg.py:136:            enqueue_job(session, None, SOURCE_JOB_TYPE, payload, NOW)
+backend/tests\integration\test_r06_source_polling_pg.py:151:                    select(job_payloads.c.payload).where(job_payloads.c.job_id == identifier)
+backend/tests\integration\test_r06_source_worker_api_pg.py:16:from ai_intel.knowledge.models import job_payloads, job_runs, users
+backend/tests\integration\test_r06_source_worker_api_pg.py:77:        payload = json.loads(connection.scalar(select(job_payloads.c.payload)))
+backend/tests\integration\test_r07_enrichment_publication_pg.py:21:from ai_intel.enrichment.persistence_models import enrichment_results
+backend/tests\integration\test_r07_enrichment_publication_pg.py:59:            for table in (claims, evidence, enrichment_results, scope_epochs)
+backend/tests\integration\test_r07_enrichment_publication_pg.py:186:                select(enrichment_results).where(
+backend/tests\integration\test_r07_enrichment_publication_pg.py:187:                    enrichment_results.c.dimension == "versions",
+backend/tests\integration\test_r07_enrichment_publication_pg.py:188:                    enrichment_results.c.event_id == str(loaded.context.event_id),
+backend/tests\integration\test_r07_enrichment_publication_pg.py:189:                    enrichment_results.c.is_current.is_(True),
+backend/tests\integration\test_t07_jobs_and_outbox.py:15:    enqueue_job,
+backend/tests\integration\test_t07_jobs_and_outbox.py:40:        job_id = enqueue_job(connection, None, "collect_source_updates", b"payload-a", now)
+backend/tests\integration\test_t07_jobs_and_outbox.py:81:        first = enqueue_job(
+backend/tests\integration\test_t07_jobs_and_outbox.py:84:        second = enqueue_job(
+backend/tests\integration\test_t07_jobs_and_outbox.py:114:        original = enqueue_job(
+backend/tests\integration\test_t07_jobs_and_outbox.py:118:            enqueue_job(connection, None, "parse_document", b"different", now, idempotency_key=key)
+backend/tests\integration\test_t07_jobs_and_outbox.py:132:        job_id = enqueue_job(connection, None, job_type, b"payload-c", now)
+backend/tests\integration\test_t07_jobs_and_outbox.py:148:        job_id = enqueue_job(connection, None, job_type, b"payload-d", now)
+backend/tests\integration\test_t07_jobs_and_outbox.py:164:        job_id = enqueue_job(connection, "tenant-alpha", "enrich_claim", b"secret-payload", now)

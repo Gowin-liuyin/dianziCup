@@ -1,0 +1,108 @@
+.................F............                                           [100%]
+================================== FAILURES ===================================
+_ test_full_recorded_nvd_budget_failure_is_retained_without_wire_or_losing_other_dimensions _
+
+execution_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_execution_api_20261016?options=-c+search_path%3Dtest_r07_execution_9a760b83a8554a68aa73d8dd22dd9833+-c+statement_timeout%3D15000+-c+lock_timeout%3D3000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-746/test_full_recorded_nvd_budget_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002015A0AB950>
+
+    def test_full_recorded_nvd_budget_failure_is_retained_without_wire_or_losing_other_dimensions(
+        execution_engine, tmp_path, monkeypatch
+    ):
+        from tests.unit.test_r07_single_model_dimension import prepared_transport
+    
+        policy = EnrichmentExecutionPolicy(
+            generation_enabled=True,
+            generation_provider="openai",
+            approved_model="fixture-model",
+            data_mode="fixture",
+        )
+        service, scope, session_hash, _, _, receipt = setup(execution_engine, tmp_path, policy=policy)
+        calls = []
+    
+        def factory():
+            client, wire = prepared_transport(monkeypatch)
+            client.limits = GenerationLimits(total_timeout_seconds=20.0, max_calls=1)
+            calls.append(wire)
+            return client
+    
+        service.generation_client_factory = factory
+        assert run(service, receipt.parent_job_id) == "succeeded"
+        with Session(execution_engine) as session:
+            snapshot = session.scalar(select(enrichment_workflows.c.input_context))
+        block_count = sum(len(document["blocks"]) for document in snapshot["documents"])
+        assert block_count > 50
+        for row in children(service):
+            if row["dimension"] is not None:
+                outcome = run(service, row["job_id"])
+                if row["dimension"] in {"atlas", "versions", "literature", "poc"}:
+                    assert outcome == "failed"
+        assert sum(len(wire) for wire in calls) == 0
+        publication = next(row for row in children(service) if row["step_key"] == "publication")
+        assert run(service, publication["job_id"]) == "partial"
+        observed = view(service, scope, session_hash, receipt)
+        model_steps = [
+            step
+            for step in observed.steps
+            if step.dimension in {"atlas", "versions", "literature", "poc"}
+        ]
+        assert all(
+            step.error_code == "field_input_budget_exhausted" and step.model_attempts == ()
+            for step in model_steps
+        )
+        assert (
+            next(item for item in observed.logical_dimensions if item.dimension == "cvss").result_status
+            == "available"
+        )
+        evidence = {
+            "data_mode": "fixture",
+            "source": "recorded_nvd_public",
+            "document_count": len(snapshot["documents"]),
+            "block_count": block_count,
+            "wire_calls": 0,
+            "publication_status": observed.publication_status,
+            "model_steps": [
+                {"dimension": step.dimension, "status": step.status, "error_code": step.error_code}
+                for step in model_steps
+            ],
+        }
+        path = (
+            Path(__file__).resolve().parents[3]
+            / "reports/runs/recovery_r07_enrichment_execution_20261016"
+            / "nvd_input_budget_observation.json"
+        )
+>       path.write_text(json.dumps(evidence, indent=2), encoding="utf-8")
+
+tests\integration\test_r07_job_execution_pg.py:563: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\pathlib.py:1047: in write_text
+    with self.open(mode='w', encoding=encoding, errors=errors, newline=newline) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = WindowsPath('D:/wt/r07-enrichment-jobs/reports/runs/recovery_r07_enrichment_execution_20261016/nvd_input_budget_observation.json')
+mode = 'w', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: 'D:\\wt\\r07-enrichment-jobs\\reports\\runs\\recovery_r07_enrichment_execution_20261016\\nvd_input_budget_observation.json'
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\pathlib.py:1013: FileNotFoundError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\wt\r07-enrichment-jobs\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\r07-enrichment-jobs\reports\runs\recovery_r07_enrichment_jobs_20261016\api_worker_execution_pg_v3.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r07_job_execution_pg.py::test_full_recorded_nvd_budget_failure_is_retained_without_wire_or_losing_other_dimensions
+1 failed, 29 passed, 1 warning in 48.31s

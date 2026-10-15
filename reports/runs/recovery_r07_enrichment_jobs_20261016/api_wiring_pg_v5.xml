@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="8" time="14.165" timestamp="2026-10-16T05:59:21.199291+08:00" hostname="yin"><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_default_api_queues_and_reads_workflow_without_model_or_content_io" time="1.884" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_http_body_does_not_supply_identity_or_external_authority[extra0]" time="1.851" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_http_body_does_not_supply_identity_or_external_authority[extra1]" time="1.166" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_http_body_does_not_supply_identity_or_external_authority[extra2]" time="1.271" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_missing_csrf_and_current_role_change_prevent_scheduling" time="2.101" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_default_application_has_one_job_reader_and_unauthenticated_workflow_denial" time="0.114" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_default_api_to_registered_worker_publishes_atomic_structured_results" time="2.249"><failure message="AssertionError: model_budget_not_authorized&#10;assert 'blocked' == 'succeeded'&#10;  &#10;  - succeeded&#10;  + blocked">execution_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_api_50ce0e0429664f238616c0bccfe07b5f)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-740/test_default_api_to_registered0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x00000271BA8B5F70&gt;
+
+    def test_default_api_to_registered_worker_publishes_atomic_structured_results(
+        execution_engine, tmp_path, monkeypatch
+    ):
+        _, scope, _, event_id, _, _ = setup(execution_engine, tmp_path)
+        runtime = worker_runtime(execution_engine, tmp_path, monkeypatch)
+        with application_client(execution_engine, tmp_path, scope) as client:
+            response = client.post(
+                f"/v1/events/{event_id}/enrichment-jobs",
+                json={"expected_event_version": 1, "dimensions": ["cvss", "versions"]},
+                headers={
+                    "origin": ORIGIN,
+                    CSRF_HEADER_NAME: "synthetic-csrf",
+                    "Idempotency-Key": "registered-worker",
+                },
+            )
+            assert response.status_code == 202
+            workflow_id = response.json()["workflow_id"]
+            parent_job_id = response.json()["parent_job_id"]
+            assert runtime.consume_job(parent_job_id)["outcome"] == "succeeded"
+            with execution_engine.connect() as connection:
+                steps = (
+                    connection.execute(
+                        select(enrichment_job_steps).where(
+                            enrichment_job_steps.c.workflow_id == workflow_id
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+            assert len(steps) == 3
+            for step in steps:
+                if step["dimension"] is not None:
+                    outcome = runtime.consume_job(step["job_id"])["outcome"]
+                    with execution_engine.connect() as connection:
+                        job_error = connection.scalar(
+                            select(job_runs.c.error_code).where(job_runs.c.job_id == step["job_id"])
+                        )
+&gt;                   assert outcome == "succeeded", job_error
+E                   AssertionError: model_budget_not_authorized
+E                   assert 'blocked' == 'succeeded'
+E                     
+E                     - succeeded
+E                     + blocked
+
+tests\integration\test_r07_enrichment_api_pg.py:205: AssertionError</failure></testcase><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_registered_worker_rechecks_changed_actor_role_before_creating_children" time="2.003" /></testsuite></testsuites>

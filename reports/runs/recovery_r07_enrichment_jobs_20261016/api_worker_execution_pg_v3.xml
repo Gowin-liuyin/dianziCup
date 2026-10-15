@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="30" time="48.278" timestamp="2026-10-16T06:02:35.864293+08:00" hostname="yin"><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_parent_scheduling_is_not_workflow_completion_and_nine_results_publish_atomically" time="1.894" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_concurrent_enqueue_reuses_one_parent_and_policy_or_session_changes_conflict" time="0.982" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_model_reservation_update_does_not_wait_for_executor_job_lock" time="1.263" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_changed_authority_or_frozen_parent_never_publishes[revoked]" time="2.502" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_changed_authority_or_frozen_parent_never_publishes[expired]" time="2.562" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_changed_authority_or_frozen_parent_never_publishes[role]" time="2.101" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_changed_authority_or_frozen_parent_never_publishes[tenant]" time="1.814" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_changed_authority_or_frozen_parent_never_publishes[policy]" time="1.585" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_changed_authority_or_frozen_parent_never_publishes[source_acl]" time="1.659" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_changed_authority_or_frozen_parent_never_publishes[revision]" time="1.694" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_changed_authority_or_frozen_parent_never_publishes[snapshot]" time="1.595" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_interrupted_paid_reservation_is_visible_and_never_resubmitted" time="1.960" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_unknown_product_query_makes_no_exposure_client_calls_and_view_hides_sensitive_fields" time="1.487" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_offline_real_generation_codec_receipts_survive_new_service_and_no_repeat" time="1.473" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_expired_parent_worker_is_taken_over_once_and_publication_waits" time="1.181" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_registered_query_without_client_is_explicitly_blocked[ollama]" time="1.304" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_registered_query_without_client_is_explicitly_blocked[vllm]" time="1.603" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_full_recorded_nvd_budget_failure_is_retained_without_wire_or_losing_other_dimensions" time="1.995"><failure message="FileNotFoundError: [Errno 2] No such file or directory: 'D:\\wt\\r07-enrichment-jobs\\reports\\runs\\recovery_r07_enrichment_execution_20261016\\nvd_input_budget_observation.json'">execution_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_execution_api_20261016?options=-c+search_path%3Dtest_r07_execution_9a760b83a8554a68aa73d8dd22dd9833+-c+statement_timeout%3D15000+-c+lock_timeout%3D3000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-746/test_full_recorded_nvd_budget_0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002015A0AB950&gt;
+
+    def test_full_recorded_nvd_budget_failure_is_retained_without_wire_or_losing_other_dimensions(
+        execution_engine, tmp_path, monkeypatch
+    ):
+        from tests.unit.test_r07_single_model_dimension import prepared_transport
+    
+        policy = EnrichmentExecutionPolicy(
+            generation_enabled=True,
+            generation_provider="openai",
+            approved_model="fixture-model",
+            data_mode="fixture",
+        )
+        service, scope, session_hash, _, _, receipt = setup(execution_engine, tmp_path, policy=policy)
+        calls = []
+    
+        def factory():
+            client, wire = prepared_transport(monkeypatch)
+            client.limits = GenerationLimits(total_timeout_seconds=20.0, max_calls=1)
+            calls.append(wire)
+            return client
+    
+        service.generation_client_factory = factory
+        assert run(service, receipt.parent_job_id) == "succeeded"
+        with Session(execution_engine) as session:
+            snapshot = session.scalar(select(enrichment_workflows.c.input_context))
+        block_count = sum(len(document["blocks"]) for document in snapshot["documents"])
+        assert block_count &gt; 50
+        for row in children(service):
+            if row["dimension"] is not None:
+                outcome = run(service, row["job_id"])
+                if row["dimension"] in {"atlas", "versions", "literature", "poc"}:
+                    assert outcome == "failed"
+        assert sum(len(wire) for wire in calls) == 0
+        publication = next(row for row in children(service) if row["step_key"] == "publication")
+        assert run(service, publication["job_id"]) == "partial"
+        observed = view(service, scope, session_hash, receipt)
+        model_steps = [
+            step
+            for step in observed.steps
+            if step.dimension in {"atlas", "versions", "literature", "poc"}
+        ]
+        assert all(
+            step.error_code == "field_input_budget_exhausted" and step.model_attempts == ()
+            for step in model_steps
+        )
+        assert (
+            next(item for item in observed.logical_dimensions if item.dimension == "cvss").result_status
+            == "available"
+        )
+        evidence = {
+            "data_mode": "fixture",
+            "source": "recorded_nvd_public",
+            "document_count": len(snapshot["documents"]),
+            "block_count": block_count,
+            "wire_calls": 0,
+            "publication_status": observed.publication_status,
+            "model_steps": [
+                {"dimension": step.dimension, "status": step.status, "error_code": step.error_code}
+                for step in model_steps
+            ],
+        }
+        path = (
+            Path(__file__).resolve().parents[3]
+            / "reports/runs/recovery_r07_enrichment_execution_20261016"
+            / "nvd_input_budget_observation.json"
+        )
+&gt;       path.write_text(json.dumps(evidence, indent=2), encoding="utf-8")
+
+tests\integration\test_r07_job_execution_pg.py:563: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\pathlib.py:1047: in write_text
+    with self.open(mode='w', encoding=encoding, errors=errors, newline=newline) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = WindowsPath('D:/wt/r07-enrichment-jobs/reports/runs/recovery_r07_enrichment_execution_20261016/nvd_input_budget_observation.json')
+mode = 'w', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+&gt;       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: 'D:\\wt\\r07-enrichment-jobs\\reports\\runs\\recovery_r07_enrichment_execution_20261016\\nvd_input_budget_observation.json'
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\pathlib.py:1013: FileNotFoundError</failure></testcase><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_revocation_during_offline_wire_keeps_actual_receipt_but_discards_result" time="1.577" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_private_event_without_server_egress_does_not_construct_model_client" time="2.019" /><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_structured_child_takeover_and_exhaustion_preserve_pg_failure_without_erasing_batch" time="2.307" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_default_api_queues_and_reads_workflow_without_model_or_content_io" time="1.386" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_http_body_does_not_supply_identity_or_external_authority[extra0]" time="1.159" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_http_body_does_not_supply_identity_or_external_authority[extra1]" time="1.107" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_http_body_does_not_supply_identity_or_external_authority[extra2]" time="1.172" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_missing_csrf_and_current_role_change_prevent_scheduling" time="1.083" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_default_application_has_one_job_reader_and_unauthenticated_workflow_denial" time="0.089" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_default_api_to_registered_worker_publishes_atomic_structured_results[dimensions0-succeeded]" time="1.865" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_default_api_to_registered_worker_publishes_atomic_structured_results[dimensions1-partial]" time="1.581" /><testcase classname="tests.integration.test_r07_enrichment_api_pg" name="test_registered_worker_rechecks_changed_actor_role_before_creating_children" time="1.156" /></testsuite></testsuites>

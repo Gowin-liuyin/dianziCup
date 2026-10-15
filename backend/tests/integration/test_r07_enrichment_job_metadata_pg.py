@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from alembic.script import ScriptDirectory
 from sqlalchemy import insert, inspect, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -13,6 +14,7 @@ from test_r06_catalog_documents_pg import catalog_engine as catalog_engine
 from test_r07_enrichment_inputs_pg import seeded_event
 
 from ai_intel.enrichment.job_models import enrichment_job_steps, enrichment_workflows
+from ai_intel.infrastructure.database import MIGRATIONS_DIR
 from ai_intel.infrastructure.outbox import enqueue_job
 from ai_intel.knowledge.models import job_runs, users
 
@@ -70,9 +72,12 @@ def test_forward_migration_exposes_metadata_without_a_duplicate_job_status(catal
     for name in ("enrichment_workflows", "enrichment_job_steps"):
         assert "status" not in {row["name"] for row in inspect(catalog_engine).get_columns(name)}
     with catalog_engine.connect() as connection:
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0017_enrichment_job_workflows"
-        )
+        installed = connection.scalar(text("SELECT version_num FROM alembic_version"))
+    scripts = ScriptDirectory(str(MIGRATIONS_DIR))
+    assert installed == scripts.get_current_head()
+    assert "0017_enrichment_job_workflows" in {
+        revision.revision for revision in scripts.iterate_revisions(installed, "base")
+    }
 
 
 @pytest.mark.parametrize(

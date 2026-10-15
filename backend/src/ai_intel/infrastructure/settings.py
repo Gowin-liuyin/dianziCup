@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
@@ -62,6 +63,27 @@ class ApplicationSettings(BaseSettings):
     generation_api_key: SecretStr | None = None
     semantic_model_cache_directory: Path | None = None
     source_polling_enabled: bool = False
+    enrichment_generation_enabled: bool = False
+    enrichment_private_egress_granted: bool = False
+    enrichment_aggregate_enabled: bool = False
+
+    @model_validator(mode="after")
+    def validate_enrichment_execution_authority(self) -> ApplicationSettings:
+        """Credential presence grants no background calls or private evidence egress."""
+        if self.enrichment_private_egress_granted and not self.enrichment_generation_enabled:
+            raise ConfigurationError("private enrichment egress requires enabled generation")
+        if not self.enrichment_generation_enabled:
+            return self
+        if self.generation_api_key is None or not self.generation_api_key.get_secret_value():
+            raise ConfigurationError("enrichment generation requires a nonempty credential")
+        if re.fullmatch(r"[a-zA-Z0-9_.:/-]{1,200}", self.generation_model) is None:
+            raise ConfigurationError("invalid enrichment generation model")
+        if (
+            self.generation_provider.startswith("deepseek")
+            and self.generation_model != "deepseek-flash"
+        ):
+            raise ConfigurationError("unapproved DeepSeek enrichment model")
+        return self
 
     @model_validator(mode="after")
     def validate_content_store_configuration(self) -> ApplicationSettings:

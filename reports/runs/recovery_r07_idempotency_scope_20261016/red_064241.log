@@ -1,0 +1,58 @@
+..............................FF                                         [100%]
+================================== FAILURES ===================================
+________ test_two_authorized_public_actors_can_use_their_own_same_key _________
+
+execution_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_api_4180dbd65a41404ea7e904f7a1e09fdd)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-800/test_two_authorized_public_act0')
+
+    def test_two_authorized_public_actors_can_use_their_own_same_key(execution_engine, tmp_path):
+        _, first_scope, _, event_id, _, _ = setup(execution_engine, tmp_path)
+        actor = str(uuid4())
+        second_scope = AccessScope.for_authenticated_user(actor, None, Role.SYSTEM_ADMIN)
+        with execution_engine.begin() as connection:
+            connection.execute(insert(users).values(user_id=actor, username='independent-public-admin-' + actor, password_hash='unusable synthetic hash', role='system_admin', tenant_id=None, created_at=NOW))
+            connection.execute(insert(auth_sessions).values(session_hash=hashlib.sha256(('synthetic-r07-session:' + actor).encode()).hexdigest(), user_id=actor, csrf_token='synthetic-csrf', issued_at=NOW, expires_at=NOW + timedelta(hours=1)))
+        with application_client(execution_engine, tmp_path, first_scope) as first:
+            response = enqueue(first, event_id)
+            assert response.status_code == 202
+            initial = response.json()
+        with application_client(execution_engine, tmp_path, second_scope) as second:
+            response = enqueue(second, event_id)
+>           assert response.status_code == 202, response.json()['error']['code']
+E           AssertionError: idempotency_conflict
+E           assert 409 == 202
+E            +  where 409 = <Response [409 Conflict]>.status_code
+
+..\reports\runs\recovery_r07_idempotency_scope_20261016\probes\test_independent_idempotency_scope.py:52: AssertionError
+_______ test_same_actor_same_key_on_another_event_route_is_independent ________
+
+execution_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_api_8460887efb0e461aa4626325e0c0fab5)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-800/test_same_actor_same_key_on_an0')
+
+    def test_same_actor_same_key_on_another_event_route_is_independent(execution_engine, tmp_path):
+        _, scope, _, first_event, _, _ = setup(execution_engine, tmp_path)
+        second_event = uuid4()
+        with Session(execution_engine) as session, session.begin():
+            revisions = EventRepository(session, scope).get_source_revisions(str(first_event))
+            EventRepository(session, scope).publish_events('independent-second-route-event', VisibilityScope(visibility='public'), (EventSubmission(event_id=Identifier(value=str(second_event)), event_type='security_risk', title='Independent second route', scope=VisibilityScope(visibility='public'), source_revision_ids=tuple(Identifier(value=value) for value in revisions)),), NOW)
+        with application_client(execution_engine, tmp_path, scope) as client:
+            first = enqueue(client, first_event)
+            assert first.status_code == 202
+            second = enqueue(client, second_event)
+>           assert second.status_code == 202, second.json()['error']['code']
+E           AssertionError: idempotency_conflict
+E           assert 409 == 202
+E            +  where 409 = <Response [409 Conflict]>.status_code
+
+..\reports\runs\recovery_r07_idempotency_scope_20261016\probes\test_independent_idempotency_scope.py:66: AssertionError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\wt\r07-idempotency-scope\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\r07-idempotency-scope\reports\runs\recovery_r07_idempotency_scope_20261016\red_064241.xml -
+=========================== short test summary info ===========================
+FAILED ::test_two_authorized_public_actors_can_use_their_own_same_key - Asser...
+FAILED ::test_same_actor_same_key_on_another_event_route_is_independent - Ass...
+2 failed, 30 passed, 1 warning in 53.17s
