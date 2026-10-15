@@ -1,0 +1,49 @@
+F..................                                                      [100%]
+=================================== FAILURES ===================================
+__ test_recorded[redacted test credential fragment]persists_raw_versions_and_verified_facts[nvd_ollama] ___
+
+page_engine = Engine(post[redacted test credential fragment]sycop[redacted test credential fragment]_d[redacted test credential fragment]1:***[redacted test credential fragment].1:2543[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]_docu[redacted test credential fragment]261015?options=-c+search_path%3Dtest_r0[redacted test credential fragment][redacted test credential fragment]ts_8f5d58b1927943cf92c115b7b5abeb10+-c+statement_timeout%3D15000)
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-3/test_recorded[redacted test credential fragment]persists_0')
+source_kind = 'nvd_ollama'
+
+    @pytest.mark.parametrize("source_kind",["nvd_ollama","vllm_vendor"])
+    def test_recorded[redacted test credential fragment]persists_raw_versions_and_verified_facts(page_engine,tmp_path,source_kind):
+        store = ContentStore(tmp_path/"objects")
+        response = nvd_response() if source_kind=="nvd_ollama" else vendor_response()
+        saved = persist(page_engine,store,response)
+        assert saved.new_revision_count==1 and len(saved.event_ids)==1
+        assert saved.response_content_hash==hashlib.sha256(response.body).hexdigest()
+        assert store.read_verified(saved.response_content_hash)==response.body
+        with page_engine.connect() as connection:
+            revision = connection.execute(select([redacted test credential fragment]_revisions)).mappings().one()
+            assert revision["revision_id"]==saved.revision_ids[0]
+            assert revision["first_observed_at"]==response.observed_at
+            assert revision["ingested_at"]==response.observed_at+timedelta(seconds=1)
+            assert revision["parse_status"]=="parsed"
+            assert revision["parser_version"]=="json-2.0.0"
+            assert revision["normalizer_version"]=="1.0.0"
+            raw = store.read_verified(revision["content_hash"])
+            assert raw in response.body
+            if source_kind=="vllm_vendor":
+                assert raw==response.body.strip()[1:-1]
+                assert revision["source_json_pointer"]=="/0"
+                assert revision["source_published_at"]==datetime(2026,10,6,20,45,8,tzinfo=UTC)
+                assert connection.scalar(select(func.count()).select_from(claims).where(
+                    claims.c.predicate=="affected_product",claims.c.object_value=="vllm"))==1
+            else:
+                assert revision["source_json_pointer"]=="/vulnerabilities/0"
+                assert revision["source_published_at"] is None
+                assert revision["source_modified_at"] is None
+                score = connection.execute(select(claims).where(claims.c.predicate=="cvss_score")).mappings().one()
+                assert score["object_json"]["score"]==6.6
+>               assert score["object_json"]["authority"]=="c6e8aa1d-9bc8-43d9-ae4b-9a64e87e4a58"
+E               AssertionError: assert '134c704f-9b2...-4a467353bcc0' == 'c6e8aa1d-9bc...-9a64e87e4a58'
+E                 
+E                 - c6e8aa1d-9bc8-43d9-ae4b-9a64e87e4a58
+E                 + 134c704f-9b21-4f2e-91b3-4a467353bcc0
+
+tests/integration/test_r0[redacted test credential fragment][redacted test credential fragment]ts.py:125: AssertionError
+- generated xml file: /mnt/c/Users/yinha/.codex/worktrees/recovery-r04-source-[redacted test credential fragment]s/dianzi/reports/runs/recovery_r0[redacted test credential fragment]_docu[redacted test credential fragment]261015/pg_first.xml -
+=========================== short test summary info ============================
+FAILED tests/integration/test_r0[redacted test credential fragment][redacted test credential fragment]ts.py::test_recorded[redacted test credential fragment]persists_raw_versions_and_verified_facts[nvd_ollama]
+1 failed, 18 passed in 21.74s

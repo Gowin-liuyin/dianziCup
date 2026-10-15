@@ -1,0 +1,133 @@
+E501 Line too long (106 > 100)
+   --> src\ai_intel\ingestion\source_documents.py:369:101
+    |
+367 |     with session.begin_nested():
+368 |         source_id = _register_source(session, response.source_kind, ingested_at)
+369 |         response_hash = register_response_content(session, store, response.body, ingested_at).content_hash
+    |                                                                                                     ^^^^^^
+370 |         revision_ids: list[str] = []
+371 |         event_ids: list[str] = []
+    |
+
+E501 Line too long (107 > 100)
+  --> tests\integration\test_r04_source_documents.py:64:101
+   |
+62 |         assert connection.scalar(text("SELECT current_database()")) == url.database
+63 |         connection.execute(CreateSchema(schema))
+64 |     isolated_url = url.update_query_dict({"options":f"-c search_path={schema} -c statement_timeout=15000"})
+   |                                                                                                     ^^^^^^^
+65 |     engine = create_engine(isolated_url,connect_args={"connect_timeout":5})
+66 |     run_migrations(isolated_url.render_as_string(hide_password=False))
+   |
+
+E501 Line too long (111 > 100)
+   --> tests\integration\test_r04_source_documents.py:132:101
+    |
+130 |             assert revision["source_published_at"] is None
+131 |             assert revision["source_modified_at"] is None
+132 |             score = connection.execute(select(claims).where(claims.c.predicate=="cvss_score")).mappings().one()
+    |                                                                                                     ^^^^^^^^^^^
+133 |             assert score["object_json"]["score"]==6.6
+134 |             assert score["object_json"]["authority"]=="134c704f-9b21-4f2e-91b3-4a467353bcc0"
+    |
+
+E501 Line too long (110 > 100)
+   --> tests\integration\test_r04_source_documents.py:155:101
+    |
+154 | @pytest.mark.parametrize("source_kind",["nvd_ollama","vllm_vendor"])
+155 | def test_same_member_reuses_business_records_and_keeps_original_observation(page_engine,tmp_path,source_kind):
+    |                                                                                                     ^^^^^^^^^^
+156 |     store = ContentStore(tmp_path)
+157 |     initial = nvd_response() if source_kind=="nvd_ollama" else vendor_response()
+    |
+
+SIM117 Use a single `with` statement with multiple contexts instead of nested `with` statements
+   --> tests\integration\test_r04_source_documents.py:241:5
+    |
+239 |       vendor = vendor_record()
+240 |       vendor["cve_id"]="CVE-2024-28224"
+241 | /     with Session(page_engine) as session,session.begin():
+242 | |         with pytest.raises(EventLinkingError,match="conflicting"):
+    | |__________________________________________________________________^
+243 |               persist_source_response(session,store,ADMIN,vendor_response(vendor),ingested_at=NOW)
+244 |       assert table_counts(page_engine)==before
+    |
+help: Combine `with` statements
+
+E501 Line too long (106 > 100)
+   --> tests\integration\test_r04_source_documents.py:259:101
+    |
+258 | def test_legal_empty_page_records_observation_without_security_conclusion(page_engine,tmp_path):
+259 |     saved = persist(page_engine,ContentStore(tmp_path),SourceResponse("vllm_vendor",b"[]",VENDOR_URL,NOW))
+    |                                                                                                     ^^^^^^
+260 |     assert saved.revision_ids==saved.event_ids==() and saved.new_revision_count==0
+261 |     assert table_counts(page_engine)==(0,0,0,0,0,0)
+    |
+
+E501 Line too long (103 > 100)
+   --> tests\integration\test_r04_source_documents.py:276:101
+    |
+276 | def test_second_member_storage_failure_rolls_back_first_member_and_fetch_attempt(page_engine,tmp_path):
+    |                                                                                                     ^^^
+277 |     first, second = vendor_record(),vendor_record()
+278 |     second["ghsa_id"]="GHSA-2345-6789-cfgh"
+    |
+
+SIM117 Use a single `with` statement with multiple contexts instead of nested `with` statements
+   --> tests\integration\test_r04_source_documents.py:287:5
+    |
+285 |               return super().store_bytes(payload)
+286 |       response = SourceResponse("vllm_vendor",body,VENDOR_URL.replace("per_page=1","per_page=2"),NOW)
+287 | /     with Session(page_engine) as session,session.begin():
+288 | |         with pytest.raises(OSError,match="isolated member"):
+    | |____________________________________________________________^
+289 |               persist_source_response(session,FailingMemberStore(tmp_path),ADMIN,response,ingested_at=NOW)
+290 |       assert table_counts(page_engine)==(0,0,0,0,0,0)
+    |
+help: Combine `with` statements
+
+SIM117 Use a single `with` statement with multiple contexts instead of nested `with` statements
+   --> tests\integration\test_r04_source_documents.py:315:5
+    |
+313 |           return original(*values,**kwargs)
+314 |       monkeypatch.setattr(module,"attach_evidence_span",mismatched_quote)
+315 | /     with Session(page_engine) as session,session.begin():
+316 | |         with pytest.raises(QuoteConsistencyError):
+    | |__________________________________________________^
+317 |               persist_source_response(session,ContentStore(tmp_path),ADMIN,vendor_response(),ingested_at=NOW)
+318 |       assert table_counts(page_engine)==(0,0,0,0,0,0)
+    |
+help: Combine `with` statements
+
+E501 Line too long (101 > 100)
+   --> tests\integration\test_r04_source_documents.py:335:101
+    |
+333 | def test_existing_registered_source_scope_is_never_overwritten(page_engine,tmp_path):
+334 |     with page_engine.begin() as connection:
+335 |         connection.execute(text("INSERT INTO sources(source_id,name,category,base_origin,visibility,"
+    |                                                                                                     ^
+336 |             "tenant_id,created_at) VALUES (:id,'original-user-source','vendor_advisory',"
+337 |             "'https://example.invalid','tenant','tenant-a',:time)"),
+    |
+
+E501 Line too long (115 > 100)
+   --> tests\integration\test_r04_source_documents.py:347:101
+    |
+346 | @pytest.mark.parametrize("unknown_authority",[False,True])
+347 | def test_cvss_unknown_authority_is_pending_and_source_conflict_is_retained(page_engine,tmp_path,unknown_authority):
+    |                                                                                                     ^^^^^^^^^^^^^^^
+348 |     payload = json.loads(nvd_response().body)
+349 |     metrics = payload["vulnerabilities"][0]["cve"]["metrics"]
+    |
+
+E501 Line too long (108 > 100)
+   --> tests\integration\test_r04_source_documents.py:362:101
+    |
+360 |         dimension = connection.execute(select(enrichment_results)).mappings().one()
+361 |         assert dimension["status"]==("pending" if unknown_authority else "conflict")
+362 |         scores = connection.execute(select(claims).where(claims.c.predicate=="cvss_score")).mappings().all()
+    |                                                                                                     ^^^^^^^^
+363 |         assert len(scores)==(0 if unknown_authority else 2)
+    |
+
+Found 16 errors (4 fixed, 12 remaining).

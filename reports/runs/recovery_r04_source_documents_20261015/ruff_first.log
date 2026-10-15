@@ -1,0 +1,252 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests\integration\test_r04_source_documents.py:3:1
+   |
+ 1 |   """Recorded source pages against real isolated PG, filesystem and shared services."""
+ 2 |
+ 3 | / import hashlib
+ 4 | | import json
+ 5 | | from concurrent.futures import ThreadPoolExecutor
+ 6 | | from datetime import UTC, datetime, timedelta
+ 7 | | from pathlib import Path
+ 8 | |
+ 9 | | import pytest
+10 | | from sqlalchemy import create_engine, func, select, text, update
+11 | | from sqlalchemy.engine import make_url
+12 | | from sqlalchemy.orm import Session
+13 | | from sqlalchemy.schema import CreateSchema, DropSchema
+14 | | from uuid import uuid4
+15 | |
+16 | | from ai_intel.domain.access import AccessScope, PermissionDeniedError, Role
+17 | | from ai_intel.enrichment.persistence_models import enrichment_results
+18 | | from ai_intel.infrastructure.content_store import ContentStore
+19 | | from ai_intel.infrastructure.database import run_migrations
+20 | | from ai_intel.ingestion.source_documents import (
+21 | |     SOURCE_DEFINITIONS,
+22 | |     SourceDocumentError,
+23 | |     SourceResponse,
+24 | |     persist_source_response,
+25 | | )
+26 | | from ai_intel.knowledge.event_linking import EventLinkingError
+27 | | from ai_intel.knowledge.models import (
+28 | |     content_objects, document_revisions, documents, evidence, fetch_attempts,
+29 | |     outbox_events, scope_epochs, text_blocks,
+30 | | )
+31 | | from ai_intel.knowledge.persistence_models import (
+32 | |     claims, event_documents, event_external_ids, events,
+33 | | )
+34 | | from ai_intel.knowledge.revisions import QuoteConsistencyError, attach_evidence_span
+   | |____________________________________________________________________________________^
+35 |
+36 |   pytestmark = pytest.mark.real_pg
+   |
+help: Organize imports
+   |
+7  | from pathlib import Path
+8  + from uuid import uuid4
+9  |
+--------------------------------------------------------------------------------
+14 | from sqlalchemy.schema import CreateSchema, DropSchema
+   - from uuid import uuid4
+15 |
+--------------------------------------------------------------------------------
+27 | from ai_intel.knowledge.models import (
+   -     content_objects, document_revisions, documents, evidence, fetch_attempts,
+   -     outbox_events, scope_epochs, text_blocks,
+28 +     content_objects,
+29 +     document_revisions,
+30 +     documents,
+31 +     evidence,
+32 +     fetch_attempts,
+33 +     outbox_events,
+34 +     scope_epochs,
+35 +     text_blocks,
+36 | )
+37 | from ai_intel.knowledge.persistence_models import (
+   -     claims, event_documents, event_external_ids, events,
+38 +     claims,
+39 +     event_documents,
+40 +     event_external_ids,
+41 +     events,
+42 | )
+   |
+
+F401 [*] `sqlalchemy.update` imported but unused
+  --> tests\integration\test_r04_source_documents.py:10:59
+   |
+ 9 | import pytest
+10 | from sqlalchemy import create_engine, func, select, text, update
+   |                                                           ^^^^^^
+11 | from sqlalchemy.engine import make_url
+12 | from sqlalchemy.orm import Session
+   |
+help: Remove unused import: `sqlalchemy.update`
+   |
+9  | import pytest
+   - from sqlalchemy import create_engine, func, select, text, update
+10 + from sqlalchemy import create_engine, func, select, text
+11 | from sqlalchemy.engine import make_url
+   |
+
+F401 [*] `ai_intel.knowledge.revisions.attach_evidence_span` imported but unused
+  --> tests\integration\test_r04_source_documents.py:34:65
+   |
+32 |     claims, event_documents, event_external_ids, events,
+33 | )
+34 | from ai_intel.knowledge.revisions import QuoteConsistencyError, attach_evidence_span
+   |                                                                 ^^^^^^^^^^^^^^^^^^^^
+35 |
+36 | pytestmark = pytest.mark.real_pg
+   |
+help: Remove unused import: `ai_intel.knowledge.revisions.attach_evidence_span`
+   |
+33 | )
+   - from ai_intel.knowledge.revisions import QuoteConsistencyError, attach_evidence_span
+34 + from ai_intel.knowledge.revisions import QuoteConsistencyError
+35 |
+   |
+
+E501 Line too long (107 > 100)
+  --> tests\integration\test_r04_source_documents.py:55:101
+   |
+53 |         assert connection.scalar(text("SELECT current_database()")) == url.database
+54 |         connection.execute(CreateSchema(schema))
+55 |     isolated_url = url.update_query_dict({"options":f"-c search_path={schema} -c statement_timeout=15000"})
+   |                                                                                                     ^^^^^^^
+56 |     engine = create_engine(isolated_url,connect_args={"connect_timeout":5})
+57 |     run_migrations(isolated_url.render_as_string(hide_password=False))
+   |
+
+E501 Line too long (111 > 100)
+   --> tests\integration\test_r04_source_documents.py:123:101
+    |
+121 |             assert revision["source_published_at"] is None
+122 |             assert revision["source_modified_at"] is None
+123 |             score = connection.execute(select(claims).where(claims.c.predicate=="cvss_score")).mappings().one()
+    |                                                                                                     ^^^^^^^^^^^
+124 |             assert score["object_json"]["score"]==6.6
+125 |             assert score["object_json"]["authority"]=="c6e8aa1d-9bc8-43d9-ae4b-9a64e87e4a58"
+    |
+
+E501 Line too long (110 > 100)
+   --> tests\integration\test_r04_source_documents.py:146:101
+    |
+145 | @pytest.mark.parametrize("source_kind",["nvd_ollama","vllm_vendor"])
+146 | def test_same_member_reuses_business_records_and_keeps_original_observation(page_engine,tmp_path,source_kind):
+    |                                                                                                     ^^^^^^^^^^
+147 |     store = ContentStore(tmp_path)
+148 |     initial = nvd_response() if source_kind=="nvd_ollama" else vendor_response()
+    |
+
+SIM117 Use a single `with` statement with multiple contexts instead of nested `with` statements
+   --> tests\integration\test_r04_source_documents.py:232:5
+    |
+230 |       vendor = vendor_record()
+231 |       vendor["cve_id"]="CVE-2024-28224"
+232 | /     with Session(page_engine) as session,session.begin():
+233 | |         with pytest.raises(EventLinkingError,match="conflicting"):
+    | |__________________________________________________________________^
+234 |               persist_source_response(session,store,ADMIN,vendor_response(vendor),ingested_at=NOW)
+235 |       assert table_counts(page_engine)==before
+    |
+help: Combine `with` statements
+
+E501 Line too long (106 > 100)
+   --> tests\integration\test_r04_source_documents.py:250:101
+    |
+249 | def test_legal_empty_page_records_observation_without_security_conclusion(page_engine,tmp_path):
+250 |     saved = persist(page_engine,ContentStore(tmp_path),SourceResponse("vllm_vendor",b"[]",VENDOR_URL,NOW))
+    |                                                                                                     ^^^^^^
+251 |     assert saved.revision_ids==saved.event_ids==() and saved.new_revision_count==0
+252 |     assert table_counts(page_engine)==(0,0,0,0,0,0)
+    |
+
+SIM117 [*] Use a single `with` statement with multiple contexts instead of nested `with` statements
+   --> tests\integration\test_r04_source_documents.py:262:5
+    |
+260 |       body = json.dumps([vendor,{"unexpected":"structure"}]).encode()
+261 |       response = SourceResponse("vllm_vendor",body,VENDOR_URL.replace("per_page=1","per_page=2"),NOW)
+262 | /     with Session(page_engine) as session,session.begin():
+263 | |         with pytest.raises(SourceDocumentError):
+    | |________________________________________________^
+264 |               persist_source_response(session,ContentStore(tmp_path),ADMIN,response,ingested_at=NOW)
+265 |       assert table_counts(page_engine)==(0,0,0,0,0,0)
+    |
+help: Combine `with` statements
+    |
+261 |     response = SourceResponse("vllm_vendor",body,VENDOR_URL.replace("per_page=1","per_page=2"),NOW)
+    -     with Session(page_engine) as session,session.begin():
+    -         with pytest.raises(SourceDocumentError):
+    -             persist_source_response(session,ContentStore(tmp_path),ADMIN,response,ingested_at=NOW)
+262 +     with Session(page_engine) as session,session.begin(), pytest.raises(SourceDocumentError):
+263 +         persist_source_response(session,ContentStore(tmp_path),ADMIN,response,ingested_at=NOW)
+264 |     assert table_counts(page_engine)==(0,0,0,0,0,0)
+    |
+
+E501 Line too long (103 > 100)
+   --> tests\integration\test_r04_source_documents.py:268:101
+    |
+268 | def test_second_member_storage_failure_rolls_back_first_member_and_fetch_attempt(page_engine,tmp_path):
+    |                                                                                                     ^^^
+269 |     first, second = vendor_record(),vendor_record()
+270 |     second["ghsa_id"]="GHSA-2345-6789-cfgh"
+    |
+
+SIM117 Use a single `with` statement with multiple contexts instead of nested `with` statements
+   --> tests\integration\test_r04_source_documents.py:279:5
+    |
+277 |               return super().store_bytes(payload)
+278 |       response = SourceResponse("vllm_vendor",body,VENDOR_URL.replace("per_page=1","per_page=2"),NOW)
+279 | /     with Session(page_engine) as session,session.begin():
+280 | |         with pytest.raises(OSError,match="isolated member"):
+    | |____________________________________________________________^
+281 |               persist_source_response(session,FailingMemberStore(tmp_path),ADMIN,response,ingested_at=NOW)
+282 |       assert table_counts(page_engine)==(0,0,0,0,0,0)
+    |
+help: Combine `with` statements
+
+SIM117 Use a single `with` statement with multiple contexts instead of nested `with` statements
+   --> tests\integration\test_r04_source_documents.py:307:5
+    |
+305 |           return original(*values,**kwargs)
+306 |       monkeypatch.setattr(module,"attach_evidence_span",mismatched_quote)
+307 | /     with Session(page_engine) as session,session.begin():
+308 | |         with pytest.raises(QuoteConsistencyError):
+    | |__________________________________________________^
+309 |               persist_source_response(session,ContentStore(tmp_path),ADMIN,vendor_response(),ingested_at=NOW)
+310 |       assert table_counts(page_engine)==(0,0,0,0,0,0)
+    |
+help: Combine `with` statements
+
+E501 Line too long (101 > 100)
+   --> tests\integration\test_r04_source_documents.py:327:101
+    |
+325 | def test_existing_registered_source_scope_is_never_overwritten(page_engine,tmp_path):
+326 |     with page_engine.begin() as connection:
+327 |         connection.execute(text("INSERT INTO sources(source_id,name,category,base_origin,visibility,"
+    |                                                                                                     ^
+328 |             "tenant_id,created_at) VALUES (:id,'original-user-source','vendor_advisory',"
+329 |             "'https://example.invalid','tenant','tenant-a',:time)"),
+    |
+
+E501 Line too long (115 > 100)
+   --> tests\integration\test_r04_source_documents.py:339:101
+    |
+338 | @pytest.mark.parametrize("unknown_authority",[False,True])
+339 | def test_cvss_unknown_authority_is_pending_and_source_conflict_is_retained(page_engine,tmp_path,unknown_authority):
+    |                                                                                                     ^^^^^^^^^^^^^^^
+340 |     payload = json.loads(nvd_response().body)
+341 |     metrics = payload["vulnerabilities"][0]["cve"]["metrics"]
+    |
+
+E501 Line too long (108 > 100)
+   --> tests\integration\test_r04_source_documents.py:354:101
+    |
+352 |         dimension = connection.execute(select(enrichment_results)).mappings().one()
+353 |         assert dimension["status"]==("pending" if unknown_authority else "conflict")
+354 |         scores = connection.execute(select(claims).where(claims.c.predicate=="cvss_score")).mappings().all()
+    |                                                                                                     ^^^^^^^^
+355 |         assert len(scores)==(0 if unknown_authority else 2)
+    |
+
+Found 15 errors.
+[*] 4 fixable with the `--fix` option.
