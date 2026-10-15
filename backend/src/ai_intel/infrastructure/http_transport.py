@@ -151,6 +151,13 @@ class PinnedHttpTransport:
         self._tls_context = ssl.create_default_context()
 
     def resolve_addresses(self, hostname: str, deadline: RequestDeadline) -> list[str]:
+        deadline.remaining_seconds()
+        try:
+            numeric_address = ipaddress.ip_address(hostname)
+        except ValueError:
+            pass
+        else:
+            return [str(numeric_address)]
         if not self._dns_slots.acquire(timeout=deadline.remaining_seconds()):
             raise NetworkTimeoutError("DNS concurrency wait exceeded total time limit")
         resolved: queue.Queue[list[str] | OSError] = queue.Queue(maxsize=1)

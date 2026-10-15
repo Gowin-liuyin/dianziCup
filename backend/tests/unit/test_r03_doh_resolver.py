@@ -27,7 +27,7 @@ def test_explicit_doh_keeps_wire_response_and_address_boundaries(monkeypatch, mo
     calls = []
 
     class FixtureResolverGateway:
-        def fetch(self, url):
+        def fetch(self, url, *, deadline):
             encoded = parse_qs(urlsplit(url).query)["dns"][0]
             question = dns.message.from_wire(urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
             response = dns.message.make_response(question)
@@ -35,7 +35,10 @@ def test_explicit_doh_keeps_wire_response_and_address_boundaries(monkeypatch, mo
                 response.set_rcode(dns.rcode.NXDOMAIN)
             elif mode == "mismatch":
                 response.id ^= 1
-            elif mode != "empty" and (mode != "ipv6" or question.question[0].rdtype == 28):
+            elif mode != "empty" and (
+                (mode == "ipv6" and question.question[0].rdtype == 28)
+                or (mode != "ipv6" and question.question[0].rdtype == 1)
+            ):
                 address = "10.0.0.1" if mode == "private" else "1.1.1.2"
                 record_type = "AAAA" if mode == "ipv6" else "A"
                 if record_type == "AAAA":

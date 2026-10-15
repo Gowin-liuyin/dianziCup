@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Literal, Protocol
-from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urljoin, urlsplit, urlunsplit
 
 from pydantic import SecretStr
 
@@ -143,7 +143,9 @@ def redact_url(url: str) -> tuple[str, str]:
     return redacted, hashlib.sha256(url.encode("utf-8")).hexdigest()
 
 
-def redact_headers(headers: dict[str, str]) -> dict[str, str]:
+def redact_headers(
+    headers: dict[str, str], sensitive_values: tuple[str, ...] = ()
+) -> dict[str, str]:
     redacted: dict[str, str] = {}
     for key, value in headers.items():
         if key.lower() in SENSITIVE_HEADERS:
@@ -155,6 +157,8 @@ def redact_headers(headers: dict[str, str]) -> dict[str, str]:
                 redacted[key] = "REDACTED"
         else:
             redacted[key] = value
+        for secret in sensitive_values:
+            redacted[key] = redacted[key].replace(secret, "REDACTED")
     return redacted
 
 
@@ -272,6 +276,21 @@ def _origin(url: str) -> tuple[str, str, int]:
     )
 
 
+def _strip_redirect_secrets(url: str, sensitive_values: tuple[str, ...]) -> str:
+    """跨origin不携带敏感query；路径反射凭据时拒绝而非向另一主机发送。"""
+    parts = urlsplit(url)
+    pairs = [
+        (key, value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        if key.lower() not in SENSITIVE_QUERY_KEYS
+        and not any(secret in value or secret in key for secret in sensitive_values)
+    ]
+    target = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(pairs), ""))
+    if any(secret in unquote(target) for secret in sensitive_values):
+        raise NetworkPolicyViolation("cross-origin redirect reflects a credential")
+    return target
+
+
 @dataclass(frozen=True)
 class OriginCredentials:
     """Trusted configuration injects secrets only into one exact HTTPS origin."""
@@ -346,6 +365,20 @@ def _fetch(
     ):
         raise ValueError("max_redirect_hops must be between 0 and 5")
     current_url = url
+    secret_values = {
+        value
+        for key, value in parse_qsl(urlsplit(url).query, keep_blank_values=True)
+        if key.lower() in SENSITIVE_QUERY_KEYS and value
+    }
+    if credentials:
+        secret_values.update(
+            value.get_secret_value() for value in credentials.query_parameters.values()
+        )
+        for value in credentials.headers.values():
+            secret_values.add(value.get_secret_value())
+            if value.get_secret_value().startswith("Bearer "):
+                secret_values.add(value.get_secret_value().removeprefix("Bearer "))
+    sensitive_values = tuple(value for value in secret_values if value)
     for hop in range(max_redirect_hops + 1):
         deadline.remaining_seconds()
         policy.ensure_url_allowed(current_url)
@@ -370,12 +403,23 @@ def _fetch(
                 except ValueError:
                     raise NetworkPolicyViolation("redirect URL is malformed") from None
                 if _origin(current_url) != _origin(next_url):
+                    next_url = _strip_redirect_secrets(next_url, sensitive_values)
                     credentials = None
                 if _origin(current_url)[0] == "https" and _origin(next_url)[0] == "http":
                     raise NetworkPolicyViolation("HTTPS downgrade is forbidden")
                 current_url = next_url
                 continue
             content_type = response_headers.get("content-type", "").split(";", 1)[0].strip().lower()
+            if not 200 <= response.status_code < 300:
+                redacted_url, fingerprint = redact_url(request_url)
+                return FetchResult(
+                    final_url=redacted_url,
+                    status_code=response.status_code,
+                    content_type=content_type,
+                    body=b"",
+                    redacted_headers=redact_headers(response.headers, sensitive_values),
+                    request_fingerprint_sha256=fingerprint,
+                )
             if content_type not in policy.allowed_content_types:
                 raise UnsupportedContentTypeError("unsupported or missing response content type")
             if response_headers.get("content-encoding", "identity").lower() not in ("", "identity"):
@@ -407,7 +451,7 @@ def _fetch(
                 status_code=response.status_code,
                 content_type=content_type,
                 body=bytes(body),
-                redacted_headers=redact_headers(response.headers),
+                redacted_headers=redact_headers(response.headers, sensitive_values),
                 request_fingerprint_sha256=fingerprint,
             )
         finally:
@@ -444,8 +488,15 @@ class NetworkGateway:
 
             self._resolve_addresses = CloudflareDohResolver()
 
-    def fetch(self, url: str, max_redirect_hops: int = MAX_REDIRECT_HOPS) -> FetchResult:
-        deadline = RequestDeadline(time.monotonic() + self._policy.total_timeout_seconds)
+    def fetch(
+        self,
+        url: str,
+        max_redirect_hops: int = MAX_REDIRECT_HOPS,
+        *,
+        deadline: RequestDeadline | None = None,
+    ) -> FetchResult:
+        expires_at = time.monotonic() + self._policy.total_timeout_seconds
+        deadline = RequestDeadline(min(expires_at, deadline.expires_at) if deadline else expires_at)
         if not self._request_slots.acquire(timeout=deadline.remaining_seconds()):
             raise NetworkTimeoutError("request concurrency wait exceeded total time limit")
         try:

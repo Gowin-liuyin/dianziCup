@@ -482,3 +482,48 @@ def test_real_redirect_rejects_private_dns_and_closes_prior_response(
     assert queries == ["source.example", "source.example"]
     assert len(sockets) == 1
     assert sockets[0].closed
+
+
+@pytest.mark.parametrize("status", [401, 403, 429, 503])
+def test_untyped_empty_http_error_retains_status_and_retry_metadata(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    sockets, _ = _install_socket_fixtures(
+        monkeypatch,
+        [f"HTTP/1.1 {status} Error\r\nRetry-After: 8\r\nContent-Length: 0\r\n\r\n".encode()],
+    )
+    result = create_network_gateway(NetworkPolicy(("source.example",))).fetch(
+        "https://source.example/"
+    )
+    assert result.status_code == status
+    assert result.body == b""
+    assert result.redacted_headers["Retry-After"] == "8"
+    assert len(sockets) == 1 and sockets[0].closed
+
+
+@pytest.mark.parametrize("query", ["api-key=fixture-key", "renamed=wrapped-fixture-key"])
+def test_cross_origin_location_cannot_forward_reflected_query_credentials(
+    monkeypatch: pytest.MonkeyPatch, query: str
+) -> None:
+    sockets, _ = _install_socket_fixtures(
+        monkeypatch,
+        [
+            _response(
+                302, f"Location: https://other.example/next?{query}&visible=1\r\n".encode(), b""
+            ),
+            _response(),
+        ],
+    )
+    credentials = OriginCredentials(
+        "https://source.example",
+        {"Authorization": SecretStr("Bearer fixture-key")},
+        {"api-key": SecretStr("fixture-key")},
+    )
+    result = create_network_gateway(
+        NetworkPolicy(("source.example", "other.example")), credentials
+    ).fetch("https://source.example/start")
+    sent = b"".join(sockets[1].sent)
+    assert result.status_code == 200
+    assert b"GET /next?visible=1 HTTP/1.1" in sent
+    assert b"fixture-key" not in sent and b"Authorization:" not in sent
+    assert all(connection.closed for connection in sockets)

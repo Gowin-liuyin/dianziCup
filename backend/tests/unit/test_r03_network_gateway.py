@@ -78,7 +78,8 @@ def test_error_status_is_returned_once_and_response_is_closed(status: int) -> No
         POLICY, "https://source.example/", lambda url: response, lambda host: ["93.184.216.34"]
     )
     assert result.status_code == status
-    assert response.reads == 1
+    assert response.reads == 0
+    assert result.body == b""
     assert response.closed
 
 
