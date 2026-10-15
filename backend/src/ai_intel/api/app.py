@@ -19,6 +19,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException
 
 from ai_intel.api.auth_routes import build_auth_router
+from ai_intel.api.auth_state import PgAuthenticationStateStore
 from ai_intel.api.authentication import (
     AuthenticationSessionService,
     DatabaseUserDirectory,
@@ -51,6 +52,7 @@ def create_application(
             DatabaseUserDirectory(engine),
             configuration.allowed_origins,
             cookie_secure_for_environment(configuration.app_env),
+            state_store=PgAuthenticationStateStore(engine),
         )
 
     @asynccontextmanager
@@ -85,7 +87,16 @@ def create_application(
             if location in identity_fields
         }
         if service is not None and submitted_keys:
-            service.record_identity_spoof_attempt(dict.fromkeys(submitted_keys, ""))
+            try:
+                service.record_identity_spoof_attempt(dict.fromkeys(submitted_keys, ""))
+            except SQLAlchemyError:
+                return problem_response(
+                    request,
+                    503,
+                    "authentication_unavailable",
+                    "authentication database is unavailable",
+                    True,
+                )
         return problem_response(request, 422, "validation_error", "request schema invalid")
 
     @application.exception_handler(HTTPException)

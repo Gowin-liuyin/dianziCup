@@ -9,6 +9,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.schema import CreateSchema, DropSchema
 
+from ai_intel.enrichment.persistence_models import enrichment_results
 from ai_intel.infrastructure.database import run_migrations
 from ai_intel.knowledge import persistence_models
 
@@ -82,7 +83,10 @@ def test_empty_and_legacy_upgrade_keep_columns_and_old_claims(
         assert actual_columns == set(mapped_table.c.keys()), table_name
     with empty_schema_engine.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert revision == "0008_event_operation_versions"
+        assert revision == "0009_enrichment_results"
+        assert {column["name"] for column in inspector.get_columns("enrichment_results")} == set(
+            enrichment_results.c.keys()
+        )
         if previous_revision:
             old_claim = (
                 connection.execute(
