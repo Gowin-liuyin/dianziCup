@@ -5,11 +5,12 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from dataclasses import dataclass
 from typing import Literal
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import Field, ValidationError
-from sqlalchemy import Text, and_, column, literal, or_, select, table
+from sqlalchemy import Text, and_, column, literal, or_, select, table, tuple_
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
@@ -52,7 +53,7 @@ from ai_intel.knowledge.persistence_models import (
     events,
 )
 
-GRAPH_RULE_VERSION: Literal["r10-graph-1.1.0"] = "r10-graph-1.1.0"
+GRAPH_RULE_VERSION: Literal["r10-graph-1.2.0"] = "r10-graph-1.2.0"
 MAX_SUPPORT_ROWS = 2000
 RelationType = Literal[
     "same_event",
@@ -87,6 +88,22 @@ GraphValue = (
 DocumentCache = dict[UUID, tuple[EnrichmentDocument, VisibilityScope] | None]
 
 
+@dataclass(frozen=True)
+class GraphReadInputs:
+    """本次可见读的临时 identity 围栏；不接受 HTTP 输入，不缓存事实或权限。"""
+
+    event_id: UUID
+    scope: AccessScope
+    source_ids: tuple[str, ...]
+    document_ids: tuple[str, ...]
+    revision_ids: tuple[str, ...]
+    claim_ids: tuple[str, ...]
+    evidence_ids: tuple[str, ...]
+    block_ids: tuple[str, ...]
+    assertion_ids: tuple[str, ...]
+    support_pairs: tuple[tuple[str, str], ...]
+
+
 class GraphSnapshotChangedError(RuntimeError):
     """候选图在返回围栏前失效；不能把旧快照包装成当前结果。"""
 
@@ -107,7 +124,7 @@ class GraphEdge(StrictRecord):
     source_revision_ids: tuple[UUID, ...] = Field(min_length=1, max_length=MAX_SUPPORT_ROWS)
     evidence_span_ids: tuple[UUID, ...] = Field(min_length=1, max_length=MAX_SUPPORT_ROWS)
     supporting_claim_ids: tuple[UUID, ...] = Field(min_length=1, max_length=MAX_SUPPORT_ROWS)
-    rule_or_model_version: Literal["r10-graph-1.1.0"] = GRAPH_RULE_VERSION
+    rule_or_model_version: Literal["r10-graph-1.2.0"] = GRAPH_RULE_VERSION
     reason: str = Field(min_length=1, max_length=2500)
     status: Literal["supported"] = "supported"
 
@@ -122,7 +139,7 @@ class GraphSnapshot(StrictRecord):
     schema_version: Literal[1] = 1
     event_id: UUID
     business_version: int = Field(strict=True, ge=1)
-    rule_version: Literal["r10-graph-1.1.0"] = GRAPH_RULE_VERSION
+    rule_version: Literal["r10-graph-1.2.0"] = GRAPH_RULE_VERSION
     nodes: tuple[GraphNode, ...] = Field(min_length=1, max_length=200)
     edges: tuple[GraphEdge, ...] = Field(max_length=400)
     truncated: bool
@@ -197,6 +214,7 @@ class EvidenceGraphReadService:
         self.session = session
         self.scope = scope
         self.input_sha256: str | None = None
+        self.read_inputs: GraphReadInputs | None = None
 
     def _visible(self, relation: FromClause) -> ColumnElement[bool]:
         public = and_(relation.c.visibility == "public", relation.c.tenant_id.is_(None))
@@ -262,9 +280,11 @@ class EvidenceGraphReadService:
                 claims.c.value_kind,
                 claims.c.object_json,
                 claims.c.object_value,
+                claim_assertions.c.assertion_id,
                 claim_assertions.c.json_path.label("assertion_path"),
                 document_revisions.c.revision_id,
                 documents.c.document_id,
+                sources.c.source_id,
                 documents.c.title,
                 evidence.c.evidence_id,
                 evidence.c.quote,
@@ -328,8 +348,10 @@ class EvidenceGraphReadService:
             result.append((key, epoch))
         return tuple(result)
 
-    def lock_graph_inputs(self, event_id: UUID) -> None:
-        """先锁事实父链，再由调用者取 epoch 锁；不在持 epoch 时倒序取父锁。"""
+    def lock_graph_inputs(self, event_id: UUID, inputs: GraphReadInputs) -> None:
+        """只锁原可见读的 identity，随后必须完整重读，不能以这些 ID 替代当前查询。"""
+        if inputs.event_id != event_id or inputs.scope != self.scope:
+            raise ValueError("graph read inputs disagree with authenticated request")
         if (
             self.session.scalar(
                 select(events.c.event_id).where(
@@ -339,47 +361,29 @@ class EvidenceGraphReadService:
             is None
         ):
             raise CrossTenantAccessError("resource not found")
-        revisions: list[str] = list(
-            self.session.scalars(
-                select(event_documents.c.revision_id)
-                .where(event_documents.c.event_id == str(event_id))
-                .order_by(event_documents.c.revision_id)
-                .limit(MAX_SUPPORT_ROWS + 1)
+        if any(
+            len(identifiers) > MAX_SUPPORT_ROWS
+            for identifiers in (
+                inputs.source_ids,
+                inputs.document_ids,
+                inputs.revision_ids,
+                inputs.claim_ids,
+                inputs.evidence_ids,
+                inputs.block_ids,
+                inputs.assertion_ids,
+                inputs.support_pairs,
             )
-        )
-        claim_rows = list(
-            self.session.execute(
-                select(claims.c.claim_id, claims.c.object_json)
-                .where(claims.c.subject == str(event_id))
-                .order_by(claims.c.claim_id)
-                .limit(MAX_SUPPORT_ROWS + 1)
-            )
-        )
-        if len(revisions) > MAX_SUPPORT_ROWS or len(claim_rows) > MAX_SUPPORT_ROWS:
+        ):
             raise GraphSnapshotChangedError("graph inputs exceed validity fence")
-        revision_ids = set(revisions)
-        for _claim_id, value in claim_rows:
-            if (
-                isinstance(value, dict)
-                and value.get("kind") == "literature_reference"
-                and value.get("target_revision_id") is not None
-            ):
-                revision_ids.add(str(UUID(value["target_revision_id"])))
-        parents = list(
-            self.session.execute(
-                select(
-                    document_revisions.c.revision_id, documents.c.document_id, documents.c.source_id
-                )
-                .select_from(document_revisions.join(documents))
-                .where(document_revisions.c.revision_id.in_(revision_ids))
-            )
-        )
         for relation, key, identifiers in (
-            (sources, sources.c.source_id, {item.source_id for item in parents}),
-            (documents, documents.c.document_id, {item.document_id for item in parents}),
-            (document_revisions, document_revisions.c.revision_id, revision_ids),
+            (sources, sources.c.source_id, inputs.source_ids),
+            (documents, documents.c.document_id, inputs.document_ids),
+            (document_revisions, document_revisions.c.revision_id, inputs.revision_ids),
             (events, events.c.event_id, {str(event_id)}),
-            (claims, claims.c.claim_id, {item.claim_id for item in claim_rows}),
+            (claims, claims.c.claim_id, inputs.claim_ids),
+            (evidence, evidence.c.evidence_id, inputs.evidence_ids),
+            (text_blocks, text_blocks.c.block_id, inputs.block_ids),
+            (claim_assertions, claim_assertions.c.assertion_id, inputs.assertion_ids),
         ):
             self.session.execute(
                 select(key)
@@ -388,51 +392,25 @@ class EvidenceGraphReadService:
                 .order_by(key)
                 .with_for_update(read=True)
             ).all()
-        evidence_ids: tuple[str, ...] = tuple(
-            self.session.scalars(
-                select(evidence.c.evidence_id)
-                .where(evidence.c.revision_id.in_(revision_ids))
-                .order_by(evidence.c.evidence_id)
-                .limit(MAX_SUPPORT_ROWS + 1)
-            )
-        )
-        if len(evidence_ids) > MAX_SUPPORT_ROWS:
-            raise GraphSnapshotChangedError("graph evidence exceeds validity fence")
         self.session.execute(
-            select(evidence.c.evidence_id)
-            .where(evidence.c.evidence_id.in_(evidence_ids))
-            .order_by(evidence.c.evidence_id)
+            select(event_documents.c.revision_id)
+            .where(
+                event_documents.c.event_id == str(event_id),
+                event_documents.c.revision_id.in_(inputs.revision_ids),
+            )
+            .order_by(event_documents.c.revision_id)
             .with_for_update(read=True)
         ).all()
-        block_ids: tuple[str, ...] = tuple(
-            self.session.scalars(
-                select(text_blocks.c.block_id)
-                .where(text_blocks.c.revision_id.in_(revision_ids))
-                .order_by(text_blocks.c.block_id)
-                .limit(MAX_SUPPORT_ROWS + 1)
-            )
-        )
-        if len(block_ids) > MAX_SUPPORT_ROWS:
-            raise GraphSnapshotChangedError("graph blocks exceed validity fence")
         self.session.execute(
-            select(text_blocks.c.block_id)
-            .where(text_blocks.c.block_id.in_(block_ids))
-            .order_by(text_blocks.c.block_id)
+            select(claim_evidence.c.evidence_id)
+            .where(
+                tuple_(claim_evidence.c.claim_id, claim_evidence.c.evidence_id).in_(
+                    inputs.support_pairs
+                )
+            )
+            .order_by(claim_evidence.c.claim_id, claim_evidence.c.evidence_id)
             .with_for_update(read=True)
         ).all()
-        for relation, key in (
-            (event_documents, event_documents.c.revision_id),
-            (claim_assertions, claim_assertions.c.assertion_id),
-            (claim_evidence, claim_evidence.c.evidence_id),
-        ):
-            predicate = (
-                relation.c.event_id == str(event_id)
-                if relation is event_documents
-                else relation.c.claim_id.in_({item.claim_id for item in claim_rows})
-            )
-            self.session.execute(
-                select(key).where(predicate).order_by(key).with_for_update(read=True)
-            ).all()
 
     def _load_document(
         self, revision_id: UUID, cache: DocumentCache
@@ -807,6 +785,7 @@ class EvidenceGraphReadService:
         proof_rows: tuple[RowMapping, ...] = ()
         claim_rows: tuple[RowMapping, ...] = ()
         proof_inputs: list[object] = []
+        read_rows = list(rows)
 
         def add_edge(
             relation_type: RelationType,
@@ -857,6 +836,7 @@ class EvidenceGraphReadService:
             if support is None:
                 continue
             value, proof_rows, scope = support
+            read_rows.extend(proof_rows)
             scope = _narrow_scope((scope, event_scope))
             row = group[0]
             revision = GraphNode(
@@ -992,6 +972,41 @@ class EvidenceGraphReadService:
                 input_state, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
             ).encode()
         ).hexdigest()
+        loaded = tuple(value[0] for value in document_cache.values() if value is not None)
+        self.read_inputs = GraphReadInputs(
+            event_id=event_id,
+            scope=self.scope,
+            source_ids=tuple(
+                sorted(
+                    {str(item["source_id"]) for item in rows}
+                    | {str(item.source_id) for item in loaded}
+                )
+            ),
+            document_ids=tuple(
+                sorted(
+                    {str(item["document_id"]) for item in rows}
+                    | {str(item.document_id) for item in loaded}
+                )
+            ),
+            revision_ids=tuple(
+                sorted(
+                    {str(item["revision_id"]) for item in rows}
+                    | {str(item.revision_id) for item in loaded}
+                )
+            ),
+            claim_ids=tuple(sorted({str(item["claim_id"]) for item in rows})),
+            evidence_ids=tuple(sorted({str(item["evidence_id"]) for item in read_rows})),
+            block_ids=tuple(
+                sorted(
+                    {str(item["block_id"]) for item in read_rows}
+                    | {str(block.block_id) for item in loaded for block in item.blocks}
+                )
+            ),
+            assertion_ids=tuple(sorted({str(item["assertion_id"]) for item in rows})),
+            support_pairs=tuple(
+                sorted({(str(item["claim_id"]), str(item["evidence_id"])) for item in rows})
+            ),
+        )
         return GraphSnapshot.model_validate(
             {**payload, "content_sha256": hashlib.sha256(serialized.encode()).hexdigest()}
         )

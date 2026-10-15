@@ -63,6 +63,7 @@ def build_graph_router(
                 epochs = reader.read_scope_epochs()
                 candidate = reader.event_graph(event_id, max_nodes, max_edges)
                 candidate_input = reader.input_sha256
+                candidate_inputs = reader.read_inputs
             with Session(engine) as session, session.begin():
                 session.connection(execution_options={"isolation_level": "READ COMMITTED"})
                 current = lock_authenticated_scope(session.connection(), token, datetime.now(UTC))
@@ -70,7 +71,9 @@ def build_graph_router(
                     raise PermissionDeniedError("graph authorization changed")
                 current.requires(READ_PUBLIC)
                 reader = EvidenceGraphReadService(session, current)
-                reader.lock_graph_inputs(event_id)
+                if candidate_inputs is None:
+                    raise GraphSnapshotChangedError("graph read inputs missing")
+                reader.lock_graph_inputs(event_id, candidate_inputs)
                 refreshed = reader.event_graph(event_id, max_nodes, max_edges)
                 current_epochs = reader.read_scope_epochs(lock=True)
                 if (

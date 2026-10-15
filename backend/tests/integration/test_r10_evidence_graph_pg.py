@@ -757,7 +757,7 @@ def test_real_session_rest_factory_bounds_acl_errors_and_database_failure(
         client.cookies.set(SESSION_COOKIE_NAME, session_token)
         response = client.get(path)
         assert response.status_code == 200 and response.json()["business_version"] == 1
-        assert response.json()["rule_version"] == "r10-graph-1.1.0"
+        assert response.json()["rule_version"] == "r10-graph-1.2.0"
         assert client.get(f"/v1/events/{uuid4()}/graph").status_code == 404
         assert client.get("/v1/events/not-a-uuid/graph").status_code == 422
         for parameters in (

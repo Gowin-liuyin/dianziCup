@@ -33,7 +33,7 @@ def test_effective_edge_cannot_claim_support_without_evidence_or_candidates():
         "source_revision_ids": [uuid4()],
         "evidence_span_ids": [uuid4()],
         "supporting_claim_ids": [uuid4()],
-        "rule_or_model_version": "r10-graph-1.1.0",
+        "rule_or_model_version": "r10-graph-1.2.0",
         "reason": "已核验机制",
         "status": "supported",
     }
