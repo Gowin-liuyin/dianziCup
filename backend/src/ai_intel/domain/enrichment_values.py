@@ -153,3 +153,15 @@ EnrichmentValue = Annotated[
     | ExposureAggregateValue,
     Field(discriminator="kind"),
 ]
+
+ENRICHMENT_VALUE_MODELS: dict[str, type[SignalValue]] = {
+    "cvss_signal": CvssSignalValue,
+    "epss_signal": EpssSignalValue,
+    "kev_signal": KevSignalValue,
+    "weakness": WeaknessValue,
+    "atlas_mapping": AtlasMappingValue,
+    "version_assertion": VersionAssertionValue,
+    "literature_reference": LiteratureReferenceValue,
+    "artifact_reference": ArtifactReferenceValue,
+    "exposure_aggregate": ExposureAggregateValue,
+}

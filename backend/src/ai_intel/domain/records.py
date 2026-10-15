@@ -6,11 +6,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 from pydantic.config import JsonDict, JsonValue
 
+from ai_intel.domain.enrichment_values import ENRICHMENT_VALUE_MODELS, EnrichmentValue
 from ai_intel.domain.enums import (
     AssessmentStatus,
     ClaimOrigin,
@@ -61,37 +63,70 @@ class VersionRangeValue(StrictRecord):
 ClaimObjectValue = (
     Annotated[str, Field(min_length=1, max_length=MAX_SUMMARY_LENGTH)]
     | Annotated[ScoreValue | LinkValue | VersionRangeValue, Field(discriminator="kind")]
+    | EnrichmentValue
 )
 
+LEGACY_STRUCTURED_PREDICATES: dict[str, type[BaseModel]] = {
+    "cvss_score": ScoreValue,
+    "reference_link": LinkValue,
+    "poc_link": LinkValue,
+    "affected_version": VersionRangeValue,
+    "affected_versions": VersionRangeValue,
+}
 
-def _restrict_claim_json_schema(schema: JsonDict) -> None:
-    """使导出的JSON Schema与运行时谓词/版本校验一致。"""
-    predicate_models: dict[str, type[StrictRecord]] = {
-        "cvss_score": ScoreValue,
-        "reference_link": LinkValue,
-        "poc_link": LinkValue,
-        "affected_version": VersionRangeValue,
-        "affected_versions": VersionRangeValue,
-    }
+
+def _predicate_value_constraints(
+    predicate_models: Mapping[str, type[BaseModel]], *, allow_other_text: bool
+) -> list[JsonValue]:
     predicate_constraints: list[JsonValue] = [
         {
             "if": {"properties": {"predicate": {"const": predicate}}},
-            "then": {"properties": {"object_value": model.model_json_schema()}},
+            "then": {
+                "properties": {
+                    "object_value": {
+                        "type": "object",
+                        "properties": {"kind": {"const": model.model_fields["kind"].default}},
+                        "required": ["kind"],
+                    }
+                }
+            },
         }
         for predicate, model in predicate_models.items()
     ]
-    predicate_constraints.append(
-        {
-            "if": {"properties": {"predicate": {"not": {"enum": list(predicate_models)}}}},
-            "then": {"properties": {"object_value": {"type": "string"}}},
-        }
-    )
+    if allow_other_text:
+        predicate_constraints.append(
+            {
+                "if": {"properties": {"predicate": {"not": {"enum": list(predicate_models)}}}},
+                "then": {"properties": {"object_value": {"type": "string"}}},
+            }
+        )
+    else:
+        predicate_constraints.append(
+            {"properties": {"predicate": {"enum": list(predicate_models)}}}
+        )
+    return predicate_constraints
+
+
+def _restrict_claim_json_schema(schema: JsonDict) -> None:
+    """v1/v2 unchanged; v3 accepts only the registered, typed enrichment predicates."""
     schema["allOf"] = [
-        {"properties": {"schema_version": {"enum": [1, 2]}}},
+        {"properties": {"schema_version": {"enum": [1, 2, 3]}}},
         {
             "if": {"properties": {"schema_version": {"const": 1}}, "required": ["schema_version"]},
             "then": {"properties": {"object_value": {"type": "string"}}},
-            "else": {"allOf": predicate_constraints},
+            "else": {
+                "if": {"properties": {"schema_version": {"const": 2}}},
+                "then": {
+                    "allOf": _predicate_value_constraints(
+                        LEGACY_STRUCTURED_PREDICATES, allow_other_text=True
+                    )
+                },
+                "else": {
+                    "allOf": _predicate_value_constraints(
+                        ENRICHMENT_VALUE_MODELS, allow_other_text=False
+                    )
+                },
+            },
         },
     ]
 
@@ -153,21 +188,21 @@ class ClaimRecord(StrictRecord):
 
     @model_validator(mode="after")
     def validate_predicate_value_contract(self) -> ClaimRecord:
-        """v1文本明确兼容；v2结构只允许与谓词匹配的已冻结值类型。"""
-        if self.schema_version not in {1, 2}:
+        """Old records retain their version; v3 cannot disguise candidates as legacy text."""
+        if self.schema_version not in {1, 2, 3}:
             raise ValueError("unsupported claim schema version")
         if self.schema_version == 1:
             if not isinstance(self.object_value, str):
                 raise ValueError("schema version 1 requires text claim value")
             return self
-        structured_predicates = {
-            "cvss_score": ScoreValue,
-            "reference_link": LinkValue,
-            "poc_link": LinkValue,
-            "affected_version": VersionRangeValue,
-            "affected_versions": VersionRangeValue,
-        }
-        expected_type = structured_predicates.get(self.predicate, str)
+        if self.schema_version == 3:
+            signal_type = ENRICHMENT_VALUE_MODELS.get(self.predicate)
+            if signal_type is None or not isinstance(self.object_value, signal_type):
+                raise ValueError(
+                    "schema version 3 requires registered enrichment predicate and value"
+                )
+            return self
+        expected_type = LEGACY_STRUCTURED_PREDICATES.get(self.predicate, str)
         if not isinstance(self.object_value, expected_type):
             raise ValueError("claim value does not match predicate contract")
         return self

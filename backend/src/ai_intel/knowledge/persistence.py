@@ -24,6 +24,7 @@ from ai_intel.domain.access import (
     AccessScope,
     CrossTenantAccessError,
 )
+from ai_intel.domain.enrichment_values import CvssSignalValue
 from ai_intel.domain.enums import ClaimOrigin, ClaimStatus
 from ai_intel.domain.records import ClaimRecord, EvidenceRecord, ScoreValue, StrictRecord
 from ai_intel.domain.values import Identifier, UtcTimestamp, VisibilityScope
@@ -140,6 +141,16 @@ def knowledge_scope_key(scope: VisibilityScope) -> str:
 def publication_payload_digest(value: object) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _claim_display_value(record: ClaimRecord) -> str:
+    """Bound v3 display text while object_json retains the complete structured value."""
+    value = record.object_value
+    displayed = value if isinstance(value, str) else value.model_dump_json()
+    suffix = " …（显示摘要已截断；完整结构已保存，请查看原文证据）"
+    if record.schema_version == 3 and len(displayed) > 4000:
+        return displayed[: 4000 - len(suffix)] + suffix
+    return displayed
 
 
 def _claim_from_row(row: RowMapping, status: str | None = None) -> ClaimRecord:
@@ -326,7 +337,7 @@ class KnowledgeRepository:
         if record.claim_status not in (ClaimStatus.SUPPORTED, ClaimStatus.UNVERIFIED):
             raise KnowledgePublicationError("initial status must be supported or unverified")
         if (
-            isinstance(record.object_value, ScoreValue)
+            isinstance(record.object_value, (ScoreValue, CvssSignalValue))
             and record.object_value.authority != submission.scoring_authority
         ):
             raise KnowledgePublicationError("score authority differs from source assertion")
@@ -493,7 +504,7 @@ class KnowledgeRepository:
                 claim_id=record.claim_id.value,
                 subject=record.subject,
                 predicate=record.predicate,
-                object_value=value if isinstance(value, str) else value.model_dump_json(),
+                object_value=_claim_display_value(record),
                 object_json=object_json,
                 value_kind="text" if isinstance(value, str) else value.kind,
                 claim_status=record.claim_status.value,
