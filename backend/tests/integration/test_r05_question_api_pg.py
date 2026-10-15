@@ -2,6 +2,7 @@
 
 import json
 import secrets
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
@@ -10,7 +11,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from test_r05_vector_persistence import FixtureSemanticModels, public_event_id
 from test_r05_vector_persistence import vector_database as vector_database
 
@@ -26,6 +27,7 @@ from ai_intel.infrastructure.settings import ApplicationSettings
 from ai_intel.knowledge.models import document_revisions, evidence, scope_epochs, users
 from ai_intel.knowledge.persistence_models import claims, events
 from ai_intel.retrieval.persistence_models import grounded_answers
+from ai_intel.retrieval.service import EventEvidenceRetriever
 
 pytestmark = pytest.mark.real_pg
 ORIGIN = "http://localhost:5173"
@@ -238,7 +240,7 @@ def test_missing_empty_or_invalid_key_is_rejected_before_pg_and_generation(quest
             response = api["client"].post(
                 prefix + "/questions", json=api["payload"], headers=headers
             )
-            assert response.status_code == 422, response.text
+            assert_problem(response, 422, "invalid_key")
             assert api["wire"].calls == []
             with api["engine"].connect() as connection:
                 assert connection.scalar(select(func.count()).select_from(grounded_answers)) == 0
@@ -459,3 +461,140 @@ def test_unsupported_r12_scope_is_rejected_without_pg_answer_or_model(question_a
     assert api["wire"].calls == []
     with api["engine"].connect() as connection:
         assert connection.scalar(select(func.count()).select_from(grounded_answers)) == 0
+
+
+def test_expired_pending_replay_fails_without_charge_and_late_writer_cannot_publish(question_api):
+    api = question_api
+    reached = Event()
+    release = Event()
+
+    def block_verification():
+        reached.set()
+        assert release.wait(10), "fixture verification barrier timed out"
+
+    api["wire"].before_verification = block_verification
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        original_request = executor.submit(post_question, api, key="fixture-expired")
+        try:
+            assert reached.wait(10)
+            pending = stored_answer(api)
+            assert pending["response"] == {"kind": "pending"}
+            reservation_id = pending["model_trace"]["reservation_id"]
+            with api["engine"].begin() as connection:
+                connection.execute(
+                    update(grounded_answers).values(
+                        model_trace={
+                            **pending["model_trace"],
+                            "reservation_expires_at": "2000-01-01T00:00:00+00:00",
+                        }
+                    )
+                )
+            restarted = TestClient(create_application(settings=api["settings"]))
+            restarted.cookies.update(api["client"].cookies)
+            try:
+                replay = restarted.post(
+                    "/api/v1/questions",
+                    json=api["payload"],
+                    headers={**api["headers"], "Idempotency-Key": "fixture-expired"},
+                )
+                assert_problem(replay, 409, "answer_failed")
+                expired = stored_answer(api)
+                assert expired["response"] == {"kind": "failed", "error_code": "answer_interrupted"}
+                assert expired["model_trace"]["reservation_state"] == "expired"
+                assert expired["model_trace"]["usage_status"] == "incomplete_interrupted"
+                assert expired["model_trace"]["fee"] == "unknown"
+                assert len(api["wire"].calls) == 2
+                assert_problem(
+                    restarted.get("/v1/answers/" + pending["answer_id"]), 409, "answer_failed"
+                )
+            finally:
+                restarted.close()
+        finally:
+            release.set()
+        assert_problem(original_request.result(timeout=15), 409, "answer_failed")
+    terminal = stored_answer(api)
+    assert terminal["response"] == {"kind": "failed", "error_code": "answer_interrupted"}
+    assert terminal["model_trace"]["reservation_id"] == reservation_id
+    assert terminal["model_trace"]["reservation_state"] == "expired"
+    assert terminal["model_trace"]["usage_status"] == "recorded_after_terminal"
+    assert len(terminal["model_trace"]["attempts"]) == 2
+    assert all(attempt["fee"] == "unknown" for attempt in terminal["model_trace"]["attempts"])
+    assert len(api["wire"].calls) == 2
+
+
+@pytest.mark.parametrize("change", ["logout", "tenant"])
+def test_final_auth_lock_orders_later_pg_mutation_after_answer_commit(
+    question_api, monkeypatch, change
+):
+    api = question_api
+    locked = Event()
+    release = Event()
+    owner_pids = []
+    require_current = EventEvidenceRetriever.require_current
+
+    def block_after_auth_lock(session, scope, event_id, epoch, citations, *, lock_epoch=False):
+        if lock_epoch:
+            owner_pids.append(session.scalar(text("SELECT pg_backend_pid()")))
+            locked.set()
+            assert release.wait(10), "fixture final commit barrier timed out"
+        return require_current(session, scope, event_id, epoch, citations, lock_epoch=lock_epoch)
+
+    monkeypatch.setattr(
+        EventEvidenceRetriever, "require_current", staticmethod(block_after_auth_lock)
+    )
+    logout_client = TestClient(create_application(settings=api["settings"]))
+    logout_client.cookies.update(api["client"].cookies)
+
+    def mutate_pg_authorization():
+        if change == "logout":
+            response = logout_client.post("/v1/auth/logout", headers=api["headers"])
+            assert response.status_code == 200, response.text
+        else:
+            with api["engine"].begin() as connection:
+                connection.execute(
+                    update(users)
+                    .where(users.c.user_id == api["identity"]["user_id"])
+                    .values(tenant_id="tenant-b")
+                )
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            answer_request = executor.submit(post_question, api, key="fixture-final-auth-lock")
+            try:
+                assert locked.wait(10), "final auth lock was not reached"
+                mutation = executor.submit(mutate_pg_authorization)
+                deadline = time.monotonic() + 5
+                blocked_by_answer = False
+                while time.monotonic() < deadline:
+                    with api["engine"].connect() as connection:
+                        blocked_by_answer = bool(
+                            connection.scalar(
+                                text(
+                                    "SELECT EXISTS (SELECT 1 FROM pg_stat_activity "
+                                    "WHERE wait_event_type = 'Lock' "
+                                    "AND :owner_pid = ANY(pg_blocking_pids(pid)))"
+                                ),
+                                {"owner_pid": owner_pids[0]},
+                            )
+                        )
+                    if blocked_by_answer or mutation.done():
+                        break
+                    time.sleep(0.01)
+                assert blocked_by_answer, "PG authorization mutation did not wait for answer lock"
+                assert not mutation.done()
+            finally:
+                release.set()
+            answer = answer_request.result(timeout=15)
+            assert answer.status_code == 200, answer.text
+            mutation.result(timeout=10)
+        assert stored_answer(api)["response"] == answer.json()
+        read = api["client"].get("/api/v1/answers/" + answer.json()["answer_id"])
+        assert_problem(
+            read,
+            401 if change == "logout" else 404,
+            "session_expired" if change == "logout" else "not_found",
+        )
+        assert len(api["wire"].calls) == 2
+    finally:
+        release.set()
+        logout_client.close()
