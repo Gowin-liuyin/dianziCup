@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import func, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from ai_intel.infrastructure.content_store import ContentStore
@@ -52,21 +53,24 @@ def _insert_content_object(
     session: Session, content_hash: str, size_bytes: int, created_at: datetime
 ) -> None:
     """登记原文对象; 重复登记幂等。"""
-    existing = session.execute(
-        select(content_objects.c.content_hash).where(content_objects.c.content_hash == content_hash)
-    ).scalar_one_or_none()
-    if existing is None:
-        session.execute(
-            content_objects.insert().values(
-                content_hash=content_hash, size_bytes=size_bytes, created_at=created_at
-            )
-        )
+    session.execute(
+        insert(content_objects)
+        .values(content_hash=content_hash, size_bytes=size_bytes, created_at=created_at)
+        .on_conflict_do_nothing(index_elements=[content_objects.c.content_hash])
+    )
+
+
+def _lock_content_hash(session: Session, content_hash: str) -> None:
+    """发布与回收共享事务锁, 避免回收尚未提交引用的对象。"""
+    session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(content_hash, 0))))
 
 
 def _load_document_row(session: Session, document_id: str) -> dict[str, object]:
     """读取文档父行; 不存在即拒绝, 保证修订不脱离文档。"""
     row = (
-        session.execute(select(documents).where(documents.c.document_id == document_id))
+        session.execute(
+            select(documents).where(documents.c.document_id == document_id).with_for_update()
+        )
         .mappings()
         .first()
     )
@@ -90,6 +94,8 @@ def save_document_revision(
         raise TenantScopeViolation("tenant revision requires exactly one tenant_id")
     if visibility != document_row["visibility"] or tenant_id != document_row["tenant_id"]:
         raise TenantScopeViolation("revision scope does not match document scope")
+    content_hash = hashlib.sha256(payload).hexdigest()
+    _lock_content_hash(session, content_hash)
     stored = store.store_bytes(payload)
     _insert_content_object(session, stored.content_hash, stored.size_bytes, created_at)
     tip = (
@@ -161,6 +167,8 @@ def add_text_block(
     block_text: str,
 ) -> str:
     """登记原文文本块: 记录块哈希, 供引文一致性校验。"""
+    if start_offset < 0 or end_offset - start_offset != len(block_text):
+        raise QuoteConsistencyError("block offsets must cover its Unicode text exactly")
     revision = session.execute(
         select(document_revisions.c.revision_id).where(
             document_revisions.c.revision_id == revision_id
@@ -219,19 +227,26 @@ def attach_evidence_span(
     resolved_quote_sha256 = quote_digest
     if block_id is not None:
         block_row = session.execute(
-            select(text_blocks.c.revision_id, text_blocks.c.block_text).where(
-                text_blocks.c.block_id == block_id
-            )
+            select(
+                text_blocks.c.revision_id,
+                text_blocks.c.block_text,
+                text_blocks.c.start_offset,
+                text_blocks.c.end_offset,
+            ).where(text_blocks.c.block_id == block_id)
         ).first()
         if block_row is None:
             raise QuoteConsistencyError("text block does not exist")
         if block_row[0] != revision_id:
             raise QuoteConsistencyError("text block belongs to a different revision")
         block_text = str(block_row[1])
-        if start_offset < 0 or end_offset > len(block_text) or start_offset > end_offset:
+        relative_start = start_offset - int(block_row[2])
+        relative_end = end_offset - int(block_row[2])
+        if relative_start < 0 or relative_end > len(block_text) or relative_start > relative_end:
             raise QuoteConsistencyError("evidence span outside text block")
-        if block_text[start_offset:end_offset] != quote:
+        if block_text[relative_start:relative_end] != quote:
             raise QuoteConsistencyError("quote does not match source text at span")
+    elif supports_claim or verified_at is not None:
+        raise QuoteConsistencyError("verified evidence requires a source text block")
     evidence_id = str(uuid.uuid4())
     session.execute(
         evidence.insert().values(
@@ -248,6 +263,9 @@ def attach_evidence_span(
             block_id=block_id,
             quote_sha256=resolved_quote_sha256,
             verified_at=verified_at,
+            coordinate_version="fulltext_unicode_v1"
+            if block_id is not None
+            else "legacy_unverified",
         )
     )
     return evidence_id
@@ -277,27 +295,17 @@ def record_fetch_attempt(
 
 def bump_scope_epoch(session: Session, scope_key: str, updated_at: datetime) -> int:
     """递增 scope epoch: 事实变更后旧读缓存据此过期。"""
-    current = session.execute(
-        select(scope_epochs.c.epoch).where(scope_epochs.c.scope_key == scope_key)
-    ).scalar_one_or_none()
-    next_epoch = 1 if current is None else int(current) + 1
-    if current is None:
-        session.execute(
-            scope_epochs.insert().values(
-                scope_key=scope_key, epoch=next_epoch, updated_at=updated_at
-            )
-        )
-    else:
-        session.execute(
-            update(scope_epochs)
-            .where(scope_epochs.c.scope_key == scope_key)
-            .values(epoch=next_epoch, updated_at=updated_at)
-        )
-    return next_epoch
+    statement = insert(scope_epochs).values(scope_key=scope_key, epoch=1, updated_at=updated_at)
+    upsert = statement.on_conflict_do_update(
+        index_elements=[scope_epochs.c.scope_key],
+        set_={"epoch": scope_epochs.c.epoch + 1, "updated_at": updated_at},
+    ).returning(scope_epochs.c.epoch)
+    return int(session.execute(upsert).scalar_one())
 
 
 def cleanup_unreferenced_object(session: Session, store: ContentStore, content_hash: str) -> bool:
     """清理无引用原文对象: 文件与登记行同删; 任何引用存在即拒删。"""
+    _lock_content_hash(session, content_hash)
     revision_refs = session.execute(
         select(func.count())
         .select_from(document_revisions)

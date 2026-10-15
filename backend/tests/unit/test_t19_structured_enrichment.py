@@ -16,7 +16,7 @@ def test_structured_version_and_cvss_traceable_to_source_path_t19_c01() -> None:
         evidence_span_text="CVSS:3.1/AV:N/AC:L ...",
         scoring_authority="NVD",
     )
-    ledger = EnrichmentLedger()
+    ledger = EnrichmentLedger(fixture_mode=True)
     assert ledger.apply_claims("fp-1", [claim], "vulnerability_advisory") == "applied"
     stored = ledger.facts["cvss_score"][0]
     assert stored.value == "9.8"
@@ -30,14 +30,14 @@ def test_paper_without_cve_marks_cvss_not_applicable_mechanism_pending_t19_c02()
     assert dimension_status_for_kind("cvss_score", "research_paper") == "not_applicable"
     assert dimension_status_for_kind("paper_mechanism", "research_paper") == "available"
     assert dimension_status_for_kind("cve_id", "research_paper") == "not_applicable"
-    ledger = EnrichmentLedger()
+    ledger = EnrichmentLedger(fixture_mode=True)
     ledger.apply_claims("fp-paper", [Claim("cvss_score", "10.0", "src-1", "$")], "research_paper")
     assert "cvss_score" not in ledger.facts
 
 
 def test_asset_query_failure_with_paper_success_saves_partial_t19_c03() -> None:
     """T19-C03: 资产查询失败但论文成功 → partial 且保留论文结果。"""
-    ledger = EnrichmentLedger()
+    ledger = EnrichmentLedger(fixture_mode=True)
     ledger.apply_claims(
         "fp-3",
         [Claim("paper_mechanism", "jailbreak", "src-paper-1", "$.abstract", scope="public")],
@@ -51,7 +51,7 @@ def test_asset_query_failure_with_paper_success_saves_partial_t19_c03() -> None:
 
 def test_reenrichment_same_input_produces_no_duplicate_facts_t19_c04() -> None:
     """T19-C04: 重复富化相同输入 → 不生成重复事实或消息。"""
-    ledger = EnrichmentLedger()
+    ledger = EnrichmentLedger(fixture_mode=True)
     claim = Claim("fix_status", "patched", "src-1", "$.status")
     assert ledger.apply_claims("fp-4", [claim], "vulnerability_advisory") == "applied"
     assert ledger.apply_claims("fp-4", [claim], "vulnerability_advisory") == "idempotent_skip"
@@ -61,7 +61,7 @@ def test_reenrichment_same_input_produces_no_duplicate_facts_t19_c04() -> None:
 
 def test_different_scoring_authorities_recorded_side_by_side_t19_c05() -> None:
     """T19-C05: 不同评分机构并列记录, 不静默取最高分。"""
-    ledger = EnrichmentLedger()
+    ledger = EnrichmentLedger(fixture_mode=True)
     ledger.apply_claims(
         "fp-6a",
         [Claim("cvss_score", "9.8", "src-nvd", "$.metrics", scoring_authority="NVD")],
@@ -79,7 +79,7 @@ def test_different_scoring_authorities_recorded_side_by_side_t19_c05() -> None:
 
 def test_private_asset_info_excluded_from_public_event_summary_t19_c06() -> None:
     """T19-C06: 私有资产信息不出现在公共事件返回中。"""
-    ledger = EnrichmentLedger()
+    ledger = EnrichmentLedger(fixture_mode=True)
     ledger.apply_claims(
         "fp-7",
         [

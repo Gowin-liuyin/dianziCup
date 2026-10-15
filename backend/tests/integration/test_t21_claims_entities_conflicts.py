@@ -55,7 +55,7 @@ def test_explicit_alias_with_source_normalizes_traceably_t21_c02() -> None:
 
 def test_same_scope_exclusive_versions_become_disputed_not_vote_t21_c03() -> None:
     """T21-C03: 同 scope 互斥版本结论 → 冲突并列、不多数投票。"""
-    ledger = ClaimsLedger()
+    ledger = ClaimsLedger(fixture_mode=True)
     ledger.add_claim(make_claim("c1"))
     ledger.add_claim(make_claim("c2"))
     assert ledger.register_dispute("c1", "c2", reason_same_scope_exclusive=True) == "disputed"
@@ -67,7 +67,7 @@ def test_same_scope_exclusive_versions_become_disputed_not_vote_t21_c03() -> Non
 
 def test_vendor_self_revision_keeps_history_with_supersedes_t21_c04() -> None:
     """T21-C04: 厂商公告自修订 → 历史保留并有替代关系。"""
-    ledger = ClaimsLedger()
+    ledger = ClaimsLedger(fixture_mode=True)
     ledger.add_claim(make_claim("c-old"))
     ledger.add_claim(make_claim("c-new"))
     ledger.register_supersede("c-old", "c-new")
@@ -77,7 +77,7 @@ def test_vendor_self_revision_keeps_history_with_supersedes_t21_c04() -> None:
 
 def test_source_404_only_changes_retrieval_status_t21_c05() -> None:
     """T21-C05: 来源 404 → 旧事实不自动 withdrawn, 只改获取状态。"""
-    ledger = ClaimsLedger()
+    ledger = ClaimsLedger(fixture_mode=True)
     ledger.add_claim(make_claim("c1"))
     assert ledger.mark_source_retrieval_status("src-1", 404) == "not_found"
     assert ledger.claims["c1"].state == "current"
@@ -86,7 +86,7 @@ def test_source_404_only_changes_retrieval_status_t21_c05() -> None:
 
 def test_cross_tenant_or_private_evidence_excluded_from_public_results_t21_c06() -> None:
     """T21-C06: 跨 tenant 事实或私有证据不进入公共知识结果。"""
-    ledger = ClaimsLedger()
+    ledger = ClaimsLedger(fixture_mode=True)
     ledger.add_claim(make_claim("c-public"))
     ledger.add_claim(make_claim("c-private", visibility="private"))
     ledger.add_claim(make_claim("c-other-tenant", tenant="t2"))
@@ -124,7 +124,7 @@ def test_hard_identifier_conflict_blocks_merge_and_overlap_merges_t21_c01b() -> 
 
 def test_hypothesis_and_withdrawn_claims_never_published_t21_c06b() -> None:
     """T21-C06 扩展: hypothesis/withdrawn 主张不进发布 outbox(发布路径负例)。"""
-    ledger = ClaimsLedger()
+    ledger = ClaimsLedger(fixture_mode=True)
     hypothesis = ClaimRecord(
         claim_id="c-hyp-live",
         dimension="affected_version",

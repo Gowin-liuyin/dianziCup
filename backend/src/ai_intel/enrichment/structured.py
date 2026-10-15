@@ -22,33 +22,38 @@ class Claim:
     evidence_span_text: str = ""
     scoring_authority: str = ""
     scope: str = "public"
+    source_revision_id: str = ""
 
 
 @dataclass
 class EnrichmentLedger:
-    """富化台账: 字段级幂等, 部分成功可保存, 失败不覆盖先前事实。"""
+    """显式旧fixture台账; 产品事实发布使用PostgreSQL知识仓储。"""
 
     facts: dict[str, list[Claim]] = field(default_factory=dict)
     processed_input_fingerprints: set[str] = field(default_factory=set)
     job_results: list[dict[str, object]] = field(default_factory=list)
+    fixture_mode: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.fixture_mode:
+            raise EnrichmentConflictError("memory enrichment requires explicit fixture_mode")
 
     def apply_claims(self, input_fingerprint: str, claims: list[Claim], document_kind: str) -> str:
         """幂等应用: 相同输入不生成重复事实; 分歧并列; 私有范围标记随事实保留。"""
         if input_fingerprint in self.processed_input_fingerprints:
             return "idempotent_skip"
-        self.processed_input_fingerprints.add(input_fingerprint)
-        for claim in claims:
-            status = dimension_status_for_kind(claim.dimension, document_kind)
-            if status == "not_applicable":
-                continue
+        eligible = [
+            claim
+            for claim in claims
+            if dimension_status_for_kind(claim.dimension, document_kind) != "not_applicable"
+        ]
+        for claim in eligible:
             existing = self.facts.setdefault(claim.dimension, [])
-            duplicate = any(
-                prior.value == claim.value and prior.source_record_id == claim.source_record_id
-                for prior in existing
-            )
+            duplicate = any(prior == claim for prior in existing)
             if duplicate:
                 continue
             existing.append(claim)
+        self.processed_input_fingerprints.add(input_fingerprint)
         return "applied"
 
     def record_job_result(

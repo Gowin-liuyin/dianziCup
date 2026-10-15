@@ -27,6 +27,8 @@ def locate_evidence_span(
     blocks: tuple[TextBlock, ...],
     quote: str,
     block_id: str | None = None,
+    *,
+    start_offset: int | None = None,
 ) -> EvidenceSpanResult:
     """定位引文: 指定 block 精确定位; 未指定且多处命中返回 ambiguous, 零命中拒绝。"""
     if not quote:
@@ -35,7 +37,14 @@ def locate_evidence_span(
     if block_id is not None:
         for block in blocks:
             if block.block_id == block_id:
-                position = block.text.find(quote)
+                if start_offset is not None:
+                    position = start_offset - block.start_offset
+                    if position < 0 or block.text[position : position + len(quote)] != quote:
+                        raise ValueError("quote does not match specified occurrence")
+                else:
+                    position = block.text.find(quote)
+                    if position >= 0 and block.text.find(quote, position + 1) >= 0:
+                        raise AmbiguousQuoteError("quote repeats in block; start_offset required")
                 if position < 0:
                     raise ValueError("quote not found in specified block")
                 return EvidenceSpanResult(
@@ -45,6 +54,8 @@ def locate_evidence_span(
                     quote_sha256=quote_sha256,
                 )
         raise ValueError("block not found")
+    if start_offset is not None:
+        raise ValueError("start_offset requires block_id")
     matches = [block for block in blocks if quote in block.text]
     if not matches:
         raise ValueError("quote not found")
@@ -72,5 +83,8 @@ def render_revision_snippet(
                 or relative_start > relative_end
             ):
                 raise ValueError("span outside block")
-            return block.text[relative_start:relative_end]
+            snippet = block.text[relative_start:relative_end]
+            if hashlib.sha256(snippet.encode("utf-8")).hexdigest() != span.quote_sha256:
+                raise ValueError("span quote hash does not match revision text")
+            return snippet
     raise ValueError("block not found")

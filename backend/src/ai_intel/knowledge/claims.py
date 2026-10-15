@@ -43,13 +43,18 @@ class ClaimRecord:
 
 @dataclass
 class ClaimsLedger:
-    """主张台账: disputed/supersedes/withdrawn 全历史; 发布与 outbox 同事务。"""
+    """显式旧fixture台账; 不代表PostgreSQL事务或产品事实库。"""
 
     claims: dict[str, ClaimRecord] = field(default_factory=dict)
     disputes: list[tuple[str, str]] = field(default_factory=list)
     supersedes: list[tuple[str, str]] = field(default_factory=list)
     outbox_events: list[dict[str, object]] = field(default_factory=list)
     retrieval_status: dict[str, str] = field(default_factory=dict)
+    fixture_mode: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.fixture_mode:
+            raise ClaimsContractError("memory claims require explicit fixture_mode")
 
     def add_claim(self, claim: ClaimRecord) -> str:
         """模型假设不得发布为确认事实; 私有/跨 tenant 不入公共结果。"""

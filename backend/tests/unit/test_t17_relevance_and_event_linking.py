@@ -43,7 +43,7 @@ def test_plain_product_release_is_background_or_irrelevant_t17_c03() -> None:
 
 def test_same_cwe_different_cve_not_merged_t17_c04() -> None:
     """T17-C04: 同 CWE 不同 CVE → 不合并（同 CWE 不是合并依据）。"""
-    ledger = EventLinkingLedger()
+    ledger = EventLinkingLedger(fixture_mode=True)
     left = SecurityEvent(
         "e1", cve_ids=("CVE-2021-0001",), cwe_ids=("CWE-79",), body_fingerprint="f1"
     )
@@ -59,7 +59,7 @@ def test_same_cwe_different_cve_not_merged_t17_c04() -> None:
 
 def test_article_with_two_cves_links_two_events_t17_c05() -> None:
     """T17-C05: 一文两 CVE → 两事件关联而非并成同一事件。"""
-    ledger = EventLinkingLedger()
+    ledger = EventLinkingLedger(fixture_mode=True)
     created = ledger.link_article_events(["CVE-2021-0001", "CVE-2021-0002"], "src-1", "fp-1")
     assert len(created) == 2 and created[0] != created[1]
     assert ledger.events[created[0]].cve_ids != ledger.events[created[1]].cve_ids
@@ -68,7 +68,7 @@ def test_article_with_two_cves_links_two_events_t17_c05() -> None:
 
 def test_undo_wrong_merge_restores_sources_without_deleting_history_t17_c06() -> None:
     """T17-C06: 错误合并撤销 → 来源与引用可恢复, 不删除历史。"""
-    ledger = EventLinkingLedger()
+    ledger = EventLinkingLedger(fixture_mode=True)
     ledger.link_article_events(["CVE-2021-0001"], "src-1", "fp-1")
     ledger.link_article_events(["CVE-2021-0001"], "src-2", "fp-1")
     keep_id, merge_id = list(ledger.events)
