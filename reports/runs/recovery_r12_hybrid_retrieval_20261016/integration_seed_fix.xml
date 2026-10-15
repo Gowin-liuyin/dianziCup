@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="15" time="54.287" timestamp="2026-10-16T05:28:57.416474+08:00" hostname="yin"><testcase classname="tests.integration.test_t30_hybrid_retrieval" name="test_t30_c01_exact_cve_has_priority_even_after_reranker" time="2.617"><failure message="AssertionError: assert '0575efa5-895...-6c0dfe3e3866' == '7f1e9e0c-dd3...-723d47a4d7cc'&#10;  &#10;  - 7f1e9e0c-dd3c-478c-be9e-723d47a4d7cc&#10;  + 0575efa5-8950-49fc-88cc-6c0dfe3e3866">corpus = (Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r12_hybrid_20261016?options=-c+search_pat....HybridIndexer object at 0x00000214A895C8F0&gt;, &lt;ai_intel.retrieval.hybrid.HybridRetriever object at 0x00000214A895D160&gt;)
+
+    def test_t30_c01_exact_cve_has_priority_even_after_reranker(corpus) -&gt; None:
+        engine, indexer, retriever = corpus
+        target = seed_fact(engine, "CVE-2026-10001 synthetic prompt injection risk.", cve="CVE-2026-10001")
+        seed_fact(engine, "A different prompt injection risk has very similar wording.")
+        index_fact_set(engine, indexer)
+        result = retriever.retrieve(PUBLIC, HybridQuery("CVE-2026-10001 prompt injection", include_graph=False))
+&gt;       assert result.hits[0].candidate.event_id == target["event_id"]
+E       AssertionError: assert '0575efa5-895...-6c0dfe3e3866' == '7f1e9e0c-dd3...-723d47a4d7cc'
+E         
+E         - 7f1e9e0c-dd3c-478c-be9e-723d47a4d7cc
+E         + 0575efa5-8950-49fc-88cc-6c0dfe3e3866
+
+tests\integration\test_t30_hybrid_retrieval.py:90: AssertionError</failure></testcase><testcase classname="tests.integration.test_t30_hybrid_retrieval" name="test_t30_c03_each_real_branch_prefilters_tenant_and_time" time="2.256" /><testcase classname="tests.integration.test_t30_hybrid_retrieval" name="test_t30_c04_stale_or_hidden_authority_is_filtered_before_rerank[relation0-values0]" time="2.245" /><testcase classname="tests.integration.test_t30_hybrid_retrieval" name="test_t30_c04_stale_or_hidden_authority_is_filtered_before_rerank[relation1-values1]" time="1.848" /><testcase classname="tests.integration.test_t30_hybrid_retrieval" name="test_t30_c04_stale_or_hidden_authority_is_filtered_before_rerank[relation2-values2]" time="2.173" /><testcase classname="tests.integration.test_t30_hybrid_retrieval" name="test_t30_c04_stale_or_hidden_authority_is_filtered_before_rerank[relation3-values3]" time="1.758" /><testcase classname="tests.integration.test_t30_hybrid_retrieval" name="test_t30_c04_stale_or_hidden_authority_is_filtered_before_rerank[relation4-values4]" time="1.890" /><testcase classname="tests.integration.test_t30_hybrid_retrieval" name="test_t30_c04_stale_or_hidden_authority_is_filtered_before_rerank[relation5-values5]" time="1.775" /><testcase classname="tests.integration.test_t30_hybrid_retrieval" name="test_t30_c04_stale_or_hidden_authority_is_filtered_before_rerank[relation6-values6]" time="1.734" /><testcase classname="tests.integration.test_t30_hybrid_retrieval" name="test_t30_c06_new_unindexed_exact_fact_uses_pg_and_marks_lag" time="1.914" /><testcase classname="tests.integration.test_t30_hybrid_retrieval" name="test_replay_and_out_of_order_full_snapshot_do_not_regress_watermark" time="2.070" /><testcase classname="tests.integration.test_t30_hybrid_retrieval" name="test_os_failure_never_advances_pg_receipt_or_watermark" time="1.830"><failure message="AssertionError: Regex pattern did not match.&#10; Regex: 'opensearch_refresh_incomplete'&#10; Input: 'opensearch_unavailable'">corpus = (Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r12_hybrid_20261016?options=-c+search_pat....HybridIndexer object at 0x00000214A8FC3DD0&gt;, &lt;ai_intel.retrieval.hybrid.HybridRetriever object at 0x00000214A8FC2060&gt;)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x00000214A8FC1490&gt;
+
+        seed_fact(engine, "prompt injection synthetic risk")
+        index_fact_set(engine, indexer)
+        with engine.begin() as connection:
+            connection.execute(update(relation).values(**values))
+        result = retriever.retrieve(PUBLIC, HybridQuery("prompt injection", include_graph=False))
+        assert not result.hits and result.partial
+        assert "stale_candidates_filtered" in result.reasons
+        assert result.trace.reranked_count == 0
+    
+    
+    def test_t30_c06_new_unindexed_exact_fact_uses_pg_and_marks_lag(corpus) -&gt; None:
+&gt;       engine, indexer, retriever = corpus
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_t30_hybrid_retrieval.py:176: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\retrieval\indexing.py:183: in refresh_scope
+    self.search.remove_older_scope(self.generation, change.scope_key, epoch)
+src\ai_intel\retrieval\opensearch_client.py:263: in remove_older_scope
+    response = self._request(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;ai_intel.retrieval.opensearch_client.OpenSearchCorpusClient object at 0x00000214A8E529F0&gt;
+method = 'POST'
+path = '/dianzi_test_r12_42e9367207394ddfafd13867817a7041/_delete_by_query'
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body: dict[str, object] | None = None,
+        content: bytes | None = None,
+    ) -&gt; httpx.Response:
+        try:
+            response = self.client.request(
+                method,
+                path,
+                json=body,
+                content=content,
+                headers={"Content-Type": "application/x-ndjson"} if content is not None else None,
+                timeout=10.0,
+                follow_redirects=False,
+            )
+            response.raise_for_status()
+            if len(response.content) &gt; 2 * 1024**2:
+                raise HybridRetrievalError("opensearch_response_limit")
+            return response
+        except (httpx.HTTPError, ValueError):
+&gt;           raise HybridRetrievalError("opensearch_unavailable") from None
+E           ai_intel.retrieval.hybrid_contracts.HybridRetrievalError: opensearch_unavailable
+
+src\ai_intel\retrieval\opensearch_client.py:167: HybridRetrievalError
+
+During handling of the above exception, another exception occurred:
+
+corpus = (Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r12_hybrid_20261016?options=-c+search_pat....HybridIndexer object at 0x00000214A8FC3DD0&gt;, &lt;ai_intel.retrieval.hybrid.HybridRetriever object at 0x00000214A8FC2060&gt;)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x00000214A8FC1490&gt;
+
+        seed_fact(engine, "prompt injection synthetic risk")
+        index_fact_set(engine, indexer)
+        with engine.begin() as connection:
+            connection.execute(update(relation).values(**values))
+        result = retriever.retrieve(PUBLIC, HybridQuery("prompt injection", include_graph=False))
+        assert not result.hits and result.partial
+        assert "stale_candidates_filtered" in result.reasons
+        assert result.trace.reranked_count == 0
+    
+    
+&gt;   def test_t30_c06_new_unindexed_exact_fact_uses_pg_and_marks_lag(corpus) -&gt; None:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: Regex pattern did not match.
+E    Regex: 'opensearch_refresh_incomplete'
+E    Input: 'opensearch_unavailable'
+
+tests\integration\test_t30_hybrid_retrieval.py:175: AssertionError</failure></testcase><testcase classname="tests.integration.test_t30_hybrid_retrieval" name="test_acl_epoch_change_during_rerank_invalidates_complete_selection" time="1.811" /><testcase classname="tests.integration.test_t30_hybrid_retrieval" name="test_graph_not_configured_is_explicit_partial" time="1.961" /><testcase classname="tests.integration.test_t30_hybrid_retrieval" name="test_t30_c02_real_e5_and_reranker_retrieve_chinese_english_synonyms" time="25.569" /></testsuite></testsuites>

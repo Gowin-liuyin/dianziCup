@@ -1,0 +1,192 @@
+E501 Line too long (104 > 100)
+  --> src\ai_intel\retrieval\hybrid.py:70:101
+   |
+68 |     if scope.tenant_id is None or READ_ASSET not in scope.permissions:
+69 |         return public
+70 |     return or_(public, and_(relation.c.visibility == "tenant", relation.c.tenant_id == scope.tenant_id))
+   |                                                                                                     ^^^^
+
+E501 Line too long (101 > 100)
+  --> src\ai_intel\retrieval\hybrid.py:73:101
+   |
+73 | def read_scope_epochs(session: Session, scope: AccessScope, *, lock: bool = False) -> dict[str, int]:
+   |                                                                                                     ^
+74 |     keys = authorized_scope_keys(scope)
+75 |     query = select(scope_epochs).where(scope_epochs.c.scope_key.in_(keys))
+   |
+
+E501 Line too long (101 > 100)
+   --> src\ai_intel\retrieval\hybrid.py:139:101
+    |
+137 |             evidence.join(document_revisions).join(documents)
+138 |             .join(sources, sources.c.source_id == documents.c.source_id)
+139 |             .join(event_documents, event_documents.c.revision_id == document_revisions.c.revision_id)
+    |                                                                                                     ^
+140 |             .join(events, events.c.event_id == event_documents.c.event_id)
+141 |             .join(claim_evidence, claim_evidence.c.evidence_id == evidence.c.evidence_id)
+    |
+
+E501 Line too long (109 > 100)
+   --> src\ai_intel\retrieval\hybrid.py:183:101
+    |
+181 |         tenant_id = scope.tenant_id if private else None
+182 |         scope_key = "tenant:" + str(tenant_id) if private else "public"
+183 |         for chunk in split_evidence_quote(projection.span_id, projection.revision_id, projection.quote_text):
+    |                                                                                                     ^^^^^^^^^
+184 |             chunk_id = str(uuid5(NAMESPACE_URL, f"{row['event_id']}:{row['claim_id']}:{chunk.chunk_id}"))
+185 |             candidates.append(CorpusCandidate(
+    |
+
+E501 Line too long (105 > 100)
+   --> src\ai_intel\retrieval\hybrid.py:184:101
+    |
+182 |         scope_key = "tenant:" + str(tenant_id) if private else "public"
+183 |         for chunk in split_evidence_quote(projection.span_id, projection.revision_id, projection.quote_text):
+184 |             chunk_id = str(uuid5(NAMESPACE_URL, f"{row['event_id']}:{row['claim_id']}:{chunk.chunk_id}"))
+    |                                                                                                     ^^^^^
+185 |             candidates.append(CorpusCandidate(
+186 |                 chunk_id, str(projection.span_id), str(projection.revision_id),
+    |
+
+E501 Line too long (101 > 100)
+   --> src\ai_intel\retrieval\hybrid.py:246:101
+    |
+244 |                 reasons.append("index_lag")
+245 |             exact_start = time.perf_counter()
+246 |             identifiers = tuple(dict.fromkeys(item.upper() for item in EXACT_ID.findall(query.text)))
+    |                                                                                                     ^
+247 |             exact_events = select(event_external_ids.c.event_id).where(
+248 |                 event_external_ids.c.id_type == "cve",
+    |
+
+E501 Line too long (105 > 100)
+   --> src\ai_intel\retrieval\hybrid.py:296:101
+    |
+294 |         scores = dict(fusion)
+295 |         exact_ids = {item.chunk_id for item in exact}
+296 |         ordered = tuple(dict.fromkeys((*(item.chunk_id for item in exact), *(key for key, _ in fusion))))
+    |                                                                                                     ^^^^^
+297 |         validation_start = time.perf_counter()
+298 |         with Session(self.engine) as session:
+    |
+
+E501 Line too long (109 > 100)
+   --> src\ai_intel\retrieval\hybrid.py:304:101
+    |
+302 |                 hybrid_chunks.c.scope_key.in_(epochs),
+303 |             )).mappings())
+304 |             evidence_ids = {row["evidence_id"] for row in projections} | {item.evidence_id for item in exact}
+    |                                                                                                     ^^^^^^^^^
+305 |             current = {item.chunk_id: item for item in candidates_from_rows(session, scope, list(
+306 |                 session.execute(facts_query(scope, query).where(
+    |
+
+E501 Line too long (111 > 100)
+   --> src\ai_intel\retrieval\hybrid.py:319:101
+    |
+317 |                     continue
+318 |                 if chunk_id not in exact_ids and (
+319 |                     row is None or any(row[key] != value for key, value in candidate_values(candidate).items())
+    |                                                                                                     ^^^^^^^^^^^
+320 |                 ):
+321 |                     reasons.append("index_projection_changed")
+    |
+
+E501 Line too long (111 > 100)
+   --> src\ai_intel\retrieval\hybrid.py:335:101
+    |
+333 |                 reranked.model_version != RERANK_MODEL.model_version
+334 |                 or sorted(item.index for item in reranked.items) != list(range(len(selected)))
+335 |                 or any(type(item.index) is not int or not math.isfinite(item.score) for item in reranked.items)
+    |                                                                                                     ^^^^^^^^^^^
+336 |             ):
+337 |                 raise ModelContractError("reranker space or indices do not match corpus candidates")
+    |
+
+E501 Line too long (110 > 100)
+   --> src\ai_intel\retrieval\hybrid.py:339:101
+    |
+337 |                 raise ModelContractError("reranker space or indices do not match corpus candidates")
+338 |             hits = tuple(sorted((
+339 |                 RetrievalHit(selected[item.index], item.score, scores.get(selected[item.index].chunk_id, 0.0),
+    |                                                                                                     ^^^^^^^^^^
+340 |                              selected[item.index].chunk_id in exact_ids)
+341 |                 for item in reranked.items
+    |
+
+E501 Line too long (118 > 100)
+   --> src\ai_intel\retrieval\hybrid.py:342:101
+    |
+340 |                              selected[item.index].chunk_id in exact_ids)
+341 |                 for item in reranked.items
+342 |             ), key=lambda hit: (not hit.exact_identifier, -hit.rerank_score, -hit.rrf_score, hit.candidate.chunk_id)))
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^
+343 |         rerank_seconds = time.perf_counter() - rerank_start
+344 |         with Session(self.engine) as session:
+    |
+
+E501 Line too long (102 > 100)
+   --> src\ai_intel\retrieval\hybrid.py:351:101
+    |
+349 |                 ))).mappings()
+350 |             ))}
+351 |             checked = tuple(hit for hit in hits if final.get(hit.candidate.chunk_id) == hit.candidate)
+    |                                                                                                     ^^
+352 |             if len(checked) != len(hits):
+353 |                 reasons.append("facts_changed_during_rerank")
+    |
+
+E501 Line too long (102 > 100)
+   --> src\ai_intel\retrieval\hybrid.py:364:101
+    |
+362 |             tuple((key, watermarks.get(key)) for key in epochs), E5_MODEL.model_version,
+363 |             RERANK_MODEL.model_version, graph_status,
+364 |             RetrievalTrace(len(exact), len(bm25_ids), len(vector_ids), len(graph_ids), len(validated),
+    |                                                                                                     ^^
+365 |                            len(selected), exact_seconds, bm25_seconds, vector_seconds, validation_seconds,
+366 |                            rerank_seconds, time.perf_counter() - start),
+    |
+
+E501 Line too long (106 > 100)
+   --> src\ai_intel\retrieval\hybrid.py:365:101
+    |
+363 |             RERANK_MODEL.model_version, graph_status,
+364 |             RetrievalTrace(len(exact), len(bm25_ids), len(vector_ids), len(graph_ids), len(validated),
+365 |                            len(selected), exact_seconds, bm25_seconds, vector_seconds, validation_seconds,
+    |                                                                                                     ^^^^^^
+366 |                            rerank_seconds, time.perf_counter() - start),
+367 |         )
+    |
+
+E501 Line too long (102 > 100)
+   --> src\ai_intel\retrieval\indexing.py:101:101
+    |
+ 99 |                 if prior["scope_key"] != change.scope_key:
+100 |                     raise HybridRetrievalError("index_receipt_scope_conflict")
+101 |                 return IndexReceipt(self.generation.generation_id, change.outbox_id, change.scope_key,
+    |                                                                                                     ^^
+102 |                                     prior["indexed_epoch"], prior["chunk_count"], True)
+103 |             epochs = read_scope_epochs(session, worker_scope)
+    |
+
+E501 Line too long (104 > 100)
+  --> src\ai_intel\retrieval\opensearch_client.py:70:101
+   |
+70 | def bm25_body(generation: IndexGeneration, scope: AccessScope, query: HybridQuery) -> dict[str, object]:
+   |                                                                                                     ^^^^
+71 |     allowed: list[dict[str, object]] = [{"bool": {"filter": [
+72 |         {"term": {"visibility": "public"}},
+   |
+
+E501 Line too long (101 > 100)
+   --> src\ai_intel\retrieval\opensearch_client.py:107:101
+    |
+105 |             parsed.scheme not in {"http", "https"} or parsed.username or parsed.password
+106 |             or parsed.query or parsed.fragment or parsed.path not in {"", "/"}
+107 |             or (parsed.scheme == "http" and parsed.hostname not in {"localhost", "127.0.0.1", "::1"})
+    |                                                                                                     ^
+108 |         ):
+109 |             raise ValueError("trusted OpenSearch base URL required; remote connections require TLS")
+    |
+
+Found 18 errors.
