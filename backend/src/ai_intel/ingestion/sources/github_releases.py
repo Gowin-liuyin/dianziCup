@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+import re
 from urllib.parse import urlsplit
 
 from ai_intel.infrastructure.models.json_output import strict_json_object
+from ai_intel.ingestion.source_catalog import parse_source_timestamp
 from ai_intel.ingestion.sources.repository import (
     RepositoryFetchError,
     RepositoryRecord,
@@ -77,8 +78,11 @@ def parse_github_releases(payload: bytes) -> tuple[RepositoryRecord, ...]:
             if not isinstance(published, str):
                 raise RepositoryFetchError("release published_at must be text or null")
             try:
-                timestamp = datetime.fromisoformat(published)
-                if timestamp.utcoffset() is None or "T" not in published:
+                parse_source_timestamp(published)
+                if (
+                    "T" not in published
+                    or re.search(r"(?:Z|[+-][0-9]{2}:[0-9]{2})$", published) is None
+                ):
                     raise ValueError("timezone is missing")
             except ValueError:
                 raise RepositoryFetchError("release published_at lacks a valid timezone") from None

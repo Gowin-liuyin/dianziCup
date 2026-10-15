@@ -64,6 +64,25 @@ def _json_document(
     metadata: dict[str, JsonValue],
     locator: str,
 ) -> NormalizedSourceDocument:
+    published_time = parse_source_timestamp(published)
+    modified_time = parse_source_timestamp(modified)
+    source_metadata: dict[str, JsonValue] = {
+        **metadata,
+        "source_adapter_version": "catalog-pages-2",
+        "published_at_raw": published,
+        "published_precision": "instant" if published_time is not None else "unknown",
+        "modified_at_raw": modified,
+    }
+    if (published is not None and published_time is None) or (
+        modified is not None and modified_time is None
+    ):
+        notes = source_metadata.get("source_notes", [])
+        if not isinstance(notes, list):
+            raise SourceCatalogError("source notes must be an array")
+        source_metadata["source_notes"] = [
+            *notes,
+            "部分时间的时区或精度不能无损保存为UTC；原值保留，不用于精确时延。",
+        ]
     payload = json.dumps(
         fields, ensure_ascii=False, allow_nan=False, separators=(",", ":")
     ).encode()
@@ -74,9 +93,9 @@ def _json_document(
         uri,
         payload,
         parse_json_document(payload),
-        parse_source_timestamp(published),
-        parse_source_timestamp(modified),
-        {**metadata, "source_adapter_version": "catalog-pages-1"},
+        published_time,
+        modified_time,
+        source_metadata,
         locator,
     )
 
@@ -487,12 +506,21 @@ def _policy_document(body: bytes) -> NormalizedSourceDocument:
         "二十四",
     )
     headings = []
-    for block in parsed.blocks:
+    for index, block in enumerate(parsed.blocks):
         match = re.match(r"^第([一二三四五六七八九十]+)条", block.text)
         if match:
-            headings.append(match[1])
-    if tuple(headings) != ordinals or "施行" not in parsed.normalized_text:
+            headings.append((match[1], index))
+    if tuple(number for number, _ in headings) != ordinals:
         raise SourceCatalogError("policy does not contain all original articles")
+    article_text = ""
+    for position, (_, start) in enumerate(headings):
+        end = headings[position + 1][1] if position + 1 < len(headings) else len(parsed.blocks)
+        section = "".join(block.text for block in parsed.blocks[start:end])
+        article_text = re.sub(r"^第[一二三四五六七八九十]+条\s*", "", section)
+        if not article_text.strip():
+            raise SourceCatalogError("policy article body is missing")
+    if "本办法自2023年8月15日起施行。" not in re.sub(r"\s+", "", article_text):
+        raise SourceCatalogError("policy final effective clause is missing or changed")
     published = meta.values.get("PubDate")
     precision = "unknown"
     if published is not None:
@@ -514,7 +542,7 @@ def _policy_document(body: bytes) -> NormalizedSourceDocument:
         None,
         None,
         {
-            "source_adapter_version": "catalog-pages-1",
+            "source_adapter_version": "catalog-pages-2",
             "content_coverage": "full_text",
             "published_at_raw": published,
             "published_precision": precision,
