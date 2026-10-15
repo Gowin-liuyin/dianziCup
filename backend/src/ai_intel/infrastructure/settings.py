@@ -61,6 +61,7 @@ class ApplicationSettings(BaseSettings):
     generation_model: str = Field(default="deepseek-flash", min_length=1, max_length=200)
     generation_api_key: SecretStr | None = None
     semantic_model_cache_directory: Path | None = None
+    source_polling_enabled: bool = False
 
     @model_validator(mode="after")
     def validate_content_store_configuration(self) -> ApplicationSettings:

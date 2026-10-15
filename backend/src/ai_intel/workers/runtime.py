@@ -9,12 +9,14 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from ai_intel.domain.access import AccessScope, Role
 from ai_intel.infrastructure.content_storage_factory import build_content_storage
 from ai_intel.infrastructure.database import build_engine
 from ai_intel.infrastructure.outbox import relay_pending_events
 from ai_intel.infrastructure.runtime_observations import record_runtime_observation
 from ai_intel.infrastructure.settings import ConfigurationError, load_application_settings
 from ai_intel.ingestion.source_jobs import SOURCE_JOB_TYPE, build_source_page_handler
+from ai_intel.ingestion.source_polling import enqueue_due_source_collections
 from ai_intel.workers.executor import JobHandler, execute_job, record_source_fetch_failure
 from ai_intel.workers.jobs import recover_expired_job_deliveries
 
@@ -59,6 +61,12 @@ def build_celery_application() -> Celery:
             },
         },
     )
+    if settings.source_polling_enabled:
+        application.conf.beat_schedule["poll-public-sources"] = {
+            "task": "ai_intel.sources.poll_due",
+            "schedule": 60.0,
+            "options": {"expires": 120},
+        }
     return application
 
 
@@ -133,6 +141,31 @@ def observe_worker() -> dict[str, str]:
     return observe_runtime_component("worker")
 
 
+def poll_due_public_sources() -> dict[str, int | str]:
+    """Trusted opt-in schedules only fixed public sources; disabled runs never connect PG."""
+    settings = load_application_settings()
+    if not settings.source_polling_enabled:
+        return {"state": "disabled", "queued": 0}
+    engine = build_engine(settings)
+    try:
+        scope = AccessScope.for_authenticated_user("source-poller", None, Role.SYSTEM_ADMIN)
+        with Session(engine) as session, session.begin():
+            result = enqueue_due_source_collections(session, scope, datetime.now(UTC))
+        return {
+            "state": "scheduled",
+            "queued": len(result.queued_job_ids),
+            "already_scheduled": result.already_scheduled,
+            "busy": len(result.busy_sources),
+        }
+    except SQLAlchemyError:
+        raise RuntimeError("source polling database unavailable") from None
+    finally:
+        engine.dispose()
+
+
 celery_app.task(name="ai_intel.runtime.observe_worker", ignore_result=True)(observe_worker)
 celery_app.task(name="ai_intel.jobs.execute", ignore_result=True, autoretry_for=())(consume_job)
 celery_app.task(name="ai_intel.jobs.dispatch_pending", ignore_result=True)(dispatch_pending_jobs)
+celery_app.task(name="ai_intel.sources.poll_due", ignore_result=True, autoretry_for=())(
+    poll_due_public_sources
+)
