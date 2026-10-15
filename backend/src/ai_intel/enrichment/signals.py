@@ -9,6 +9,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Literal
 from urllib.parse import parse_qsl, urlsplit
+from uuid import UUID
 
 from ai_intel.domain.enrichment_values import (
     CvssSignalValue,
@@ -69,6 +70,7 @@ class _CollectedDimension:
     documents: list[EnrichmentDocument] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     missing: bool = True
+    cvss_targets: dict[UUID, str] = field(default_factory=dict)
 
 
 def _payload(document: EnrichmentDocument) -> dict[str, object]:
@@ -375,7 +377,7 @@ def _weakness_fields(payload: dict[str, object], publisher: str) -> tuple[tuple[
 
 def _cwe_catalog(
     document: EnrichmentDocument,
-) -> tuple[str, dict[str, tuple[str, int]], dict[str, object]]:
+) -> tuple[str, str, dict[str, tuple[str, int]]]:
     payload = _payload(document)
     version, selection, entries = (
         payload.get("taxonomy_version"),
@@ -433,7 +435,7 @@ def _cwe_catalog(
         names[identifier] = name, index
     if set(names) & set(missing) or set(names) | set(missing) != set(requested):
         raise PublicSignalError("invalid_cwe_selection")
-    return version, names, payload
+    return version, selection["source_xml_sha256"], names
 
 
 def _cwe_candidates(
@@ -447,35 +449,47 @@ def _cwe_candidates(
         return ()
     if not catalogs:
         raise PublicSignalError("cwe_catalog_missing")
-    result: list[EvidenceBoundCandidate] = []
+    selections: dict[
+        tuple[str, str], list[tuple[EnrichmentDocument, dict[str, tuple[str, int]]]]
+    ] = defaultdict(list)
     for catalog in catalogs:
-        version, names, catalog_payload = _cwe_catalog(catalog)
-        for pointer, identifier in fields:
-            if identifier not in names:
-                raise PublicSignalError("cwe_identifier_not_verified")
-            name, index = names[identifier]
-            catalog_rows = catalog_payload["weaknesses"]
-            if not isinstance(catalog_rows, list) or not isinstance(catalog_rows[index], dict):
-                raise PublicSignalError("invalid_cwe_selection")
-            catalog_evidence = _evidence(
-                catalog,
-                (
-                    ("/taxonomy_version", version),
-                    (f"/weaknesses/{index}/cwe_id", identifier),
-                    (f"/weaknesses/{index}/name", name),
-                ),
-            )
-            result.append(
-                EvidenceBoundCandidate(
-                    dimension="cwe",
-                    value=WeaknessValue(cwe_id=identifier, taxonomy_version=version, name=name),
-                    evidence=(_field_evidence(document, pointer, identifier), *catalog_evidence),
-                    origin=ClaimOrigin.STRUCTURED_SOURCE,
-                    limitations=(
-                        "Taxonomy identity is verified separately from event applicability.",
+        version, xml_hash, names = _cwe_catalog(catalog)
+        selections[(version, xml_hash)].append((catalog, names))
+    requested_ids = {identifier for _, identifier in fields}
+    result: list[EvidenceBoundCandidate] = []
+    for (version, _), selected_catalogs in selections.items():
+        verified_ids = {identifier for _, names in selected_catalogs for identifier in names}
+        if not requested_ids <= verified_ids:
+            continue
+        for catalog, names in selected_catalogs:
+            for pointer, identifier in fields:
+                if identifier not in names:
+                    continue
+                name, index = names[identifier]
+                catalog_evidence = _evidence(
+                    catalog,
+                    (
+                        ("/taxonomy_version", version),
+                        (f"/weaknesses/{index}/cwe_id", identifier),
+                        (f"/weaknesses/{index}/name", name),
                     ),
                 )
-            )
+                result.append(
+                    EvidenceBoundCandidate(
+                        dimension="cwe",
+                        value=WeaknessValue(cwe_id=identifier, taxonomy_version=version, name=name),
+                        evidence=(
+                            _field_evidence(document, pointer, identifier),
+                            *catalog_evidence,
+                        ),
+                        origin=ClaimOrigin.STRUCTURED_SOURCE,
+                        limitations=(
+                            "Taxonomy identity is verified separately from event applicability.",
+                        ),
+                    )
+                )
+    if not result:
+        raise PublicSignalError("cwe_identifier_not_verified")
     return tuple(result)
 
 
@@ -531,17 +545,10 @@ def _public_signal_candidates(
     )
 
 
-def _scope(candidate: EvidenceBoundCandidate) -> tuple[str, ...]:
+def _scope(candidate: EvidenceBoundCandidate, cvss_targets: dict[UUID, str]) -> tuple[str, ...]:
     value = candidate.value
     if isinstance(value, CvssSignalValue):
-        target = next(
-            (
-                item.quote_text
-                for item in candidate.evidence
-                if item.quote_text.startswith(("CVE-", "GHSA-"))
-            ),
-            "unknown",
-        )
+        target = cvss_targets[candidate.evidence[0].revision_id]
         return ("cvss", target, value.standard_version)
     if value.kind == "epss_signal":
         return ("epss", value.cve_id, str(value.data_date), str(value.model_version))
@@ -570,7 +577,7 @@ def _attempt(
         compared = candidate.value.model_dump_json()
         if isinstance(candidate.value, CvssSignalValue):
             compared = json.dumps((candidate.value.base_score, candidate.value.vector))
-        values[_scope(candidate)].add(compared)
+        values[_scope(candidate, collected.cvss_targets)].add(compared)
     if unique:
         status = (
             DimensionStatus.CONFLICT
@@ -671,6 +678,7 @@ def enrich_structured_fields(
                         vendor.cve_id is not None and vendor.cve_id not in context.external_cve_ids
                     ):
                         raise PublicSignalError("cross_cve_vendor_document")
+                    target = vendor.cve_id or vendor.ghsa_id
                 else:
                     cve = payload.get("cve")
                     if not isinstance(cve, dict) or cve.get("id") not in context.external_cve_ids:
@@ -680,12 +688,14 @@ def enrich_structured_fields(
                         != f"https://nvd.nist.gov/vuln/detail/{cve['id']}"
                     ):
                         raise PublicSignalError("cross_cve_nvd_document")
+                    target = cve["id"]
                 if signal == "cvss":
                     candidates = (
                         _nvd_cvss(context, document, payload)
                         if publisher == "nvd"
                         else _vendor_cvss(document, payload)
                     )
+                    result.cvss_targets[document.revision_id] = target
                 else:
                     candidates = _cwe_candidates(document, payload, publisher, catalogs)
                     if candidates:
