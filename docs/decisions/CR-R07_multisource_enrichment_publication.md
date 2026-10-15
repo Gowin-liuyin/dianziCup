@@ -10,6 +10,10 @@ ClaimSubmission原只声明一个revision，复合来源的候选证据不能逐
 符合认证ACL与派生scope，并至少有自己的证据。证据不能落在未声明来源中。
 旧schema1/2不接受该扩展。空additional_sources不进入序列化/指纹，旧请求幂等含义保持。
 没有新增事实数据库；PG既有claim_assertions/claim_evidence/publication_receipts为权威。
+逐维工作流的change_events.payload使用内部schema2，保存完整EnrichmentContext及其
+rule_version，不以无法恢复规则标签的输入hash代替可读来源。该写服务尚未接入产品，
+原schema1仅存在于隔离测试；无生产回执迁移，旧记录保留而不覆盖。
+这不改变ClaimSubmission schema1/2或其空additional_sources的原指纹。
 
 输入服务只载入事件的当前可见PG修订，先ACL再对象IO，限制20修订、每件2MiB、合计8MiB，
 逐件核对象hash/size与保存块坐标。CVE只取PG标识且需已注册NVD/厂商原文明确字段支持。

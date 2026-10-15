@@ -349,7 +349,8 @@ def publish_enrichment_attempts(
     fingerprint = input_fingerprint(loaded)
     workflow_key = "enrichment:" + str(request_id)
     workflow_payload = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "context": loaded.context.model_dump(mode="json"),
         "input_fingerprint": fingerprint,
         "attempts": [attempt.model_dump(mode="json") for attempt in attempts],
     }
