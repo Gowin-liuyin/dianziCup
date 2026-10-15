@@ -184,6 +184,13 @@ class OpenSearchCorpusClient:
             if len(response.content) > 2 * 1024**2:
                 raise HybridRetrievalError("opensearch_response_limit")
             return response
+        except httpx.HTTPStatusError as error:
+            status = error.response.status_code
+            if status in {401, 403}:
+                raise HybridRetrievalError("opensearch_permission_denied") from None
+            raise HybridRetrievalError(f"opensearch_http_{status}") from None
+        except httpx.TimeoutException:
+            raise HybridRetrievalError("opensearch_timeout") from None
         except (httpx.HTTPError, ValueError):
             raise HybridRetrievalError("opensearch_unavailable") from None
 

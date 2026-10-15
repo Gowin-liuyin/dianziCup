@@ -76,4 +76,20 @@ def test_http_failure_does_not_echo_credentials_or_body() -> None:
                 AccessScope.for_authenticated_user("reader", "tenant-a", Role.VIEWER),
                 HybridQuery("risk"),
             )
-        assert str(caught.value) == "opensearch_unavailable"
+        assert str(caught.value) == "opensearch_permission_denied"
+
+
+def test_http_timeout_is_classified_without_request_secrets() -> None:
+    def timeout(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("fixture secret token", request=request)
+
+    with httpx.Client(
+        base_url="https://search.invalid", transport=httpx.MockTransport(timeout)
+    ) as client:
+        with pytest.raises(HybridRetrievalError) as caught:
+            OpenSearchCorpusClient(client).search(
+                GENERATION,
+                AccessScope.for_authenticated_user("reader", "tenant-a", Role.VIEWER),
+                HybridQuery("risk"),
+            )
+        assert str(caught.value) == "opensearch_timeout"

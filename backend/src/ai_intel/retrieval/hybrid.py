@@ -329,9 +329,14 @@ class HybridRetriever:
         bm25_start = time.perf_counter()
         try:
             bm25_ids = self.bm25.search(self.generation, scope, query)
-        except HybridRetrievalError:
+        except HybridRetrievalError as failure:
             bm25_ids = ()
-            reasons.append("bm25_unavailable")
+            reasons.append(
+                {
+                    "opensearch_permission_denied": "bm25_permission_denied",
+                    "opensearch_timeout": "bm25_timeout",
+                }.get(str(failure), "bm25_unavailable")
+            )
         bm25_seconds = time.perf_counter() - bm25_start
         vector_start = time.perf_counter()
         embedded = self.models.embed_query(query.text)
