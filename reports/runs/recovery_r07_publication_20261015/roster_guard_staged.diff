@@ -1,0 +1,129 @@
+diff --git a/backend/src/ai_intel/enrichment/publication.py b/backend/src/ai_intel/enrichment/publication.py
+index f8b3456..a2628e2 100644
+--- a/backend/src/ai_intel/enrichment/publication.py
++++ b/backend/src/ai_intel/enrichment/publication.py
+@@ -115,6 +115,12 @@ def _require_current_inputs(
+         != loaded.scope
+     ):
+         raise EnrichmentPublicationError("enrichment_event_inputs_changed")
++    if (
++        len(loaded.documents) != len(current)
++        or {str(document.revision_id) for document in loaded.documents} != set(current)
++        or len(set(loaded.context.revision_ids)) != len(loaded.context.revision_ids)
++    ):
++        raise EnrichmentPublicationError("enrichment_source_roster_changed")
+     for document in loaded.documents:
+         revision = (
+             session.execute(
+diff --git a/backend/tests/integration/test_r07_enrichment_publication_pg.py b/backend/tests/integration/test_r07_enrichment_publication_pg.py
+index cfa4006..b0da859 100644
+--- a/backend/tests/integration/test_r07_enrichment_publication_pg.py
++++ b/backend/tests/integration/test_r07_enrichment_publication_pg.py
+@@ -9,18 +9,21 @@ import pytest
+ from sqlalchemy import func, select, update
+ from sqlalchemy.orm import Session
+ from test_r06_catalog_documents_pg import catalog_engine as catalog_engine
++from test_r06_source_worker_pg import handler_for, queue, run
+ from test_r07_enrichment_inputs_pg import ADMIN, seeded_event
+ 
+ from ai_intel.api.knowledge_read_service import KnowledgeReadService
+ from ai_intel.domain.access import AccessScope, PermissionDeniedError, Role
+ from ai_intel.domain.enums import ClaimOrigin, DimensionStatus
++from ai_intel.domain.values import Identifier
+ from ai_intel.enrichment.contracts import DimensionAttempt, EvidenceBoundCandidate
+ from ai_intel.enrichment.inputs import load_event_enrichment_inputs
+ from ai_intel.enrichment.persistence_models import enrichment_results
+ from ai_intel.enrichment.publication import EnrichmentPublicationError, publish_enrichment_attempts
+ from ai_intel.enrichment.signals import enrich_structured_fields
+ from ai_intel.infrastructure.outbox import IdempotencyConflictError
+-from ai_intel.knowledge.models import evidence, scope_epochs
++from ai_intel.knowledge.event_linking import EventIdentifier, EventRepository, EventSubmission
++from ai_intel.knowledge.models import document_revisions, evidence, scope_epochs
+ from ai_intel.knowledge.persistence import KnowledgePublicationError
+ from ai_intel.knowledge.persistence_models import claims, events
+ 
+@@ -267,3 +270,71 @@ def test_concurrent_duplicate_request_has_one_set_of_facts(catalog_engine, tmp_p
+         (r.result_id, r.claim_ids) for r in results[1]
+     ]
+     assert sorted(all(r.reused for r in result) for result in results) == [False, True]
++
++
++@pytest.mark.parametrize("roster", ["missing", "duplicated"])
++def test_source_snapshot_revision_roster_cannot_omit_or_repeat_sources(
++    catalog_engine, tmp_path, roster
++):
++    loaded, _ = inputs(catalog_engine, tmp_path)
++    altered = replace(loaded, documents=() if roster == "missing" else loaded.documents * 2)
++    failed = DimensionAttempt(
++        dimension="versions", status=DimensionStatus.FAILED, error_code="model_timeout"
++    )
++    before = counts(catalog_engine)
++    with pytest.raises(EnrichmentPublicationError, match="roster_changed"):
++        publish(catalog_engine, altered, (failed,), at=loaded.documents[0].observed_at)
++    assert counts(catalog_engine) == before
++
++
++def test_source_snapshot_cannot_drop_one_of_two_current_pg_revisions(catalog_engine, tmp_path):
++    store, event_id = seeded_event(catalog_engine, tmp_path)
++    job_id = queue(catalog_engine, "vllm_vendor")
++    assert run(catalog_engine, job_id, handler_for(store, "vllm_vendor")) in {
++        "succeeded",
++        "partial",
++    }
++    with Session(catalog_engine) as session, session.begin():
++        original = load_event_enrichment_inputs(session, store, ADMIN, event_id, "fixture-roster-1")
++        revision_ids = tuple(
++            session.scalars(
++                select(document_revisions.c.revision_id).where(
++                    document_revisions.c.is_current.is_(True)
++                )
++            )
++        )
++        assert len(revision_ids) == 2
++        EventRepository(session, ADMIN).publish_events(
++            "fixture-roster-association-" + str(uuid4()),
++            original.scope,
++            (
++                EventSubmission(
++                    event_id=Identifier(value=str(event_id)),
++                    event_type="vulnerability",
++                    title="Synthetic two-source snapshot association",
++                    scope=original.scope,
++                    external_ids=tuple(
++                        EventIdentifier(id_type="cve", id_value=value)
++                        for value in original.context.external_cve_ids
++                    ),
++                    source_revision_ids=tuple(Identifier(value=value) for value in revision_ids),
++                ),
++            ),
++            original.documents[0].observed_at,
++        )
++    with Session(catalog_engine) as session:
++        loaded = load_event_enrichment_inputs(session, store, ADMIN, event_id, "fixture-roster-1")
++    assert len(loaded.documents) == len(loaded.context.revision_ids) == 2
++    nvd_document = next(
++        document
++        for document in loaded.documents
++        if any(block.json_pointer == "/cve/id" for block in document.blocks)
++    )
++    altered = replace(loaded, documents=(nvd_document,))
++    failed = DimensionAttempt(
++        dimension="versions", status=DimensionStatus.FAILED, error_code="model_timeout"
++    )
++    before = counts(catalog_engine)
++    with pytest.raises(EnrichmentPublicationError, match="roster_changed"):
++        publish(catalog_engine, altered, (failed,), at=nvd_document.observed_at)
++    assert counts(catalog_engine) == before
+diff --git a/docs/decisions/CR-R07_multisource_enrichment_publication.md b/docs/decisions/CR-R07_multisource_enrichment_publication.md
+index b506cd0..ae71d35 100644
+--- a/docs/decisions/CR-R07_multisource_enrichment_publication.md
++++ b/docs/decisions/CR-R07_multisource_enrichment_publication.md
+@@ -16,6 +16,8 @@ ClaimSubmission原只声明一个revision，复合来源的候选证据不能逐
+ 部分解析/截断保留不完整，不转换成全库not_found。
+ 
+ 发布时再次核事件版本、current修订、来源/URI/完整性/版本/观测时间/实际块与CVE；
++载入文档必须与当前事件的完整修订集合一一相等；遗漏来源、空文档或重复修订拒绝，
++不能因本次维度失败而绕过来源完整性检查。
+ public结构字段重新计算后逐值匹配才能发布supported，模型候选保持unverified/pending。
+ 引用全局坐标由真实block.start_offset转换，支持/上下文语义分开。
+ 请求与所有候选的PG幂等回执同事务提交；重复请求返回原历史标识，不新增事实。

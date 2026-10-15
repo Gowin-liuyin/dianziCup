@@ -1,0 +1,25 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______ test_parent_publication_persists_the_exact_rule_and_event_context ______
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_pub_combined_20261016?opti...-c+search_path%3Dtest_r06_catalog_ffbc0e1a471f44e7b7746da2fae7977a+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-670/test_parent_publication_persis0')
+
+    def test_parent_publication_persists_the_exact_rule_and_event_context(catalog_engine, tmp_path):
+        loaded, attempts = inputs(catalog_engine, tmp_path)
+        request_id = uuid4()
+        results = publish(catalog_engine, loaded, attempts, request_id)
+        with Session(catalog_engine) as session:
+            row = session.execute(
+                select(change_events).where(
+                    change_events.c.change_type == "enrichment_attempts_published"
+                )
+            ).mappings().one()
+>       assert row["payload"]["schema_version"] == 2
+E       assert 1 == 2
+
+tests\integration\test_r07_publication_rule_provenance_pg.py:26: AssertionError
+- generated xml file: D:\wt\r07-pub-combined\reports\runs\recovery_r07_publication_combined_fix_20261016\provenance_red.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r07_publication_rule_provenance_pg.py::test_parent_publication_persists_the_exact_rule_and_event_context
+1 failed in 2.50s

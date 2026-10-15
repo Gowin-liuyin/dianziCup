@@ -1,0 +1,488 @@
+"""Publish bounded source-backed dimensions and retain model proposals as unverified."""
+
+import hashlib
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
+
+from pydantic import HttpUrl
+from sqlalchemy import func, select, text
+from sqlalchemy.orm import Session
+
+from ai_intel.api.document_read_service import sources
+from ai_intel.domain.access import MANAGE_PUBLIC_SOURCES, WRITE_ASSET, AccessScope
+from ai_intel.domain.enums import (
+    ClaimOrigin,
+    ClaimStatus,
+    ConditionValue,
+    DimensionStatus,
+    FreshnessStatus,
+)
+from ai_intel.domain.records import ClaimRecord
+from ai_intel.domain.values import Identifier, VisibilityScope
+from ai_intel.enrichment.contracts import (
+    DimensionAttempt,
+    EnrichmentContext,
+    EnrichmentDocument,
+    EvidenceBoundCandidate,
+)
+from ai_intel.enrichment.inputs import (
+    CVE_FIELD_BY_SOURCE_ID,
+    LoadedEnrichmentInputs,
+    _explicit_cve_ids,
+    _require_input_scopes,
+    _revision_blocks,
+)
+from ai_intel.enrichment.persistence import DimensionRepository, DimensionSubmission
+from ai_intel.enrichment.persistence_models import enrichment_results
+from ai_intel.enrichment.signals import enrich_structured_fields
+from ai_intel.knowledge.event_linking import EventRepository
+from ai_intel.knowledge.models import document_revisions, documents, text_blocks
+from ai_intel.knowledge.persistence import (
+    ClaimSubmission,
+    EvidenceLink,
+    KnowledgePublicationError,
+    KnowledgeRepository,
+    SupportingSource,
+    find_prior_publication,
+    knowledge_scope_key,
+    publication_payload_digest,
+    save_change_publication,
+)
+from ai_intel.knowledge.persistence_models import event_documents, events, publication_receipts
+from ai_intel.knowledge.revisions import attach_evidence_span
+
+
+class EnrichmentPublicationError(ValueError):
+    """Changed inputs or unsupported assertions require revalidation, not silent success."""
+
+
+@dataclass(frozen=True)
+class PublishedEnrichmentDimension:
+    dimension: str
+    result_id: str
+    claim_ids: tuple[str, ...]
+    reused: bool
+
+
+def input_fingerprint(loaded: LoadedEnrichmentInputs) -> str:
+    return publication_payload_digest(
+        {
+            "context": loaded.context.model_dump(mode="json"),
+            "scope": loaded.scope.model_dump(mode="json"),
+            "documents": [
+                {
+                    "revision_id": str(document.revision_id),
+                    "document_id": str(document.document_id),
+                    "source_id": str(document.source_id),
+                    "source_category": document.source_category,
+                    "document_kind": document.document_kind,
+                    "canonical_uri": str(document.canonical_uri),
+                    "source_record_id": document.source_record_id,
+                    "content_sha256": document.content_sha256,
+                    "blocks": [
+                        (str(block.block_id), block.text_sha256) for block in document.blocks
+                    ],
+                    "source_version": document.source_version,
+                    "blocks_complete": document.blocks_complete,
+                    "content_coverage": document.content_coverage,
+                    "observed_at": (
+                        document.observed_at.isoformat() if document.observed_at else None
+                    ),
+                }
+                for document in loaded.documents
+            ],
+        }
+    )
+
+
+def _lock_input_parents(session: Session, loaded: LoadedEnrichmentInputs) -> None:
+    """Match source writers: actual PG source, document/revision, publication, then event."""
+    revision_ids = tuple(map(str, loaded.context.revision_ids))
+    parent_query = (
+        select(document_revisions.c.revision_id, documents.c.source_id)
+        .join(document_revisions, document_revisions.c.document_id == documents.c.document_id)
+        .join(event_documents, event_documents.c.revision_id == document_revisions.c.revision_id)
+        .where(
+            event_documents.c.event_id == str(loaded.context.event_id),
+            document_revisions.c.revision_id.in_(revision_ids),
+        )
+    )
+    parent_rows = tuple(session.execute(parent_query).mappings())
+    if {row["revision_id"] for row in parent_rows} != set(revision_ids):
+        raise EnrichmentPublicationError("enrichment_source_roster_changed")
+    source_ids = sorted({row["source_id"] for row in parent_rows})
+    for source_id in source_ids:
+        session.execute(
+            select(func.pg_advisory_xact_lock(func.hashtextextended("source:" + source_id, 0)))
+        )
+    session.execute(
+        select(sources.c.source_id)
+        .where(sources.c.source_id.in_(source_ids))
+        .order_by(sources.c.source_id)
+        .with_for_update(read=True)
+    ).all()
+    session.execute(
+        select(document_revisions.c.revision_id)
+        .join(documents, documents.c.document_id == document_revisions.c.document_id)
+        .where(document_revisions.c.revision_id.in_(revision_ids))
+        .order_by(documents.c.document_id, document_revisions.c.revision_id)
+        .with_for_update(of=(documents, document_revisions))
+    ).all()
+    if set(session.execute(parent_query).mappings()) != set(parent_rows):
+        raise EnrichmentPublicationError("enrichment_source_revision_changed")
+
+
+def _require_current_inputs(
+    session: Session, scope: AccessScope, loaded: LoadedEnrichmentInputs
+) -> None:
+    current = EventRepository(session, scope).get_source_revisions(str(loaded.context.event_id))
+    event = (
+        session.execute(
+            select(events)
+            .where(events.c.event_id == str(loaded.context.event_id))
+            .with_for_update()
+        )
+        .mappings()
+        .one()
+    )
+    if (
+        event["status"] != "active"
+        or event["business_version"] != loaded.context.expected_event_version
+        or set(current) != set(map(str, loaded.context.revision_ids))
+        or VisibilityScope(visibility=event["visibility"], tenant_id=event["tenant_id"])
+        != loaded.scope
+    ):
+        raise EnrichmentPublicationError("enrichment_event_inputs_changed")
+    if (
+        len(loaded.documents) != len(current)
+        or {str(document.revision_id) for document in loaded.documents} != set(current)
+        or len(set(loaded.context.revision_ids)) != len(loaded.context.revision_ids)
+    ):
+        raise EnrichmentPublicationError("enrichment_source_roster_changed")
+    _require_input_scopes(session, scope, loaded.scope, tuple(current))
+    for document in loaded.documents:
+        revision = (
+            session.execute(
+                select(document_revisions, documents.c.source_id, documents.c.kind)
+                .join(documents, documents.c.document_id == document_revisions.c.document_id)
+                .where(document_revisions.c.revision_id == str(document.revision_id))
+                .with_for_update()
+            )
+            .mappings()
+            .first()
+        )
+        if (
+            revision is None
+            or not revision["is_current"]
+            or revision["content_hash"] != document.content_sha256
+            or revision["document_id"] != str(document.document_id)
+            or revision["source_id"] != str(document.source_id)
+            or revision["kind"] != document.document_kind
+            or not revision["canonical_uri"]
+            or str(HttpUrl(revision["canonical_uri"])) != str(document.canonical_uri)
+            or revision["parse_status"] not in {"parsed", "partial"}
+            or document.source_category
+            != session.scalar(
+                text("SELECT category FROM sources WHERE source_id=:id"),
+                {"id": str(document.source_id)},
+            )
+        ):
+            raise EnrichmentPublicationError("enrichment_source_revision_changed")
+        blocks, complete = _revision_blocks(session, str(document.revision_id))
+        metadata = revision["source_metadata"]
+        version = metadata.get("taxonomy_version") or metadata.get("version_label")
+        if version is None:
+            version = revision["normalizer_version"]
+        coverage = metadata.get(
+            "content_coverage",
+            "full_text" if document.source_id in CVE_FIELD_BY_SOURCE_ID else "unknown",
+        )
+        needs_json = any(block.json_pointer is not None for block in blocks)
+        if (
+            document.blocks != blocks
+            or document.blocks_complete != (complete and revision["parse_status"] == "parsed")
+            or document.source_version != version
+            or document.observed_at != revision["first_observed_at"]
+            or document.content_coverage != coverage
+            or document.source_record_id != str(revision["canonical_uri"]).rsplit("/", 1)[-1]
+            or (document.json_payload is not None) != needs_json
+            or (
+                document.json_payload is not None
+                and hashlib.sha256(document.json_payload).hexdigest() != document.content_sha256
+            )
+        ):
+            raise EnrichmentPublicationError("enrichment_source_snapshot_changed")
+    if loaded.context.external_cve_ids != _explicit_cve_ids(
+        session, loaded.context.event_id, loaded.documents
+    ):
+        raise EnrichmentPublicationError("enrichment_event_identifiers_changed")
+
+
+def _publish_candidate(
+    session: Session,
+    scope: AccessScope,
+    loaded: LoadedEnrichmentInputs,
+    candidate: EvidenceBoundCandidate,
+    *,
+    supported: bool,
+    publication_key: str,
+    recorded_at: datetime,
+) -> tuple[str, tuple[str, ...]]:
+    documents = {document.revision_id: document for document in loaded.documents}
+    links: list[EvidenceLink] = []
+    assertions: dict[UUID, SupportingSource] = {}
+    for quote in candidate.evidence:
+        document = documents.get(quote.revision_id)
+        if document is None:
+            raise EnrichmentPublicationError("candidate_revision_outside_inputs")
+        block = next((block for block in document.blocks if block.block_id == quote.block_id), None)
+        saved_block = (
+            session.execute(
+                select(text_blocks).where(text_blocks.c.block_id == str(quote.block_id))
+            )
+            .mappings()
+            .first()
+        )
+        if (
+            block is None
+            or saved_block is None
+            or saved_block["revision_id"] != str(document.revision_id)
+            or saved_block["block_text"] != block.text
+            or saved_block["text_sha256"] != block.text_sha256
+            or saved_block["start_offset"] != block.start_offset
+            or block.text[quote.start_offset : quote.end_offset] != quote.quote_text
+        ):
+            raise EnrichmentPublicationError("candidate_evidence_does_not_match_saved_block")
+        evidence_id = attach_evidence_span(
+            session,
+            str(document.revision_id),
+            block.start_offset + quote.start_offset,
+            block.start_offset + quote.end_offset,
+            block.json_pointer or "block:" + str(block.block_id),
+            quote.quote_text,
+            supported,
+            loaded.scope.visibility,
+            loaded.scope.tenant_id,
+            recorded_at,
+            block_id=str(block.block_id),
+            quote_sha256=quote.quote_sha256,
+            verified_at=recorded_at,
+        )
+        links.append(
+            EvidenceLink(
+                evidence_id=Identifier(value=evidence_id),
+                support_kind="supports" if supported else "context",
+                validation_status="validated" if supported else "unverified",
+            )
+        )
+        assertions.setdefault(
+            document.revision_id,
+            SupportingSource(
+                source_id=Identifier(value=str(document.source_id)),
+                revision_id=Identifier(value=str(document.revision_id)),
+                json_path=block.json_pointer or "block:" + str(block.block_id),
+            ),
+        )
+    primary, *additional = assertions.values()
+    authority = getattr(candidate.value, "authority", "")
+    record = ClaimRecord(
+        schema_version=3,
+        claim_id=Identifier(value=str(uuid4())),
+        subject="event:" + str(loaded.context.event_id),
+        predicate=candidate.value.kind,
+        object_value=candidate.value,
+        claim_status=ClaimStatus.SUPPORTED if supported else ClaimStatus.UNVERIFIED,
+        claim_origin=candidate.origin,
+        condition_value=ConditionValue.UNKNOWN,
+        freshness=FreshnessStatus.UNKNOWN,
+        asserted_at=recorded_at,
+        scope=loaded.scope,
+    )
+    receipt = KnowledgeRepository(session, scope).publish(
+        publication_key,
+        loaded.scope,
+        (
+            ClaimSubmission(
+                record=record,
+                source_id=primary.source_id,
+                revision_id=primary.revision_id,
+                json_path=primary.json_path,
+                scoring_authority=authority,
+                evidence_links=tuple(links),
+                additional_sources=tuple(additional),
+            ),
+        ),
+        created_at=recorded_at,
+    )
+    return receipt.claim_ids[0], tuple(link.evidence_id.value for link in links)
+
+
+def publish_enrichment_attempts(
+    session: Session,
+    scope: AccessScope,
+    loaded: LoadedEnrichmentInputs,
+    attempts: tuple[DimensionAttempt, ...],
+    *,
+    request_id: UUID,
+    recorded_at: datetime,
+) -> tuple[PublishedEnrichmentDimension, ...]:
+    """Caller owns commit; each dimension rolls back its new evidence and claims on failure."""
+    if recorded_at.tzinfo is None or not 1 <= len(attempts) <= 9:
+        raise EnrichmentPublicationError("bounded_attempts_and_aware_time_required")
+    attempts = tuple(DimensionAttempt.model_validate(attempt.model_dump()) for attempt in attempts)
+    loaded = LoadedEnrichmentInputs(
+        EnrichmentContext.model_validate(loaded.context.model_dump()),
+        tuple(
+            EnrichmentDocument.model_validate(document.model_dump())
+            for document in loaded.documents
+        ),
+        VisibilityScope.model_validate(loaded.scope.model_dump()),
+    )
+    if sum(len(document.json_payload or b"") for document in loaded.documents) > 8 * 1024 * 1024:
+        raise EnrichmentPublicationError("enrichment_input_byte_budget_exceeded")
+    if len({attempt.dimension for attempt in attempts}) != len(attempts):
+        raise EnrichmentPublicationError("repeated_enrichment_dimension")
+    recorded_at = recorded_at.astimezone(UTC)
+    scope.enforce_visible(loaded.scope.visibility, loaded.scope.tenant_id)
+    scope.requires(MANAGE_PUBLIC_SOURCES if loaded.scope.visibility == "public" else WRITE_ASSET)
+    fingerprint = input_fingerprint(loaded)
+    workflow_key = "enrichment:" + str(request_id)
+    workflow_payload = {
+        "schema_version": 2,
+        "context": loaded.context.model_dump(mode="json"),
+        "input_fingerprint": fingerprint,
+        "attempts": [attempt.model_dump(mode="json") for attempt in attempts],
+    }
+    scope_key = knowledge_scope_key(loaded.scope)
+    _lock_input_parents(session, loaded)
+    EventRepository(session, scope).get_source_revisions(str(loaded.context.event_id))
+    _require_input_scopes(
+        session, scope, loaded.scope, tuple(map(str, loaded.context.revision_ids))
+    )
+    prior = find_prior_publication(
+        session, scope_key, workflow_key, publication_payload_digest(workflow_payload)
+    )
+    if prior is not None:
+        previous = []
+        for attempt in attempts:
+            key = f"r07:{request_id}:{fingerprint[:16]}:{attempt.dimension}"
+            row = (
+                session.execute(
+                    select(enrichment_results).where(
+                        enrichment_results.c.event_id == str(loaded.context.event_id),
+                        enrichment_results.c.dimension == attempt.dimension,
+                        enrichment_results.c.publication_key == key,
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            candidate_keys = tuple(
+                key + ":" + publication_payload_digest(candidate.model_dump(mode="json"))[:16]
+                for candidate in attempt.candidates
+            )
+            receipts_by_key = {
+                item["publication_key"]: item
+                for item in session.execute(
+                    select(publication_receipts).where(
+                        publication_receipts.c.scope_key == scope_key,
+                        publication_receipts.c.publication_key.in_(candidate_keys),
+                    )
+                ).mappings()
+            }
+            prior_claim_ids: list[str] = []
+            for candidate_key in candidate_keys:
+                receipt_row = receipts_by_key.get(candidate_key)
+                if receipt_row is None or not isinstance(receipt_row["claim_ids"], list):
+                    raise EnrichmentPublicationError("enrichment_receipt_claim_references_missing")
+                for identifier in receipt_row["claim_ids"]:
+                    if not isinstance(identifier, str):
+                        raise EnrichmentPublicationError(
+                            "enrichment_receipt_claim_reference_invalid"
+                        )
+                    UUID(identifier)
+                    prior_claim_ids.append(identifier)
+            previous.append(
+                PublishedEnrichmentDimension(
+                    attempt.dimension, row["result_id"], tuple(prior_claim_ids), True
+                )
+            )
+        return tuple(previous)
+    _require_current_inputs(session, scope, loaded)
+    trusted = {
+        attempt.dimension: attempt
+        for attempt in enrich_structured_fields(loaded.context, loaded.documents)
+    }
+    results = []
+    for attempt in attempts:
+        source_supported = attempt.dimension in trusted
+        if source_supported and attempt != trusted[attempt.dimension]:
+            raise EnrichmentPublicationError("public_signal_attempt_does_not_match_verified_fields")
+        if not source_supported and (
+            attempt.candidates
+            and (
+                attempt.status != DimensionStatus.PENDING
+                or any(
+                    candidate.origin != ClaimOrigin.MODEL_HYPOTHESIS
+                    for candidate in attempt.candidates
+                )
+            )
+        ):
+            raise KnowledgePublicationError(
+                "non-structured enrichment cannot promote proposed facts"
+            )
+        key = f"r07:{request_id}:{fingerprint[:16]}:{attempt.dimension}"
+        with session.begin_nested():
+            claim_ids: list[str] = []
+            evidence_ids: list[str] = []
+            for candidate in attempt.candidates:
+                claim_id, references = _publish_candidate(
+                    session,
+                    scope,
+                    loaded,
+                    candidate,
+                    supported=source_supported,
+                    publication_key=key
+                    + ":"
+                    + publication_payload_digest(candidate.model_dump(mode="json"))[:16],
+                    recorded_at=recorded_at,
+                )
+                claim_ids.append(claim_id)
+                evidence_ids.extend(references)
+            result = DimensionRepository(session, scope).publish(
+                key,
+                DimensionSubmission(
+                    event_id=loaded.context.event_id,
+                    dimension=attempt.dimension,
+                    status=attempt.status,
+                    expected_event_version=loaded.context.expected_event_version,
+                    input_fingerprint=fingerprint,
+                    claim_ids=tuple(UUID(value) for value in claim_ids) if source_supported else (),
+                    reference_ids=tuple(UUID(value) for value in evidence_ids),
+                    source_ids=attempt.source_ids,
+                    searched_at=attempt.searched_at,
+                    observed_at=attempt.observed_at,
+                    source_version=attempt.source_version,
+                    freshness=attempt.freshness,
+                    error_code=attempt.error_code,
+                ),
+                recorded_at,
+            )
+            results.append(
+                PublishedEnrichmentDimension(
+                    attempt.dimension, result.result_id, tuple(claim_ids), result.reused
+                )
+            )
+    save_change_publication(
+        session,
+        loaded.scope,
+        workflow_key,
+        workflow_payload,
+        publication_payload_digest(workflow_payload),
+        tuple(claim_id for result in results for claim_id in result.claim_ids),
+        (str(loaded.context.event_id), *(result.result_id for result in results)),
+        recorded_at,
+        "enrichment_attempts_published",
+    )
+    return tuple(results)

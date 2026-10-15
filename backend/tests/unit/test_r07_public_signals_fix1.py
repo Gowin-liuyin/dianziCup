@@ -26,7 +26,7 @@ def vendor_document(score=8.1, cve=CVE, ghsa=GHSA, vector=VECTOR, authority="mai
     return document(payload, payload["html_url"], category="vendor_advisory")
 
 
-@pytest.mark.parametrize("score,status", [(8.1, "conflict"), (9.8, "available")])
+@pytest.mark.parametrize("score,status", [(8.1, "available"), (9.8, "available")])
 @pytest.mark.parametrize("vendor_first", [False, True])
 def test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both(score, status, vendor_first):
     nvd, vendor = document(nvd_payload()), vendor_document(score=score)
@@ -47,9 +47,15 @@ def test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both(score, statu
 
 def test_same_cve_different_vector_conflicts_even_when_score_matches():
     vector = VECTOR.replace("AC:L", "AC:H")
-    result = attempts(document(nvd_payload()), vendor_document(score=9.8, vector=vector))["cvss"]
+    nvd = document(nvd_payload())
+    vendor = vendor_document(score=9.8, vector=vector, authority="nvd@nist.gov")
+    result = attempts(nvd, vendor)["cvss"]
     assert result.status.value == "conflict"
     assert {candidate.value.vector for candidate in result.candidates} == {VECTOR, vector}
+    assert {e.revision_id for c in result.candidates for e in c.evidence} == {
+        nvd.revision_id,
+        vendor.revision_id,
+    }
 
 
 def test_two_supported_cves_are_not_collapsed_by_shared_ghsa():
@@ -78,7 +84,7 @@ def test_ghsa_only_advisory_is_not_assumed_to_match_only_context_cve():
 
 def test_identifier_shaped_publisher_is_not_an_event_identity():
     result = attempts(document(nvd_payload()), vendor_document(authority=OTHER_CVE))["cvss"]
-    assert result.status.value == "conflict"
+    assert result.status.value == "available"
     assert result.candidates[1].value.authority == OTHER_CVE
 
 
@@ -89,8 +95,13 @@ def test_cvss_comparison_is_independent_of_evidence_order(monkeypatch):
         return tuple(reversed(original(source, fields)))
 
     monkeypatch.setattr(signals, "_evidence", reversed_evidence)
-    result = attempts(document(nvd_payload()), vendor_document())["cvss"]
+    nvd, vendor = document(nvd_payload()), vendor_document(authority="nvd@nist.gov")
+    result = attempts(nvd, vendor)["cvss"]
     assert result.status.value == "conflict" and len(result.candidates) == 2
+    assert {e.revision_id for c in result.candidates for e in c.evidence} == {
+        nvd.revision_id,
+        vendor.revision_id,
+    }
 
 
 def test_unsupported_vendor_cve_is_rejected_without_changing_supported_scope():

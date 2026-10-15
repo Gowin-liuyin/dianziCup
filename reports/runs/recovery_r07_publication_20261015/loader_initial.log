@@ -1,0 +1,32 @@
+.F.......                                                                [100%]
+================================== FAILURES ===================================
+_ test_actual_worker_pg_and_raw_objects_supply_visible_fixed_revision_inputs[vllm_vendor] _
+
+catalog_worker_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_worker_20261015?options=-c+search_path%3Dtest_r06_worker_b08803a9ab554ee7ad802c806ab1a535+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-578/test_actual_worker_pg_and_raw_1')
+kind = 'vllm_vendor'
+
+    @pytest.mark.parametrize("kind", ["nvd_ollama", "vllm_vendor"])
+    def test_actual_worker_pg_and_raw_objects_supply_visible_fixed_revision_inputs(
+        catalog_worker_engine, tmp_path, kind
+    ):
+        store, event_id = seeded_event(catalog_worker_engine, tmp_path, kind)
+        with Session(catalog_worker_engine) as session:
+            loaded = load_event_enrichment_inputs(session, store, ADMIN, event_id, "r07-fixture-1")
+            assert loaded.context.event_id == event_id
+            assert loaded.context.expected_event_version == 1
+            assert len(loaded.documents) == len(loaded.context.revision_ids) == 1
+            document = loaded.documents[0]
+            assert document.json_payload == store.read_verified(document.content_sha256)
+            assert document.revision_id in loaded.context.revision_ids
+            assert document.blocks_complete and document.content_coverage == "full_text"
+>           assert loaded.context.external_cve_ids
+E           assert ()
+E            +  where () = EnrichmentContext(event_id=UUID('54f15599-5e3d-51bb-a846-b628bc671b34'), expected_event_version=1, revision_ids=(UUID('f958add1-e325-45f5-96cb-e218243d5999'),), external_cve_ids=(), rule_version='r07-fixture-1').external_cve_ids
+E            +    where EnrichmentContext(event_id=UUID('54f15599-5e3d-51bb-a846-b628bc671b34'), expected_event_version=1, revision_ids=(UUID('f958add1-e325-45f5-96cb-e218243d5999'),), external_cve_ids=(), rule_version='r07-fixture-1') = LoadedEnrichmentInputs(context=EnrichmentContext(event_id=UUID('54f15599-5e3d-51bb-a846-b628bc671b34'), expected_event...1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N", "score": 3.7}}'),), scope=VisibilityScope(visibility='public', tenant_id=None)).context
+
+tests\integration\test_r07_enrichment_inputs_pg.py:44: AssertionError
+- generated xml file: D:\wt\r07-publication\reports\runs\recovery_r07_publication_20261015\loader_initial.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r07_enrichment_inputs_pg.py::test_actual_worker_pg_and_raw_objects_supply_visible_fixed_revision_inputs[vllm_vendor]
+1 failed, 8 passed in 10.57s

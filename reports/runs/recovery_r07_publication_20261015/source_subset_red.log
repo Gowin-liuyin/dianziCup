@@ -1,0 +1,42 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______ test_source_snapshot_cannot_drop_one_of_two_current_pg_revisions _______
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_publication_20261016?options=-c+search_path%3Dtest_r06_catalog_15c75dc687734c799672cde9f677a3b6+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-630/test_source_snapshot_cannot_dr0')
+
+    def test_source_snapshot_cannot_drop_one_of_two_current_pg_revisions(catalog_engine, tmp_path):
+        store, event_id = seeded_event(catalog_engine, tmp_path)
+        job_id = queue(catalog_engine, "vllm_vendor")
+        assert run(catalog_engine, job_id, handler_for(store, "vllm_vendor")) in {"succeeded", "partial"}
+        with Session(catalog_engine) as session, session.begin():
+            original = load_event_enrichment_inputs(session, store, ADMIN, event_id, "fixture-roster-1")
+            revision_ids = tuple(session.scalars(select(document_revisions.c.revision_id).where(document_revisions.c.is_current.is_(True))))
+            assert len(revision_ids) == 2
+            EventRepository(session, ADMIN).publish_events(
+                "fixture-roster-association-" + str(uuid4()), original.scope,
+                (EventSubmission(event_id=Identifier(value=str(event_id)), event_type="vulnerability",
+                    title="Synthetic two-source snapshot association",
+                    scope=original.scope,
+                    external_ids=tuple(EventIdentifier(id_type="cve", id_value=value) for value in original.context.external_cve_ids),
+                    source_revision_ids=tuple(Identifier(value=value) for value in revision_ids)),),
+                original.documents[0].observed_at,
+            )
+        with Session(catalog_engine) as session:
+            loaded = load_event_enrichment_inputs(session, store, ADMIN, event_id, "fixture-roster-1")
+        assert len(loaded.documents) == len(loaded.context.revision_ids) == 2
+        nvd_document = next(document for document in loaded.documents
+                            if any(block.json_pointer == "/cve/id" for block in document.blocks))
+        altered = replace(loaded, documents=(nvd_document,))
+        failed = DimensionAttempt(dimension="versions", status=DimensionStatus.FAILED,
+                                  error_code="model_timeout")
+        before = counts(catalog_engine)
+>       with pytest.raises(EnrichmentPublicationError, match="roster_changed"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'ai_intel.enrichment.publication.EnrichmentPublicationError'>
+
+tests\integration\test_r07_enrichment_publication_pg.py:314: Failed
+- generated xml file: D:\wt\r07-publication\reports\runs\recovery_r07_publication_20261015\source_subset_red.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r07_enrichment_publication_pg.py::test_source_snapshot_cannot_drop_one_of_two_current_pg_revisions
+1 failed, 17 deselected in 1.97s
