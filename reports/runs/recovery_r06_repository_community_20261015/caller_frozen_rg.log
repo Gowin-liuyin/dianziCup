@@ -1,0 +1,83 @@
+backend/src\ai_intel\ingestion\sources\avid_records.py:14:    normalize_community_article,
+backend/src\ai_intel\ingestion\sources\avid_records.py:80:def normalize_avid_vulnerability(payload: bytes) -> CommunityArticle:
+backend/src\ai_intel\ingestion\sources\avid_records.py:121:    return normalize_community_article(
+backend/src\ai_intel\ingestion\sources\github_releases.py:12:    normalize_repository_record,
+backend/src\ai_intel\ingestion\sources\github_releases.py:19:def parse_github_releases(payload: bytes) -> tuple[RepositoryRecord, ...]:
+backend/src\ai_intel\ingestion\sources\github_releases.py:86:            normalize_repository_record(
+backend/src\ai_intel\ingestion\sources\repository.py:44:def normalize_repository_record(payload: dict[str, object]) -> RepositoryRecord:
+backend/src\ai_intel\ingestion\sources\repository.py:72:def normalize_community_article(payload: dict[str, object]) -> CommunityArticle:
+backend/src\ai_intel\ingestion\sources\osv.py:41:    """range_branches 为逐分支输入；旧 ranges_type/events 仅保留调用兼容。"""
+backend/src\ai_intel\ingestion\sources\osv.py:45:    ranges_type: str | None
+backend/src\ai_intel\ingestion\sources\osv.py:49:    range_branches: tuple[PackageRange, ...] = field(default_factory=tuple)
+backend/src\ai_intel\ingestion\sources\osv.py:106:def normalize_osv_record(payload: dict[str, object]) -> OsvRecord:
+backend/src\ai_intel\ingestion\sources\osv.py:139:        ranges_type: str | None = None
+backend/src\ai_intel\ingestion\sources\osv.py:141:        range_branches: list[PackageRange] = []
+backend/src\ai_intel\ingestion\sources\osv.py:143:            ranges_type = _optional_text(version_range.get("type"), "ranges.type")
+backend/src\ai_intel\ingestion\sources\osv.py:145:            branch_unsupported = ranges_type not in ("SEMVER", "ECOSYSTEM", "GIT")
+backend/src\ai_intel\ingestion\sources\osv.py:158:            range_branches.append(
+backend/src\ai_intel\ingestion\sources\osv.py:159:                PackageRange(ranges_type, tuple(branch_events), repository_uri, branch_unsupported)
+backend/src\ai_intel\ingestion\sources\osv.py:168:                ranges_type=ranges_type,
+backend/src\ai_intel\ingestion\sources\osv.py:172:                range_branches=tuple(range_branches),
+backend/tests\unit\test_r06_osv_range_boundaries.py:8:    normalize_osv_record,
+backend/tests\unit\test_r06_osv_range_boundaries.py:30:    record = normalize_osv_record(payload)
+backend/tests\unit\test_r06_osv_range_boundaries.py:33:    assert len(package.range_branches) == 2
+backend/tests\unit\test_r06_osv_range_boundaries.py:34:    assert [branch.range_type for branch in package.range_branches] == ["SEMVER", "GIT"]
+backend/tests\unit\test_r06_osv_range_boundaries.py:35:    assert package.range_branches[0].events[1].version_value == "1.2"
+backend/tests\unit\test_r06_osv_range_boundaries.py:36:    assert package.range_branches[1].repository_uri == "https://github.com/example/example"
+backend/tests\unit\test_r06_osv_range_boundaries.py:37:    assert package.range_branches[1].events[1].event_type == "last_affected"
+backend/tests\unit\test_r06_osv_range_boundaries.py:39:    assert package.ranges_type == "GIT"
+backend/tests\unit\test_r06_osv_range_boundaries.py:63:        normalize_osv_record({"id": "OSV-EXAMPLE", **invalid_fields})
+backend/tests\unit\test_r06_osv_range_boundaries.py:67:    record = normalize_osv_record(
+backend/tests\unit\test_r06_osv_range_boundaries.py:81:    assert record.affected[0].range_branches[0].unsupported_scheme is False
+backend/tests\unit\test_r06_osv_range_boundaries.py:82:    assert record.affected[0].range_branches[1].unsupported_scheme is True
+backend/tests\unit\test_r06_osv_range_boundaries.py:84:    assert record.affected[0].range_branches[0].events[1].event_type == "limit"
+backend/tests\unit\test_r06_osv_range_boundaries.py:90:            normalize_osv_record(payload)
+backend/tests\unit\test_r06_avid_record_adapter.py:7:from ai_intel.ingestion.sources.avid_records import normalize_avid_vulnerability
+backend/tests\unit\test_r06_avid_record_adapter.py:51:    article = normalize_avid_vulnerability(avid_record(references=references))
+backend/tests\unit\test_r06_avid_record_adapter.py:63:    first = normalize_avid_vulnerability(payload)
+backend/tests\unit\test_r06_avid_record_adapter.py:64:    assert first == normalize_avid_vulnerability(payload)
+backend/tests\unit\test_r06_avid_record_adapter.py:87:        normalize_avid_vulnerability(avid_record(**changes))
+backend/tests\unit\test_r06_avid_record_adapter.py:109:        normalize_avid_vulnerability(
+backend/tests\unit\test_r06_avid_record_adapter.py:128:        normalize_avid_vulnerability(payload)
+backend/tests\unit\test_r06_avid_record_adapter.py:135:            normalize_avid_vulnerability(avid_record(references=references))
+backend/tests\unit\test_r06_repository_commit_identifiers.py:5:from ai_intel.ingestion.sources.repository import RepositoryFetchError, normalize_repository_record
+backend/tests\unit\test_r06_repository_commit_identifiers.py:11:        normalize_repository_record(
+backend/tests\unit\test_r06_repository_commit_identifiers.py:23:    record = normalize_repository_record(
+backend/tests\unit\test_r06_github_release_adapter.py:7:from ai_intel.ingestion.sources.github_releases import parse_github_releases
+backend/tests\unit\test_r06_github_release_adapter.py:28:    record = parse_github_releases(release_page())[0]
+backend/tests\unit\test_r06_github_release_adapter.py:34:    changed_tag = parse_github_releases(release_page(tag_name="v1.0", name="Retitled"))[0]
+backend/tests\unit\test_r06_github_release_adapter.py:40:    assert parse_github_releases(b"[]") == ()
+backend/tests\unit\test_r06_github_release_adapter.py:41:    record = parse_github_releases(release_page(published_at=None, name=None, draft=True))[0]
+backend/tests\unit\test_r06_github_release_adapter.py:68:        parse_github_releases(release_page(**changes))
+backend/tests\unit\test_r06_github_release_adapter.py:104:        parse_github_releases(payload)
+backend/tests\unit\test_r06_github_release_adapter.py:111:            parse_github_releases(json.dumps([valid, invalid]).encode())
+backend/tests\unit\test_r06_github_release_adapter.py:117:        parse_github_releases(
+backend/tests\contract\test_r06_repository_source_samples.py:7:from ai_intel.ingestion.sources.avid_records import normalize_avid_vulnerability
+backend/tests\contract\test_r06_repository_source_samples.py:8:from ai_intel.ingestion.sources.github_releases import parse_github_releases
+backend/tests\contract\test_r06_repository_source_samples.py:9:from ai_intel.ingestion.sources.osv import normalize_osv_record
+backend/tests\contract\test_r06_repository_source_samples.py:20:    records = parse_github_releases(payload)
+backend/tests\contract\test_r06_repository_source_samples.py:29:    first = normalize_avid_vulnerability((RUN / "avid_02.record.json").read_bytes())
+backend/tests\contract\test_r06_repository_source_samples.py:30:    second = normalize_avid_vulnerability((RUN / "avid_03.record.json").read_bytes())
+backend/tests\contract\test_r06_repository_source_samples.py:52:    record = normalize_osv_record(json.loads(payload))
+backend/tests\contract\test_r06_repository_source_samples.py:57:    assert record.affected[0].range_branches[0].range_type == "SEMVER"
+backend/tests\contract\test_t11_osv_connector.py:13:    normalize_osv_record,
+backend/tests\contract\test_t11_osv_connector.py:29:    record = normalize_osv_record(load_records()[0])
+backend/tests\contract\test_t11_osv_connector.py:39:    record = normalize_osv_record(load_records()[0])
+backend/tests\contract\test_t11_osv_connector.py:49:    record = normalize_osv_record(load_records()[0])
+backend/tests\contract\test_t11_osv_connector.py:51:    assert first_package.ranges_type == "GIT"
+backend/tests\contract\test_t11_osv_connector.py:55:    assert second_package.ranges_type == "SEMVER"
+backend/tests\contract\test_t11_osv_connector.py:61:    record = normalize_osv_record(load_records()[0])
+backend/tests\contract\test_t11_osv_connector.py:76:    record = normalize_osv_record(load_records()[1])
+backend/tests\contract\test_t11_osv_connector.py:80:    withdrawn_record = normalize_osv_record(load_records()[2])
+backend/tests\contract\test_t11_osv_connector.py:86:    unknown_scheme = normalize_osv_record(load_records()[1])
+backend/tests\contract\test_t11_osv_connector.py:90:        normalize_osv_record({"modified": "2021-01-01T00:00:00Z"})
+backend/tests\contract\test_t11_osv_connector.py:92:        normalize_osv_record(
+backend/tests\contract\test_t13_community_repository_connectors.py:12:    normalize_community_article,
+backend/tests\contract\test_t13_community_repository_connectors.py:13:    normalize_repository_record,
+backend/tests\contract\test_t13_community_repository_connectors.py:19:    release = normalize_repository_record(
+backend/tests\contract\test_t13_community_repository_connectors.py:27:    commit = normalize_repository_record(
+backend/tests\contract\test_t13_community_repository_connectors.py:46:    article = normalize_community_article(
+backend/tests\contract\test_t13_community_repository_connectors.py:61:    pinned = normalize_repository_record(
+backend/tests\contract\test_t13_community_repository_connectors.py:71:        normalize_repository_record(
+backend/tests\contract\test_t13_community_repository_connectors.py:87:    historical = normalize_repository_record(
+backend/tests\contract\test_t13_community_repository_connectors.py:108:    record = normalize_repository_record(
