@@ -115,8 +115,15 @@ def validate_embedding_batch(
             for coordinate in vector
         ):
             raise ModelContractError("embedding coordinates must be finite float32 values")
-        if not any(coordinate != 0.0 for coordinate in array("f", vector)):
+        float32_vector = array("f", vector)
+        if not any(coordinate != 0.0 for coordinate in float32_vector):
             raise ModelContractError("zero embedding has no cosine distance")
+        squared_norm = math.fsum(
+            array("f", (coordinate * coordinate for coordinate in float32_vector))
+        )
+        safe_maximum = 3.4028234663852886e38 / (1.0 + dimension * 2.0**-23)
+        if not math.isfinite(squared_norm) or not 0.0 < squared_norm <= safe_maximum:
+            raise ModelContractError("float32 embedding norm is not safe for cosine distance")
     frozen = tuple(tuple(vector) for vector in vectors)
     return EmbeddingResult(vectors=frozen, model_version=model_version, dimension=dimension)
 
