@@ -83,7 +83,7 @@ def test_empty_and_legacy_upgrade_keep_columns_and_old_claims(
         assert actual_columns == set(mapped_table.c.keys()), table_name
     with empty_schema_engine.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert revision == "0009_enrichment_results"
+        assert revision == "0010_enrichment_publications"
         assert {column["name"] for column in inspector.get_columns("enrichment_results")} == set(
             enrichment_results.c.keys()
         )

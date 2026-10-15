@@ -1,6 +1,6 @@
 """逐维结果与唯一知识PG库共享metadata；事实保留在原claims表。"""
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Table, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Table, Text
 from sqlalchemy.dialects.postgresql import JSONB
 
 from ai_intel.knowledge import persistence_models as knowledge_models
@@ -21,4 +21,10 @@ enrichment_results = Table(
     Column("input_fingerprint", Text(), nullable=False),
     Column("recorded_at", DateTime(timezone=True), nullable=False),
     Column("is_current", Boolean(), nullable=False),
+    Column("publication_key", Text()),
+    Column("payload_sha256", Text()),
+    Column("event_version", Integer()),
+    Column("observed_at", DateTime(timezone=True)),
+    Column("source_version", Text()),
+    Column("freshness", Text()),
 )

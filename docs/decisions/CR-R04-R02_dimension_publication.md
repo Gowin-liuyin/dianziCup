@@ -1,0 +1,12 @@
+# CR-R04 / R02 · 维度尝试持久化细则
+
+文档首次创建/本次写作开始/结束/最后更新时间：2026-10-15T11:35:26+08:00。
+状态awaiting_review，主控/root；建设范围已由R02与CR-R02/R04授权；本细则需独立核对实现。未改变评分、九维、七态、盲测、分母、技术栈或最终原T验收。
+
+同input_fingerprint表示同一次业务输入，不表示外部尝试永远只有一个结果。0009已应用，不能修改它消除历史。0010前向去除event/dimension/input唯一，增加event/dimension/publication_key唯一；同key同digest复用result/change/epoch/job/outbox，不同digest409。失败后同输入新key可成功，保存两次历史，不把failed涂成available；旧行新来源时点/版本/freshness/publication保持NULL，禁止猜测回填。
+
+DimensionSubmission只引用已保存事实/证据，九维名和canonical七态保持冻结合同。available至少一个当前supported/disputed source_verified非model_hypothesis事实、对应验证支持引文；conflict至少两事实；引文修订必须属于事件有效来源，范围不比事件更私有。not_found需实际searched_at和source scope；失败/blocked有error_code，不能用空或0冒充没有。当前状态与既有claims分开；一维失败不改其他维结果或事实历史。
+
+同SQLAlchemy Session、AccessScope和现有知识发布scope锁、epoch、change_events、publication_receipts、jobs/outbox，不内部commit、不另建事实表。事件business_version必须等于提交时捕获的expected_event_version；迟到或事件已合并/撤回的任务拒绝成为当前结果。写者public须MANAGE_PUBLIC_SOURCES；tenant须同租户READ_ASSET+WRITE_ASSET。读/历史先按事件范围过滤，猜他人ID404。last_job_id存在时须同事件tenant；任务lease额外校验由R03统一执行，不能把本细则叫完整worker fencing。
+
+旧本地/MinIO适配不在本细则重写。0010旧库升级和新schema只在test_dianzi_r02_dimensions_20261015验证，不升级正被60fe固定review使用的knowledge/head0009库。回滚只前向修复或隔离恢复；不执行破坏性downgrade，0010显式拒绝降级。兼容：没有变化的原claims/来源/原文保持不变，新的内部结果字段尚非公共API；R04投影来源时间未知保留null。R07继续九维算法和真实来源，不以本卡持久化接口宣称富化已接通。
