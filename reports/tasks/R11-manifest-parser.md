@@ -27,7 +27,7 @@ configuration只支持model_name、provider_name、trust_remote_code、authentic
 - `backend/tests/contract/test_r11_manifest_candidate.py`：03内部候选字段、认证身份、source/version/hash、UTC时间及不可变结构。
 - `backend/tests/security/test_r11_manifest_parser_boundary.py`：身份伪造、秘密字段、命令/install脚本、symlink字段、路径遍历、文件Path对象、URL、XXE、禁IO配对、字节/组件/深度/字符串边界。
 - 本报告和`reports/runs/recovery_r11_manifest_parser_20261016/`：真实命令、原始日志、JUnit、CBM、无损原失败归档与哈希清单。
-- `.gitattributes`：只追加本次唯一run目录的`-text`与原始日志空白属性，防Git改写证据字节；原Move-Item失败stderr有PowerShell原始尾空白，另对该唯一文件追加`-diff`保留原始字节，避免将证据当代码修剪。未扩大至其他目录。
+- `.gitattributes`：只追加本次唯一run目录的`-text`与原始日志空白属性，防Git改写证据字节；原Move-Item失败stderr有PowerShell原始尾空白，另对该唯一文件追加`-diff`保留原始字节，避免将证据当代码修剪。未扩大至其他目录。该配置文件本身按Git常规CRLF→LF归一，manifest另列其Git blob与工作副本hash；run原始材料不归一。
 
 本片没有修改assessment/version_ranges、hunter/quake/fofa/aggregate、domain/schema、迁移、依赖/lock、配置、API、worker、frontend或progress。当前唯一源码调用入口是测试；主控后续负责PG/REST/UI接线，候选模块没有内存数据库或另一套业务真相。
 
