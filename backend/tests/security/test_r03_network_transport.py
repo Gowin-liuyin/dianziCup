@@ -564,6 +564,37 @@ def test_duplicate_rate_headers_are_policy_blocked_before_values_can_be_lost(
     assert len(sockets) == 1 and sockets[0].closed
 
 
+@pytest.mark.parametrize("header_size", [65536, 65537])
+def test_header_line_parser_limit_is_a_nonretryable_policy_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    header_size: int,
+) -> None:
+    headers = b"Retry-After: " + b"9" * header_size + b"\r\n"
+    sockets, _ = _install_socket_fixtures(monkeypatch, [_response(status=429, headers=headers)])
+    with pytest.raises(NetworkPolicyViolation, match="header parsing rejected"):
+        fetch_with_policy(NetworkPolicy(("source.example",)), "https://source.example/document")
+    assert len(sockets) == 1 and sockets[0].closed
+
+
+def test_header_count_parser_limit_does_not_discard_late_rate_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = b"X-Padding: x\r\n" * 100 + b"Retry-After: 9000\r\n"
+    sockets, _ = _install_socket_fixtures(monkeypatch, [_response(status=429, headers=headers)])
+    with pytest.raises(NetworkPolicyViolation, match="header parsing rejected"):
+        fetch_with_policy(NetworkPolicy(("source.example",)), "https://source.example/document")
+    assert len(sockets) == 1 and sockets[0].closed
+
+
+def test_peer_disconnect_before_headers_remains_a_network_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sockets, _ = _install_socket_fixtures(monkeypatch, [b""])
+    with pytest.raises(NetworkRequestError, match="response disconnected"):
+        fetch_with_policy(NetworkPolicy(("source.example",)), "https://source.example/document")
+    assert len(sockets) == 1 and sockets[0].closed
+
+
 @pytest.mark.parametrize("header", ["Location", "Content-Location", "X-Trace-Echo"])
 @pytest.mark.parametrize(
     "value",

@@ -244,7 +244,16 @@ class PinnedHttpTransport:
             raise NetworkTlsError("HTTPS certificate verification failed") from None
         except TimeoutError:
             raise NetworkTimeoutError("HTTP request timed out") from None
-        except (OSError, http.client.HTTPException):
+        except http.client.RemoteDisconnected:
+            connection.check_deadline()
+            raise NetworkRequestError("HTTP response disconnected") from None
+        except http.client.BadStatusLine:
+            connection.check_deadline()
+            raise NetworkRequestError("HTTP response status unavailable") from None
+        except http.client.HTTPException:
+            connection.check_deadline()
+            raise NetworkPolicyViolation("HTTP response header parsing rejected") from None
+        except OSError:
             connection.check_deadline()
             raise NetworkRequestError("HTTP request failed") from None
         finally:
