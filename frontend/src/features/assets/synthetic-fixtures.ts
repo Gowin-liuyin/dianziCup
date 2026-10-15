@@ -15,4 +15,3 @@ export function snapshotFixture(number = 2) {
 export function assetFixture() {
   return { asset_id: fixtureAssetId, tenant_id: fixtureTenant, display_name: "Synthetic fixture · 资产工作台", criticality: "unknown", active: true, current_snapshot_id: fixtureSnapshotId, created_at: "2026-10-15T10:00:00Z", updated_at: "2026-10-15T10:01:00Z", snapshot: snapshotFixture() };
 }
-
