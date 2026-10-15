@@ -176,11 +176,7 @@ elif sys.argv[1] == "scope_scan":
     print(json.dumps({"files_checked": len(owned_paths), "findings": findings}))
     sys.exit(1 if findings else 0)
 elif sys.argv[1] == "seal":
-    source_commit = (
-        subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, check=True)
-        .stdout.decode()
-        .strip()
-    )
+    source_commit = "6463e62bd0504e6cf83fd84b6d64c8bbfd33f994"
     base_commit = "cb34097898b412390ee7e119d0d5c2c90d090673"
     source_diff = subprocess.run(
         ["git", "diff", "--binary", base_commit, source_commit],
@@ -290,3 +286,24 @@ elif sys.argv[1] == "handoff_checks":
     )
     record("final_scope_scan", [PYTHON, str(Path(__file__).resolve()), "scope_scan"])
     record("frozen_source", ["git", "show", "--stat", "--oneline", "HEAD"])
+elif sys.argv[1] == "post_commit_checks":
+    record(
+        "delivered_diff_check",
+        ["git", "diff", "--check", "cb34097898b412390ee7e119d0d5c2c90d090673", "HEAD"],
+    )
+    record(
+        "delivered_source_diff_check",
+        [
+            "git",
+            "diff",
+            "--check",
+            "cb34097898b412390ee7e119d0d5c2c90d090673",
+            "HEAD",
+            "--",
+            "backend/src/ai_intel/enrichment/model_fields.py",
+            "backend/src/ai_intel/enrichment/field_sources.py",
+            "backend/tests/unit/test_r07_model_fields.py",
+            "backend/tests/contract/test_r07_model_field_contract.py",
+            "backend/tests/security/test_r07_model_field_security.py",
+        ],
+    )

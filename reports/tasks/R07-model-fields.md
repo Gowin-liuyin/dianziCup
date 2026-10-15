@@ -47,7 +47,7 @@
 | 修正与边界 | 新测试三文件 | `tests_field_fix1.*` 59 passed；`tests_boundary.*` 73 passed/1 synthetic enum warning，随后测试构造改用 DocumentKind enum，最终无 warning |
 | 最终相关回归 | `pytest -o addopts= -v` 新三文件 + r07 contracts/t19 structured + r05 generation/review fixes + t18/t20/t22/t23 原合同 | exit 0，236 passed/0 failed/0 skipped/0 warnings。新 unit 56、contract 4、security 16，既有回归 160。`sealed_regression.log/.command.json`、`regression.xml`（最后一次结果） |
 | 静态 | `ruff check`、`ruff format --check` 五文件；`mypy --config-file pyproject.toml` 两业务文件 | 全部 exit 0；`sealed_ruff.*`、`sealed_format.*`、`sealed_mypy.*`。自有 run 脚本也经 backend Ruff/format 检查 |
-| diff | `git diff --check`；提交前 `git diff --cached --check` | exit 0；无公共合同、依赖或用户文件修改；冻结 patch 和 SHA 清单见 manifest |
+| diff | `git diff --check`；提交前业务五文件 `git diff --cached --check` | 业务代码 exit 0；无公共合同、依赖或用户文件修改；冻结 patch 和 SHA 清单见 manifest。全包 diff --check exit 2，原因仅原样留存的 CBM EOF 空行、pytest 失败日志/XML 空白行尾空格；`delivered_diff_check.*` 保留，不修改原始失败证据、不添加忽略规则 |
 | 安全模式 | 复用 `scripts/security_scan.py` 的原 PATTERNS，仅扫当前五文件与自有 py/json/log | exit 0，56 files/0 findings，`sealed_secret_scan.*`；未读取任何秘密值或调整分类/忽略表。是文件范围扫描，不冒称全仓安全验收 |
 
 旧 `regression.log/.command.json` 记录添加 limitation 三项负例之前的 233 passed；同一成功 JUnit 路径在最后回归刷新为 236，故最终 XML只对应 sealed_regression，本报告不把它归于旧 233 次命令。所有失败日志/XML独立命名保留。
