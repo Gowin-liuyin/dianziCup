@@ -27,10 +27,10 @@ from ai_intel.api.authentication import (
 from ai_intel.api.problems import problem_response
 from ai_intel.domain.access import AccessScope, PermissionDeniedError, Role
 from ai_intel.infrastructure.outbox import IdempotencyConflictError
+from ai_intel.ingestion.source_catalog import SourceKind
 from ai_intel.ingestion.source_documents import ensure_source_registration
 from ai_intel.ingestion.source_jobs import (
     SOURCE_JOB_TYPE,
-    SourceKind,
     SourcePageRequest,
     enqueue_source_page,
 )
@@ -71,7 +71,7 @@ class SourceJobResponse(BaseModel):
 def build_source_router(
     service_provider: Callable[[], AuthenticationSessionService | None], engine: Engine | None
 ) -> APIRouter:
-    """管理员调度只处理两固定来源；读写失败均返回脱敏 problem。"""
+    """管理员调度固定公开来源；读写失败均返回脱敏 problem。"""
     router = APIRouter()
 
     def authenticate(request: Request, *, write: bool) -> AccessScope:
