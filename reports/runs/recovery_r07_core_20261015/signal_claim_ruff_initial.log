@@ -1,0 +1,106 @@
+E501 Line too long (101 > 100)
+  --> src\ai_intel\domain\records.py:94:101
+   |
+92 |         })
+93 |     else:
+94 |         predicate_constraints.append({"properties": {"predicate": {"enum": list(predicate_models)}}})
+   |                                                                                                     ^
+95 |     return predicate_constraints
+   |
+
+E501 Line too long (103 > 100)
+   --> src\ai_intel\domain\records.py:185:101
+    |
+183 |             signal_type = ENRICHMENT_VALUE_MODELS.get(self.predicate)
+184 |             if signal_type is None or not isinstance(self.object_value, signal_type):
+185 |                 raise ValueError("schema version 3 requires registered enrichment predicate and value")
+    |                                                                                                     ^^^
+186 |             return self
+187 |         expected_type = LEGACY_STRUCTURED_PREDICATES.get(self.predicate, str)
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> src\ai_intel\knowledge\persistence.py:3:1
+   |
+ 1 |   """知识发布的明确输入/收据; PostgreSQL是事实与收据唯一权威。"""
+ 2 |
+ 3 | / from __future__ import annotations
+ 4 | |
+ 5 | | import hashlib
+ 6 | | import json
+ 7 | | from dataclasses import dataclass
+ 8 | | from datetime import UTC, datetime
+ 9 | | from typing import Literal
+10 | | from uuid import uuid4
+11 | |
+12 | | from pydantic import Field
+13 | | from sqlalchemy import and_, func, or_, select, text, update
+14 | | from sqlalchemy.dialects.postgresql import insert
+15 | | from sqlalchemy.engine import RowMapping
+16 | | from sqlalchemy.orm import Session
+17 | | from sqlalchemy.sql.elements import ColumnElement
+18 | |
+19 | | from ai_intel.domain.access import (
+20 | |     MANAGE_PUBLIC_SOURCES,
+21 | |     READ_ASSET,
+22 | |     READ_PUBLIC,
+23 | |     WRITE_ASSET,
+24 | |     AccessScope,
+25 | |     CrossTenantAccessError,
+26 | | )
+27 | | from ai_intel.domain.enums import ClaimOrigin, ClaimStatus
+28 | | from ai_intel.domain.enrichment_values import CvssSignalValue
+29 | | from ai_intel.domain.records import ClaimRecord, EvidenceRecord, ScoreValue, StrictRecord
+30 | | from ai_intel.domain.values import Identifier, UtcTimestamp, VisibilityScope
+31 | | from ai_intel.infrastructure.outbox import IdempotencyConflictError
+32 | | from ai_intel.knowledge.entities import canonicalize_entity
+33 | | from ai_intel.knowledge.models import (
+34 | |     document_revisions,
+35 | |     documents,
+36 | |     evidence,
+37 | |     job_runs,
+38 | |     outbox_events,
+39 | | )
+40 | | from ai_intel.knowledge.persistence_models import (
+41 | |     change_events,
+42 | |     claim_assertions,
+43 | |     claim_evidence,
+44 | |     claim_relations,
+45 | |     claim_status_history,
+46 | |     claims,
+47 | |     entities,
+48 | |     entity_aliases,
+49 | |     publication_receipts,
+50 | | )
+51 | | from ai_intel.knowledge.revisions import bump_scope_epoch
+   | |_________________________________________________________^
+help: Organize imports
+   |
+26 | )
+27 + from ai_intel.domain.enrichment_values import CvssSignalValue
+28 | from ai_intel.domain.enums import ClaimOrigin, ClaimStatus
+   - from ai_intel.domain.enrichment_values import CvssSignalValue
+29 | from ai_intel.domain.records import ClaimRecord, EvidenceRecord, ScoreValue, StrictRecord
+   |
+
+E501 Line too long (101 > 100)
+  --> tests\contract\test_r07_signal_claim_values.py:35:101
+   |
+33 |     ("epss_signal", SIGNALS[1], 4),
+34 | ])
+35 | def test_unregistered_predicates_wrong_values_and_unknown_versions_reject(predicate, value, version):
+   |                                                                                                     ^
+36 |     with pytest.raises(ValidationError):
+37 |         ClaimRecord.model_validate(claim_payload(predicate, value, version))
+   |
+
+E501 Line too long (109 > 100)
+  --> tests\contract\test_r07_signal_claim_values.py:45:101
+   |
+43 |     old = ClaimRecord.model_validate(claim_payload("affected_by", "legacy text", 1))
+44 |     assert old.schema_version == 1
+45 |     assert ClaimRecord.model_validate(claim_payload("affected_by", "new old-style text")).schema_version == 2
+   |                                                                                                     ^^^^^^^^^
+
+Found 5 errors.
+[*] 1 fixable with the `--fix` option.

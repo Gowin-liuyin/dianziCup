@@ -124,6 +124,154 @@
     },
     "ClaimRecord": {
       "$defs": {
+        "ArtifactReferenceValue": {
+          "additionalProperties": false,
+          "properties": {
+            "artifact_kind": {
+              "enum": [
+                "poc",
+                "detection_template",
+                "analysis_repository"
+              ],
+              "title": "Artifact Kind",
+              "type": "string"
+            },
+            "artifact_path": {
+              "anyOf": [
+                {
+                  "maxLength": 1000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Artifact Path"
+            },
+            "commit_sha": {
+              "anyOf": [
+                {
+                  "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Commit Sha"
+            },
+            "kind": {
+              "const": "artifact_reference",
+              "default": "artifact_reference",
+              "title": "Kind",
+              "type": "string"
+            },
+            "license_identifier": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "License Identifier"
+            },
+            "limitations": {
+              "default": [],
+              "items": {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 20,
+              "title": "Limitations",
+              "type": "array"
+            },
+            "static_status": {
+              "enum": [
+                "candidate_found",
+                "static_reviewed",
+                "verification_failed"
+              ],
+              "title": "Static Status",
+              "type": "string"
+            },
+            "title": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Title",
+              "type": "string"
+            },
+            "uri": {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "title": "Uri",
+              "type": "string"
+            }
+          },
+          "required": [
+            "uri",
+            "title",
+            "artifact_kind",
+            "static_status"
+          ],
+          "title": "ArtifactReferenceValue",
+          "type": "object"
+        },
+        "AtlasMappingValue": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "atlas_mapping",
+              "default": "atlas_mapping",
+              "title": "Kind",
+              "type": "string"
+            },
+            "mechanism": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Mechanism",
+              "type": "string"
+            },
+            "prerequisites": {
+              "default": [],
+              "items": {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 20,
+              "title": "Prerequisites",
+              "type": "array"
+            },
+            "taxonomy_version": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Taxonomy Version",
+              "type": "string"
+            },
+            "technique_id": {
+              "pattern": "^AML\\.T[0-9]{4}(\\.[0-9]{3})?$",
+              "title": "Technique Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "technique_id",
+            "taxonomy_version",
+            "mechanism"
+          ],
+          "title": "AtlasMappingValue",
+          "type": "object"
+        },
         "ClaimOrigin": {
           "description": "论断来源等级: 区分原文明确、结构化来源、规则推导、模型假设与人工确认。",
           "enum": [
@@ -158,6 +306,205 @@
           ],
           "title": "ConditionValue",
           "type": "string"
+        },
+        "CvssSignalValue": {
+          "additionalProperties": false,
+          "properties": {
+            "authority": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Authority",
+              "type": "string"
+            },
+            "base_score": {
+              "maximum": 10,
+              "minimum": 0,
+              "title": "Base Score",
+              "type": "number"
+            },
+            "kind": {
+              "const": "cvss_signal",
+              "default": "cvss_signal",
+              "title": "Kind",
+              "type": "string"
+            },
+            "scored_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Scored At"
+            },
+            "standard_version": {
+              "enum": [
+                "2.0",
+                "3.0",
+                "3.1",
+                "4.0"
+              ],
+              "title": "Standard Version",
+              "type": "string"
+            },
+            "vector": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Vector",
+              "type": "string"
+            }
+          },
+          "required": [
+            "standard_version",
+            "base_score",
+            "vector",
+            "authority"
+          ],
+          "title": "CvssSignalValue",
+          "type": "object"
+        },
+        "EpssSignalValue": {
+          "additionalProperties": false,
+          "properties": {
+            "cve_id": {
+              "pattern": "^CVE-[0-9]{4}-[0-9]{4,19}$",
+              "title": "Cve Id",
+              "type": "string"
+            },
+            "data_date": {
+              "format": "date",
+              "title": "Data Date",
+              "type": "string"
+            },
+            "kind": {
+              "const": "epss_signal",
+              "default": "epss_signal",
+              "title": "Kind",
+              "type": "string"
+            },
+            "model_version": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Model Version"
+            },
+            "percentile": {
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Percentile",
+              "type": "number"
+            },
+            "probability": {
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Probability",
+              "type": "number"
+            }
+          },
+          "required": [
+            "cve_id",
+            "probability",
+            "percentile",
+            "data_date"
+          ],
+          "title": "EpssSignalValue",
+          "type": "object"
+        },
+        "ExposureAggregateValue": {
+          "additionalProperties": false,
+          "description": "Only aggregate service counts; no host records or affected-asset estimate are accepted.",
+          "properties": {
+            "kind": {
+              "const": "exposure_aggregate",
+              "default": "exposure_aggregate",
+              "title": "Kind",
+              "type": "string"
+            },
+            "limitations": {
+              "items": {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 20,
+              "minItems": 1,
+              "title": "Limitations",
+              "type": "array"
+            },
+            "observed_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Observed At"
+            },
+            "provider": {
+              "enum": [
+                "hunter",
+                "quake"
+              ],
+              "title": "Provider",
+              "type": "string"
+            },
+            "query_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Query Id",
+              "type": "string"
+            },
+            "query_version": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Query Version",
+              "type": "string"
+            },
+            "retrieved_at": {
+              "format": "date-time",
+              "title": "Retrieved At",
+              "type": "string"
+            },
+            "service_count": {
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "title": "Service Count",
+              "type": "integer"
+            },
+            "ttl_seconds": {
+              "maximum": 604800,
+              "minimum": 1,
+              "title": "Ttl Seconds",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "provider",
+            "query_id",
+            "query_version",
+            "service_count",
+            "retrieved_at",
+            "ttl_seconds",
+            "limitations"
+          ],
+          "title": "ExposureAggregateValue",
+          "type": "object"
         },
         "FreshnessStatus": {
           "description": "时效状态: 缺观察时间不得填 current。",
@@ -199,6 +546,69 @@
           "title": "Identifier",
           "type": "object"
         },
+        "KevSignalValue": {
+          "additionalProperties": false,
+          "properties": {
+            "catalog_version": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Catalog Version",
+              "type": "string"
+            },
+            "cve_id": {
+              "pattern": "^CVE-[0-9]{4}-[0-9]{4,19}$",
+              "title": "Cve Id",
+              "type": "string"
+            },
+            "date_added": {
+              "format": "date",
+              "title": "Date Added",
+              "type": "string"
+            },
+            "due_date": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Due Date"
+            },
+            "kind": {
+              "const": "kev_signal",
+              "default": "kev_signal",
+              "title": "Kind",
+              "type": "string"
+            },
+            "ransomware_use": {
+              "default": "unknown",
+              "enum": [
+                "known",
+                "unknown"
+              ],
+              "title": "Ransomware Use",
+              "type": "string"
+            },
+            "required_action": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Required Action",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cve_id",
+            "catalog_version",
+            "date_added",
+            "required_action"
+          ],
+          "title": "KevSignalValue",
+          "type": "object"
+        },
         "LinkValue": {
           "additionalProperties": false,
           "description": "来源链接只是静态引用；存储不授予访问或运行PoC的权限。",
@@ -228,6 +638,128 @@
             "title"
           ],
           "title": "LinkValue",
+          "type": "object"
+        },
+        "LiteratureReferenceValue": {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "properties": {
+                "target_document_id": {
+                  "type": "null"
+                },
+                "target_revision_id": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "target_document_id": {
+                  "type": "string"
+                },
+                "target_revision_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "target_document_id",
+                "target_revision_id"
+              ]
+            }
+          ],
+          "properties": {
+            "kind": {
+              "const": "literature_reference",
+              "default": "literature_reference",
+              "title": "Kind",
+              "type": "string"
+            },
+            "limitations": {
+              "default": [],
+              "items": {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 20,
+              "title": "Limitations",
+              "type": "array"
+            },
+            "reference_kind": {
+              "enum": [
+                "paper",
+                "article",
+                "standard",
+                "policy"
+              ],
+              "title": "Reference Kind",
+              "type": "string"
+            },
+            "relation": {
+              "enum": [
+                "background",
+                "analysis",
+                "defense",
+                "experimental"
+              ],
+              "title": "Relation",
+              "type": "string"
+            },
+            "support_summary": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Support Summary",
+              "type": "string"
+            },
+            "target_document_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Target Document Id"
+            },
+            "target_revision_id": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Target Revision Id"
+            },
+            "title": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Title",
+              "type": "string"
+            },
+            "uri": {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "title": "Uri",
+              "type": "string"
+            }
+          },
+          "required": [
+            "uri",
+            "title",
+            "reference_kind",
+            "relation",
+            "support_summary"
+          ],
+          "title": "LiteratureReferenceValue",
           "type": "object"
         },
         "ScoreValue": {
@@ -271,6 +803,235 @@
             "authority"
           ],
           "title": "ScoreValue",
+          "type": "object"
+        },
+        "VersionAssertionValue": {
+          "additionalProperties": false,
+          "properties": {
+            "comparison_support": {
+              "default": "unknown",
+              "enum": [
+                "supported",
+                "unsupported",
+                "unknown"
+              ],
+              "title": "Comparison Support",
+              "type": "string"
+            },
+            "ecosystem": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Ecosystem",
+              "type": "string"
+            },
+            "explicit_versions": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 100,
+              "title": "Explicit Versions",
+              "type": "array"
+            },
+            "intervals": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/VersionInterval"
+              },
+              "maxItems": 50,
+              "title": "Intervals",
+              "type": "array"
+            },
+            "kind": {
+              "const": "version_assertion",
+              "default": "version_assertion",
+              "title": "Kind",
+              "type": "string"
+            },
+            "limitations": {
+              "default": [],
+              "items": {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 20,
+              "title": "Limitations",
+              "type": "array"
+            },
+            "mitigations": {
+              "default": [],
+              "items": {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 20,
+              "title": "Mitigations",
+              "type": "array"
+            },
+            "package_key": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Package Key",
+              "type": "string"
+            },
+            "raw_expression": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Raw Expression",
+              "type": "string"
+            },
+            "scheme": {
+              "enum": [
+                "pep440",
+                "semver",
+                "osv_ecosystem",
+                "git",
+                "unknown"
+              ],
+              "title": "Scheme",
+              "type": "string"
+            },
+            "vendor_fix": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Vendor Fix"
+            }
+          },
+          "required": [
+            "package_key",
+            "ecosystem",
+            "scheme",
+            "raw_expression"
+          ],
+          "title": "VersionAssertionValue",
+          "type": "object"
+        },
+        "VersionInterval": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "not": {
+                "properties": {
+                  "fixed": {
+                    "type": "string"
+                  },
+                  "last_affected": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "fixed",
+                  "last_affected"
+                ]
+              }
+            },
+            {
+              "anyOf": [
+                {
+                  "properties": {
+                    "introduced": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "introduced"
+                  ]
+                },
+                {
+                  "properties": {
+                    "fixed": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "fixed"
+                  ]
+                },
+                {
+                  "properties": {
+                    "last_affected": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "last_affected"
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "branch": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Branch"
+            },
+            "fixed": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Fixed"
+            },
+            "introduced": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Introduced"
+            },
+            "last_affected": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Last Affected"
+            }
+          },
+          "title": "VersionInterval",
           "type": "object"
         },
         "VersionRangeValue": {
@@ -343,6 +1104,41 @@
           ],
           "title": "VisibilityScope",
           "type": "object"
+        },
+        "WeaknessValue": {
+          "additionalProperties": false,
+          "properties": {
+            "cwe_id": {
+              "pattern": "^CWE-[1-9][0-9]{0,5}$",
+              "title": "Cwe Id",
+              "type": "string"
+            },
+            "kind": {
+              "const": "weakness",
+              "default": "weakness",
+              "title": "Kind",
+              "type": "string"
+            },
+            "name": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "taxonomy_version": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Taxonomy Version",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cwe_id",
+            "taxonomy_version",
+            "name"
+          ],
+          "title": "WeaknessValue",
+          "type": "object"
         }
       },
       "additionalProperties": false,
@@ -352,297 +1148,406 @@
             "schema_version": {
               "enum": [
                 1,
-                2
+                2,
+                3
               ]
             }
           }
         },
         {
           "else": {
-            "allOf": [
-              {
-                "if": {
-                  "properties": {
-                    "predicate": {
-                      "const": "cvss_score"
+            "else": {
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "predicate": {
+                        "const": "cvss_signal"
+                      }
                     }
-                  }
-                },
-                "then": {
-                  "properties": {
-                    "object_value": {
-                      "additionalProperties": false,
-                      "description": "CVSS值保留评分机构/向量；没有数值不生成默认零分。",
-                      "properties": {
-                        "authority": {
-                          "maxLength": 200,
-                          "minLength": 1,
-                          "title": "Authority",
-                          "type": "string"
+                  },
+                  "then": {
+                    "properties": {
+                      "object_value": {
+                        "properties": {
+                          "kind": {
+                            "const": "cvss_signal"
+                          }
                         },
-                        "kind": {
-                          "const": "score",
-                          "default": "score",
-                          "title": "Kind",
-                          "type": "string"
-                        },
-                        "score": {
-                          "maximum": 10,
-                          "minimum": 0,
-                          "title": "Score",
-                          "type": "number"
-                        },
-                        "vector": {
-                          "anyOf": [
-                            {
-                              "maxLength": 500,
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ],
-                          "default": null,
-                          "title": "Vector"
-                        }
-                      },
-                      "required": [
-                        "score",
-                        "authority"
-                      ],
-                      "title": "ScoreValue",
-                      "type": "object"
-                    }
-                  }
-                }
-              },
-              {
-                "if": {
-                  "properties": {
-                    "predicate": {
-                      "const": "reference_link"
-                    }
-                  }
-                },
-                "then": {
-                  "properties": {
-                    "object_value": {
-                      "additionalProperties": false,
-                      "description": "来源链接只是静态引用；存储不授予访问或运行PoC的权限。",
-                      "properties": {
-                        "kind": {
-                          "const": "link",
-                          "default": "link",
-                          "title": "Kind",
-                          "type": "string"
-                        },
-                        "title": {
-                          "maxLength": 500,
-                          "minLength": 1,
-                          "title": "Title",
-                          "type": "string"
-                        },
-                        "url": {
-                          "format": "uri",
-                          "maxLength": 2083,
-                          "minLength": 1,
-                          "title": "Url",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "url",
-                        "title"
-                      ],
-                      "title": "LinkValue",
-                      "type": "object"
-                    }
-                  }
-                }
-              },
-              {
-                "if": {
-                  "properties": {
-                    "predicate": {
-                      "const": "poc_link"
-                    }
-                  }
-                },
-                "then": {
-                  "properties": {
-                    "object_value": {
-                      "additionalProperties": false,
-                      "description": "来源链接只是静态引用；存储不授予访问或运行PoC的权限。",
-                      "properties": {
-                        "kind": {
-                          "const": "link",
-                          "default": "link",
-                          "title": "Kind",
-                          "type": "string"
-                        },
-                        "title": {
-                          "maxLength": 500,
-                          "minLength": 1,
-                          "title": "Title",
-                          "type": "string"
-                        },
-                        "url": {
-                          "format": "uri",
-                          "maxLength": 2083,
-                          "minLength": 1,
-                          "title": "Url",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "url",
-                        "title"
-                      ],
-                      "title": "LinkValue",
-                      "type": "object"
-                    }
-                  }
-                }
-              },
-              {
-                "if": {
-                  "properties": {
-                    "predicate": {
-                      "const": "affected_version"
-                    }
-                  }
-                },
-                "then": {
-                  "properties": {
-                    "object_value": {
-                      "additionalProperties": false,
-                      "description": "保存来源表达的版本范围，适用判断交给受支持的生态比较器。",
-                      "properties": {
-                        "branch": {
-                          "anyOf": [
-                            {
-                              "maxLength": 200,
-                              "minLength": 1,
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ],
-                          "default": null,
-                          "title": "Branch"
-                        },
-                        "ecosystem": {
-                          "maxLength": 100,
-                          "minLength": 1,
-                          "title": "Ecosystem",
-                          "type": "string"
-                        },
-                        "expression": {
-                          "maxLength": 2000,
-                          "minLength": 1,
-                          "title": "Expression",
-                          "type": "string"
-                        },
-                        "kind": {
-                          "const": "version_range",
-                          "default": "version_range",
-                          "title": "Kind",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "ecosystem",
-                        "expression"
-                      ],
-                      "title": "VersionRangeValue",
-                      "type": "object"
-                    }
-                  }
-                }
-              },
-              {
-                "if": {
-                  "properties": {
-                    "predicate": {
-                      "const": "affected_versions"
-                    }
-                  }
-                },
-                "then": {
-                  "properties": {
-                    "object_value": {
-                      "additionalProperties": false,
-                      "description": "保存来源表达的版本范围，适用判断交给受支持的生态比较器。",
-                      "properties": {
-                        "branch": {
-                          "anyOf": [
-                            {
-                              "maxLength": 200,
-                              "minLength": 1,
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ],
-                          "default": null,
-                          "title": "Branch"
-                        },
-                        "ecosystem": {
-                          "maxLength": 100,
-                          "minLength": 1,
-                          "title": "Ecosystem",
-                          "type": "string"
-                        },
-                        "expression": {
-                          "maxLength": 2000,
-                          "minLength": 1,
-                          "title": "Expression",
-                          "type": "string"
-                        },
-                        "kind": {
-                          "const": "version_range",
-                          "default": "version_range",
-                          "title": "Kind",
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "ecosystem",
-                        "expression"
-                      ],
-                      "title": "VersionRangeValue",
-                      "type": "object"
-                    }
-                  }
-                }
-              },
-              {
-                "if": {
-                  "properties": {
-                    "predicate": {
-                      "not": {
-                        "enum": [
-                          "cvss_score",
-                          "reference_link",
-                          "poc_link",
-                          "affected_version",
-                          "affected_versions"
-                        ]
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
                       }
                     }
                   }
                 },
-                "then": {
+                {
+                  "if": {
+                    "properties": {
+                      "predicate": {
+                        "const": "epss_signal"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "object_value": {
+                        "properties": {
+                          "kind": {
+                            "const": "epss_signal"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "predicate": {
+                        "const": "kev_signal"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "object_value": {
+                        "properties": {
+                          "kind": {
+                            "const": "kev_signal"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "predicate": {
+                        "const": "weakness"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "object_value": {
+                        "properties": {
+                          "kind": {
+                            "const": "weakness"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "predicate": {
+                        "const": "atlas_mapping"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "object_value": {
+                        "properties": {
+                          "kind": {
+                            "const": "atlas_mapping"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "predicate": {
+                        "const": "version_assertion"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "object_value": {
+                        "properties": {
+                          "kind": {
+                            "const": "version_assertion"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "predicate": {
+                        "const": "literature_reference"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "object_value": {
+                        "properties": {
+                          "kind": {
+                            "const": "literature_reference"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "predicate": {
+                        "const": "artifact_reference"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "object_value": {
+                        "properties": {
+                          "kind": {
+                            "const": "artifact_reference"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "predicate": {
+                        "const": "exposure_aggregate"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "object_value": {
+                        "properties": {
+                          "kind": {
+                            "const": "exposure_aggregate"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                {
                   "properties": {
-                    "object_value": {
-                      "type": "string"
+                    "predicate": {
+                      "enum": [
+                        "cvss_signal",
+                        "epss_signal",
+                        "kev_signal",
+                        "weakness",
+                        "atlas_mapping",
+                        "version_assertion",
+                        "literature_reference",
+                        "artifact_reference",
+                        "exposure_aggregate"
+                      ]
                     }
                   }
                 }
+              ]
+            },
+            "if": {
+              "properties": {
+                "schema_version": {
+                  "const": 2
+                }
               }
-            ]
+            },
+            "then": {
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "predicate": {
+                        "const": "cvss_score"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "object_value": {
+                        "properties": {
+                          "kind": {
+                            "const": "score"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "predicate": {
+                        "const": "reference_link"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "object_value": {
+                        "properties": {
+                          "kind": {
+                            "const": "link"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "predicate": {
+                        "const": "poc_link"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "object_value": {
+                        "properties": {
+                          "kind": {
+                            "const": "link"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "predicate": {
+                        "const": "affected_version"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "object_value": {
+                        "properties": {
+                          "kind": {
+                            "const": "version_range"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "predicate": {
+                        "const": "affected_versions"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "object_value": {
+                        "properties": {
+                          "kind": {
+                            "const": "version_range"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "predicate": {
+                        "not": {
+                          "enum": [
+                            "cvss_score",
+                            "reference_link",
+                            "poc_link",
+                            "affected_version",
+                            "affected_versions"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "object_value": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
           },
           "if": {
             "properties": {
@@ -710,6 +1615,51 @@
                 },
                 {
                   "$ref": "#/$defs/VersionRangeValue"
+                }
+              ]
+            },
+            {
+              "discriminator": {
+                "mapping": {
+                  "artifact_reference": "#/$defs/ArtifactReferenceValue",
+                  "atlas_mapping": "#/$defs/AtlasMappingValue",
+                  "cvss_signal": "#/$defs/CvssSignalValue",
+                  "epss_signal": "#/$defs/EpssSignalValue",
+                  "exposure_aggregate": "#/$defs/ExposureAggregateValue",
+                  "kev_signal": "#/$defs/KevSignalValue",
+                  "literature_reference": "#/$defs/LiteratureReferenceValue",
+                  "version_assertion": "#/$defs/VersionAssertionValue",
+                  "weakness": "#/$defs/WeaknessValue"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/CvssSignalValue"
+                },
+                {
+                  "$ref": "#/$defs/EpssSignalValue"
+                },
+                {
+                  "$ref": "#/$defs/KevSignalValue"
+                },
+                {
+                  "$ref": "#/$defs/WeaknessValue"
+                },
+                {
+                  "$ref": "#/$defs/AtlasMappingValue"
+                },
+                {
+                  "$ref": "#/$defs/VersionAssertionValue"
+                },
+                {
+                  "$ref": "#/$defs/LiteratureReferenceValue"
+                },
+                {
+                  "$ref": "#/$defs/ArtifactReferenceValue"
+                },
+                {
+                  "$ref": "#/$defs/ExposureAggregateValue"
                 }
               ]
             }

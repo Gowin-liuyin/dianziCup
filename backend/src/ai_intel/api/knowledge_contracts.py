@@ -7,13 +7,11 @@ from uuid import UUID
 
 from pydantic import Field, HttpUrl, model_validator
 
+from ai_intel.domain.enrichment_values import DimensionName as DimensionName
 from ai_intel.domain.enums import ClaimOrigin, ClaimStatus, DimensionStatus, FreshnessStatus
 from ai_intel.domain.records import StrictRecord
 from ai_intel.domain.values import UtcTimestamp
 
-DimensionName = Literal[
-    "cvss", "epss", "kev", "cwe", "atlas", "versions", "literature", "poc", "exposure"
-]
 DataMode = Literal["live", "fixture"]
 
 
