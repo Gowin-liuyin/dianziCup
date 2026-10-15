@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { graphFixture, graphFixtureEventId, fixtureGraphId } from "../src/features/graph/graph.fixture";
-import type { GraphSnapshot } from "../src/features/graph/graph-contracts";
+import { graphNodeKinds, type GraphSnapshot } from "../src/features/graph/graph-contracts";
 
 async function isolateGraph(page: Page, snapshot: GraphSnapshot) {
   await page.route("**/v1/**", async (route) => {
@@ -145,4 +145,24 @@ test("R17 fix1 chooser focus, keyboard, cancel, zoom/filter clearing and node mo
   await page.mouse.click(point.x, point.y); await expect(page.getByRole("complementary", { name: "节点检视", exact: true })).toBeVisible();
   const edge = page.getByRole("button", { name: "图关系 1：归于同一事件", exact: true }); await edge.focus(); await page.keyboard.press("Space"); await expect(edge).toHaveAttribute("aria-pressed", "true");
   await info.attach("node-real-pointer", { body: JSON.stringify(point), contentType: "application/json" });
+});
+
+test("R17 fix1 200 nodes / 400 edges actual pointer and bounded chooser", async ({ page }, info) => {
+  const snapshot = graphFixture("r10-graph-1.1.0"); const root = snapshot.nodes[0]; const firstEdge = snapshot.edges[0];
+  if (!root || !firstEdge) throw new Error("Bounded graph base missing");
+  snapshot.nodes = [root, ...Array.from({ length: 199 }, (_, index) => {
+    const kind = graphNodeKinds[(index % 5) + 1]; if (!kind) throw new Error("Bounded graph kind missing");
+    return { id: fixtureGraphId(index + 1000), kind, label: `最大合成指针图 ${index} · ${kind}`, scope: root.scope };
+  })];
+  snapshot.edges = Array.from({ length: 400 }, (_, index) => {
+    const node = snapshot.nodes[(index % 199) + 1]; if (!node) throw new Error("Bounded graph endpoint missing");
+    return { ...firstEdge, id: fixtureGraphId(index + 2000), object_id: node.id, reason: `最大合成指针图第${index}关系，仅fixture。` };
+  });
+  await isolateGraph(page, snapshot); await page.goto("/e2e/graph-fixture/index.html"); await expect(page.locator(".graph-edge-line")).toHaveCount(400);
+  const expected = snapshot.edges[1]; if (!expected) throw new Error("Expected dense edge missing");
+  const start = performance.now(); const coordinates = await clickVisibleCurve(page, 1); const choice = page.getByRole("region", { name: "选择此处的关系", exact: true });
+  if (await choice.isVisible()) expect(await choice.locator("div").last().evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(260);
+  await chooseExpectedEdge(page, expected.id); const clickMilliseconds = performance.now() - start;
+  await expect(page.locator(".graph-node")).toHaveCount(200); await expect(page.locator(".graph-edge")).toHaveCount(400);
+  await info.attach("dense-real-pointer", { body: JSON.stringify({ data_kind: "synthetic", nodes: 200, edges: 400, coordinates, expectedEdgeId: expected.id, clickMilliseconds, scope: "one UI pointer/chooser operation, no live or P95 claim" }, null, 2), contentType: "application/json" });
 });
