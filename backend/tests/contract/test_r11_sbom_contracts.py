@@ -149,7 +149,7 @@ def test_spdx_unknown_relationship_target_is_a_declaration_only(sentinel):
     assert result.dependency_edges[0].target_ref == sentinel
 
 
-def test_official_valid_dense_10000_has_explicit_shared_projection_budget_gap():
+def test_official_valid_dense_10000_keeps_complete_projection_and_source_positions():
     document = cdx_document(
         components=[
             {
@@ -162,6 +162,9 @@ def test_official_valid_dense_10000_has_explicit_shared_projection_budget_gap():
         ]
     )
     validate(document, "cyclonedx-1.7")
-    with pytest.raises(SbomValidationError) as rejected:
-        parse(document)
-    assert rejected.value.code == "projection_node_limit"
+    result = parse(document)
+    assert len(result.manifest.snapshot.components) == 10000
+    assert len(result.component_sources) == 10000
+    assert result.manifest.snapshot.components[-1].package_name == "p9999"
+    assert {component.version for component in result.manifest.snapshot.components} == {"1"}
+    assert result.component_sources[-1].source_field_locator == "/components/9999"

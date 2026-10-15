@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
 from ai_intel.assets.manifest_parser import InventoryCompleteness
 
-ManifestFormat = Literal["json_manifest_v1", "csv_components_v1"]
+ManifestFormat = Literal["json_manifest_v1", "csv_components_v1", "cyclonedx_json", "spdx_json"]
 
 
 class InventoryContract(BaseModel):

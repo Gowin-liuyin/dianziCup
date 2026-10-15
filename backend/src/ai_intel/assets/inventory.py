@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from pydantic import ValidationError
 from sqlalchemy import and_, func, insert, or_, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
@@ -21,7 +22,10 @@ from ai_intel.assets.inventory_contracts import (
     AssetSnapshotResponse,
 )
 from ai_intel.assets.inventory_models import asset_import_receipts, asset_snapshots, assets
-from ai_intel.assets.manifest_parser import ManifestValidationError, parse_manifest
+from ai_intel.assets.manifest_parser import ManifestValidationError
+from ai_intel.assets.sbom_inventory import freeze_sbom_sidecar, parse_inventory_input
+from ai_intel.assets.sbom_inventory_contracts import AssetSnapshotSbomResponse
+from ai_intel.assets.sbom_persistence_models import asset_snapshot_sbom_sidecars
 from ai_intel.domain.access import (
     READ_ASSET,
     WRITE_ASSET,
@@ -42,6 +46,10 @@ class InvalidAssetCursor(ValueError):
 
 class AssetNameConflictError(ValueError):
     """导入不得静默修改既有资产名称；元数据变更需要独立审计操作。"""
+
+
+class SbomStoredEvidenceError(RuntimeError):
+    """冻结声明与PG快照绑定不一致，拒绝输出错误身份或版本。"""
 
 
 def _digest(value: object) -> str:
@@ -114,6 +122,57 @@ class InventoryService:
             }
         )
 
+    def get_snapshot_sbom(self, asset_id: str, snapshot_id: str) -> AssetSnapshotSbomResponse:
+        """只读同租户冻结typed payload；不重解析原文或提供opaque原值。"""
+        tenant = self._tenant(READ_ASSET)
+        sidecars = asset_snapshot_sbom_sidecars
+        row = (
+            self.session.execute(
+                select(
+                    sidecars,
+                    asset_snapshots.c.manifest_sha256.label("projection_sha256"),
+                    asset_snapshots.c.raw_input_sha256.label("raw_sha256"),
+                    asset_snapshots.c.source_kind.label("source_format"),
+                )
+                .join(
+                    asset_snapshots,
+                    and_(
+                        sidecars.c.asset_id == asset_snapshots.c.asset_id,
+                        sidecars.c.tenant_id == asset_snapshots.c.tenant_id,
+                        sidecars.c.snapshot_id == asset_snapshots.c.snapshot_id,
+                    ),
+                )
+                .where(
+                    sidecars.c.asset_id == asset_id,
+                    sidecars.c.tenant_id == tenant,
+                    sidecars.c.snapshot_id == snapshot_id,
+                )
+            )
+            .mappings()
+            .first()
+        )
+        if row is None:
+            raise CrossTenantAccessError("resource not found")
+        try:
+            result = AssetSnapshotSbomResponse.model_validate(row["canonical_payload"])
+        except ValidationError:
+            raise SbomStoredEvidenceError("stored SBOM evidence shape differs") from None
+        fields = (
+            "asset_id",
+            "tenant_id",
+            "snapshot_id",
+            "adapter_version",
+            "spec_version",
+            "sidecar_sha256",
+            "combined_semantic_sha256",
+            "projection_sha256",
+            "raw_sha256",
+            "source_format",
+        )
+        if any(getattr(result, field) != row[field] for field in fields):
+            raise SbomStoredEvidenceError("stored SBOM evidence binding differs")
+        return result
+
     def import_manifest(
         self,
         raw_bytes: bytes,
@@ -148,7 +207,7 @@ class InventoryService:
                 raise ManifestValidationError("invalid_asset_id") from None
         now = datetime.now(UTC)
         selected_id = asset_id or str(uuid4())
-        parsed = parse_manifest(
+        parsed_input = parse_inventory_input(
             raw_bytes,
             manifest_format=manifest_format,
             scope=self.scope,
@@ -160,6 +219,7 @@ class InventoryService:
             recorded_at=now,
             csv_column_mapping=csv_column_mapping,
         )
+        parsed = parsed_input.manifest
         request_digest = _digest(
             [
                 asset_id,
@@ -224,7 +284,14 @@ class InventoryService:
             if asset["display_name"] != display_name:
                 raise AssetNameConflictError("asset display name conflict")
             current_snapshot = self.get_snapshot(selected_id, str(asset["current_snapshot_id"]))
-        if current_snapshot and current_snapshot.snapshot_sha256 == parsed.snapshot.snapshot_sha256:
+        current_semantic_sha256 = None
+        if current_snapshot is not None:
+            current_semantic_sha256 = current_snapshot.snapshot_sha256
+            if current_snapshot.source_kind in {"cyclonedx_json", "spdx_json"}:
+                current_semantic_sha256 = self.get_snapshot_sbom(
+                    selected_id, current_snapshot.snapshot_id
+                ).combined_semantic_sha256
+        if current_snapshot and current_semantic_sha256 == parsed_input.semantic_sha256:
             snapshot = current_snapshot
             reused = True
         else:
@@ -239,7 +306,7 @@ class InventoryService:
                     )
                 )
             number = 1 if current_snapshot is None else current_snapshot.snapshot_number + 1
-            parsed = parse_manifest(
+            parsed_input = parse_inventory_input(
                 raw_bytes,
                 manifest_format=manifest_format,
                 scope=self.scope,
@@ -251,6 +318,7 @@ class InventoryService:
                 recorded_at=now,
                 csv_column_mapping=csv_column_mapping,
             )
+            parsed = parsed_input.manifest
             snapshot = AssetSnapshotResponse.model_validate(parsed.snapshot)
             self.session.execute(
                 insert(asset_snapshots).values(
@@ -274,6 +342,20 @@ class InventoryService:
                     actor_user_id=self.scope.user_id,
                 )
             )
+            if parsed_input.sbom is not None:
+                sidecar = freeze_sbom_sidecar(parsed_input.sbom)
+                self.session.execute(
+                    insert(asset_snapshot_sbom_sidecars).values(
+                        snapshot_id=snapshot.snapshot_id,
+                        asset_id=selected_id,
+                        tenant_id=tenant,
+                        adapter_version=sidecar.adapter_version,
+                        spec_version=sidecar.spec_version,
+                        sidecar_sha256=sidecar.sidecar_sha256,
+                        combined_semantic_sha256=sidecar.combined_semantic_sha256,
+                        canonical_payload=sidecar.model_dump(mode="json"),
+                    )
+                )
             self.session.execute(
                 update(assets)
                 .where(
@@ -300,6 +382,9 @@ class InventoryService:
                 if current_snapshot is None
                 else "asset_snapshot_changed",
             }
+            if parsed_input.sbom is not None:
+                payload["combined_semantic_sha256"] = parsed_input.sbom.combined_semantic_sha256
+                payload["sidecar_sha256"] = parsed_input.sbom.sidecar_sha256
             self.session.execute(
                 select(
                     func.pg_advisory_xact_lock(
