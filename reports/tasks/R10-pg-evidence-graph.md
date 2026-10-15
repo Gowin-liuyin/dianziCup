@@ -1,6 +1,47 @@
 # R10 · PostgreSQL 证据图只读切片
 
-状态：`awaiting_review`。本切片 implementation=`complete`；修复代码冻结 `3516b9109b9b7f2c5691d78ad0439aea4a659f4f`，等待原独立 reviewer 定向复核。整个 R10 仍需产品注册、Neo4j 投影、前端与独立验收，不能据此登记整 R10 完成。修复记录时间：2026-10-16T04:18:48+08:00。
+状态：`awaiting_review`。本切片 implementation=`complete`；fix2 最终代码冻结 `08b141bd437c1de70a8435a1f7f6c448a131ed0d`，固定规则 `r10-graph-1.2.0`，等待原独立 reviewer 定向复核。整个 R10 仍需产品注册、Neo4j 投影、前端与独立验收，不能据此登记整 R10 完成。fix2 记录时间：2026-10-16T05:01:37+08:00。
+
+当前工作树：`D:/wt/r10-graph-fix2`，分支 `codex/r10-graph-fix2`，从前次归档 `29e1ebddca5cbadffc8c6533bdeeb08b8d63e469` 建立；旧作者/审查工作树与主 checkout 没有修改，没有 push/Ship/accepted。
+
+## fix2 · 原句极性与可见候选锁集合
+
+定向 reviewer 又在 3516 复现 4 项失败、2 个根因：论文的否定/未确认分析句和 ATLAS 的否定攻击路径仍提升为强边；仅 subject 相同、另一租户未关联 claim 被 fresh 围栏锁住，令公共读等待 5 秒并返回 503。原 canonical `test_review2_pg.py`（raw SHA-256=`1b12f82583d8c067cc52d604c54aa53bddeb593c1cf8c2bfcccdc32d6d810c47`）在修复前实跑 5 passed/4 failed，修后原字节 9 passed，失败日志与原脚本完整保留。
+
+主控认可共享调用方核对及修复计划，正式变更为 [CR-R10_graph_fix2](../../docs/decisions/CR-R10_graph_fix2.md)。只改 graph 两源码、必要的 `enrichment/field_sources.py`、专属 R10 测试/CR/报告/run。原 unit/PG 的规则字符串 1.1→1.2 以 CR 明示，其余旧 fixture/断言/参数不改；原字节、Git blob 和 AST 核对在 `original_preservation.json`。schema1、字段和 gap 两理由不改，主控同步前端规则 union；公共合同、auth/model_fields、预算、迁移、锁配置、发布持久化、app/UI/Neo4j/progress 没有改动。
+
+共享 validator 在对应机制或论文 relation 的完整引用句检查否定、未确认和矛盾，保留换行条件/qualifier。`not sanitized` / `fails to filter`、`not only`、中文“不受信任/不同角色/不仅”和与论文关系无关的“不执行 PoC/不扫描”有自然正对照，May 不被当作 may 模态词。版本字段保持原完整段落限定范围；关系限定从实际引用位置核对，避免把前一版本字段的 inline qualifier 当作 ATLAS 前提。依据不足时保持 gap；已有 PG claim 的 supported 状态、typed 值和规则事实没有被读服务写回或提升。固定规则只覆盖可观察的明确断言语法，不声称通用语义理解或准确率；陌生、复杂句式仍是独立评审风险。
+
+首次 RR 的 `GraphReadInputs` 仅记录本次可见支持读及完整来源上下文实际用到的 claim/evidence/父链/block/assertion/支持关联 identity，是本请求的锁输入。fresh RC 重新锁原认证并比较完整 scope，source→doc→rev→event→claim/evidence/block/关联→epoch 顺序不变；不扫描/锁全部 subject claims 或整修订 evidence。身份集合不限制 fresh 查询：锁后完整重读当前 PG 支持关系及输入 hash/版本/epoch。新的可见 claim/evidence/事件关联必须被发现；直接父撤权或撤回即使未 bump epoch 也失效。原序列化在锁内、0 重试、继承锁等待和每请求目标 memo 保持。
+
+新 run：`reports/runs/recovery_r10_graph_fix2_20261016/`。解释器为现有 `D:/dianzi/backend/.venv/Scripts/python.exe`；完整 argv/cwd/+08 起止/退出码/输入 SHA 在逐组 JSON，JUnit 保留 case/参数。首次 fix2 冻结 `11d2413` 的 155+103+122 通过记录保留；补充 8 个真实 PG coverage 门对照后最终冻结 `08b141b`，两 SHA 的 backend/src 字节完全相同。最终主组从 2026-10-16T04:53:39.435757+08:00 至 04:56:10.271655+08:00，没有修改冻结源码。源码一致性证据在 preservation/manifest 中。
+
+| 冻结检查 | 真实结果 | 证据 |
+|---|---|---|
+| 原 75（65 PG+10 pure）+新 32 pure+新 47 PG+原 review2 9 | exit 0；163 passed，0 fail/error/skip | `frozen_final_primary.json/log/xml` |
+| 原 R02/R07 相关 7 文件 | exit 0；103 passed，0 fail/error/skip | `frozen_final_related.json/log/xml` |
+| 共享 R07 model_fields/root_causes/security/contract | exit 0；122 passed，0 fail/error/skip | `frozen_final_model_fields.json/log/xml` |
+| 原作者 35 原 bytes | exit 1；24 passed/11 failed | `frozen_original_author35.json/log/xml` |
+| 原 probe 32 原 bytes | exit 1；22 passed/10 failed | `frozen_original_probe32.json/log/xml` |
+| 原 probe 20 case 子集 | exit 1；16 passed/4 failed，12 deselected | `frozen_original_probe20_subset.json/log/xml` |
+| 原 probe 33=32+独立负载 1 | exit 1；23 passed/10 failed | `frozen_original_probe33.json/log/xml` |
+| Ruff / 格式 / mypy / code+CR diff | 各 exit 0；11 Python 文件、3 源文件类型检查 | `final_quality_commands.json`、对应 final logs |
+
+最终 primary+两组回归为 388 passed。旧兼容预期的红项另列，原分母不并入通过分母、没有改 skip；known loss 与前次相同。旧 probe 在首次 fix2 冻结 11d 执行，最终 08b 产品源码完全相同，不重复改变该组材料/预期。20 是现存 32 的显式 `-k 'not exact_fixture_fields and not unknown_condition'` 子集；33 的实际入口/脚本及原 reviewer fixture 副本另存，不冒称单个 33-case 原脚本。旧 probe 重跑使用原作者固定本切片库 guard 的 helper（`test_original_graph_pg.py`，业务输入/期待保留），canonical reviewer 33 helper 的其他库 guard 版本只保留原字节、不执行到其他数据库。fixture/入口差异在清单明示。
+
+最终冻结 HTTP/hash/SQLstate 见 `frozen_final_primary_http.jsonl`：8 个公共/私有事件、viewer/analyst、同租户/跨租户、未关联/不可见关联 writer 持 claim 锁场景均 200，内容摘要不变，SELECT 25 与未持锁对照 25 相同；耗时 0.120–0.256s、无 40P01/55P03。6 个 RR 后新可见 claim/evidence/association 提交（分别 bump/no-bump epoch）均 409；旧 12 父 ACL/撤回/epoch/版本窗口、role/tenant/session、父 writer→epoch 和超时仍通过。父→epoch 0.250s 返回 409、未出现 40P01；原 5000ms 锁等待 5.144s 后 503、55P03。这些是实际受控调度，不能证明所有调度无死锁。
+
+原合法 2000 行支持负载保持 7 SELECT、1 target ACL（最终 0.704s，100 claims×20 evidence、max1 节点/边），不跨请求 memo。legacy 33 的额外负载用缺绑定旧 quote，2001 行截断根节点，实际 3 SQL/0 target ACL/1.251s；它只验证该旧用例，不替代合法支持负载，也不是评分性能指标。六类合法自然原文、反向同 claim、conflict/withdrawn/current/跨租户等原 65 PG 均保留并通过；新增极性/条件源原文与不改 PG facts 由新 39 PG 验证。额外 8 PG 覆盖 source/target 的 metadata_only/excerpt/unknown/full_text 但 blocks_complete=false，从合法强边转为 unknown，整行 claim 状态/typed 值保持不变；补充前这一门只在 R07 unit 覆盖，没有把它误写成原 PG 证据。
+
+所有环境仍为显式 synthetic fixture、真实 PG `test_dianzi_r06_catalog_r10_graph_20261016` 和 UUID schema，runid `r06_catalog_r10_graph_20261016`，保留原 actualDB/user/prefix 校验。25432 私有连接只内存/env 捕获，不打印 DSN。0 外部 HTTP/来源/provider/模型/费用/扫描/服务启动；TestClient HTTP 与离线真实 codec/四维预算检查不冒充 live。新模型正例仍四次离线 transport、pending/MODEL_HYPOTHESIS；budget/model_fields 本体未变。
+
+最终 code+CR diff 和 staged code diff 均 exit0；完整归档 staged diff 为 exit2，来自保留的 CBM stdout EOF 空行、旧失败 log/XML traceback 空行及原始 patch 空上下文行。实际命令/输出在 `archive_diff_commands.json`、`staged_archive_diff.log`，未裁剪原红材料或添加忽略规则。新增 coverage 测试的首次 Ruff import 顺序提示已修正，最终 11 文件 Ruff/format 均通过。raw 文件字节与 Git 规范 blob 分别记在 `frozen_code_manifest.json` / `artifact_manifest.json`，秘密扫描只在内存比对实际私有密码/完整 DSN，不输出它们。
+
+开发红材料保留：首次共享限定范围过宽 111 passed/11 failed，修后原 122 全通过；新 unit 缺 discriminator kind 为 1/29 红，修后语义 30 再加两个自然正对照为 32；新 PG 比较未规范化默认字段和证据 helper 形状造成 20/11 红，修后 31，再加 8 换行条件形成冻结 39。原 review2 4 红和此前材料亦不覆盖。CBM 修改前/后自己的独有 index/qualified shared caller/architecture 为真实 CLI；最初 schema 缺 project 的 exit1 保留，指定自有 project 后 exit0。冻结索引 1428 nodes/7324 edges、未索引 0，导航边不证明业务正确。
+
+unit/contract/security/integration=`passed`；旧兼容预期=`failed`；全仓覆盖率/front-end/e2e/live/manual=`not_run`。focused pytest 仍显式清空 addopts，没有改阈值、金标或计分分母；已有 Starlette/httpx warning 保留。下一步原独立 reviewer 定向复核新冻结/CR/原 probe 与 manifests，主控再决定入口/前端 union/Neo4j/UI 集成；本作者不自行 Ship/accepted。
+
+## 第一轮修复交付（历史）
 
 基线：`cc1b1d302e22048f567475b7084bcd5490761ed2`。初版历史冻结代码：`b0b7a5b856cc38862f64c01565309564d67c34c0`；初版归档截止 `16803ce6be9ad6adb6d89f46c594cfa420190c24`。工作树：`D:/wt/r10-pg-graph`；分支：`codex/r10-pg-evidence-graph`。主 checkout 的既有未提交修改没有触碰；没有 push 或自行 accepted。
 
