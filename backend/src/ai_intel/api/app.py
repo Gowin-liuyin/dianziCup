@@ -25,6 +25,7 @@ from ai_intel.api.authentication import (
     DatabaseUserDirectory,
     cookie_secure_for_environment,
 )
+from ai_intel.api.knowledge_routes import build_knowledge_router
 from ai_intel.api.problems import problem_response
 from ai_intel.infrastructure.database import MIGRATIONS_DIR, build_engine
 from ai_intel.infrastructure.runtime_observations import read_runtime_readiness
@@ -113,10 +114,13 @@ def create_application(
 
     auth_router = build_auth_router(lambda: service, configuration)
     health_router = build_health_router(configuration, engine, cache)
+    knowledge_router = build_knowledge_router(lambda: service, engine, configuration.data_mode)
     application.include_router(auth_router, prefix="/v1")
     application.include_router(health_router, prefix="/v1")
+    application.include_router(knowledge_router, prefix="/v1")
     application.include_router(auth_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(health_router, prefix="/api/v1", include_in_schema=False)
+    application.include_router(knowledge_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(auth_router, include_in_schema=False)
     application.include_router(health_router, include_in_schema=False)
     return application
