@@ -11,7 +11,7 @@ const capabilitySections = {
   reports: { title: "报告清单", columns: ["报告 / 范围", "版本", "校验状态", "生成时间"], dependency: "证据报告生成与授权导出服务", explanation: "尚未取得报告记录。导出需核对证据、映射和权限；缺字段时不会生成假报告或假 OpenVEX。", inspector: ["报告版本与生成时间", "结论、引用与资产快照", "范围及未映射字段", "授权导出与限制"] },
 } as const;
 
-type PreparedPage = Exclude<WorkspacePage, "runtime" | "session" | "events">;
+type PreparedPage = Exclude<WorkspacePage, "runtime" | "session" | "events" | "documents">;
 
 /** 业务接口未冻结时保留清晰的信息结构与缺口，不注入业务样本或发明 DTO。 */
 export function CapabilityWorkspace({ page, authenticated }: { page: PreparedPage; authenticated: boolean }) {

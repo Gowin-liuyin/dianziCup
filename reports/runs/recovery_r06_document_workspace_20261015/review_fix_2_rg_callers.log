@@ -1,0 +1,26 @@
+45:function DocumentInspector({ id, revisionId, isCurrent, onExpired, onUnavailable, onReloadCurrent }: { id: string; revisionId: string | null; isCurrent: () => boolean; onExpired: () => void; onUnavailable: (error: ApiProblem) => void; onReloadCurrent: (id: string) => void }) {
+57:  const readGeneration = useRef(0);
+58:  const activeReads = useRef(new Set<AbortController>());
+59:  const stopReads = useCallback(() => {
+60:    readGeneration.current += 1;
+61:    for (const controller of activeReads.current) controller.abort();
+62:    activeReads.current.clear();
+65:    stopReads(); selectedRevision.current = null;
+69:  }, [stopReads, onUnavailable]);
+70:  function reloadCurrentDocument() { stopReads(); onReloadCurrent(id); }
+74:    const generation = readGeneration.current;
+75:    const controllers = activeReads.current;
+80:      if (controller.signal.aborted || generation !== readGeneration.current || !isCurrent()) return;
+90:      if (controller.signal.aborted || generation !== readGeneration.current || !isCurrent()) return;
+102:    const generation = readGeneration.current;
+103:    const controllers = activeReads.current;
+106:      if (controller.signal.aborted || generation !== readGeneration.current || !isCurrent()) return;
+114:      if (controller.signal.aborted || generation !== readGeneration.current || !isCurrent()) return;
+171:export function DocumentWorkspace() {
+182:  const listGeneration = useRef(0);
+188:    listGeneration.current += 1; listController.current?.abort();
+192:    listGeneration.current += 1; listController.current?.abort();
+201:    const controller = new AbortController(); const generation = ++listGeneration.current;
+203:    void getDocumentList(filters, controller.signal).then((value) => { if (!controller.signal.aborted && generation === listGeneration.current && isCurrent()) setResource({ kind: "loaded", value }); }).catch((failure: unknown) => {
+204:      if (controller.signal.aborted || generation !== listGeneration.current || !isCurrent()) return;
+233:    {selection === null ? <aside className="panel document-prompt"><p className="eyebrow">原文核查</p><h2>读资料<br />留意证据范围</h2><p>选择资料，核查保存的版本、发布时间精度与原文覆盖。</p><dl><dt>论文</dt><dd>研究主张与确认事实分别核查。</dd><dt>标准与政策</dt><dd>版本、建议、义务和适用范围以原文为准。</dd><dt>原文证据</dt><dd>定位已核验仍需确认片段是否支持论断。</dd></dl><p className="document-boundary">未知保持未知</p></aside> : <DocumentInspector key={`${selection.documentId}:${selection.revisionId}:${inspectorGeneration}`} id={selection.documentId} revisionId={selection.revisionId} isCurrent={isCurrent} onExpired={expired} onUnavailable={invalidateCatalog} onReloadCurrent={reloadCurrent} />}
