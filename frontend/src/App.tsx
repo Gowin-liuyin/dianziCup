@@ -9,6 +9,8 @@ import { AmbientBackdrop } from "./components/ambient-backdrop";
 import { CapabilityWorkspace } from "./features/preparation/capability-workspace";
 import { EventWorkspace } from "./features/events/event-workspace";
 import { SourceWorkspace } from "./features/sources/source-workspace";
+import { QuestionWorkspace } from "./features/questions/question-workspace";
+import { readQuestionRoute } from "./api/question-contracts";
 import "./styles.css";
 
 type HealthState = { kind: "loading" } | { kind: "checked"; live: boolean; readiness: Readiness | null; errors: ApiProblem[]; checkedAt: string };
@@ -115,7 +117,9 @@ function DependencyDetails({ health }: { health: HealthState }) {
 
 function Workbench() {
   const { state, sessionGeneration } = useAuthSession();
-  const [page, setPage] = useState<WorkspacePage | "missing">(() => readWorkspacePage(window.location.hash));
+  const [hash, setHash] = useState(() => window.location.hash);
+  const questionRoute = readQuestionRoute(hash);
+  const page: WorkspacePage | "missing" = questionRoute === null ? readWorkspacePage(hash) : "questions";
   const [health, setHealth] = useState<HealthState>({ kind: "loading" });
   const healthGeneration = useRef(0);
 
@@ -137,7 +141,7 @@ function Workbench() {
   }, [refreshHealth]);
 
   useEffect(() => {
-    const navigate = () => setPage(readWorkspacePage(window.location.hash));
+    const navigate = () => setHash(window.location.hash);
     window.addEventListener("hashchange", navigate);
     return () => window.removeEventListener("hashchange", navigate);
   }, []);
@@ -188,7 +192,8 @@ function Workbench() {
           {page === "session" && <div className="session-workspace"><SessionPanel /><div className="access-guidance"><p className="eyebrow">TRUST BOUNDARY / 授权边界</p><h2>按权限查看<br />按证据判断</h2><p>登录后，身份与权限由服务端确认。会话失效或退出时，页面立即清除身份信息。</p><a href="#runtime" className="text-link">返回运行概览 →</a></div></div>}
           {page === "events" && <EventWorkspace key={sessionScopeKey} />}
           {page === "sources" && <SourceWorkspace key={sessionScopeKey} />}
-          {page !== "runtime" && page !== "session" && page !== "events" && page !== "sources" && page !== "missing" && <CapabilityWorkspace page={page} authenticated={state.kind === "authenticated"} />}
+          {page === "questions" && <QuestionWorkspace key={`${sessionScopeKey}:${hash}`} eventId={questionRoute?.eventId} />}
+          {page !== "runtime" && page !== "session" && page !== "events" && page !== "sources" && page !== "questions" && page !== "missing" && <CapabilityWorkspace page={page} authenticated={state.kind === "authenticated"} />}
           {page === "missing" && <section className="panel missing-page"><EmptyState title="工作区不存在" description="请通过导航选择已登记页面。该地址没有触发业务请求。" /><a className="button secondary" href="#runtime">返回运行状态</a></section>}
           {state.kind === "authenticated" && <footer className="workspace-footer"><span>{state.user.app_env ? `环境 ${state.user.app_env}` : "环境未由服务端标明"}</span><span>{state.user.platform_version ? `版本 ${state.user.platform_version}` : "版本未由服务端标明"}</span></footer>}
         </main>

@@ -1,0 +1,5 @@
+/** 隔离单元与浏览器fixture，产品组件不导入本文件；不计live证据。 */
+export const questionFixtureIds = { event: "00000000-0000-4000-8000-000000000001", answer: "00000000-0000-4000-8000-000000000002", evidence: "00000000-0000-4000-8000-000000000003", revision: "00000000-0000-4000-8000-000000000004", other: "00000000-0000-4000-8000-000000000005" };
+export function questionAnswerFixture() {
+  return { kind: "completed", answer_id: questionFixtureIds.answer, answer_text: "隔离测试回答：资料说明了风险机制；尚无资产结论。", claims: [{ text: "隔离来源说明风险机制。", kind: "source_fact", support_ids: [questionFixtureIds.evidence] }, { text: "隔离规则要求复核条件。", kind: "rule_result", support_ids: [questionFixtureIds.evidence] }, { text: "建议复核部署条件。", kind: "project_suggestion", support_ids: [] }], citations: [{ evidence_id: questionFixtureIds.evidence, revision_id: questionFixtureIds.revision, quote: "隔离原文：仅在指定条件下适用。", locator: "text:0-18", source_uri: "https://example.test/advisory" }], limitations: ["隔离测试没有资产快照，无法确认具体部署影响。"], freshness: "current", data_mode: "fixture", started_at: "2026-10-15T07:00:00Z", completed_at: "2026-10-15T07:00:01.234Z", latency_milliseconds: 1234 };
+}

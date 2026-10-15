@@ -74,6 +74,7 @@ function EventDetail({ id, onSessionExpired, isCurrent }: { id: string; onSessio
     {resource.kind === "loaded" && <div className="event-detail-body">
       <div className="event-title"><h3>{resource.value.event.title}</h3><FreshnessBadge value={resource.value.event.freshness} /><span className="small-note">{resource.value.data_mode === "fixture" ? "合成 / Fixture" : "真实 / Live"}</span></div>
       <code className="record-id">{resource.value.event.event_id}</code>
+      <a className="button secondary" href={`#questions/${resource.value.event.event_id}`}>基于此事件提问 →</a>
       <h3 className="detail-section-title">九维富化</h3>
       <p className="small-note">各维度独立记录状态。未返回的维度没有结果，不能解释为不适用或完成。</p>
       {Object.entries(dimensionLabels).map(([name, label]) => {
