@@ -406,8 +406,11 @@ class GenerationClient:
         user = json.dumps(input_value, ensure_ascii=False, allow_nan=False)
         schema_digest = hashlib.sha256(schema_text.encode()).hexdigest()
         attempts: list[AttemptMetadata] = []
-        if not self._slots.acquire(timeout=deadline.remaining_seconds()):
-            raise GenerationFailure("model_concurrency_timeout")
+        try:
+            if not self._slots.acquire(timeout=deadline.remaining_seconds()):
+                raise GenerationFailure("model_concurrency_timeout")
+        except NetworkTimeoutError:
+            raise GenerationFailure("model_network_timeout") from None
         try:
             remaining_tokens = request.max_output_tokens
             input_bytes = 0

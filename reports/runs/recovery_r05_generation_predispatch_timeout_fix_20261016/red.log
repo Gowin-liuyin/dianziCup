@@ -1,0 +1,391 @@
+FFFFFFFF........F                                                        [100%]
+================================== FAILURES ===================================
+__ test_expired_before_slot_is_typed_without_dispatch_or_release[1.0-openai] __
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001F1336BA780>
+provider = 'openai', timeout = 1.0
+
+    @pytest.mark.parametrize("provider", PROVIDERS)
+    @pytest.mark.parametrize("timeout", [1.0, 3.0])
+    def test_expired_before_slot_is_typed_without_dispatch_or_release(monkeypatch, provider, timeout):
+        client, calls = prepared(
+            monkeypatch,
+            provider=provider,
+            limits=GenerationLimits(total_timeout_seconds=timeout, max_concurrent_requests=1),
+        )
+        acquire = Mock(wraps=client._slots.acquire)
+        release = Mock(wraps=client._slots.release)
+        dns = Mock(side_effect=AssertionError("DNS must not run"))
+        transport = Mock(side_effect=AssertionError("POST transport must not run"))
+        monkeypatch.setattr(client._slots, "acquire", acquire)
+        monkeypatch.setattr(client._slots, "release", release)
+        monkeypatch.setattr(client._gateway._transport, "resolve_addresses", dns)
+        monkeypatch.setattr(client._gateway._transport, "request", transport)
+        readings = count()
+        monkeypatch.setattr(generation.time, "monotonic", lambda: 100.0 if next(readings) == 0 else 103.0)
+    
+        with pytest.raises(GenerationFailure) as caught:
+>           client.generate(request(allow_format_repair=True), Answer)
+
+tests\unit\test_r05_generation_predispatch_timeout.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\models\generation.py:409: in generate
+    if not self._slots.acquire(timeout=deadline.remaining_seconds()):
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = RequestDeadline(expires_at=101.0)
+
+    def remaining_seconds(self) -> float:
+        remaining = self.expires_at - time.monotonic()
+        if remaining <= 0:
+>           raise NetworkTimeoutError("request total time limit exceeded") from None
+E           ai_intel.infrastructure.network.NetworkTimeoutError: request total time limit exceeded
+
+src\ai_intel\infrastructure\network.py:121: NetworkTimeoutError
+_ test_expired_before_slot_is_typed_without_dispatch_or_release[1.0-anthropic] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001F1336D13D0>
+provider = 'anthropic', timeout = 1.0
+
+    @pytest.mark.parametrize("provider", PROVIDERS)
+    @pytest.mark.parametrize("timeout", [1.0, 3.0])
+    def test_expired_before_slot_is_typed_without_dispatch_or_release(monkeypatch, provider, timeout):
+        client, calls = prepared(
+            monkeypatch,
+            provider=provider,
+            limits=GenerationLimits(total_timeout_seconds=timeout, max_concurrent_requests=1),
+        )
+        acquire = Mock(wraps=client._slots.acquire)
+        release = Mock(wraps=client._slots.release)
+        dns = Mock(side_effect=AssertionError("DNS must not run"))
+        transport = Mock(side_effect=AssertionError("POST transport must not run"))
+        monkeypatch.setattr(client._slots, "acquire", acquire)
+        monkeypatch.setattr(client._slots, "release", release)
+        monkeypatch.setattr(client._gateway._transport, "resolve_addresses", dns)
+        monkeypatch.setattr(client._gateway._transport, "request", transport)
+        readings = count()
+        monkeypatch.setattr(generation.time, "monotonic", lambda: 100.0 if next(readings) == 0 else 103.0)
+    
+        with pytest.raises(GenerationFailure) as caught:
+>           client.generate(request(allow_format_repair=True), Answer)
+
+tests\unit\test_r05_generation_predispatch_timeout.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\models\generation.py:409: in generate
+    if not self._slots.acquire(timeout=deadline.remaining_seconds()):
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = RequestDeadline(expires_at=101.0)
+
+    def remaining_seconds(self) -> float:
+        remaining = self.expires_at - time.monotonic()
+        if remaining <= 0:
+>           raise NetworkTimeoutError("request total time limit exceeded") from None
+E           ai_intel.infrastructure.network.NetworkTimeoutError: request total time limit exceeded
+
+src\ai_intel\infrastructure\network.py:121: NetworkTimeoutError
+_ test_expired_before_slot_is_typed_without_dispatch_or_release[1.0-deepseek_openai] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001F1336D1F10>
+provider = 'deepseek_openai', timeout = 1.0
+
+    @pytest.mark.parametrize("provider", PROVIDERS)
+    @pytest.mark.parametrize("timeout", [1.0, 3.0])
+    def test_expired_before_slot_is_typed_without_dispatch_or_release(monkeypatch, provider, timeout):
+        client, calls = prepared(
+            monkeypatch,
+            provider=provider,
+            limits=GenerationLimits(total_timeout_seconds=timeout, max_concurrent_requests=1),
+        )
+        acquire = Mock(wraps=client._slots.acquire)
+        release = Mock(wraps=client._slots.release)
+        dns = Mock(side_effect=AssertionError("DNS must not run"))
+        transport = Mock(side_effect=AssertionError("POST transport must not run"))
+        monkeypatch.setattr(client._slots, "acquire", acquire)
+        monkeypatch.setattr(client._slots, "release", release)
+        monkeypatch.setattr(client._gateway._transport, "resolve_addresses", dns)
+        monkeypatch.setattr(client._gateway._transport, "request", transport)
+        readings = count()
+        monkeypatch.setattr(generation.time, "monotonic", lambda: 100.0 if next(readings) == 0 else 103.0)
+    
+        with pytest.raises(GenerationFailure) as caught:
+>           client.generate(request(allow_format_repair=True), Answer)
+
+tests\unit\test_r05_generation_predispatch_timeout.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\models\generation.py:409: in generate
+    if not self._slots.acquire(timeout=deadline.remaining_seconds()):
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = RequestDeadline(expires_at=101.0)
+
+    def remaining_seconds(self) -> float:
+        remaining = self.expires_at - time.monotonic()
+        if remaining <= 0:
+>           raise NetworkTimeoutError("request total time limit exceeded") from None
+E           ai_intel.infrastructure.network.NetworkTimeoutError: request total time limit exceeded
+
+src\ai_intel\infrastructure\network.py:121: NetworkTimeoutError
+_ test_expired_before_slot_is_typed_without_dispatch_or_release[1.0-deepseek_anthropic] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001F1336D3080>
+provider = 'deepseek_anthropic', timeout = 1.0
+
+    @pytest.mark.parametrize("provider", PROVIDERS)
+    @pytest.mark.parametrize("timeout", [1.0, 3.0])
+    def test_expired_before_slot_is_typed_without_dispatch_or_release(monkeypatch, provider, timeout):
+        client, calls = prepared(
+            monkeypatch,
+            provider=provider,
+            limits=GenerationLimits(total_timeout_seconds=timeout, max_concurrent_requests=1),
+        )
+        acquire = Mock(wraps=client._slots.acquire)
+        release = Mock(wraps=client._slots.release)
+        dns = Mock(side_effect=AssertionError("DNS must not run"))
+        transport = Mock(side_effect=AssertionError("POST transport must not run"))
+        monkeypatch.setattr(client._slots, "acquire", acquire)
+        monkeypatch.setattr(client._slots, "release", release)
+        monkeypatch.setattr(client._gateway._transport, "resolve_addresses", dns)
+        monkeypatch.setattr(client._gateway._transport, "request", transport)
+        readings = count()
+        monkeypatch.setattr(generation.time, "monotonic", lambda: 100.0 if next(readings) == 0 else 103.0)
+    
+        with pytest.raises(GenerationFailure) as caught:
+>           client.generate(request(allow_format_repair=True), Answer)
+
+tests\unit\test_r05_generation_predispatch_timeout.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\models\generation.py:409: in generate
+    if not self._slots.acquire(timeout=deadline.remaining_seconds()):
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = RequestDeadline(expires_at=101.0)
+
+    def remaining_seconds(self) -> float:
+        remaining = self.expires_at - time.monotonic()
+        if remaining <= 0:
+>           raise NetworkTimeoutError("request total time limit exceeded") from None
+E           ai_intel.infrastructure.network.NetworkTimeoutError: request total time limit exceeded
+
+src\ai_intel\infrastructure\network.py:121: NetworkTimeoutError
+__ test_expired_before_slot_is_typed_without_dispatch_or_release[3.0-openai] __
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001F1335C86E0>
+provider = 'openai', timeout = 3.0
+
+    @pytest.mark.parametrize("provider", PROVIDERS)
+    @pytest.mark.parametrize("timeout", [1.0, 3.0])
+    def test_expired_before_slot_is_typed_without_dispatch_or_release(monkeypatch, provider, timeout):
+        client, calls = prepared(
+            monkeypatch,
+            provider=provider,
+            limits=GenerationLimits(total_timeout_seconds=timeout, max_concurrent_requests=1),
+        )
+        acquire = Mock(wraps=client._slots.acquire)
+        release = Mock(wraps=client._slots.release)
+        dns = Mock(side_effect=AssertionError("DNS must not run"))
+        transport = Mock(side_effect=AssertionError("POST transport must not run"))
+        monkeypatch.setattr(client._slots, "acquire", acquire)
+        monkeypatch.setattr(client._slots, "release", release)
+        monkeypatch.setattr(client._gateway._transport, "resolve_addresses", dns)
+        monkeypatch.setattr(client._gateway._transport, "request", transport)
+        readings = count()
+        monkeypatch.setattr(generation.time, "monotonic", lambda: 100.0 if next(readings) == 0 else 103.0)
+    
+        with pytest.raises(GenerationFailure) as caught:
+>           client.generate(request(allow_format_repair=True), Answer)
+
+tests\unit\test_r05_generation_predispatch_timeout.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\models\generation.py:409: in generate
+    if not self._slots.acquire(timeout=deadline.remaining_seconds()):
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = RequestDeadline(expires_at=103.0)
+
+    def remaining_seconds(self) -> float:
+        remaining = self.expires_at - time.monotonic()
+        if remaining <= 0:
+>           raise NetworkTimeoutError("request total time limit exceeded") from None
+E           ai_intel.infrastructure.network.NetworkTimeoutError: request total time limit exceeded
+
+src\ai_intel\infrastructure\network.py:121: NetworkTimeoutError
+_ test_expired_before_slot_is_typed_without_dispatch_or_release[3.0-anthropic] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001F1336BA570>
+provider = 'anthropic', timeout = 3.0
+
+    @pytest.mark.parametrize("provider", PROVIDERS)
+    @pytest.mark.parametrize("timeout", [1.0, 3.0])
+    def test_expired_before_slot_is_typed_without_dispatch_or_release(monkeypatch, provider, timeout):
+        client, calls = prepared(
+            monkeypatch,
+            provider=provider,
+            limits=GenerationLimits(total_timeout_seconds=timeout, max_concurrent_requests=1),
+        )
+        acquire = Mock(wraps=client._slots.acquire)
+        release = Mock(wraps=client._slots.release)
+        dns = Mock(side_effect=AssertionError("DNS must not run"))
+        transport = Mock(side_effect=AssertionError("POST transport must not run"))
+        monkeypatch.setattr(client._slots, "acquire", acquire)
+        monkeypatch.setattr(client._slots, "release", release)
+        monkeypatch.setattr(client._gateway._transport, "resolve_addresses", dns)
+        monkeypatch.setattr(client._gateway._transport, "request", transport)
+        readings = count()
+        monkeypatch.setattr(generation.time, "monotonic", lambda: 100.0 if next(readings) == 0 else 103.0)
+    
+        with pytest.raises(GenerationFailure) as caught:
+>           client.generate(request(allow_format_repair=True), Answer)
+
+tests\unit\test_r05_generation_predispatch_timeout.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\models\generation.py:409: in generate
+    if not self._slots.acquire(timeout=deadline.remaining_seconds()):
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = RequestDeadline(expires_at=103.0)
+
+    def remaining_seconds(self) -> float:
+        remaining = self.expires_at - time.monotonic()
+        if remaining <= 0:
+>           raise NetworkTimeoutError("request total time limit exceeded") from None
+E           ai_intel.infrastructure.network.NetworkTimeoutError: request total time limit exceeded
+
+src\ai_intel\infrastructure\network.py:121: NetworkTimeoutError
+_ test_expired_before_slot_is_typed_without_dispatch_or_release[3.0-deepseek_openai] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001F1336D1DF0>
+provider = 'deepseek_openai', timeout = 3.0
+
+    @pytest.mark.parametrize("provider", PROVIDERS)
+    @pytest.mark.parametrize("timeout", [1.0, 3.0])
+    def test_expired_before_slot_is_typed_without_dispatch_or_release(monkeypatch, provider, timeout):
+        client, calls = prepared(
+            monkeypatch,
+            provider=provider,
+            limits=GenerationLimits(total_timeout_seconds=timeout, max_concurrent_requests=1),
+        )
+        acquire = Mock(wraps=client._slots.acquire)
+        release = Mock(wraps=client._slots.release)
+        dns = Mock(side_effect=AssertionError("DNS must not run"))
+        transport = Mock(side_effect=AssertionError("POST transport must not run"))
+        monkeypatch.setattr(client._slots, "acquire", acquire)
+        monkeypatch.setattr(client._slots, "release", release)
+        monkeypatch.setattr(client._gateway._transport, "resolve_addresses", dns)
+        monkeypatch.setattr(client._gateway._transport, "request", transport)
+        readings = count()
+        monkeypatch.setattr(generation.time, "monotonic", lambda: 100.0 if next(readings) == 0 else 103.0)
+    
+        with pytest.raises(GenerationFailure) as caught:
+>           client.generate(request(allow_format_repair=True), Answer)
+
+tests\unit\test_r05_generation_predispatch_timeout.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\models\generation.py:409: in generate
+    if not self._slots.acquire(timeout=deadline.remaining_seconds()):
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = RequestDeadline(expires_at=103.0)
+
+    def remaining_seconds(self) -> float:
+        remaining = self.expires_at - time.monotonic()
+        if remaining <= 0:
+>           raise NetworkTimeoutError("request total time limit exceeded") from None
+E           ai_intel.infrastructure.network.NetworkTimeoutError: request total time limit exceeded
+
+src\ai_intel\infrastructure\network.py:121: NetworkTimeoutError
+_ test_expired_before_slot_is_typed_without_dispatch_or_release[3.0-deepseek_anthropic] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001F1336D2D80>
+provider = 'deepseek_anthropic', timeout = 3.0
+
+    @pytest.mark.parametrize("provider", PROVIDERS)
+    @pytest.mark.parametrize("timeout", [1.0, 3.0])
+    def test_expired_before_slot_is_typed_without_dispatch_or_release(monkeypatch, provider, timeout):
+        client, calls = prepared(
+            monkeypatch,
+            provider=provider,
+            limits=GenerationLimits(total_timeout_seconds=timeout, max_concurrent_requests=1),
+        )
+        acquire = Mock(wraps=client._slots.acquire)
+        release = Mock(wraps=client._slots.release)
+        dns = Mock(side_effect=AssertionError("DNS must not run"))
+        transport = Mock(side_effect=AssertionError("POST transport must not run"))
+        monkeypatch.setattr(client._slots, "acquire", acquire)
+        monkeypatch.setattr(client._slots, "release", release)
+        monkeypatch.setattr(client._gateway._transport, "resolve_addresses", dns)
+        monkeypatch.setattr(client._gateway._transport, "request", transport)
+        readings = count()
+        monkeypatch.setattr(generation.time, "monotonic", lambda: 100.0 if next(readings) == 0 else 103.0)
+    
+        with pytest.raises(GenerationFailure) as caught:
+>           client.generate(request(allow_format_repair=True), Answer)
+
+tests\unit\test_r05_generation_predispatch_timeout.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\infrastructure\models\generation.py:409: in generate
+    if not self._slots.acquire(timeout=deadline.remaining_seconds()):
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = RequestDeadline(expires_at=103.0)
+
+    def remaining_seconds(self) -> float:
+        remaining = self.expires_at - time.monotonic()
+        if remaining <= 0:
+>           raise NetworkTimeoutError("request total time limit exceeded") from None
+E           ai_intel.infrastructure.network.NetworkTimeoutError: request total time limit exceeded
+
+src\ai_intel\infrastructure\network.py:121: NetworkTimeoutError
+____________ test_grounded_answer_wraps_shared_predispatch_timeout ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001F1336D0290>
+
+    def test_grounded_answer_wraps_shared_predispatch_timeout(monkeypatch):
+        client, calls = prepared(
+            monkeypatch, limits=GenerationLimits(total_timeout_seconds=1.0)
+        )
+        readings = count()
+        monkeypatch.setattr(generation.time, "monotonic", lambda: 100.0 if next(readings) < 3 else 103.0)
+    
+        with pytest.raises(GroundedAnswerFailure) as caught:
+>           generate_grounded_answer(client, "公告说明了哪个修复版本？", (evidence(),))
+
+tests\unit\test_r05_generation_predispatch_timeout.py:135: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\answering\grounding.py:215: in generate_grounded_answer
+    generated_result = client.generate(request, GeneratedAnswer)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\infrastructure\models\generation.py:409: in generate
+    if not self._slots.acquire(timeout=deadline.remaining_seconds()):
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = RequestDeadline(expires_at=101.0)
+
+    def remaining_seconds(self) -> float:
+        remaining = self.expires_at - time.monotonic()
+        if remaining <= 0:
+>           raise NetworkTimeoutError("request total time limit exceeded") from None
+E           ai_intel.infrastructure.network.NetworkTimeoutError: request total time limit exceeded
+
+src\ai_intel\infrastructure\network.py:121: NetworkTimeoutError
+- generated xml file: D:\wt\gen-timeout\reports\runs\recovery_r05_generation_predispatch_timeout_fix_20261016\red.xml -
+=========================== short test summary info ===========================
+FAILED tests/unit/test_r05_generation_predispatch_timeout.py::test_expired_before_slot_is_typed_without_dispatch_or_release[1.0-openai]
+FAILED tests/unit/test_r05_generation_predispatch_timeout.py::test_expired_before_slot_is_typed_without_dispatch_or_release[1.0-anthropic]
+FAILED tests/unit/test_r05_generation_predispatch_timeout.py::test_expired_before_slot_is_typed_without_dispatch_or_release[1.0-deepseek_openai]
+FAILED tests/unit/test_r05_generation_predispatch_timeout.py::test_expired_before_slot_is_typed_without_dispatch_or_release[1.0-deepseek_anthropic]
+FAILED tests/unit/test_r05_generation_predispatch_timeout.py::test_expired_before_slot_is_typed_without_dispatch_or_release[3.0-openai]
+FAILED tests/unit/test_r05_generation_predispatch_timeout.py::test_expired_before_slot_is_typed_without_dispatch_or_release[3.0-anthropic]
+FAILED tests/unit/test_r05_generation_predispatch_timeout.py::test_expired_before_slot_is_typed_without_dispatch_or_release[3.0-deepseek_openai]
+FAILED tests/unit/test_r05_generation_predispatch_timeout.py::test_expired_before_slot_is_typed_without_dispatch_or_release[3.0-deepseek_anthropic]
+FAILED tests/unit/test_r05_generation_predispatch_timeout.py::test_grounded_answer_wraps_shared_predispatch_timeout
+9 failed, 8 passed in 0.76s
