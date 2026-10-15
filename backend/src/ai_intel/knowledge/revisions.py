@@ -133,14 +133,19 @@ def save_document_revision(
     _lock_content_hash(session, content_hash)
     stored = store.store_bytes(payload)
     _insert_content_object(session, stored.content_hash, stored.size_bytes, created_at)
+    tip_query = select(
+        document_revisions.c.revision_id,
+        document_revisions.c.revision_number,
+        document_revisions.c.content_hash,
+    )
+    if revision_metadata is not None:
+        tip_query = tip_query.add_columns(document_revisions.c.source_metadata)
     tip = (
         session.execute(
-            select(document_revisions)
-            .where(
+            tip_query.where(
                 document_revisions.c.document_id == document_id,
                 document_revisions.c.is_current.is_(True),
-            )
-            .limit(1)
+            ).limit(1)
         )
         .mappings()
         .first()
@@ -171,20 +176,20 @@ def save_document_revision(
             .where(document_revisions.c.revision_id == tip["revision_id"])
             .values(is_current=False)
         )
-    session.execute(
-        document_revisions.insert().values(
-            revision_id=revision_id,
-            document_id=document_id,
-            revision_number=next_number,
-            content_hash=stored.content_hash,
-            created_at=created_at,
-            is_current=True,
-            previous_revision_id=str(tip["revision_id"]) if tip is not None else None,
-            visibility=visibility,
-            tenant_id=tenant_id,
-            source_metadata=revision_metadata if revision_metadata is not None else {},
-        )
+    revision_insert = document_revisions.insert().values(
+        revision_id=revision_id,
+        document_id=document_id,
+        revision_number=next_number,
+        content_hash=stored.content_hash,
+        created_at=created_at,
+        is_current=True,
+        previous_revision_id=str(tip["revision_id"]) if tip is not None else None,
+        visibility=visibility,
+        tenant_id=tenant_id,
     )
+    if revision_metadata is not None:
+        revision_insert = revision_insert.values(source_metadata=revision_metadata)
+    session.execute(revision_insert)
     session.execute(
         update(documents)
         .where(documents.c.document_id == document_id)

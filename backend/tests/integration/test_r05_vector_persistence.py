@@ -116,6 +116,7 @@ def chunk_values(
 def test_upgrade_preserves_immutable_evidence_and_real_extension(vector_database: Engine) -> None:
     with vector_database.connect() as connection:
         assert connection.scalar(select(func.count()).select_from(document_revisions)) == 1
+        assert connection.scalar(select(document_revisions.c.source_metadata)) == {}
         assert (
             connection.scalar(text("SELECT extversion FROM pg_extension WHERE extname='vector'"))
             == "0.8.2"
