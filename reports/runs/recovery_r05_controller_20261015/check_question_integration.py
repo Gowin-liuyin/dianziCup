@@ -15,7 +15,7 @@ assert not (run / (label + ".json")).exists()
 clock = ZoneInfo("Asia/Shanghai")
 environment = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
 base = ["uv", "run", "--frozen", "--extra", "semantic"]
-if label == "gb_security_exact_manifest_recheck":
+if label in {"gb_security_exact_manifest_recheck", "gb_fixture_checkout_bytes_recheck"}:
     command = base + ["pytest", "tests/security/test_t06_authentication_and_scope.py::test_audit_and_sources_carry_no_secret_values_t06_c06", "--no-cov", "-q", "--junitxml=" + str(run / (label + ".xml"))]
 elif label == "gb_pure_regression":
     command = base + ["pytest", "tests/unit", "tests/contract", "tests/security", "-m", "not real_pg", "-q", "--junitxml=" + str(run / (label + ".xml"))]

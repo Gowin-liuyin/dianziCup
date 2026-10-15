@@ -1,13 +1,13 @@
 # G-B · 真实来源、原文证据与模型问答
 
 文档首次创建时间：2026-10-15T13:48:37+08:00
-本次写作开始时间：2026-10-15T18:06:30+08:00
-本次写作结束时间：2026-10-15T18:06:30+08:00
-最后更新时间：2026-10-15T18:06:30+08:00
+本次写作开始时间：2026-10-15T18:22:57+08:00
+本次写作结束时间：2026-10-15T18:22:57+08:00
+最后更新时间：2026-10-15T18:22:57+08:00
 阶段实际开始/结束时间：历史未单独记录，首个来源GET观测为2026-10-15T11:53:40+08:00，不能冒称阶段起点 / 尚未结束
-本报告证据截止时间：2026-10-15T18:06:30+08:00
+本报告证据截止时间：2026-10-15T18:22:57+08:00
 主控/实现Agent：/root；各作者、工作树、文件所有权与冻结版本见progress/recovery_workstreams.md及任务报告
-独立审查Agent与报告：下列专项已封存；新的整阶段独立审查尚未发生
+独立审查Agent与报告：/root/g_b_checkpoint_review，固定1ff54965a0dd2e4f4a13245cee8dd59d2b3fdcfc初审在途；专项已封存；新发现精确字节缺陷待修复版本复核
 阶段状态：awaiting_review
 实现状态：complete（仅R04/R05本阶段功能候选；原T整卡、R12/R17和后段部署验收不在此提升）
 各层验证状态：unit/contract/integration/frontend/e2e/live已按所列限定范围通过；security原综合1418pass/1fail已精确修复单项复验passed，新候选全套待独立复跑；manual not_run。整阶段仍awaiting_review
@@ -48,7 +48,7 @@ R04把真实NVD和vLLM厂商公告从共享网关接到原文库、解析、永�
 | 问答UI a0a94f1 | G-B-R05-question-frontend-review-1.md：254前端、9原fixture浏览器+11独立检查；原12秒请求被10秒取消红例保留并复验关闭 |
 | 问答事务dc014 | G-B-R05-question-pipeline-review-1.md：3 Must关闭；1007unit默认66.68%原60门、32PG、24新PG、8独立进程/事务反例、126核心/合同，mypy/Ruff通过 |
 
-当前候选与真实运行dc014的backend/src tree均6b91c2c318ec75c0f9625a3f86a52460bfe0dd36，frontend/src tree均740566274dc282ebafd12ef3fe8f42ab85becc4a；后续差异仅新测试/报告/精确分类。新的阶段reviewer尚未签整合版，不能因上表逐项Ship自动过门。
+1ff初审候选与真实dc014的backend/src tree均6b91c2c318ec75c0f9625a3f86a52460bfe0dd36，frontend/src tree均740566274dc282ebafd12ef3fe8f42ab85becc4a。阶段初审发现clean checkout行尾使精确分类失配；修复版只改变18个分类文件的Git字节保留属性/旧归档blob，其中question-client.test.ts仅CRLF。backend/src与所有产品TS文件字节不变，frontend/src整体tree因测试文件行尾改变，不能再声称整体tree相等；git diff --cached --ignore-space-at-eol -- backend/src frontend/src为空。待同一独立阶段reviewer复核新SHA，组件Ship不自动过门。
 
 ## 4. 问题台账
 
@@ -116,3 +116,5 @@ U03–U05/U07–U09/U11–U14当前仅原规划与部分骨架/准备，不由�
 首次创建时间保留2026-10-15T13:48:37+08:00。本次2026-10-15T17:52:56+08:00至2026-10-15T17:52:56+08:00由/root按实际冻结源码、专项独立报告与raw收据重整九节，将旧全文原字节归档reports/runs/recovery_r05_controller_20261015/G-B_prior_to_integration_draft.md，SHA256 bfd6a01b5a69637c9364a19ae1046aa71cf2108d462898c512420c4fb0cbfba7；Git历史同样保留。旧报告中的进行中缺陷/组件状态是当时事实，不覆盖本次限定复核结论。没有按mtime伪造历史编写时间、没有把编写/测试/采集观察混为持续运行。
 
 修订：2026-10-15T18:06:30+08:00，/root保留首次创建时间与所有红例；核对独立分类校正为15条/11文件/13 span和第三方55/47、实际原单测复验及完整缓存搬迁hash。精确manifest 51条，原36条不变，没有改扫描器/规则/ignore。阶段仅awaiting_review，未accepted、未push。
+
+修订：2026-10-15T18:22:57+08:00，/root记录新阶段初审1418pass/1fail（旧fixture clean checkout行尾），独立49来源/权限PG、35向量/问答PG及254前端通过。修复按51条记录的18个精确path保留原字节；manifest全文不变，scanner/pattern/span/value/ignore不变，每个暂存blob SHA与已审记录相同。root原安全单测复验见gb_fixture_checkout_bytes_recheck.*；其初次档案EOF diff-check失败与新helper label未登记的ValueError均为控制脚本错误，确切历史时刻未单独记录，未运行业务，不计业务通过。修正精确raw属性/合法新label后才运行真正复验。首次创建时间保持。
