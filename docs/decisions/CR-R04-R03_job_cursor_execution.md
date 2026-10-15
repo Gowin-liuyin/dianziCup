@@ -24,3 +24,10 @@ source_cursors按source_id+stream_kind(live/backfill)保存cursor_json/window_st
 ## 验证、兼容与回滚
 
 原T07/T08/T16六项完整保留，加真实两worker抢占/旧owner在未被新worker领取前也不能过期提交/同owner旧attempt/未到期retry/幂等跨租户及并发/relay断线和重复/进程死亡恢复/失败页游标不前进/允许durable恢复job/重启持久。不改金标/阈值/分母或skip。新数据库r03_jobs_20261015独立，不升级正被固定0009/0010审查的库。0011真实空库/0006/0009路径与列映射165混合unit+PG检查于11:41:46–11:41:59通过；它只是schema准备，不是执行器/游标功能通过。只前向修复或隔离备份恢复，拒绝破坏性downgrade。主控唯一迁移/锁/公共schema/状态/Git所有者，实施者只awaiting_review；新初审Agent复跑后才可登记有限结论。
+
+
+2026-10-15T11:57:27+08:00 · 游标内部表示补记：source_cursors.cursor_json内部使用position与window_complete envelope；公开SourceCursorLease、receipt及commit_page输入输出仍是connector dict，不暴露envelope。未完成窗口claim必须恢复原start/end，完成后按caller显式新窗口与重叠策略开始；release后的旧lease不能写。该约定由主控冻结，执行包报告需一致。
+
+2026-10-15T11:57:27+08:00 · 显式公共DoH配置：本机系统DNS将公开NVD解析为198.18/15保留地址，继续拒绝。仅可信部署配置可选择dns_resolver=cloudflare_doh（默认system，无失败后隐式切换）；使用dnspython2.9成熟wireformat解析，并复用同一个有界、严格CA、固定已检公网IP的HTTPS网关访问固定1.1.1.1/dns-query。没有并行HTTP客户端/代理路径，最大DNS响应65535字节、同总截止时间、最多A/AAAA两问；原目标所有IP/peer/SNI/Host验证均保留。增加一个成熟DNS依赖而不手写wire协议，试装doh extra引入的额外HTTP2栈已移除、最终仅新增dnspython；锁文件67packages。官方依据[Cloudflare](https://developers.cloudflare.com/1.1.1.1/ip-addresses/)、[dnspython](https://dnspython.readthedocs.io/en/stable/message-make.html)。
+
+系统DNS阻断与严格TLS curl403均保留为失败事实；11:53:40–11:53:41该真实网关显式DoH访问services.nvd.nist.gov API实际200、3106字节、一条CVE-2024-28224，原始响应hash与收据留档。不计持续采集、数据库闭环、模型live或正式性能。兼容回归首251范围有1失败/250passed（提前捕获系统resolver方法令原注入失效）、已修成仅显式DoH保存可选解析器，系统路径仍按传输对象当前方法调用；最终251passed/0失败/0skip/cov69.89%。未改原并发断言或skip。该网络整体候选仍须新独立审查，不凭author自检过门。

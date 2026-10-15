@@ -11,7 +11,7 @@ import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Protocol
+from typing import Literal, Protocol
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 from pydantic import SecretStr
@@ -182,9 +182,12 @@ class NetworkPolicy:
         "text/plain",
     )
     total_timeout_seconds: float = 10.0
+    dns_resolver: Literal["system", "cloudflare_doh"] = "system"
     allowed_schemes: tuple[str, ...] = ("https",)
 
     def __post_init__(self) -> None:
+        if self.dns_resolver not in ("system", "cloudflare_doh"):
+            raise ValueError("dns_resolver must be system or cloudflare_doh")
         if (
             not isinstance(self.allowed_domains, tuple)
             or not self.allowed_domains
@@ -435,6 +438,11 @@ class NetworkGateway:
         self._credentials = credentials
         self._request_slots = threading.BoundedSemaphore(max_concurrent_requests)
         self._transport = PinnedHttpTransport(policy.max_response_bytes, max_concurrent_requests)
+        self._resolve_addresses: Callable[[str, RequestDeadline], list[str]] | None = None
+        if policy.dns_resolver == "cloudflare_doh":
+            from ai_intel.infrastructure.dns_resolver import CloudflareDohResolver
+
+            self._resolve_addresses = CloudflareDohResolver()
 
     def fetch(self, url: str, max_redirect_hops: int = MAX_REDIRECT_HOPS) -> FetchResult:
         deadline = RequestDeadline(time.monotonic() + self._policy.total_timeout_seconds)
@@ -445,7 +453,7 @@ class NetworkGateway:
                 self._policy,
                 url,
                 self._transport.request,
-                self._transport.resolve_addresses,
+                self._resolve_addresses or self._transport.resolve_addresses,
                 deadline,
                 max_redirect_hops,
                 self._credentials,

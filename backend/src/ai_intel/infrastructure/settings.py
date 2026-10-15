@@ -46,6 +46,7 @@ class ApplicationSettings(BaseSettings):
     allowed_origins: tuple[str, ...] = ("http://localhost:5173", "http://127.0.0.1:25173")
     dependency_timeout_seconds: float = Field(default=3.0, gt=0, le=10)
     raw_content_directory: str = "var/raw"
+    dns_resolver: Literal["system", "cloudflare_doh"] = "system"
     content_store_backend: Literal["local", "minio"] = "local"
     minio_endpoint: str | None = None
     minio_bucket: str | None = None
