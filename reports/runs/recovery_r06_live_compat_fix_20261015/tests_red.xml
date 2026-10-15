@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="32" time="0.354" timestamp="2026-10-15T23:24:41.516700+08:00" hostname="yin"><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_release_page_over_model_node_budget_preserves_assets_and_next_page" time="0.007"><failure message="ai_intel.ingestion.sources.repository.RepositoryFetchError: invalid release JSON response">def test_release_page_over_model_node_budget_preserves_assets_and_next_page() -&gt; None:
+        original_items = [synthetic_release(identifier, 40) for identifier in range(1, 21)]
+        body = json.dumps(original_items).encode()
+        assert len(body) &lt; 2 * 1024 * 1024
+        with pytest.raises(ValueError, match="JSON structure outside limit"):
+            strict_json_object(b'{"releases":' + body + b"}", 2 * 1024 * 1024 + 13)
+&gt;       assert len(parse_github_releases(body)) == 20
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\test_r06_live_source_compatibility.py:52: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+payload = b'[{"id": 1, "tag_name": "v1.0", "name": "Synthetic release", "body": "Synthetic release notes", "draft": false, "prer...ttps://github.com/ollama/ollama/releases/download/v1.0/synthetic.bin", "uploader": {"id": 1, "login": "synthetic"}}]}]'
+
+    def parse_github_releases(payload: bytes) -&gt; tuple[RepositoryRecord, ...]:
+        """处理固定仓库的一页实际 JSON；坏记录使整页显式失败，调用方保存原文。"""
+        if not isinstance(payload, bytes) or not 1 &lt;= len(payload) &lt;= MAX_RELEASE_BYTES:
+            raise RepositoryFetchError("release response outside byte limit")
+        try:
+            document = strict_json_object(b'{"releases":' + payload + b"}", MAX_RELEASE_BYTES + 13)
+        except (ValueError, UnicodeError, RecursionError):
+&gt;           raise RepositoryFetchError("invalid release JSON response") from None
+E           ai_intel.ingestion.sources.repository.RepositoryFetchError: invalid release JSON response
+
+src\ai_intel\ingestion\sources\github_releases.py:27: RepositoryFetchError</failure></testcase><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_release_source_node_budget_remains_finite" time="0.008" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_release_byte_and_depth_limits_remain_closed" time="0.001" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_release_invalid_json_still_fails[[{&quot;id&quot;:1,&quot;id&quot;:2}]]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_release_invalid_json_still_fails[[{&quot;id&quot;:NaN}]]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_release_invalid_json_still_fails[[{&quot;id&quot;:&quot;\u0000&quot;}]]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_release_invalid_json_still_fails[[{&quot;id&quot;:&quot;\ud800&quot;}]]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_release_invalid_json_still_fails[[{&quot;id&quot;:&quot;\xff&quot;}]]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_model_json_default_is_still_ten_thousand_nodes" time="0.003" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_relative_screenshot_preserves_original_context_without_advisory_identity" time="0.000"><failure message="ai_intel.ingestion.sources.repository.RepositoryFetchError: AVID reference URL is not public HTTP metadata">def test_avid_relative_screenshot_preserves_original_context_without_advisory_identity() -&gt; None:
+        payload = synthetic_avid_record()
+&gt;       article = normalize_avid_vulnerability(payload)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\test_r06_live_source_compatibility.py:133: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\ingestion\sources\avid_records.py:118: in normalize_avid_vulnerability
+    related_identifier = _reference_identifier(reference.get("url"))
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+value = '../img/R00031.png'
+
+    def _reference_identifier(value: object) -&gt; str | None:
+        if not isinstance(value, str) or len(value) &gt; 4096:
+            raise RepositoryFetchError("AVID reference URL must be bounded text")
+        try:
+            parts = urlsplit(value)
+            host = parts.hostname or ""
+            if (
+                not value.isascii()
+                or parts.scheme not in ("https", "http")
+                or not host
+                or parts.username is not None
+                or parts.password is not None
+                or parts.port not in (None, 80, 443)
+                or any(ord(character) &lt;= 32 or ord(character) == 127 for character in value)
+                or "\\" in value
+                or host == "localhost"
+                or host.endswith((".localhost", ".local", ".internal"))
+            ):
+                raise ValueError("unsafe URL")
+            try:
+                address = ipaddress.ip_address(host)
+            except ValueError:
+                address = None
+            if address is not None and not address.is_global:
+                raise ValueError("nonpublic literal address")
+        except ValueError:
+&gt;           raise RepositoryFetchError("AVID reference URL is not public HTTP metadata") from None
+E           ai_intel.ingestion.sources.repository.RepositoryFetchError: AVID reference URL is not public HTTP metadata
+
+src\ai_intel\ingestion\sources\avid_records.py:65: RepositoryFetchError</failure></testcase><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_unknown_or_unsafe_relative_reference_still_fails[../../img/R00031.png]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_unknown_or_unsafe_relative_reference_still_fails[../img/../R00031.png]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_unknown_or_unsafe_relative_reference_still_fails[../img/R00031.png?token=synthetic]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_unknown_or_unsafe_relative_reference_still_fails[../img/R00031.png#fragment]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_unknown_or_unsafe_relative_reference_still_fails[../img/R00031.png\n]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_unknown_or_unsafe_relative_reference_still_fails[../img/R00031.png\x7f]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_unknown_or_unsafe_relative_reference_still_fails[..\\img\\R00031.png]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_unknown_or_unsafe_relative_reference_still_fails[../img/%52%30%30%30%33%31.png]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_unknown_or_unsafe_relative_reference_still_fails[file:///img/R00031.png]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_unknown_or_unsafe_relative_reference_still_fails[http://127.0.0.1/R00031.png]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_unknown_or_unsafe_relative_reference_still_fails[https://example.com:8443/R00031.png]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_unknown_or_unsafe_relative_reference_still_fails[https://user:synthetic@example.com/R00031.png]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_unknown_or_unsafe_relative_reference_still_fails[../img/R00031.exe]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_unknown_or_unsafe_relative_reference_still_fails[../img/R0031.png]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_unknown_or_unsafe_relative_reference_still_fails[../img/R\uff10\uff10\uff10\uff13\uff11.png]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_unknown_or_unsafe_relative_reference_still_fails[None]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_unknown_or_unsafe_relative_reference_still_fails[17]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_relative_image_requires_exact_screenshot_type[website]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_relative_image_requires_exact_screenshot_type[image]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_relative_image_requires_exact_screenshot_type[Screenshot]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_relative_image_requires_exact_screenshot_type[None]" time="0.000" /><testcase classname="tests.unit.test_r06_live_source_compatibility" name="test_avid_relative_image_requires_exact_screenshot_type[1]" time="0.000" /></testsuite></testsuites>
