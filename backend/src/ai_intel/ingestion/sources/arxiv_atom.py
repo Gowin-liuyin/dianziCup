@@ -93,7 +93,13 @@ def _text(parent: ElementTree.Element, tag: str, required: bool = False) -> str 
 
 def _official_uri(raw_uri: str) -> str:
     """Only historical arxiv.org HTTP identifiers map to the same HTTPS authority."""
-    if any(character.isspace() or ord(character) < 32 for character in raw_uri) or "\\" in raw_uri:
+    if (
+        any(
+            character.isspace() or ord(character) < 32 or ord(character) == 127
+            for character in raw_uri
+        )
+        or "\\" in raw_uri
+    ):
         raise AcademicContractError("arXiv URI contains invalid characters")
     try:
         parts = urlsplit(raw_uri)
@@ -120,7 +126,7 @@ def _license_identifier(value: str | None) -> str | None:
     """Licence identifiers remain unverified source text, never fetch or redistribution grants."""
     if value is None:
         return None
-    if any(ord(character) < 32 for character in value):
+    if any(ord(character) < 32 or ord(character) == 127 for character in value):
         raise AcademicContractError("arXiv licence identifier contains control characters")
     if not re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", value):
         return value
@@ -234,6 +240,8 @@ def parse_arxiv_atom(payload: bytes) -> ArxivDiscoveryPage:
         raise AcademicContractError("arXiv entry count exceeds the reported page or local limit")
     if start > total or start + len(entries) > total or (not entries and start < total):
         raise AcademicContractError("arXiv page counts conflict with entries")
+    if len(entries) < min(size, total - start):
+        raise AcademicContractError("arXiv discovery page is incomplete")
     records = tuple(_parse_record(entry) for entry in entries)
     identities = {(record.paper_id, record.version_label) for record in records}
     if len(identities) != len(records):

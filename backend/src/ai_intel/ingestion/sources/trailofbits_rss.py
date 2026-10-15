@@ -74,7 +74,13 @@ def _text(parent: ElementTree.Element, tag: str, required: bool = False) -> str 
 
 
 def _official_uri(raw_uri: str) -> str:
-    if any(character.isspace() or ord(character) < 32 for character in raw_uri) or "\\" in raw_uri:
+    if (
+        any(
+            character.isspace() or ord(character) < 32 or ord(character) == 127
+            for character in raw_uri
+        )
+        or "\\" in raw_uri
+    ):
         raise FeedParseError("Trail of Bits URI contains invalid characters")
     try:
         parts = urlsplit(raw_uri)
@@ -88,6 +94,12 @@ def _official_uri(raw_uri: str) -> str:
 def _published_at(raw_value: str | None) -> str | None:
     if raw_value is None:
         return None
+    numeric_zone = re.search(
+        r"\b[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\s+[+-]([0-9]{2})([0-9]{2})\b",
+        raw_value,
+    )
+    if numeric_zone is not None and (int(numeric_zone[1]) > 23 or int(numeric_zone[2]) > 59):
+        raise FeedParseError("Trail of Bits numeric timezone fields are out of range")
     try:
         value = parsedate_to_datetime(raw_value)
         if value.tzinfo is None or value.utcoffset() is None:
