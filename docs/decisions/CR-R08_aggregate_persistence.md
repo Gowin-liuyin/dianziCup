@@ -21,3 +21,7 @@ R08 / T08、T19、T23 要求成功、零、缺失、无权限和错误可区分�
 外部异常安全归约为现有固定 network_error/invalid_response 观测后保存；独立持久化失败返回 persistence_failed、没有当前值且不推进缓存。不保存 response 原文、headers、主机资产或密钥，不发 public outbox、不传给 LLM。暴露字段/公开发布仍由主控接线；本切片不改 enrichment/publisher/worker/API/frontend/progress。
 
 回退方式是主控暂不启用该内部服务，保留已追加观测；不删除旧表或历史，不运行 downgrade。费用、查询误匹配局限沿用现有类型，实际费用仍 unknown；本轮测试全为显式 fixture/合成边界输入，没有模型或测绘真实请求。
+
+## TTL 剩余期修复 1 · 2026-10-16
+
+独立审查在冻结 `6706cd9eeae8bae612fc7e86dff2e2b0416eeaef` 复现：年龄 86399.5 秒时旧公式 `86400-int(age)` 写入 1 秒 cache，超过 PG 剩余有效期 0.5 秒。主控明确授权在独有 fix1 工作区修改剩余期的计算顺序，建设范围之外的公共 schema、24 小时 TTL、阈值、分母、原日志和原观测均不变。修复用 `floor(86400-age)` 分别限制 retrieval/observed 剩余整秒，再取最小；零或负剩余整秒不写 cache。PG 尚未过期的 0.5 秒总量仍按现有语义 available，未知 observed_at 仍 unknown，cache 独立不使用。详见 [fix1 报告](../../reports/tasks/R08-cache-ttl-fix1.md)。该修复准确落实仍 awaiting_review，原作者不签 accepted；原 320 项历史检查不作为新 SHA 验证。

@@ -6,6 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from math import floor
 from threading import BoundedSemaphore, Lock
 from typing import Literal, Protocol
 from uuid import UUID
@@ -176,8 +177,8 @@ class AggregateService:
         try:
             if write:
                 remaining = min(
-                    86400 - int((now - value.retrieved_at).total_seconds()),
-                    86400 - int((now - value.observed_at).total_seconds())
+                    floor(86400 - (now - value.retrieved_at).total_seconds()),
+                    floor(86400 - (now - value.observed_at).total_seconds())
                     if value.observed_at
                     else 86400,
                 )
