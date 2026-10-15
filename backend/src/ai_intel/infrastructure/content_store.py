@@ -8,6 +8,7 @@ import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
@@ -17,12 +18,28 @@ class ContentPathValidationError(ValueError):
 
 
 @dataclass(frozen=True)
-class StoredObject:
-    """已落盘原文对象的登记信息。"""
+class StoredContent:
+    """本地和对象存储共享的校验后登记值，不包含公开可用存储路径。"""
 
     content_hash: str
     size_bytes: int
+
+
+@dataclass(frozen=True)
+class StoredObject(StoredContent):
+    """本地文件实现额外保留内部Path；不把S3键伪造成文件路径。"""
+
     object_path: Path
+
+
+class ContentStorage(Protocol):
+    """原文发布/回收共用的三个IO操作；事实与ACL仍由PG负责。"""
+
+    def store_bytes(self, payload: bytes) -> StoredContent: ...
+
+    def read_verified(self, content_hash: str) -> bytes: ...
+
+    def delete_object(self, content_hash: str) -> None: ...
 
 
 class ContentStore:

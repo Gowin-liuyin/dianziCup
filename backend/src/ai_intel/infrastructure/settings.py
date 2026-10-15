@@ -46,6 +46,48 @@ class ApplicationSettings(BaseSettings):
     allowed_origins: tuple[str, ...] = ("http://localhost:5173", "http://127.0.0.1:25173")
     dependency_timeout_seconds: float = Field(default=3.0, gt=0, le=10)
     raw_content_directory: str = "var/raw"
+    content_store_backend: Literal["local", "minio"] = "local"
+    minio_endpoint: str | None = None
+    minio_bucket: str | None = None
+    minio_access_key: SecretStr | None = None
+    minio_secret_key: SecretStr | None = None
+    minio_secure: bool = True
+    minio_ca_file: str | None = None
+
+    @model_validator(mode="after")
+    def validate_content_store_configuration(self) -> ApplicationSettings:
+        """对象服务缺配置即拒绝，不以本地目录悄悄替代远端原文库。"""
+        if self.content_store_backend != "minio":
+            return self
+        if not self.minio_endpoint or not self.minio_bucket:
+            raise ConfigurationError("MinIO endpoint and bucket are required")
+        if (
+            self.minio_access_key is None
+            or self.minio_secret_key is None
+            or not self.minio_access_key.get_secret_value()
+            or not self.minio_secret_key.get_secret_value()
+        ):
+            raise ConfigurationError("MinIO credentials are required")
+        parsed = urlsplit("https://" + self.minio_endpoint)
+        try:
+            port = parsed.port
+        except ValueError:
+            raise ConfigurationError(
+                "MINIO_ENDPOINT must be a hostname with optional port"
+            ) from None
+        if (
+            not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+            or (port is not None and port < 1)
+        ):
+            raise ConfigurationError("MINIO_ENDPOINT must be a hostname with optional port")
+        if not self.minio_secure and self.app_env != "test":
+            raise ConfigurationError("plaintext MinIO is allowed only when APP_ENV=test")
+        return self
 
     @model_validator(mode="after")
     def validate_search_connection_security(self) -> ApplicationSettings:

@@ -11,7 +11,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from ai_intel.infrastructure.content_store import ContentStore
+from ai_intel.infrastructure.content_store import ContentStorage
 from ai_intel.knowledge.models import (
     content_objects,
     document_revisions,
@@ -81,7 +81,7 @@ def _load_document_row(session: Session, document_id: str) -> dict[str, object]:
 
 def save_document_revision(
     session: Session,
-    store: ContentStore,
+    store: ContentStorage,
     document_id: str,
     payload: bytes,
     visibility: str,
@@ -303,7 +303,7 @@ def bump_scope_epoch(session: Session, scope_key: str, updated_at: datetime) -> 
     return int(session.execute(upsert).scalar_one())
 
 
-def cleanup_unreferenced_object(session: Session, store: ContentStore, content_hash: str) -> bool:
+def cleanup_unreferenced_object(session: Session, store: ContentStorage, content_hash: str) -> bool:
     """清理无引用原文对象: 文件与登记行同删; 任何引用存在即拒删。"""
     _lock_content_hash(session, content_hash)
     revision_refs = session.execute(
