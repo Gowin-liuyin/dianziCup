@@ -1,0 +1,81 @@
+..................F.F.F..........................................        [100%]
+================================== FAILURES ===================================
+_ test_source_claims_dimensions_and_global_citations_survive_session_and_replay _
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_publication_20261016?options=-c+search_path%3Dtest_r06_catalog_73661dd7260f487ca2ad72fc333bbe5c+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-608/test_source_claims_dimensions_0')
+
+    def test_source_claims_dimensions_and_global_citations_survive_session_and_replay(catalog_engine, tmp_path):
+        loaded, attempts = inputs(catalog_engine, tmp_path)
+        request_id = uuid4()
+        first = publish(catalog_engine, loaded, attempts, request_id)
+        before = counts(catalog_engine)
+        second = publish(catalog_engine, loaded, attempts, request_id, loaded.documents[0].observed_at + timedelta(seconds=1))
+        assert [(r.result_id, r.claim_ids) for r in first] == [(r.result_id, r.claim_ids) for r in second]
+        assert all(r.reused for r in second) and counts(catalog_engine) == before
+        with Session(catalog_engine) as session:
+>           detail = KnowledgeReadService(session, ADMIN, data_mode="fixture").read_event(loaded.context.event_id)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           AttributeError: 'KnowledgeReadService' object has no attribute 'read_event'. Did you mean: 'read_evidence'?
+
+tests\integration\test_r07_enrichment_publication_pg.py:61: AttributeError
+_ test_changed_event_version_rejects_new_results_but_replays_original_history _
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_publication_20261016?options=-c+search_path%3Dtest_r06_catalog_bd86200e2e4f4f0c862e1efc154be44d+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-608/test_changed_event_version_rej0')
+
+    def test_changed_event_version_rejects_new_results_but_replays_original_history(catalog_engine, tmp_path):
+        loaded, attempts = inputs(catalog_engine, tmp_path)
+        request_id = uuid4()
+        old = publish(catalog_engine, loaded, attempts, request_id)
+        with catalog_engine.begin() as connection:
+            connection.execute(update(events).values(business_version=2))
+        with pytest.raises(EnrichmentPublicationError, match="inputs_changed"):
+            publish(catalog_engine, loaded, attempts)
+        replay = publish(catalog_engine, loaded, attempts, request_id)
+        assert [r.result_id for r in replay] == [r.result_id for r in old]
+        with Session(catalog_engine) as session:
+>           detail = KnowledgeReadService(session, ADMIN, data_mode="fixture").read_event(loaded.context.event_id)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           AttributeError: 'KnowledgeReadService' object has no attribute 'read_event'. Did you mean: 'read_evidence'?
+
+tests\integration\test_r07_enrichment_publication_pg.py:91: AttributeError
+_ test_model_candidate_remains_unverified_and_cannot_fill_available_dimension _
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_publication_20261016?options=-c+search_path%3Dtest_r06_catalog_913eb86f05164a1792119d50124318e7+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-608/test_model_candidate_remains_u0')
+
+    def test_model_candidate_remains_unverified_and_cannot_fill_available_dimension(catalog_engine, tmp_path):
+        loaded, attempts = inputs(catalog_engine, tmp_path)
+        candidate = EvidenceBoundCandidate(
+            dimension="versions",
+            value={"kind": "version_assertion", "package_key": "fixture-package", "ecosystem": "unknown",
+                   "scheme": "unknown", "raw_expression": "Synthetic proposal without a confirmed range"},
+            evidence=attempts[0].candidates[0].evidence,
+            origin=ClaimOrigin.MODEL_HYPOTHESIS,
+        )
+        pending = DimensionAttempt(dimension="versions", status=DimensionStatus.PENDING,
+                                   candidates=(candidate,), source_ids=attempts[0].source_ids)
+        publish(catalog_engine, loaded, (pending,))
+        with Session(catalog_engine) as session:
+            row = session.execute(select(claims).where(claims.c.predicate == "version_assertion")).mappings().one()
+            assert row["claim_status"] == "unverified" and row["condition_value"] == "unknown"
+>           result = session.execute(select(enrichment_results)).mappings().one()
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r07_enrichment_publication_pg.py:121: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\sqlalchemy\engine\result.py:1726: in one
+    return self._only_one_row(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+>   ???
+E   sqlalchemy.exc.MultipleResultsFound: Multiple rows were found when exactly one was required
+
+lib/sqlalchemy/engine/_result_cy.py:597: MultipleResultsFound
+- generated xml file: D:\wt\r07-publication\reports\runs\recovery_r07_publication_20261015\publisher_pg_initial.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r07_enrichment_publication_pg.py::test_source_claims_dimensions_and_global_citations_survive_session_and_replay
+FAILED tests/integration/test_r07_enrichment_publication_pg.py::test_changed_event_version_rejects_new_results_but_replays_original_history
+FAILED tests/integration/test_r07_enrichment_publication_pg.py::test_model_candidate_remains_unverified_and_cannot_fill_available_dimension
+3 failed, 62 passed in 62.10s (0:01:02)

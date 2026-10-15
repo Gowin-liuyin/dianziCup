@@ -1,0 +1,59 @@
+............................F........................................... [ 97%]
+..                                                                       [100%]
+================================== FAILURES ===================================
+___ test_saved_source_snapshot_metadata_cannot_be_forged[observed_at-None] ____
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_publication_20261016?options=-c+search_path%3Dtest_r06_catalog_cdafe962d9044bf5a7360e5724ed4d89+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-617/test_saved_source_snapshot_met4')
+field = 'observed_at', value = None
+
+    @pytest.mark.parametrize(
+        "field,value",
+        [
+            ("blocks_complete", False),
+            ("source_version", "forged-version"),
+            ("content_coverage", "excerpt"),
+            ("source_record_id", "forged-record"),
+            ("observed_at", None),
+            ("json_payload", None),
+        ],
+    )
+    def test_saved_source_snapshot_metadata_cannot_be_forged(catalog_engine, tmp_path, field, value):
+        loaded, _ = inputs(catalog_engine, tmp_path)
+        document = loaded.documents[0].model_copy(update={field: value})
+        altered = replace(loaded, documents=(document,))
+        attempts = enrich_structured_fields(altered.context, altered.documents)
+        before = counts(catalog_engine)
+        with pytest.raises(EnrichmentPublicationError, match="snapshot_changed"):
+>           publish(catalog_engine, altered, attempts)
+
+tests\integration\test_r07_enrichment_publication_pg.py:228: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_r07_enrichment_publication_pg.py:42: in publish
+    return publish_enrichment_attempts(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+session = <sqlalchemy.orm.session.Session object at 0x0000024660DE8D10>
+scope = AccessScope(user_id='enrichment-fixture', tenant_id=None, role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozen...ite:asset', 'read:audit', 'read:asset', 'manage:public_sources', 'read:public', 'manage:users'}), permission_version=1)
+loaded = LoadedEnrichmentInputs(context=EnrichmentContext(event_id=UUID('5a731f03-38c2-5ead-bb66-2d241b0ed112'), expected_event...127-422b-91ae-364da2661108","tags":["Broken Link"]}]}}'),), scope=VisibilityScope(visibility='public', tenant_id=None))
+attempts = (DimensionAttempt(dimension='cvss', status=<DimensionStatus.AVAILABLE: 'available'>, candidates=(EvidenceBoundCandidat...ved_at=None, source_version='1.0.0', freshness=<FreshnessStatus.UNKNOWN: 'unknown'>, error_code='cwe_catalog_missing'))
+
+    def publish_enrichment_attempts(
+        session: Session,
+        scope: AccessScope,
+        loaded: LoadedEnrichmentInputs,
+        attempts: tuple[DimensionAttempt, ...],
+        *,
+        request_id: UUID,
+        recorded_at: datetime,
+    ) -> tuple[PublishedEnrichmentDimension, ...]:
+        """Caller owns commit; each dimension rolls back its new evidence and claims on failure."""
+>       if recorded_at.tzinfo is None or not 1 <= len(attempts) <= 9:
+           ^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'NoneType' object has no attribute 'tzinfo'
+
+src\ai_intel\enrichment\publication.py:285: AttributeError
+- generated xml file: D:\wt\r07-publication\reports\runs\recovery_r07_publication_20261015\snapshot_pg_v1.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r07_enrichment_publication_pg.py::test_saved_source_snapshot_metadata_cannot_be_forged[observed_at-None]
+1 failed, 73 passed in 65.34s (0:01:05)
