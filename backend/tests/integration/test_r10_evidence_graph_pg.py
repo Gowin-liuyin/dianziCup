@@ -1,6 +1,9 @@
 """隔离真实 PG 的合成发布与只读 HTTP 回归；fixture 结果不计 live。"""
 
+import hashlib
 import secrets
+import tempfile
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
@@ -27,36 +30,171 @@ from ai_intel.api.graph_routes import build_graph_router
 from ai_intel.domain.access import AccessScope, CrossTenantAccessError, Role
 from ai_intel.domain.records import ClaimRecord
 from ai_intel.domain.values import VisibilityScope
+from ai_intel.infrastructure.content_store import ContentStore
 from ai_intel.infrastructure.database import run_migrations
-from ai_intel.knowledge.event_linking import EventRepository, EventSubmission
+from ai_intel.knowledge.event_linking import EventIdentifier, EventRepository, EventSubmission
 from ai_intel.knowledge.evidence_graph import EvidenceGraphReadService
-from ai_intel.knowledge.models import document_revisions, documents, evidence
+from ai_intel.knowledge.models import document_revisions, documents, evidence, text_blocks
+from ai_intel.knowledge.persistence import EvidenceLink
 from ai_intel.knowledge.persistence_models import (
     claim_assertions,
     claim_evidence,
     claims,
     event_documents,
 )
+from ai_intel.knowledge.revisions import attach_evidence_span, register_response_content
 
 pytestmark = pytest.mark.real_pg
+SOURCE_IDENTIFIER = "GHSA-2345-6789-cfgh"
+TAXONOMY_COMMIT = "a" * 40
+FIXTURE_RAW_DIRECTORY = Path(tempfile.gettempdir()) / "dianzi-r10-graph-fixture-raw"
 VERSION = {
     "kind": "version_assertion",
     "package_key": "fixture-package",
     "ecosystem": "PyPI",
     "scheme": "pep440",
-    "raw_expression": ">=1.0,<1.4.2",
+    "raw_expression": "GHSA-2345-6789-cfgh PyPI fixture-package affected versions: >=1.0,<1.4.2",
     "intervals": [{"introduced": "1.0", "fixed": "1.4.2"}],
     "comparison_support": "supported",
-    "vendor_fix": "厂商要求升级到 1.4.2",
-    "mitigations": ["限制不可信输入"],
+    "vendor_fix": "Fixed in 1.4.2 for GHSA-2345-6789-cfgh.",
+    "mitigations": ["Mitigation: limit untrusted inputs for GHSA-2345-6789-cfgh."],
 }
 ATLAS = {
     "kind": "atlas_mapping",
     "technique_id": "AML.T0051",
-    "taxonomy_version": "fixture-taxonomy-20261016",
-    "mechanism": "来源明确描述不可信输入进入提示词上下文",
-    "prerequisites": ["攻击者可以提交不可信输入"],
+    "taxonomy_version": TAXONOMY_COMMIT,
+    "mechanism": "GHSA-2345-6789-cfgh: Untrusted instructions enter a model input.",
+    "prerequisites": ["Attacker can submit untrusted input."],
 }
+
+
+def store_fixture_original(connection, revision_id):
+    blocks = list(
+        connection.execute(
+            select(text_blocks)
+            .where(text_blocks.c.revision_id == revision_id)
+            .order_by(text_blocks.c.start_offset)
+        ).mappings()
+    )
+    normalized = ""
+    for block in blocks:
+        assert block["start_offset"] >= len(normalized)
+        normalized += " " * (block["start_offset"] - len(normalized)) + block["block_text"]
+    stored = register_response_content(
+        connection, ContentStore(FIXTURE_RAW_DIRECTORY), normalized.encode(), NOW
+    )
+    connection.execute(
+        update(document_revisions)
+        .where(document_revisions.c.revision_id == revision_id)
+        .values(
+            content_hash=stored.content_hash,
+            parser_version="fixture-text-1.1",
+            normalizer_version="fixture-unicode-1.1",
+        )
+    )
+    document_id = connection.scalar(
+        select(document_revisions.c.document_id).where(
+            document_revisions.c.revision_id == revision_id
+        )
+    )
+    connection.execute(
+        update(documents)
+        .where(documents.c.document_id == document_id)
+        .values(content_hash=stored.content_hash)
+    )
+
+
+def replace_source_body(
+    engine,
+    submission,
+    lines,
+    *,
+    kind="advisory",
+    category="vendor_advisory",
+    uri=None,
+    source_version=None,
+):
+    body = "\n".join(lines)
+    with engine.begin() as connection:
+        first_evidence = submission.evidence_links[0].evidence_id.value
+        block_id = connection.scalar(
+            select(evidence.c.block_id).where(evidence.c.evidence_id == first_evidence)
+        )
+        connection.execute(
+            update(text_blocks)
+            .where(text_blocks.c.block_id == block_id)
+            .values(
+                block_text=body,
+                text_sha256=hashlib.sha256(body.encode()).hexdigest(),
+                end_offset=100 + len(body),
+            )
+        )
+        connection.execute(
+            update(evidence)
+            .where(evidence.c.evidence_id == first_evidence)
+            .values(
+                quote=lines[0],
+                quote_sha256=hashlib.sha256(lines[0].encode()).hexdigest(),
+                end_offset=100 + len(lines[0]),
+            )
+        )
+        links = [
+            EvidenceLink(
+                evidence_id={"value": first_evidence},
+                support_kind="supports",
+                validation_status="validated",
+            )
+        ]
+        offset = 100 + len(lines[0]) + 1
+        for line in lines[1:]:
+            span_id = attach_evidence_span(
+                connection,
+                submission.revision_id.value,
+                offset,
+                offset + len(line),
+                "fixture source line",
+                line,
+                True,
+                submission.record.scope.visibility,
+                submission.record.scope.tenant_id,
+                NOW,
+                block_id=block_id,
+                verified_at=NOW,
+            )
+            links.append(
+                EvidenceLink(
+                    evidence_id={"value": span_id},
+                    support_kind="supports",
+                    validation_status="validated",
+                )
+            )
+            offset += len(line) + 1
+        connection.execute(
+            update(documents)
+            .where(documents.c.source_id == submission.source_id.value)
+            .values(kind=kind)
+        )
+        connection.execute(
+            text("UPDATE sources SET category=:category WHERE source_id=:id"),
+            {"category": category, "id": submission.source_id.value},
+        )
+        connection.execute(
+            update(document_revisions)
+            .where(document_revisions.c.revision_id == submission.revision_id.value)
+            .values(
+                parse_status="parsed",
+                canonical_uri=uri
+                or "https://example.invalid/advisory/" + submission.revision_id.value,
+                source_metadata={
+                    "is_synthetic": True,
+                    "content_coverage": "full_text",
+                    "blocks_complete": True,
+                    "source_version": source_version,
+                },
+            )
+        )
+        store_fixture_original(connection, submission.revision_id.value)
+    return submission.model_copy(update={"evidence_links": tuple(links)})
 
 
 @pytest.fixture
@@ -104,18 +242,45 @@ def publish_fact(engine, path, event_id, value, *, scope=None, hypothesis=False)
         }
     )
     submission = template.model_copy(update={"record": record})
-    with engine.begin() as connection:
-        connection.execute(
-            update(document_revisions)
-            .where(document_revisions.c.revision_id == submission.revision_id.value)
-            .values(parse_status="parsed")
+    if value["kind"] == "version_assertion":
+        lines = [
+            value["raw_expression"],
+            *([value["vendor_fix"]] if value.get("vendor_fix") else []),
+            *value.get("mitigations", []),
+        ]
+    elif value["kind"] == "atlas_mapping":
+        lines = [value["mechanism"], *value["prerequisites"]]
+        taxonomy = prepared_submission(engine, path / "taxonomy", scope=scope)
+        replace_source_body(
+            engine,
+            taxonomy,
+            ["AML.T0051: Prompt injection technique."],
+            kind="standard",
+            category="technical_standard",
+            uri=f"https://raw.githubusercontent.com/mitre/atlas-data/{TAXONOMY_COMMIT}/dist/ATLAS.yaml",
+            source_version=TAXONOMY_COMMIT,
         )
+    elif value["kind"] == "literature_reference":
+        lines = [value["support_summary"], value["title"] + " " + str(value["uri"])]
+    else:
+        lines = ["GHSA-2345-6789-cfgh: " + str(value)]
+    submission = replace_source_body(engine, submission, lines)
     publish_submission(engine, submission)
     return submission
 
 
 def publish_event(engine, event_id, submissions, *, scope=None):
     visibility = scope or VisibilityScope(visibility="public")
+    revision_ids = [item.revision_id for item in submissions]
+    with Session(engine) as reader:
+        for revision_id in reader.scalars(
+            select(document_revisions.c.revision_id).where(
+                document_revisions.c.canonical_uri
+                == f"https://raw.githubusercontent.com/mitre/atlas-data/{TAXONOMY_COMMIT}/dist/ATLAS.yaml",
+                document_revisions.c.is_current.is_(True),
+            )
+        ):
+            revision_ids.append({"value": revision_id})
     with Session(engine) as session, session.begin():
         EventRepository(session, publisher_scope(visibility)).publish_events(
             "fixture-r10-event-" + uuid4().hex,
@@ -126,7 +291,8 @@ def publish_event(engine, event_id, submissions, *, scope=None):
                     event_type="vulnerability",
                     title="合成证据图事件",
                     scope=visibility,
-                    source_revision_ids=tuple(item.revision_id for item in submissions),
+                    external_ids=(EventIdentifier(id_type="ghsa", id_value=SOURCE_IDENTIFIER),),
+                    source_revision_ids=tuple(revision_ids),
                 ),
             ),
             NOW,
@@ -142,6 +308,17 @@ def read_graph(engine, event_id, *, scope=None, max_nodes=200, max_edges=400):
 
 def paper_value(engine, path):
     target = prepared_submission(engine, path)
+    replace_source_body(
+        engine,
+        target,
+        [
+            "合成分析论文",
+            "Analysis of GHSA-2345-6789-cfgh in fixture-package: untrusted model input.",
+        ],
+        kind="paper",
+        category="academic_paper",
+        uri="https://example.invalid/fixture-paper",
+    )
     with engine.begin() as connection:
         document_id = connection.scalar(
             select(document_revisions.c.document_id).where(
@@ -162,7 +339,9 @@ def paper_value(engine, path):
         "title": "合成分析论文",
         "reference_kind": "paper",
         "relation": "analysis",
-        "support_summary": "该论文明确分析本事件的输入路径与同一组件",
+        "support_summary": (
+            "Analysis of GHSA-2345-6789-cfgh in fixture-package: untrusted model input."
+        ),
         "target_document_id": document_id,
         "target_revision_id": target.revision_id.value,
     }
@@ -300,10 +479,19 @@ def test_same_names_in_distinct_ecosystems_and_ranges_remain_separate(graph_engi
     event_id = uuid4()
     values = [
         VERSION,
-        {**VERSION, "ecosystem": "npm", "scheme": "semver"},
         {
             **VERSION,
-            "raw_expression": ">=2,<2.4",
+            "ecosystem": "npm",
+            "scheme": "semver",
+            "raw_expression": (
+                "GHSA-2345-6789-cfgh npm fixture-package affected versions: >=1.0,<1.4.2"
+            ),
+        },
+        {
+            **VERSION,
+            "raw_expression": (
+                "GHSA-2345-6789-cfgh PyPI fixture-package affected versions: >=2,<2.4"
+            ),
             "intervals": [{"introduced": "2", "fixed": "2.4"}],
         },
     ]
@@ -455,7 +643,9 @@ def test_private_graph_and_nested_sources_do_not_cross_tenants_or_promote_scope(
                 event_id,
                 scope=AccessScope.for_authenticated_user("fixture-user", tenant, role),
             )
-    public_id = UUID(seed_event(graph_engine, [submission.revision_id.value]))
+    public_id = UUID(
+        seed_event(graph_engine, [submission.revision_id.value], external_id=SOURCE_IDENTIFIER)
+    )
     assert read_graph(graph_engine, public_id).edges == ()
     with graph_engine.begin() as connection:
         connection.execute(
@@ -567,7 +757,7 @@ def test_real_session_rest_factory_bounds_acl_errors_and_database_failure(
         client.cookies.set(SESSION_COOKIE_NAME, session_token)
         response = client.get(path)
         assert response.status_code == 200 and response.json()["business_version"] == 1
-        assert response.json()["rule_version"] == "r10-graph-1.0.0"
+        assert response.json()["rule_version"] == "r10-graph-1.1.0"
         assert client.get(f"/v1/events/{uuid4()}/graph").status_code == 404
         assert client.get("/v1/events/not-a-uuid/graph").status_code == 422
         for parameters in (

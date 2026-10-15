@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Literal
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from pydantic import Field
-from sqlalchemy import Text, and_, column, or_, select, table
+from pydantic import Field, ValidationError
+from sqlalchemy import Text, and_, column, literal, or_, select, table
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
@@ -16,22 +17,42 @@ from sqlalchemy.sql.selectable import FromClause
 
 from ai_intel.domain.access import READ_ASSET, READ_PUBLIC, AccessScope, CrossTenantAccessError
 from ai_intel.domain.enrichment_values import (
+    ArtifactReferenceValue,
     AtlasMappingValue,
     LiteratureReferenceValue,
     VersionAssertionValue,
 )
+from ai_intel.domain.enums import ClaimOrigin
 from ai_intel.domain.records import StrictRecord
 from ai_intel.domain.values import VisibilityScope
-from ai_intel.knowledge.models import document_revisions, documents, evidence, text_blocks
+from ai_intel.enrichment.contracts import (
+    CandidateEvidence,
+    EnrichmentBlock,
+    EnrichmentDocument,
+    EvidenceBoundCandidate,
+)
+from ai_intel.enrichment.field_sources import (
+    FieldEvidenceError,
+    is_atlas_taxonomy,
+    validate_field_candidate,
+)
+from ai_intel.knowledge.models import (
+    document_revisions,
+    documents,
+    evidence,
+    scope_epochs,
+    text_blocks,
+)
 from ai_intel.knowledge.persistence_models import (
     claim_assertions,
     claim_evidence,
     claims,
     event_documents,
+    event_external_ids,
     events,
 )
 
-GRAPH_RULE_VERSION: Literal["r10-graph-1.0.0"] = "r10-graph-1.0.0"
+GRAPH_RULE_VERSION: Literal["r10-graph-1.1.0"] = "r10-graph-1.1.0"
 MAX_SUPPORT_ROWS = 2000
 RelationType = Literal[
     "same_event",
@@ -50,8 +71,24 @@ RELATION_TYPES: tuple[RelationType, ...] = (
     "component_version_vulnerability",
 )
 sources = table(
-    "sources", column("source_id", Text), column("visibility", Text), column("tenant_id", Text)
+    "sources",
+    column("source_id", Text),
+    column("visibility", Text),
+    column("tenant_id", Text),
+    column("category", Text),
 )
+GraphValue = (
+    VersionAssertionValue
+    | AtlasMappingValue
+    | LiteratureReferenceValue
+    | ArtifactReferenceValue
+    | str
+)
+DocumentCache = dict[UUID, tuple[EnrichmentDocument, VisibilityScope] | None]
+
+
+class GraphSnapshotChangedError(RuntimeError):
+    """候选图在返回围栏前失效；不能把旧快照包装成当前结果。"""
 
 
 class GraphNode(StrictRecord):
@@ -70,7 +107,7 @@ class GraphEdge(StrictRecord):
     source_revision_ids: tuple[UUID, ...] = Field(min_length=1, max_length=MAX_SUPPORT_ROWS)
     evidence_span_ids: tuple[UUID, ...] = Field(min_length=1, max_length=MAX_SUPPORT_ROWS)
     supporting_claim_ids: tuple[UUID, ...] = Field(min_length=1, max_length=MAX_SUPPORT_ROWS)
-    rule_or_model_version: Literal["r10-graph-1.0.0"] = GRAPH_RULE_VERSION
+    rule_or_model_version: Literal["r10-graph-1.1.0"] = GRAPH_RULE_VERSION
     reason: str = Field(min_length=1, max_length=2500)
     status: Literal["supported"] = "supported"
 
@@ -85,7 +122,7 @@ class GraphSnapshot(StrictRecord):
     schema_version: Literal[1] = 1
     event_id: UUID
     business_version: int = Field(strict=True, ge=1)
-    rule_version: Literal["r10-graph-1.0.0"] = GRAPH_RULE_VERSION
+    rule_version: Literal["r10-graph-1.1.0"] = GRAPH_RULE_VERSION
     nodes: tuple[GraphNode, ...] = Field(min_length=1, max_length=200)
     edges: tuple[GraphEdge, ...] = Field(max_length=400)
     truncated: bool
@@ -134,6 +171,24 @@ def _verified_span(row: RowMapping) -> bool:
     )
 
 
+def _narrow_scope(scopes: tuple[VisibilityScope, ...]) -> VisibilityScope:
+    private = {scope.tenant_id for scope in scopes if scope.visibility == "tenant"}
+    if len(private) > 1:
+        raise ValueError("incompatible graph scopes")
+    return (
+        VisibilityScope(visibility="tenant", tenant_id=private.pop())
+        if private
+        else VisibilityScope(visibility="public")
+    )
+
+
+def _has_identifier(identifier: str, quote: str) -> bool:
+    return (
+        re.search(r"(?<![\w.+-])" + re.escape(identifier) + r"(?![\w.+-])", quote, re.IGNORECASE)
+        is not None
+    )
+
+
 class EvidenceGraphReadService:
     """认证范围内投影固定六类关系；语义支持只读取 PG 已核验的发布记录。"""
 
@@ -141,6 +196,7 @@ class EvidenceGraphReadService:
         scope.requires(READ_PUBLIC)
         self.session = session
         self.scope = scope
+        self.input_sha256: str | None = None
 
     def _visible(self, relation: FromClause) -> ColumnElement[bool]:
         public = and_(relation.c.visibility == "public", relation.c.tenant_id.is_(None))
@@ -205,16 +261,21 @@ class EvidenceGraphReadService:
                 claims.c.predicate,
                 claims.c.value_kind,
                 claims.c.object_json,
+                claims.c.object_value,
+                claim_assertions.c.json_path.label("assertion_path"),
                 document_revisions.c.revision_id,
+                documents.c.document_id,
                 documents.c.title,
                 evidence.c.evidence_id,
                 evidence.c.quote,
                 evidence.c.quote_sha256,
                 evidence.c.start_offset,
                 evidence.c.end_offset,
+                evidence.c.block_id,
                 text_blocks.c.start_offset.label("block_start"),
                 text_blocks.c.block_text,
                 text_blocks.c.text_sha256,
+                text_blocks.c.json_pointer,
                 *_scope_columns(claims, "claim_"),
                 *_scope_columns(document_revisions, "revision_"),
                 *_scope_columns(documents, "document_"),
@@ -235,7 +296,7 @@ class EvidenceGraphReadService:
                 claims.c.freshness != "stale",
                 claims.c.provenance_status == "source_verified",
                 claims.c.claim_origin.in_(
-                    ("source_explicit", "structured_source", "human_confirmed")
+                    ("source_explicit", "structured_source", "rule_derived", "human_confirmed")
                 ),
                 claim_evidence.c.support_kind == "supports",
                 claim_evidence.c.validation_status == "validated",
@@ -249,30 +310,459 @@ class EvidenceGraphReadService:
         )
         return list(self.session.execute(query).mappings())
 
-    def _paper_scope(self, value: LiteratureReferenceValue) -> VisibilityScope | None:
-        if value.target_document_id is None or value.reference_kind != "paper":
-            return None
-        if value.relation == "background":
-            return None
+    def read_scope_epochs(self, *, lock: bool = False) -> tuple[tuple[str, int], ...]:
+        keys = ["public"]
+        if self.scope.tenant_id is not None and READ_ASSET in self.scope.permissions:
+            keys.append("tenant:" + self.scope.tenant_id)
+        query = (
+            select(scope_epochs.c.scope_key, scope_epochs.c.epoch)
+            .where(scope_epochs.c.scope_key.in_(keys))
+            .order_by(scope_epochs.c.scope_key)
+        )
+        if lock:
+            query = query.with_for_update(read=True)
+        result: list[tuple[str, int]] = []
+        for key, epoch in self.session.execute(query):
+            if not isinstance(key, str) or not isinstance(epoch, int) or isinstance(epoch, bool):
+                raise ValueError("scope epoch invalid")
+            result.append((key, epoch))
+        return tuple(result)
+
+    def lock_graph_inputs(self, event_id: UUID) -> None:
+        """先锁事实父链，再由调用者取 epoch 锁；不在持 epoch 时倒序取父锁。"""
+        if (
+            self.session.scalar(
+                select(events.c.event_id).where(
+                    events.c.event_id == str(event_id), self._visible(events)
+                )
+            )
+            is None
+        ):
+            raise CrossTenantAccessError("resource not found")
+        revisions: list[str] = list(
+            self.session.scalars(
+                select(event_documents.c.revision_id)
+                .where(event_documents.c.event_id == str(event_id))
+                .order_by(event_documents.c.revision_id)
+                .limit(MAX_SUPPORT_ROWS + 1)
+            )
+        )
+        claim_rows = list(
+            self.session.execute(
+                select(claims.c.claim_id, claims.c.object_json)
+                .where(claims.c.subject == str(event_id))
+                .order_by(claims.c.claim_id)
+                .limit(MAX_SUPPORT_ROWS + 1)
+            )
+        )
+        if len(revisions) > MAX_SUPPORT_ROWS or len(claim_rows) > MAX_SUPPORT_ROWS:
+            raise GraphSnapshotChangedError("graph inputs exceed validity fence")
+        revision_ids = set(revisions)
+        for _claim_id, value in claim_rows:
+            if (
+                isinstance(value, dict)
+                and value.get("kind") == "literature_reference"
+                and value.get("target_revision_id") is not None
+            ):
+                revision_ids.add(str(UUID(value["target_revision_id"])))
+        parents = list(
+            self.session.execute(
+                select(
+                    document_revisions.c.revision_id, documents.c.document_id, documents.c.source_id
+                )
+                .select_from(document_revisions.join(documents))
+                .where(document_revisions.c.revision_id.in_(revision_ids))
+            )
+        )
+        for relation, key, identifiers in (
+            (sources, sources.c.source_id, {item.source_id for item in parents}),
+            (documents, documents.c.document_id, {item.document_id for item in parents}),
+            (document_revisions, document_revisions.c.revision_id, revision_ids),
+            (events, events.c.event_id, {str(event_id)}),
+            (claims, claims.c.claim_id, {item.claim_id for item in claim_rows}),
+        ):
+            self.session.execute(
+                select(key)
+                .select_from(relation)
+                .where(key.in_(identifiers))
+                .order_by(key)
+                .with_for_update(read=True)
+            ).all()
+        evidence_ids: tuple[str, ...] = tuple(
+            self.session.scalars(
+                select(evidence.c.evidence_id)
+                .where(evidence.c.revision_id.in_(revision_ids))
+                .order_by(evidence.c.evidence_id)
+                .limit(MAX_SUPPORT_ROWS + 1)
+            )
+        )
+        if len(evidence_ids) > MAX_SUPPORT_ROWS:
+            raise GraphSnapshotChangedError("graph evidence exceeds validity fence")
+        self.session.execute(
+            select(evidence.c.evidence_id)
+            .where(evidence.c.evidence_id.in_(evidence_ids))
+            .order_by(evidence.c.evidence_id)
+            .with_for_update(read=True)
+        ).all()
+        block_ids: tuple[str, ...] = tuple(
+            self.session.scalars(
+                select(text_blocks.c.block_id)
+                .where(text_blocks.c.revision_id.in_(revision_ids))
+                .order_by(text_blocks.c.block_id)
+                .limit(MAX_SUPPORT_ROWS + 1)
+            )
+        )
+        if len(block_ids) > MAX_SUPPORT_ROWS:
+            raise GraphSnapshotChangedError("graph blocks exceed validity fence")
+        self.session.execute(
+            select(text_blocks.c.block_id)
+            .where(text_blocks.c.block_id.in_(block_ids))
+            .order_by(text_blocks.c.block_id)
+            .with_for_update(read=True)
+        ).all()
+        for relation, key in (
+            (event_documents, event_documents.c.revision_id),
+            (claim_assertions, claim_assertions.c.assertion_id),
+            (claim_evidence, claim_evidence.c.evidence_id),
+        ):
+            predicate = (
+                relation.c.event_id == str(event_id)
+                if relation is event_documents
+                else relation.c.claim_id.in_({item.claim_id for item in claim_rows})
+            )
+            self.session.execute(
+                select(key).where(predicate).order_by(key).with_for_update(read=True)
+            ).all()
+
+    def _load_document(
+        self, revision_id: UUID, cache: DocumentCache
+    ) -> tuple[EnrichmentDocument, VisibilityScope] | None:
+        if revision_id in cache:
+            return cache[revision_id]
         row = (
             self.session.execute(
                 select(
+                    document_revisions,
+                    documents.c.kind,
+                    documents.c.document_id,
+                    documents.c.source_id,
+                    sources.c.category,
                     *_scope_columns(document_revisions, "revision_"),
                     *_scope_columns(documents, "document_"),
                     *_scope_columns(sources, "source_"),
                 )
                 .select_from(self._revision_join())
                 .where(
-                    document_revisions.c.revision_id == str(value.target_revision_id),
-                    document_revisions.c.document_id == str(value.target_document_id),
-                    documents.c.kind == "paper",
-                    self._current_revision(),
+                    document_revisions.c.revision_id == str(revision_id), self._current_revision()
                 )
             )
             .mappings()
             .first()
         )
-        return _scope_of(row, ("revision_", "document_", "source_")) if row is not None else None
+        cache[revision_id] = None
+        if row is None:
+            return None
+        from ai_intel.api.knowledge_read_service import safe_source_uri
+
+        uri = safe_source_uri(row["canonical_uri"])
+        if uri is None:
+            return None
+        blocks = list(
+            self.session.execute(
+                select(text_blocks)
+                .where(text_blocks.c.revision_id == str(revision_id))
+                .order_by(text_blocks.c.ordinal)
+                .limit(201)
+            ).mappings()
+        )
+        if not blocks or len(blocks) > 200:
+            return None
+        metadata = row["source_metadata"]
+        try:
+            document = EnrichmentDocument.model_validate(
+                {
+                    "revision_id": revision_id,
+                    "document_id": row["document_id"],
+                    "source_id": row["source_id"],
+                    "document_kind": row["kind"],
+                    "source_category": row["category"],
+                    "canonical_uri": uri,
+                    "source_record_id": metadata.get("source_record_id", str(uri)),
+                    "content_sha256": row["content_hash"],
+                    "blocks": tuple(
+                        EnrichmentBlock(
+                            block_id=item["block_id"],
+                            start_offset=item["start_offset"],
+                            text=item["block_text"],
+                            text_sha256=item["text_sha256"],
+                            json_pointer=item["json_pointer"],
+                            page_number=item["page_number"],
+                        )
+                        for item in blocks
+                    ),
+                    "blocks_complete": metadata.get(
+                        "blocks_complete", row["parse_status"] == "parsed"
+                    ),
+                    "content_coverage": metadata.get("content_coverage", "unknown"),
+                    "source_version": metadata.get("source_version"),
+                    "observed_at": row["first_observed_at"],
+                }
+            )
+        except ValidationError:
+            return None
+        result = (document, _scope_of(row, ("revision_", "document_", "source_")))
+        cache[revision_id] = result
+        return result
+
+    def _event_bound(
+        self,
+        rows: tuple[RowMapping, ...],
+        all_rows: tuple[RowMapping, ...],
+        identifiers: tuple[str, ...],
+    ) -> bool:
+        if identifiers:
+            return any(
+                _has_identifier(identifier, row["quote"])
+                for identifier in identifiers
+                for row in rows
+            )
+        same_revision = tuple(
+            row for row in all_rows if row["revision_id"] == rows[0]["revision_id"]
+        )
+        products = tuple(
+            row["object_value"]
+            for row in same_revision
+            if row["predicate"] == "affected_product" and row["object_value"] == row["quote"]
+        )
+        excerpts = tuple(
+            row["object_value"]
+            for row in same_revision
+            if row["predicate"] == "source_excerpt" and row["object_value"] == row["quote"]
+        )
+        return any(
+            _has_identifier(product, excerpt)
+            and re.search(
+                r"vulnerab|affected|security|injection|受影响|漏洞|安全|注入",
+                excerpt,
+                re.IGNORECASE,
+            )
+            for product in products
+            for excerpt in excerpts
+        )
+
+    def _validated_support(
+        self,
+        rows: tuple[RowMapping, ...],
+        all_rows: tuple[RowMapping, ...],
+        identifiers: tuple[str, ...],
+        cache: DocumentCache,
+        event_id: UUID,
+    ) -> tuple[GraphValue, tuple[RowMapping, ...], VisibilityScope] | None:
+        row = rows[0]
+        scope = _narrow_scope(
+            tuple(
+                _scope_of(item, ("claim_", "revision_", "document_", "source_", "evidence_"))
+                for item in rows
+            )
+        )
+        if row["schema_version"] != 3:
+            return (
+                (row["object_value"], rows, scope)
+                if self._event_bound(rows, all_rows, identifiers)
+                and any(row["object_value"] in item["quote"] for item in rows)
+                else None
+            )
+        if row["predicate"] != row["value_kind"]:
+            raise ValueError("graph fact value disagrees with predicate")
+        value: GraphValue
+        candidate_value: (
+            VersionAssertionValue
+            | AtlasMappingValue
+            | LiteratureReferenceValue
+            | ArtifactReferenceValue
+        )
+        if row["predicate"] == "version_assertion":
+            value = VersionAssertionValue.model_validate(row["object_json"])
+            candidate_value = value.model_copy(update={"comparison_support": "unknown"})
+            dimension: Literal["versions", "atlas", "literature", "poc"] = "versions"
+        elif row["predicate"] == "atlas_mapping":
+            value = AtlasMappingValue.model_validate(row["object_json"])
+            candidate_value = value
+            dimension = "atlas"
+        elif row["predicate"] == "literature_reference":
+            value = LiteratureReferenceValue.model_validate(row["object_json"])
+            candidate_value = value.model_copy(
+                update={"target_document_id": None, "target_revision_id": None}
+            )
+            dimension = "literature"
+        elif row["predicate"] == "artifact_reference":
+            value = ArtifactReferenceValue.model_validate(row["object_json"])
+            candidate_value = value.model_copy(update={"static_status": "candidate_found"})
+            dimension = "poc"
+        else:
+            return None
+        if identifiers:
+            core = ""
+            if isinstance(value, VersionAssertionValue):
+                core = value.raw_expression
+            elif isinstance(value, AtlasMappingValue):
+                core = value.mechanism
+            elif isinstance(value, LiteratureReferenceValue):
+                core = value.support_summary
+            owner_paths = {"/id", "/ghsa_id", "/cve/id", "/cveMetadata/cveId"}
+            field_binding = any(
+                item["revision_id"] == row["revision_id"]
+                and item["json_pointer"] in owner_paths
+                and item["assertion_path"] == item["json_pointer"]
+                and item["quote"].strip().casefold()
+                in {identifier.casefold() for identifier in identifiers}
+                for item in all_rows
+            )
+            artifact_binding = isinstance(value, ArtifactReferenceValue) and any(
+                str(value.uri) in item["quote"]
+                and value.title in item["quote"]
+                and any(_has_identifier(identifier, item["quote"]) for identifier in identifiers)
+                for item in rows
+            )
+            if (
+                not field_binding
+                and not artifact_binding
+                and not any(_has_identifier(identifier, core) for identifier in identifiers)
+            ):
+                return None
+        elif not self._event_bound(rows, all_rows, identifiers):
+            return None
+        loaded = self._load_document(UUID(row["revision_id"]), cache)
+        if loaded is None or len(rows) > 20:
+            return None
+        selected = [loaded[0]]
+        proof = list(rows)
+        scopes = [scope, loaded[1]]
+        if isinstance(value, LiteratureReferenceValue) and value.target_revision_id is not None:
+            target = self._load_document(value.target_revision_id, cache)
+            if target is None or target[0].document_id != value.target_document_id:
+                return None
+            selected.append(target[0])
+            scopes.append(target[1])
+        if isinstance(value, AtlasMappingValue):
+            taxonomy_ids: tuple[str, ...] = tuple(
+                self.session.scalars(
+                    select(document_revisions.c.revision_id)
+                    .select_from(
+                        event_documents.join(
+                            self._revision_join(),
+                            event_documents.c.revision_id == document_revisions.c.revision_id,
+                        )
+                    )
+                    .where(
+                        event_documents.c.event_id == str(event_id),
+                        event_documents.c.active.is_(True),
+                        self._current_revision(),
+                        document_revisions.c.canonical_uri.in_(
+                            (
+                                f"https://raw.githubusercontent.com/mitre/atlas-data/{value.taxonomy_version}/dist/ATLAS.yaml",
+                                f"https://github.com/mitre/atlas-data/blob/{value.taxonomy_version}/dist/ATLAS.yaml",
+                            )
+                        ),
+                    )
+                    .limit(2)
+                )
+            )
+            if len(taxonomy_ids) != 1:
+                return None
+            taxonomy = self._load_document(UUID(taxonomy_ids[0]), cache)
+            if taxonomy is None or not is_atlas_taxonomy(taxonomy[0]):
+                return None
+            selected.append(taxonomy[0])
+            scopes.append(taxonomy[1])
+            taxonomy_rows = list(
+                self.session.execute(
+                    select(
+                        literal(row["claim_id"]).label("claim_id"),
+                        evidence.c.revision_id,
+                        evidence.c.evidence_id,
+                        evidence.c.block_id,
+                        evidence.c.quote,
+                        evidence.c.quote_sha256,
+                        evidence.c.start_offset,
+                        evidence.c.end_offset,
+                        text_blocks.c.start_offset.label("block_start"),
+                        text_blocks.c.block_text,
+                        text_blocks.c.text_sha256,
+                        *_scope_columns(evidence, "evidence_"),
+                    )
+                    .select_from(
+                        evidence.join(
+                            text_blocks,
+                            and_(
+                                evidence.c.block_id == text_blocks.c.block_id,
+                                evidence.c.revision_id == text_blocks.c.revision_id,
+                            ),
+                        )
+                    )
+                    .where(
+                        evidence.c.revision_id == taxonomy_ids[0],
+                        self._visible(evidence),
+                        evidence.c.coordinate_version == "fulltext_unicode_v1",
+                        evidence.c.verified_at.is_not(None),
+                        evidence.c.quote.contains(value.technique_id, autoescape=True),
+                    )
+                    .order_by(evidence.c.evidence_id)
+                    .limit(21)
+                ).mappings()
+            )
+            taxonomy_rows = [item for item in taxonomy_rows if _verified_span(item)]
+            if not taxonomy_rows or len(rows) + len(taxonomy_rows) > 20:
+                return None
+            proof.extend(taxonomy_rows)
+            scopes.extend(_scope_of(item, ("evidence_",)) for item in taxonomy_rows)
+        try:
+            candidate = EvidenceBoundCandidate(
+                dimension=dimension,
+                value=candidate_value,
+                origin=ClaimOrigin.SOURCE_EXPLICIT,
+                evidence=tuple(
+                    CandidateEvidence(
+                        revision_id=item["revision_id"],
+                        block_id=item["block_id"],
+                        start_offset=item["start_offset"] - item["block_start"],
+                        end_offset=item["end_offset"] - item["block_start"],
+                        quote_text=item["quote"],
+                        quote_sha256=item["quote_sha256"],
+                    )
+                    for item in proof
+                ),
+            )
+            checked = validate_field_candidate(candidate, tuple(selected))
+        except (FieldEvidenceError, ValidationError):
+            return None
+        if isinstance(value, LiteratureReferenceValue) and (
+            not isinstance(checked.value, LiteratureReferenceValue)
+            or checked.value.target_document_id != value.target_document_id
+            or checked.value.target_revision_id != value.target_revision_id
+        ):
+            return None
+        return value, tuple(proof), _narrow_scope(tuple(scopes))
+
+    def _paper_scope(
+        self,
+        value: LiteratureReferenceValue,
+        cache: DocumentCache,
+    ) -> VisibilityScope | None:
+        if value.target_document_id is None or value.reference_kind != "paper":
+            return None
+        if value.relation == "background":
+            return None
+        if value.target_revision_id is None:
+            return None
+        target = self._load_document(value.target_revision_id, cache)
+        if (
+            target is None
+            or target[0].document_id != value.target_document_id
+            or target[0].document_kind != "paper"
+        ):
+            return None
+        return target[1]
 
     def event_graph(
         self, event_id: UUID, max_nodes: int = 200, max_edges: int = 400
@@ -301,6 +791,22 @@ class EvidenceGraphReadService:
         edges: dict[UUID, GraphEdge] = {}
         rows = self._support_rows(event_id) if event["status"] == "active" else []
         truncated = len(rows) > MAX_SUPPORT_ROWS
+        valid_rows = tuple(row for row in rows[:MAX_SUPPORT_ROWS] if _verified_span(row))
+        grouped: dict[str, list[RowMapping]] = {}
+        for row in valid_rows:
+            grouped.setdefault(row["claim_id"], []).append(row)
+        identifiers: tuple[str, ...] = tuple(
+            self.session.scalars(
+                select(event_external_ids.c.id_value).where(
+                    event_external_ids.c.event_id == str(event_id),
+                    event_external_ids.c.scope_key == event["scope_key"],
+                )
+            )
+        )
+        document_cache: DocumentCache = {}
+        proof_rows: tuple[RowMapping, ...] = ()
+        claim_rows: tuple[RowMapping, ...] = ()
+        proof_inputs: list[object] = []
 
         def add_edge(
             relation_type: RelationType,
@@ -317,8 +823,9 @@ class EvidenceGraphReadService:
             nodes[subject.id] = subject
             nodes[target.id] = target
             previous = edges.get(edge_id)
-            revision_ids = {UUID(row["revision_id"])}
-            evidence_ids = {UUID(row["evidence_id"])}
+            supporting_rows = claim_rows if relation_type == "same_event" else proof_rows
+            revision_ids = {UUID(item["revision_id"]) for item in supporting_rows}
+            evidence_ids = {UUID(item["evidence_id"]) for item in supporting_rows}
             claim_ids = {UUID(row["claim_id"])}
             if previous:
                 revision_ids.update(previous.source_revision_ids)
@@ -336,12 +843,22 @@ class EvidenceGraphReadService:
                 reason=reason,
             )
 
-        for row in rows[:MAX_SUPPORT_ROWS]:
-            if not _verified_span(row):
+        for group in grouped.values():
+            claim_rows = tuple(group)
+            support = self._validated_support(
+                claim_rows, valid_rows, identifiers, document_cache, event_id
+            )
+            proof_inputs.append(
+                [
+                    group[0]["claim_id"],
+                    None if support is None else [dict(item) for item in support[1]],
+                ]
+            )
+            if support is None:
                 continue
-            scope = _scope_of(row, ("claim_", "revision_", "document_", "source_", "evidence_"))
-            if event_scope.visibility == "tenant":
-                scope = event_scope
+            value, proof_rows, scope = support
+            scope = _narrow_scope((scope, event_scope))
+            row = group[0]
             revision = GraphNode(
                 id=_identity("source_revision", scope, row["revision_id"]),
                 kind="source_revision",
@@ -353,11 +870,8 @@ class EvidenceGraphReadService:
             )
             if event["event_type"] != "vulnerability" or row["schema_version"] != 3:
                 continue
-            value = row["object_json"]
-            if row["predicate"] != row["value_kind"]:
-                raise ValueError("graph fact value disagrees with predicate")
-            if row["predicate"] == "version_assertion":
-                version = VersionAssertionValue.model_validate(value)
+            if isinstance(value, VersionAssertionValue):
+                version = value
                 if (
                     version.comparison_support != "supported"
                     or version.scheme == "unknown"
@@ -394,8 +908,8 @@ class EvidenceGraphReadService:
                         scope=scope,
                     )
                     add_edge("remediated_by", root, remediation, scope, row, action)
-            elif row["predicate"] == "atlas_mapping":
-                atlas = AtlasMappingValue.model_validate(value)
+            elif isinstance(value, AtlasMappingValue):
+                atlas = value
                 technique = GraphNode(
                     id=_identity("atlas", scope, [atlas.technique_id, atlas.taxonomy_version]),
                     kind="atlas",
@@ -403,9 +917,9 @@ class EvidenceGraphReadService:
                     scope=scope,
                 )
                 add_edge("mapped_atlas", root, technique, scope, row, atlas.mechanism)
-            elif row["predicate"] == "literature_reference":
-                literature = LiteratureReferenceValue.model_validate(value)
-                target_scope = self._paper_scope(literature)
+            elif isinstance(value, LiteratureReferenceValue):
+                literature = value
+                target_scope = self._paper_scope(literature, document_cache)
                 if target_scope is None:
                     continue
                 if target_scope.visibility == "tenant":
@@ -458,6 +972,26 @@ class EvidenceGraphReadService:
             "gaps": [gap.model_dump(mode="json") for gap in gaps],
         }
         serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        input_state = {
+            "event": dict(event),
+            "rows": [dict(item) for item in rows],
+            "identifiers": sorted(identifiers),
+            "proofs": proof_inputs,
+            "documents": [
+                [
+                    str(key),
+                    None
+                    if value is None
+                    else [value[0].model_dump(mode="json"), value[1].model_dump(mode="json")],
+                ]
+                for key, value in sorted(document_cache.items())
+            ],
+        }
+        self.input_sha256 = hashlib.sha256(
+            json.dumps(
+                input_state, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
+            ).encode()
+        ).hexdigest()
         return GraphSnapshot.model_validate(
             {**payload, "content_sha256": hashlib.sha256(serialized.encode()).hexdigest()}
         )

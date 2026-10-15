@@ -1,16 +1,18 @@
 """证据图只读路由工厂；会话、隔离事务与固定错误沿用知识 API 的边界。"""
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ai_intel.api.auth_routes import SESSION_COOKIE_NAME
+from ai_intel.api.auth_state import lock_authenticated_scope
 from ai_intel.api.authentication import (
     AuthenticationSessionService,
     InvalidCredentialsError,
@@ -18,7 +20,11 @@ from ai_intel.api.authentication import (
 )
 from ai_intel.api.problems import problem_response
 from ai_intel.domain.access import READ_PUBLIC, CrossTenantAccessError, PermissionDeniedError
-from ai_intel.knowledge.evidence_graph import EvidenceGraphReadService, GraphSnapshot
+from ai_intel.knowledge.evidence_graph import (
+    EvidenceGraphReadService,
+    GraphSnapshot,
+    GraphSnapshotChangedError,
+)
 
 
 def build_graph_router(
@@ -53,9 +59,28 @@ def build_graph_router(
                 )
             with Session(engine) as session:
                 session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
-                return EvidenceGraphReadService(session, scope).event_graph(
-                    event_id, max_nodes, max_edges
-                )
+                reader = EvidenceGraphReadService(session, scope)
+                epochs = reader.read_scope_epochs()
+                candidate = reader.event_graph(event_id, max_nodes, max_edges)
+                candidate_input = reader.input_sha256
+            with Session(engine) as session, session.begin():
+                session.connection(execution_options={"isolation_level": "READ COMMITTED"})
+                current = lock_authenticated_scope(session.connection(), token, datetime.now(UTC))
+                if current != scope:
+                    raise PermissionDeniedError("graph authorization changed")
+                current.requires(READ_PUBLIC)
+                reader = EvidenceGraphReadService(session, current)
+                reader.lock_graph_inputs(event_id)
+                refreshed = reader.event_graph(event_id, max_nodes, max_edges)
+                current_epochs = reader.read_scope_epochs(lock=True)
+                if (
+                    candidate_input is None
+                    or reader.input_sha256 != candidate_input
+                    or current_epochs != epochs
+                    or refreshed.content_sha256 != candidate.content_sha256
+                ):
+                    raise GraphSnapshotChangedError("graph snapshot changed")
+                return JSONResponse(content=refreshed.model_dump(mode="json"))
         except (SessionExpiredError, InvalidCredentialsError):
             return problem_response(request, 401, "session_expired", "session is not valid")
         except PermissionDeniedError:
@@ -65,6 +90,10 @@ def build_graph_router(
         except CrossTenantAccessError:
             return problem_response(
                 request, 404, "not_found", "requested resource is not available"
+            )
+        except GraphSnapshotChangedError:
+            return problem_response(
+                request, 409, "graph_snapshot_changed", "graph changed before response", True
             )
         except (SQLAlchemyError, ValueError):
             return problem_response(
