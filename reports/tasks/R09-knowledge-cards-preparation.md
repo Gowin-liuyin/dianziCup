@@ -1,6 +1,6 @@
 # R09 · 公开知识卡准备切片
 
-记录时间：2026-10-16T01:46:58.797852+08:00。本切片 `awaiting_review`，实现 `complete`
+记录时间：2026-10-16T01:47:39.328004+08:00。本切片 `awaiting_review`，实现 `complete`
 限于内部候选抽取边界；整 R09 仍是未完成的工作包，不能据此验收整
 R09/T09/T14/T15/T22。
 
@@ -102,6 +102,10 @@ src/tests，未安装/下载模型或新依赖。
 material_style_width_recheck 与 material_format_check 均 exit 0。
 没有修改业务代码或放宽规则，代码冻结断言和材料哈希自检真实执行通过。
 
+含原始日志的 raw_material_diff_check 为 exit 2：CBM schema 输出尾部空行、
+git 原始 diff context、pytest red 诊断含空行尾空白。原日志保留没有清洗；
+本片业务/测试源代码的 code_diff_check 已为 exit 0，未新增忽略规则。
+
 | 检查 | 实际 +08 时钟 | child exit | 日志 |
 |---|---|---|---|
 | `label_red_utf8` | 2026-10-16T01:31:09.654047+08:00 → 2026-10-16T01:31:11.190423+08:00 | 1 | [label_red_utf8.log](../runs/recovery_r09_knowledge_cards_20261016/label_red_utf8.log) |
@@ -135,6 +139,7 @@ material_style_width_recheck 与 material_format_check 均 exit 0。
 | `material_style_recheck` | 2026-10-16T01:45:18.111787+08:00 → 2026-10-16T01:45:18.282417+08:00 | 1 | [material_style_recheck.log](../runs/recovery_r09_knowledge_cards_20261016/material_style_recheck.log) |
 | `material_style_width_recheck` | 2026-10-16T01:46:10.402182+08:00 → 2026-10-16T01:46:10.538640+08:00 | 0 | [material_style_width_recheck.log](../runs/recovery_r09_knowledge_cards_20261016/material_style_width_recheck.log) |
 | `material_format_check` | 2026-10-16T01:46:10.644967+08:00 → 2026-10-16T01:46:10.780681+08:00 | 0 | [material_format_check.log](../runs/recovery_r09_knowledge_cards_20261016/material_format_check.log) |
+| `raw_material_diff_check` | 2026-10-16T01:47:36.791280+08:00 → 2026-10-16T01:47:36.854631+08:00 | 2 | [raw_material_diff_check.log](../runs/recovery_r09_knowledge_cards_20261016/raw_material_diff_check.log) |
 
 ## CBM、调用方与精确冻结
 

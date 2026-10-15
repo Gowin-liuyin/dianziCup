@@ -124,6 +124,7 @@ def main() -> None:
         "material_style_recheck",
         "material_style_width_recheck",
         "material_format_check",
+        "raw_material_diff_check",
     )
     command_rows = []
     for name in command_names:
@@ -229,6 +230,10 @@ src/tests，未安装/下载模型或新依赖。
 根因为 Ruff 按中文显示宽度计数，修正材料文字包行后
 material_style_width_recheck 与 material_format_check 均 exit 0。
 没有修改业务代码或放宽规则，代码冻结断言和材料哈希自检真实执行通过。
+
+含原始日志的 raw_material_diff_check 为 exit 2：CBM schema 输出尾部空行、
+git 原始 diff context、pytest red 诊断含空行尾空白。原日志保留没有清洗；
+本片业务/测试源代码的 code_diff_check 已为 exit 0，未新增忽略规则。
 
 | 检查 | 实际 +08 时钟 | child exit | 日志 |
 |---|---|---|---|
