@@ -1,0 +1,35 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___ test_unconfirmed_clause_scope_gives_quote_and_limit_not_ruling_t22_c06 ____
+
+    def test_unconfirmed_clause_scope_gives_quote_and_limit_not_ruling_t22_c06() -> None:
+        """T22-C06: 无法确认条款适用范围 → 给原文和局限, 不生成合规裁决。"""
+        card = PolicyCard(
+            document_id="pol-3",
+            issuer="ORG",
+            document_number="P-2",
+            version_label="1.0",
+            status="effective",
+            published_at="2023-01-01",
+            effective_at="2023-01-01",
+            scope_text="unknown",
+            clause_reference="4.2",
+            original_text="Operators shall restrict model access.",
+            summary_text="Summary.",
+        )
+        message = describe_policy_applicability(card)
+        assert "Operators shall restrict model access." in message
+        assert "limitation recorded" in message and "no compliance ruling" in message
+        assert "must" not in message.lower()
+        assert verification_label(author_claimed=True, team_reproduced=False) == "author_reported"
+        assert verification_label(author_claimed=True, team_reproduced=True) == "team_reproduced"
+>       assert verification_label(author_claimed=False, team_reproduced=False) == "unknown"
+E       AssertionError: assert 'rule_inferred_for_asset' == 'unknown'
+E         
+E         - unknown
+E         + rule_inferred_for_asset
+
+tests\contract\test_t22_research_and_document_links.py:117: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/contract/test_t22_research_and_document_links.py::test_unconfirmed_clause_scope_gives_quote_and_limit_not_ruling_t22_c06
+1 failed, 5 deselected in 0.22s

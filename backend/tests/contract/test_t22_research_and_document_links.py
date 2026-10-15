@@ -114,9 +114,7 @@ def test_unconfirmed_clause_scope_gives_quote_and_limit_not_ruling_t22_c06() -> 
     assert "must" not in message.lower()
     assert verification_label(author_claimed=True, team_reproduced=False) == "author_reported"
     assert verification_label(author_claimed=True, team_reproduced=True) == "team_reproduced"
-    assert (
-        verification_label(author_claimed=False, team_reproduced=False) == "rule_inferred_for_asset"
-    )
+    assert verification_label(author_claimed=False, team_reproduced=False) == "unknown"
     strong_without_support = classify_relation("ev-1", "p-1", "provides_defense", "")
     assert strong_without_support.link_state == "candidate"
     with pytest.raises(ResearchLinkingError):
