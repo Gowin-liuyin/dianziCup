@@ -7,7 +7,6 @@ import pytest
 from ai_intel.assessment.version_ranges import contains_version, evaluate_version_assertion
 from ai_intel.domain.enrichment_values import VersionAssertionValue, VersionInterval
 
-
 INVALID_BRANCHES = (
     "",
     " ",
