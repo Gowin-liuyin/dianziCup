@@ -4,7 +4,7 @@ export const graphNodeKinds = ["event", "source_revision", "component_version", 
 export const graphRelationKinds = ["same_event", "affects_component_version", "mapped_atlas", "related_paper", "remediated_by", "component_version_vulnerability"] as const;
 export type GraphNodeKind = typeof graphNodeKinds[number];
 export type GraphRelationKind = typeof graphRelationKinds[number];
-export type GraphRuleVersion = "r10-graph-1.0.0" | "r10-graph-1.1.0";
+export type GraphRuleVersion = "r10-graph-1.0.0" | "r10-graph-1.1.0" | "r10-graph-1.2.0";
 export interface GraphScope { visibility: "public" | "tenant"; tenant_id: string | null }
 export interface GraphNode { id: string; kind: GraphNodeKind; label: string; scope: GraphScope }
 export interface GraphEdge {
@@ -55,7 +55,7 @@ function scope(value: unknown): GraphScope {
   return { visibility, tenant_id: tenant };
 }
 function ruleVersion(value: unknown): GraphRuleVersion {
-  return enumeration(value, ["r10-graph-1.0.0", "r10-graph-1.1.0"]);
+  return enumeration(value, ["r10-graph-1.0.0", "r10-graph-1.1.0", "r10-graph-1.2.0"]);
 }
 function node(value: unknown): GraphNode {
   const fields = record(value, ["id", "kind", "label", "scope"]);

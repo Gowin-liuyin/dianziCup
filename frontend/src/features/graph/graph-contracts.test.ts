@@ -17,6 +17,15 @@ describe("R17 frozen graph schema boundary", () => {
     const result = parseGraphSnapshot(graphFixture("r10-graph-1.1.0"));
     expect(result.schema_version).toBe(1); expect(result.rule_version).toBe("r10-graph-1.1.0"); expect(result.edges.every((edge) => edge.rule_or_model_version === "r10-graph-1.1.0")).toBe(true);
   });
+  it("accepts current 1.2 metadata while retaining the schema1 evidence identifiers", () => {
+    const snapshot = graphFixture();
+    const input = { ...snapshot, rule_version: "r10-graph-1.2.0", edges: snapshot.edges.map((edge) => ({ ...edge, rule_or_model_version: "r10-graph-1.2.0" })) };
+    const result = parseGraphSnapshot(input);
+    expect(result.schema_version).toBe(1);
+    expect(result.rule_version).toBe("r10-graph-1.2.0");
+    expect(result.edges[0]?.rule_or_model_version).toBe("r10-graph-1.2.0");
+    expect(result.edges[0]?.evidence_span_ids).toEqual([fixtureGraphId(30)]);
+  });
   it.each([
     ["extra field", { ...graphFixture(), source_uri: "javascript:alert(1)" }],
     ["schema", { ...graphFixture(), schema_version: 2 }],
@@ -33,8 +42,8 @@ describe("R17 frozen graph schema boundary", () => {
     ["scope mismatch", { ...graphFixture(), nodes: [{ ...graphFixture().nodes[0], scope: { visibility: "public", tenant_id: "private" } }, ...graphFixture().nodes.slice(1)] }],
     ["future gap", { ...graphFixture(), gaps: [{ relation_type: "related_paper", status: "unknown", reason: "invented" }] }],
     ["hash", { ...graphFixture(), content_sha256: "broken" }],
-    ["unknown rule", { ...graphFixture(), rule_version: "r10-graph-1.2.0" }],
-    ["unknown edge rule", { ...graphFixture(), edges: [{ ...graphFixture().edges[0], rule_or_model_version: "r10-graph-1.2.0" }] }],
+    ["unknown rule", { ...graphFixture(), rule_version: "r10-graph-1.3.0" }],
+    ["unknown edge rule", { ...graphFixture(), edges: [{ ...graphFixture().edges[0], rule_or_model_version: "r10-graph-1.3.0" }] }],
   ])("rejects %s rather than falling back to a demo", (_label, input) => {
     expect(() => parseGraphSnapshot(input)).toThrow(ApiProblem);
   });
