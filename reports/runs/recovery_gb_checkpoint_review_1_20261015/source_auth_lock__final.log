@@ -1,0 +1,39 @@
+.F..
+================================== FAILURES ===================================
+___ test_source_authorization_changed_before_commit_lock_blocks_queue[role] ___
+
+api_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_gb_stage_review_20261015_bba59f55?options=-c+search_path%3Dtest_r02_schema_6607f7e3c98245eb8b2a1139488dcba8+-c+statement_timeout%3D10000)
+clients = (<function clients.<locals>.create at 0x0000020703304AE0>, <fastapi.applications.FastAPI object at 0x000002070328BC50>, <ai_intel.api.authentication.AuthenticationSessionService object at 0x000002070328BEF0>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000020702E79BB0>
+change = 'role'
+
+    @pytest.mark.parametrize('change',['logout','role','tenant'])
+    def test_source_authorization_changed_before_commit_lock_blocks_queue(api_engine,clients,monkeypatch,change):
+        client = clients[0](Role.SYSTEM_ADMIN,None)
+        headers = write_headers(client,'independent-source-before-auth-lock-' + change)
+        user_id = client.get('/v1/auth/me').json()['user_id']
+        original = source_routes.lock_authenticated_scope
+        def changed_before_lock(connection,token,at):
+            if change == 'logout':
+                clients[2].logout(client.cookies[SESSION_COOKIE_NAME])
+            else:
+                with api_engine.begin() as writer:
+                    writer.execute(update(users).where(users.c.user_id == user_id).values(**({'role':'viewer'} if change == 'role' else {'tenant_id':'independent-other-tenant'})))
+            return original(connection,token,at)
+        monkeypatch.setattr(source_routes,'lock_authenticated_scope',changed_before_lock)
+        response = client.post('/v1/sources/nvd_ollama/collect',json={'window_end':'2026-10-15T00:00:00Z','max_pages':1},headers=headers)
+>       assert response.status_code == (401 if change == 'logout' else 403)
+E       assert 503 == 403
+E        +  where 503 = <Response [503 Service Unavailable]>.status_code
+
+D:\wt\gb-stage-review\reports\runs\recovery_gb_checkpoint_review_1_20261015\test_review_source_auth_lock.py:31: AssertionError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\wt\gb-stage-final\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\gb-stage-review\reports\runs\recovery_gb_checkpoint_review_1_20261015\source_auth_lock__final.xml -
+=========================== short test summary info ===========================
+FAILED ..\..\gb-stage-review\reports\runs\recovery_gb_checkpoint_review_1_20261015\test_review_source_auth_lock.py::test_source_authorization_changed_before_commit_lock_blocks_queue[role]
+1 failed, 3 passed, 1 warning in 5.15s

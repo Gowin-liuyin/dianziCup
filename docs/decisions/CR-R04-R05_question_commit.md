@@ -15,3 +15,7 @@ PG model_trace记录独立reservation_id和UTC到期时刻。单预约420秒是�
 回滚：关闭问答POST入口与新调用，保留已存答案、用量、失败及0014表，使用前向修复；不降库、不删除历史、不回退fixture或旧可空键/无权限锁实现。部署容器的semantic extra、内存和受控出网仍须主控另行接通，当前Windows真实段并非容器复现证明。
 
 任务与测试影响：R05/R17当前切片、T18/T20/T30/T31/T43的后续合并验收；R14/R20最终恢复仍须调度/运维覆盖。已有34真实PG/HTTP/合同case通过（显式合成模型，不是live），最后SQL expiry条件另2PG通过；82源码mypy/Ruff通过。新独立pipeline reviewer已证实三项原缺陷（缺键、永久pending、撤销/迁租提交竞态），需在新冻结SHA独立复验到期、late owner、真实logout/tenant先后顺序和当前答案历史，未取得意见前不签本补充或整R05/G-B。真实公开单问旧23c代码有效key下17.009秒、两次供应商调用及GET/重放成功，仅该有限链路，不替新修复版本背书。
+
+## 独立核对登记 · 2026-10-15T19:06:14+08:00
+
+当前状态accepted，仅本记录对既有授权的实现落实；前述awaiting_review为保留历史。新非作者/root/g_b_checkpoint_review固定1927eeb00a7e0c1335f76340b0382f46102f08f2已核对合同/兼容/迁移/回滚并独立复跑，见reports/reviews/recovery/G-B-checkpoint-review-1.md最终Ship；未新增重大决策、未削减评分/原任务。登记文档待同reviewer核对差异，业务代码未改。

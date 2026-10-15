@@ -9,3 +9,7 @@
 backend dev依赖从jsonschema>=4.23,<5改为官方jsonschema[format-nongpl]>=4.23,<5并更新uv.lock，补RFC3339、URI等既有格式的成熟校验实现；没有自写日期正则。运行时依赖/公开API没有变化，不把dev检查变成付费模型或网络调用。uv add命令退出0，但首次独立开始/结束时间未记录，不按mtime补写；之后真实frozen命令2026-10-15T18:31:40+08:00至2026-10-15T18:32:07+08:00，原56计划检查全部通过，26.05s。日志gb_schema_plan_formats.*；该合同/计划检查不计产品coverage分母，原产品60%门另行保持。
 
 兼容/迁移：开发/CI/复现环境必须uv sync --frozen安装锁定dev依赖，production no-dev不引入测试工具。原合法带时区例不变，原非法无时区负例恢复拒绝。回滚保留该已验证锁/校验工具；若上游依赖不可用，标环境阻塞并前向修复，不删负例或关闭FormatChecker。新增的可选格式依赖是执行已有格式合同所需；未新增通用框架。
+
+## 独立核对登记 · 2026-10-15T19:06:14+08:00
+
+当前状态accepted，仅本记录对既有授权的实现落实；前述awaiting_review为保留历史。新非作者/root/g_b_checkpoint_review固定1927eeb00a7e0c1335f76340b0382f46102f08f2已核对合同/兼容/迁移/回滚并独立复跑，见reports/reviews/recovery/G-B-checkpoint-review-1.md最终Ship；未新增重大决策、未削减评分/原任务。登记文档待同reviewer核对差异，业务代码未改。

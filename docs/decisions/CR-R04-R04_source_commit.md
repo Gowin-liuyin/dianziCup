@@ -23,3 +23,7 @@ HTTP先执行认证/CSRF，再校验可见ASCII字符1–200的必需键；错�
 ## 测试、任务与范围
 
 R04、原T06/T07/T35的来源HTTP切片；不签原T整卡，不影响R05模型接口、R12多跳或盲测/分母。新增test_r04_source_http_idempotency_pg.py：缺/空/不可见/超长key、两主体、两来源、双前缀重放/冲突、双线程同键、初始scope后logout/角色变化共11项。原红8/3，修复2026-10-15T18:39:29+08:00至2026-10-15T18:39:41+08:00 exit0 11pass；全原unit/contract/security原60门1419pass、10明确PG另测，coverage73.71%；mypy82/Ruff通过。精确argv/起止/exit/日志：reports/runs/recovery_r05_controller_20261015/source_http_*。专项与阶段独立复验尚待新SHA。
+
+## 独立核对登记 · 2026-10-15T19:06:14+08:00
+
+当前状态accepted，仅本记录对既有授权的实现落实；前述awaiting_review为保留历史。新非作者/root/g_b_checkpoint_review固定1927eeb00a7e0c1335f76340b0382f46102f08f2已核对合同/兼容/迁移/回滚并独立复跑，见reports/reviews/recovery/G-B-checkpoint-review-1.md最终Ship；未新增重大决策、未削减评分/原任务。登记文档待同reviewer核对差异，业务代码未改。

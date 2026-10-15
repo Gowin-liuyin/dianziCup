@@ -1,3 +1,11 @@
+## 当前权威快照 · 2026-10-15T19:06:14+08:00
+
+集成codex/full-delivery-recovery，已测/已审代码1927eeb00a7e0c1335f76340b0382f46102f08f2；G-A accepted已push，远端最后核对fa5deb0d0b519869ca92d34d9ffe7d8e39b06fb4；G-B依据新/root/g_b_checkpoint_review 19:01:00+08最终限定Ship登记accepted，仅R04/R05切片，文档差异待同reviewer复核，G-B尚未push。当前G-C，原T整卡状态/全部映射验收不变。最后独立1419/73.71%原60门、56计划、254前端/17浏览器及各真实PG套件通过；真实问答dc014完整10212.6966ms不达5秒，累计供应商8次fee unknown，无金标/正式评测。
+
+并行4槽：root独占公共schema/迁移/锁/状态/集成/Git，D:/wt/r06-integration@1ff独立草稿catalog/persistence0015（8PG/1019unit，未审未接线，尚未合1927）；r06_feed_parsers D:/wt/r06-feeds修3初审Must冻结6b7dd7e881bb822e83b55f8302f7aefe565f4940、1170pass，补证据后结束待原reviewer；r06_repository_community_adapters D:/wt/r06-repos修OSV7显式null，1250pass待冻结及原reviewer；新native_cpu_limit_diagnosis只读诊断原WindowsCPU子进程偶发8s timeout，1927独立WT，不改业务/门槛。来源准备e4f已独立有限Ship，不计R06产品live。新包只有复核后才集成，不能只把函数写成accepted。
+
+API/Vite/worker/beat段均到期结束；MinIO段3 18:57:02结束，段4 18:57:49启动、47秒间断，20:57:49硬截止，工具session31426，日志reports/runs/recovery_r04_minio_segment4_20261015/；Docker总截止2026-10-17T21:49:15+08。只有有界服务运行，无会话外后台承诺。秘密/缓存/连接仓外；双人金标/裁决与FOFA授权资产范围缺，PPT用户后置；容器semantic/容量/固定出网待R20，RFC850非阻断误blocked债务待修。下一步文档freeze/review/正常push核对→R06真实入口及持续采集→R07–R10；R24-A→R23→R24-B不变。
+
 ## 当前权威快照 · 2026-10-15T18:06:30+08:00
 
 集成分支codex/full-delivery-recovery；代码HEAD 7ed73540c001a4e7f5b5fa5dc2948c4b4635590f。G-A accepted，远端最后核对fa5deb0d0b519869ca92d34d9ffe7d8e39b06fb4，2026-10-15T15:41:48+08:00。G-B功能候选awaiting_review，未阶段push；整R04/R05仅候选complete，原T整卡状态与全部验收不变。各层整卡verification保持not_run，限定真实证据见G-B报告；不能拿未整卡登记当作无功能，也不能拿组件Ship反推accepted。
@@ -428,3 +436,7 @@ CBM portable v0.11.0存在；主控cache=/tmp/dianzi-cbm-recovery-root-20261014/
 - [round 256b] G1-CLOSE-c 终态送达: ②⑤⑥ 全 closed（158 passed、cov 89.99%、mypy 0、ruff 0, exit 0）; G1 结转 6 项全部闭合（①前提修正/②留痕/③部分-6DTO在册/④两分支/⑤retry_wait/⑥重定向判别）, G2-GATE 附条件达成; 新增 tests/contract/test_t07_jobs_outbox.py + test_t08_network_redirects.py; Goal 保持 active, 恢复后第一步 G3-T40。
 - [resume r1] 恢复核对: HEAD 097b528、工作树干净、T40 卡已读；并行派发 T40-A 合同核对 + T40-B 前端准备；下一步 按合同实现 T40 认证路径（T40-C01—C06）。
 - [resume r2] T40-B 报告收讫（reports/reviews/T40_frontend_prep.md）: 前端极简从零建/权威命令 npm run {lint,typecheck,test,build}/tsconfig include 缺 tests/后端 auth HTTP 路由未挂载（T06 仅领域服务）→ 决定: 按 resume 指令'最小前置修复'挂 auth/health HTTP 路由（待 T40-A 合同定形），T40-C01/C05 在路由就绪前 fixture 标 live=blocked 不冒充。
+
+## 登记修订 · 2026-10-15T19:08:27+08:00
+
+主控首次登记漏同步R04/R05输出切片，原计划检查49pass/7fail，日志gb_registration_plan保留；根因是只改R聚合状态未改原T内slice_acceptance，与R00合同不一致。现依据相同独立Ship登记11输出切片及历史，原T整卡status/implementation/verification均未改变；没有改manifest或检查器。复验见gb_registration_plan_recheck。此为登记错误，不是降低验收门。

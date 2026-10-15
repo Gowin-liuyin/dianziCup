@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="4" time="5.150" timestamp="2026-10-15T18:48:50.276774+08:00" hostname="yin"><testcase classname="gb-stage-review.reports.runs.recovery_gb_checkpoint_review_1_20261015.test_review_source_auth_lock" name="test_source_authorization_changed_before_commit_lock_blocks_queue[logout]" time="1.312" /><testcase classname="gb-stage-review.reports.runs.recovery_gb_checkpoint_review_1_20261015.test_review_source_auth_lock" name="test_source_authorization_changed_before_commit_lock_blocks_queue[role]" time="1.078"><failure message="assert 503 == 403&#10; +  where 503 = &lt;Response [503 Service Unavailable]&gt;.status_code">api_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_gb_stage_review_20261015_bba59f55?options=-c+search_path%3Dtest_r02_schema_6607f7e3c98245eb8b2a1139488dcba8+-c+statement_timeout%3D10000)
+clients = (&lt;function clients.&lt;locals&gt;.create at 0x0000020703304AE0&gt;, &lt;fastapi.applications.FastAPI object at 0x000002070328BC50&gt;, &lt;ai_intel.api.authentication.AuthenticationSessionService object at 0x000002070328BEF0&gt;)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000020702E79BB0&gt;
+change = 'role'
+
+    @pytest.mark.parametrize('change',['logout','role','tenant'])
+    def test_source_authorization_changed_before_commit_lock_blocks_queue(api_engine,clients,monkeypatch,change):
+        client = clients[0](Role.SYSTEM_ADMIN,None)
+        headers = write_headers(client,'independent-source-before-auth-lock-' + change)
+        user_id = client.get('/v1/auth/me').json()['user_id']
+        original = source_routes.lock_authenticated_scope
+        def changed_before_lock(connection,token,at):
+            if change == 'logout':
+                clients[2].logout(client.cookies[SESSION_COOKIE_NAME])
+            else:
+                with api_engine.begin() as writer:
+                    writer.execute(update(users).where(users.c.user_id == user_id).values(**({'role':'viewer'} if change == 'role' else {'tenant_id':'independent-other-tenant'})))
+            return original(connection,token,at)
+        monkeypatch.setattr(source_routes,'lock_authenticated_scope',changed_before_lock)
+        response = client.post('/v1/sources/nvd_ollama/collect',json={'window_end':'2026-10-15T00:00:00Z','max_pages':1},headers=headers)
+&gt;       assert response.status_code == (401 if change == 'logout' else 403)
+E       assert 503 == 403
+E        +  where 503 = &lt;Response [503 Service Unavailable]&gt;.status_code
+
+D:\wt\gb-stage-review\reports\runs\recovery_gb_checkpoint_review_1_20261015\test_review_source_auth_lock.py:31: AssertionError</failure></testcase><testcase classname="gb-stage-review.reports.runs.recovery_gb_checkpoint_review_1_20261015.test_review_source_auth_lock" name="test_source_authorization_changed_before_commit_lock_blocks_queue[tenant]" time="1.007" /><testcase classname="gb-stage-review.reports.runs.recovery_gb_checkpoint_review_1_20261015.test_review_source_auth_lock" name="test_source_commit_lock_blocks_logout_until_job_transaction_commits" time="0.991" /></testsuite></testsuites>

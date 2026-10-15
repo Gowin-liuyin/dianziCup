@@ -1,0 +1,69 @@
+{"status_codes": [202, 202, 202, 202], "distinct_jobs": 4, "pg_job_count": 4}
+F{"status_codes": [202, 202], "same_job": true}
+F{"status_codes": [202, 409]}
+F
+================================== FAILURES ===================================
+___________ test_missing_source_write_key_is_rejected_before_queue ____________
+
+api_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_gb_stage_review_20261015_bba59f55?options=-c+search_path%3Dtest_r02_schema_0963790bd99f491cab96876bce48ea54+-c+statement_timeout%3D10000)
+clients = (<function clients.<locals>.create at 0x000001D2BA36FA60>, <fastapi.applications.FastAPI object at 0x000001D2BA2FF350>, <ai_intel.api.authentication.AuthenticationSessionService object at 0x000001D2BA2FFE60>)
+
+    def test_missing_source_write_key_is_rejected_before_queue(api_engine,clients):
+        client = clients[0](Role.SYSTEM_ADMIN,None)
+        headers = write_headers(client)
+        responses = [client.post(prefix + '/sources/nvd_ollama/collect',json={'window_end':'2026-10-15T00:00:00Z','max_pages':1},headers=headers) for prefix in ['/v1','/v1','/api/v1','/api/v1']]
+        with api_engine.connect() as connection:
+            count = connection.scalar(select(func.count()).select_from(job_runs))
+        print(json.dumps({'status_codes':[response.status_code for response in responses],'distinct_jobs':len({response.json().get('job_id') for response in responses}),'pg_job_count':count}))
+>       assert [response.status_code for response in responses] == [422] * 4
+E       assert [202, 202, 202, 202] == [422, 422, 422, 422]
+E         
+E         At index 0 diff: 202 != 422
+E         Use -v to get more diff
+
+..\reports\runs\recovery_gb_checkpoint_review_1_20261015\test_review_source_idempotency.py:24: AssertionError
+_____________ test_source_key_is_scoped_to_authenticated_subject ______________
+
+api_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_gb_stage_review_20261015_bba59f55?options=-c+search_path%3Dtest_r02_schema_c828faa3db1c499e8cecd7f2130a6db6+-c+statement_timeout%3D10000)
+clients = (<function clients.<locals>.create at 0x000001D2BA8A2DE0>, <fastapi.applications.FastAPI object at 0x000001D2B9119DC0>, <ai_intel.api.authentication.AuthenticationSessionService object at 0x000001D2B911BAA0>)
+
+    def test_source_key_is_scoped_to_authenticated_subject(api_engine,clients):
+        first,second = clients[0](Role.SYSTEM_ADMIN,None),clients[0](Role.SYSTEM_ADMIN,None)
+        body = {'window_end':'2026-10-15T00:00:00Z','max_pages':1}
+        responses = [client.post('/v1/sources/nvd_ollama/collect',json=body,headers=write_headers(client,'independent-shared-subject-key')) for client in [first,second]]
+        assert all(response.status_code == 202 for response in responses)
+        print(json.dumps({'status_codes':[response.status_code for response in responses],'same_job':responses[0].json()['job_id'] == responses[1].json()['job_id']}))
+>       assert responses[0].json()['job_id'] != responses[1].json()['job_id']
+E       AssertionError: assert 'c77d124a-2d98-4895-9464-edc3365202b0' != 'c77d124a-2d98-4895-9464-edc3365202b0'
+
+..\reports\runs\recovery_gb_checkpoint_review_1_20261015\test_review_source_idempotency.py:33: AssertionError
+_____________ test_source_key_is_scoped_to_canonical_source_route _____________
+
+api_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_gb_stage_review_20261015_bba59f55?options=-c+search_path%3Dtest_r02_schema_80b2807be9c946e387637702bd01a6a5+-c+statement_timeout%3D10000)
+clients = (<function clients.<locals>.create at 0x000001D2BA938FE0>, <fastapi.applications.FastAPI object at 0x000001D2BA90B260>, <ai_intel.api.authentication.AuthenticationSessionService object at 0x000001D2BA897E90>)
+
+    def test_source_key_is_scoped_to_canonical_source_route(api_engine,clients):
+        client = clients[0](Role.SYSTEM_ADMIN,None)
+        body = {'window_end':'2026-10-15T00:00:00Z','max_pages':1}
+        headers = write_headers(client,'independent-shared-route-key')
+        responses = [client.post('/v1/sources/' + source + '/collect',json=body,headers=headers) for source in ['nvd_ollama','vllm_vendor']]
+        print(json.dumps({'status_codes':[response.status_code for response in responses]}))
+>       assert [response.status_code for response in responses] == [202,202]
+E       assert [202, 409] == [202, 202]
+E         
+E         At index 1 diff: 409 != 202
+E         Use -v to get more diff
+
+..\reports\runs\recovery_gb_checkpoint_review_1_20261015\test_review_source_idempotency.py:41: AssertionError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\wt\gb-stage-review\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\gb-stage-review\reports\runs\recovery_gb_checkpoint_review_1_20261015\source_idempotency__recheck.xml -
+=========================== short test summary info ===========================
+FAILED ..\reports\runs\recovery_gb_checkpoint_review_1_20261015\test_review_source_idempotency.py::test_missing_source_write_key_is_rejected_before_queue
+FAILED ..\reports\runs\recovery_gb_checkpoint_review_1_20261015\test_review_source_idempotency.py::test_source_key_is_scoped_to_authenticated_subject
+FAILED ..\reports\runs\recovery_gb_checkpoint_review_1_20261015\test_review_source_idempotency.py::test_source_key_is_scoped_to_canonical_source_route
+3 failed, 1 warning in 3.07s

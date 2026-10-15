@@ -1,0 +1,104 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_fifty_year_boundary_compares_full_date _________________
+
+    def test_fifty_year_boundary_compares_full_date():
+        now = datetime(2026,10,15,12,34,56,tzinfo=UTC)
+        response = FetchResult('https://api.github.com',429,'application/json',b'',redacted_headers={'Retry-After':'Saturday, 16-Oct-76 00:00:00 GMT'})
+        try:
+>           _http_failure(response,clock=lambda:now)
+
+D:\wt\gb-stage-review\reports\runs\recovery_gb_checkpoint_review_1_20261015\test_rfc850_debt.py:10: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+result = FetchResult(final_url='https://api.github.com', status_code=429, content_type='application/json', body=b'', redacted_headers={'Retry-After': 'Saturday, 16-Oct-76 00:00:00 GMT'}, request_fingerprint_sha256='')
+
+    def _http_failure(
+        result: FetchResult, *, clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+    ) -> None:
+        """限流期限不可确认或超出任务重试合同上限时阻塞，不能截短上游等待。"""
+        if result.status_code == 200:
+            return
+        if result.status_code == 401:
+            raise JobExecutionError("source_auth_denied", blocked=True)
+        if result.status_code in {403, 429}:
+            if len(result.redacted_headers) > 128:
+                raise JobExecutionError("source_rate_limited", blocked=True)
+            headers: dict[str, str] = {}
+            for name, value in result.redacted_headers.items():
+                if len(name) > 128:
+                    raise JobExecutionError("source_rate_limited", blocked=True)
+                field = name.casefold()
+                if field not in {"retry-after", "x-ratelimit-remaining", "x-ratelimit-reset"}:
+                    continue
+                if field in headers or len(value) > 128 or not value.isascii():
+                    raise JobExecutionError("source_rate_limited", blocked=True)
+                headers[field] = value.strip(" \t")
+            remaining = headers.get("x-ratelimit-remaining")
+            if remaining is not None and re.fullmatch(r"[0-9]{1,20}", remaining) is None:
+                raise JobExecutionError("source_rate_limited", blocked=True)
+            primary_limit = remaining is not None and int(remaining) == 0
+            retry_after = headers.get("retry-after")
+            if result.status_code == 403 and not primary_limit and retry_after is None:
+                raise JobExecutionError("source_auth_denied", blocked=True)
+            now = clock()
+            if now.tzinfo is None or now.utcoffset() is None:
+                raise JobExecutionError("source_rate_limited", blocked=True)
+            delay = 0.0
+            if primary_limit:
+                reset = headers.get("x-ratelimit-reset")
+                if reset is None or re.fullmatch(r"[0-9]{1,20}", reset) is None:
+                    raise JobExecutionError("source_rate_limited", blocked=True)
+                delay = max(delay, int(reset) - now.timestamp())
+            if retry_after is not None:
+                if re.fullmatch(r"[0-9]{1,20}", retry_after):
+                    delay = max(delay, int(retry_after))
+                else:
+                    short_day = r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)"
+                    long_day = r"(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)"
+                    month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+                    time = r"[0-9]{2}:[0-9]{2}:[0-9]{2}"
+                    obsolete_date = rf"{long_day}, [0-9]{{2}}-{month}-[0-9]{{2}} {time} GMT"
+                    date_patterns = (
+                        rf"{short_day}, [0-9]{{2}} {month} [0-9]{{4}} {time} GMT",
+                        obsolete_date,
+                        rf"{short_day} {month} (?: [0-9]|[0-9]{{2}}) {time} [0-9]{{4}}",
+                    )
+                    if not any(re.fullmatch(pattern, retry_after) for pattern in date_patterns):
+                        raise JobExecutionError("source_rate_limited", blocked=True)
+                    try:
+                        retry_at = parsedate_to_datetime(retry_after)
+                        if retry_at.tzinfo is None:
+                            retry_at = retry_at.replace(tzinfo=UTC)
+                        if re.fullmatch(obsolete_date, retry_after):
+                            upper_year = now.year + 50
+                            year = upper_year - (upper_year - retry_at.year % 100) % 100
+                            retry_at = retry_at.replace(year=year)
+                        delay = max(delay, (retry_at - now).total_seconds())
+                    except (ValueError, OverflowError):
+                        raise JobExecutionError("source_rate_limited", blocked=True) from None
+            elif not primary_limit:
+                delay = 30.0
+            if delay > 300:
+>               raise JobExecutionError("source_rate_limited", blocked=True)
+E               ai_intel.workers.executor.JobExecutionError: source_rate_limited
+
+src\ai_intel\ingestion\source_jobs.py:247: JobExecutionError
+
+During handling of the above exception, another exception occurred:
+
+    def test_fifty_year_boundary_compares_full_date():
+        now = datetime(2026,10,15,12,34,56,tzinfo=UTC)
+        response = FetchResult('https://api.github.com',429,'application/json',b'',redacted_headers={'Retry-After':'Saturday, 16-Oct-76 00:00:00 GMT'})
+        try:
+            _http_failure(response,clock=lambda:now)
+        except JobExecutionError as failure:
+>           assert failure.retry_after_seconds == 7 and not failure.blocked
+E           AssertionError: assert (None == 7)
+E            +  where None = JobExecutionError('source_rate_limited').retry_after_seconds
+
+D:\wt\gb-stage-review\reports\runs\recovery_gb_checkpoint_review_1_20261015\test_rfc850_debt.py:12: AssertionError
+- generated xml file: D:\wt\gb-stage-review\reports\runs\recovery_gb_checkpoint_review_1_20261015\rfc850_debt.xml -
+=========================== short test summary info ===========================
+FAILED ..\..\gb-stage-review\reports\runs\recovery_gb_checkpoint_review_1_20261015\test_rfc850_debt.py::test_fifty_year_boundary_compares_full_date
+1 failed in 1.00s

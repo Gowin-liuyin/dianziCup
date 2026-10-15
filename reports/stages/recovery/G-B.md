@@ -1,19 +1,19 @@
 # G-B · 真实来源、原文证据与模型问答
 
 文档首次创建时间：2026-10-15T13:48:37+08:00
-本次写作开始时间：2026-10-15T18:43:56+08:00
-本次写作结束时间：2026-10-15T18:43:56+08:00
-最后更新时间：2026-10-15T18:43:56+08:00
-阶段实际开始/结束时间：历史未单独记录，首个来源GET观测为2026-10-15T11:53:40+08:00，不能冒称阶段起点 / 尚未结束
-本报告证据截止时间：2026-10-15T18:43:56+08:00
+本次写作开始时间：2026-10-15T19:06:14+08:00
+本次写作结束时间：2026-10-15T19:06:14+08:00（本次独立意见登记）
+最后更新时间：2026-10-15T19:06:14+08:00
+阶段实际开始/结束时间：历史未单独记录开始；首个来源GET观测2026-10-15T11:53:40+08:00不是阶段起点 / 2026-10-15T19:01:00+08:00独立阶段门封存，不是连续服务时长
+本报告证据截止时间：2026-10-15T19:01:00+08:00（独立报告封存）；本次状态登记见写作时间
 主控/实现Agent：/root；各作者、工作树、文件所有权与冻结版本见progress/recovery_workstreams.md及任务报告
-独立审查Agent与报告：/root/g_b_checkpoint_review，固定1ff54965a0dd2e4f4a13245cee8dd59d2b3fdcfc初审在途；专项已封存；新发现精确字节缺陷待修复版本复核
-阶段状态：awaiting_review
+独立审查Agent与报告：/root/g_b_checkpoint_review；reports/reviews/recovery/G-B-checkpoint-review-1.md；固定1927最终Ship，三Must关闭；登记文档待同reviewer差异核对
+阶段状态：accepted（仅批准的R04/R05阶段切片，依据新非作者限定Ship；登记文档复核中）
 实现状态：complete（仅R04/R05本阶段功能候选；原T整卡、R12/R17和后段部署验收不在此提升）
-各层验证状态：unit/contract/integration/frontend/e2e/live已按所列限定范围通过；security原综合1418pass/1fail已精确修复单项复验passed，新候选全套待独立复跑；manual not_run。整阶段仍awaiting_review
+各层验证状态：unit/contract/integration/security/frontend/e2e passed仅本文与独立报告限定范围；live passed仅已测分段真实来源/模型/页面及独立溯源，非1927整版本新增外部复跑；manual not_run。正式指标未验收
 工作分支：codex/full-delivery-recovery
-已测代码SHA：dc014c960f19605c20e0d8e98a93e7c217f94cc6真实API/页面，799028ef637b61547683b7d210d2ca5df93bb1bc PG新增测试与纯回归；当前候选7ed73540c001a4e7f5b5fa5dc2948c4b4635590f
-已审代码SHA：dc014问答事务、a0a94f1007dfdb1811df327ca2f931034af33a2e前端、c83e1a03f2ffc474ba1a0365473a5eae1945f45c来源限流及下列早前专项；未用组件Ship替整阶段意见
+已测代码SHA：1927eeb00a7e0c1335f76340b0382f46102f08f2独立干净环境综合/PG/前端；dc014c960f19605c20e0d8e98a93e7c217f94cc6真实模型/API/页面；各早前分段不可拼同版本时长
+已审代码SHA：1927eeb00a7e0c1335f76340b0382f46102f08f2；独立报告最终Ship，文档登记提交SHA待冻结后复核
 提交/推送结果：G-B尚未阶段push；G-A远端fa5deb0d0b519869ca92d34d9ffe7d8e39b06fb4，2026-10-15T15:41:48+08:00已核对；实际台账reports/push/recovery_push_log.jsonl
 
 ## 1. 本阶段要解决的用户问题与验收范围
@@ -127,3 +127,35 @@ U03–U05/U07–U09/U11–U14当前仅原规划与部分骨架/准备，不由�
 - 实际产品live仍明确分别属于23c与dc014运行段；新候选只有source_routes.py来源HTTP边界及开发校验环境变化，问答/模型/检索/来源writer与worker逻辑未改。新来源POST/GET用真实PG回归证明，当前新候选完整外部IO/浏览器live未重跑，不拼同版本持续运行或性能。
 
 本轮尚不能阶段push或accepted。已有原PG49/35、原文25/删证据1、PG434 span/114 MinIO对象与dc014答案核对是独立阶段审查者亲自执行，其最终报告和新SHA复验结论待落盘。仅有限切片通过不替代R12/R17/R19–24。
+
+## 独立阶段意见登记 · 2026-10-15T19:06:14+08:00
+
+本次写作起止均为上列真实脚本执行时点；首次创建时间保持。新非作者/root/g_b_checkpoint_review在第三个全新WT D:/wt/gb-stage-final固定1927eeb00a7e0c1335f76340b0382f46102f08f2复跑并于2026-10-15T19:01:00+08:00封存限定Ship，主控据此登记accepted，仅R04/R05本阶段切片。旧段落与红日志是按时间保留的历史，当前结论以本节及顶部为准。未修改原T任务状态、金标、阈值、分母或盲测；后段原T合并验收仍全部存在。
+
+### 范围、独立验证和版本
+
+两固定源→受控网关→MinIO/PG不可变原文/永久证据→PG任务/游标/outbox→认证列表/详情→浏览器；单事件当前公开证据→真实E5/pgvector/重排→两轮生成/核验→认证/epoch/owner CAS→PG答案与固定引文。新来源HTTP键与认证锁仅1927真实PG复验，不把dc014旧live冒称1927外部复跑。
+
+最终1419纯unit/contract/security组合0fail/skip（10真实PG另测），5196/7049行=73.71258%，原60%门不变；56原计划检查；真实PG套件49、25、41、35、8、1以及来源原3负例、正式11和7合法撤权/锁顺序探针均exit0；套件重叠不可相加。前端254、type/lint/build及17浏览器fixture通过。全部cwd/命令/秒级起止/退出码/数据版本见独立报告第3/8节与reports/runs/recovery_gb_checkpoint_review_1_20261015/command_summary.json、final_metadata.json。初次浏览器缺缓存17失败是环境仪器错误，修正外部cache后同例17通过，原失败未删。真实模型未由reviewer重新付费，而是亲读核对434证据span/114对象/保存答案trace与原始浏览器结果，费用累计8次调用unknown。
+
+### 问题台账增补与关闭
+
+| 问题 | 输入、根因与影响 | 修复/复验与状态 |
+|---|---|---|
+| GB-HTTP-KEY | 两固定源POST缺key仍202；跨管理员同key折叠，跨来源碰撞；裸key幂等域缺主体/来源 | 1927认证后必需ASCII键、canonical actor/source域、事务认证锁。作者原8fail/3pass→11pass；独立原3负例与11正式、7撤权/PG锁探针通过。19:01:00+08:00审查封存关闭 |
+| GB-FORMAT | fresh frozen无date-time可选实现，原无时区负例被接受，计划55pass/1fail | 1927官方jsonschema[format-nongpl] dev extra/锁；独立新环境原56pass。封存关闭，无改样本 |
+| GB-BYTES | clean checkout autocrlf改变精确夹具hash/span，1418pass/1fail | 8c及1927精确路径保留原bytes；51分类及51source-origin独立通过，原manifest/regex/ignore未改；最终1419pass。封存关闭 |
+| GB-RFC850 | 完整未来50年边界误只看年份，例2076误blocked，1红保留 | 非阻断保守可用性债务，未提前重试，R06来源可用性继续修；未解决，负责人/root |
+| GC-CPU-LIMIT | 原R05 busy child 1 CPU秒，受并行负载时偶发8墙钟秒timeout，同参数可过 | 原红原样保留；新独立native_cpu_limit_diagnosis在1927诊断，尚未证明根因；不抬timeout/skip，不计G-B固定复跑失败 |
+
+### 当前效果、剩余与下一步
+
+暗色青绿/低亮动态拓扑背景、390宽度与reduced-motion已有真实截图；不是完整R17。真实修复版单问完整10212.6966ms，非≤5秒、非P50/P95、无金标准确率。R12多轮多跳、R06广来源、九维、图谱、资产、推荐/重判、Agent/MCP/插件与正式评测仍后段，未签。双人金标/裁决与授权资产范围仍缺，PPT用户后置。semantic extra/容量/受控出网的容器部署待R20；Windows成功不能代替Linux容器。
+
+阶段无新增重大决策；三实现补充CR及兼容/前向迁移/停止入口回滚记录由新阶段reviewer与源码核对。历史raw-key job保留按job_id读，无法猜actor迁移；旧无lease pending人工恢复，不能自动重付费。源代码未因登记变化；本次只登记文档/状态/报告归档。G-B实际push尚未发生，正常push并核对远端后收据追加reports/push/recovery_push_log.jsonl随下一阶段提交。
+
+G-C继续：两来源实现包修复后原reviewer定向复核；root独占共享catalog/document元数据版本迁移与装配，文档持久化草稿8真实PG/1019unit通过但未审且未接产品入口。不同版本/中断不拼稳定时长。MinIO段3实际18:57:02结束、段4 18:57:49开始，47秒中断，截止20:57:49；全部产品API/worker/beat当前已到期停，无持续采集声称。文档修订记录：2026-10-15T19:06:14+08:00 /root依据新独立报告登记阶段意见并保留全部历史。
+
+## 登记修订 · 2026-10-15T19:08:27+08:00
+
+主控首次登记漏同步R04/R05输出切片，原计划检查49pass/7fail，日志gb_registration_plan保留；根因是只改R聚合状态未改原T内slice_acceptance，与R00合同不一致。现依据相同独立Ship登记11输出切片及历史，原T整卡status/implementation/verification均未改变；没有改manifest或检查器。复验见gb_registration_plan_recheck。此为登记错误，不是降低验收门。
