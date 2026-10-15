@@ -14,7 +14,12 @@ RUN = Path(__file__).resolve().parent
 
 
 def main() -> None:
-    excluded = {"targeted_green.log", "targeted_green.xml"}
+    excluded = {
+        "targeted_green.log",
+        "targeted_green.xml",
+        "all_command_index.json",
+        "delivery_files.json",
+    }
     chosen = [ROOT / "reports/tasks/R06-feed-parsers.md"]
     commands: list[dict[str, object]] = []
     for path in sorted(RUN.iterdir()):
@@ -80,6 +85,7 @@ def main() -> None:
     )
     chosen.append(receipt)
     paths = [path.relative_to(ROOT).as_posix() for path in chosen]
+    subprocess.run(["git", "add", "--renormalize", "--", *paths], cwd=ROOT, check=True)
     subprocess.run(["git", "add", "--", *paths], cwd=ROOT, check=True)
     print(
         json.dumps(
