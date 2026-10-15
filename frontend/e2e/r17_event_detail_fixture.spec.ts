@@ -39,6 +39,20 @@ for (const width of [1366, 390]) {
       const range = document.createRange(); range.selectNodeContents(element);
       return [...range.getClientRects()].every((bounds) => bounds.left >= 0 && bounds.right <= window.innerWidth);
     }))).toBe(true);
+    const factTargetMetrics = await page.locator(".dimension-fact-link").evaluateAll((elements) => elements.map((element) => ({ bounds: element.getBoundingClientRect().toJSON(), minHeight: getComputedStyle(element).minHeight })));
+    expect(factTargetMetrics.length).toBeGreaterThan(0);
+    for (const metrics of factTargetMetrics) {
+      expect(metrics.bounds.height).toBeGreaterThanOrEqual(width === 390 ? 44 : 40);
+      expect(metrics.minHeight).toBe(width === 390 ? "44px" : "40px");
+    }
+    await testInfo.attach(`fact-target-metrics-${width}`, { body: JSON.stringify({ width, factTargetMetrics }, null, 2), contentType: "application/json" });
+    const factButton = score.getByRole("button", { name: "查看断言与依据", exact: true });
+    await factButton.scrollIntoViewIfNeeded();
+    await factButton.focus();
+    await page.screenshot({ path: testInfo.outputPath(`fact-button-focus-fixture-${width}.png`), fullPage: false });
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#claim-10000000-0000-4000-8000-000000000006")).toBeFocused();
+    expect(new URL(page.url()).hash).toBe(`#events/${fixtureEventId}`);
     await page.getByRole("region", { name: "事件详情", exact: true }).evaluate((element) => element.scrollIntoView({ block: "start", behavior: "instant" }));
     await page.screenshot({ path: testInfo.outputPath(`detail-viewport-fixture-${width}.png`), fullPage: false });
     await page.screenshot({ path: testInfo.outputPath(`detail-fixture-${width}.png`), fullPage: true });
