@@ -25,6 +25,7 @@ from ai_intel.api.authentication import (
     DatabaseUserDirectory,
     cookie_secure_for_environment,
 )
+from ai_intel.api.document_routes import build_document_router
 from ai_intel.api.knowledge_routes import build_knowledge_router
 from ai_intel.api.problems import problem_response
 from ai_intel.api.question_routes import build_question_router
@@ -117,16 +118,19 @@ def create_application(
     auth_router = build_auth_router(lambda: service, configuration)
     health_router = build_health_router(configuration, engine, cache)
     knowledge_router = build_knowledge_router(lambda: service, engine, configuration.data_mode)
+    document_router = build_document_router(lambda: service, engine, configuration.data_mode)
     source_router = build_source_router(lambda: service, engine)
     question_router = build_question_router(lambda: service, engine, configuration)
     application.include_router(auth_router, prefix="/v1")
     application.include_router(health_router, prefix="/v1")
     application.include_router(knowledge_router, prefix="/v1")
+    application.include_router(document_router, prefix="/v1")
     application.include_router(source_router, prefix="/v1")
     application.include_router(question_router, prefix="/v1")
     application.include_router(auth_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(health_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(knowledge_router, prefix="/api/v1", include_in_schema=False)
+    application.include_router(document_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(source_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(question_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(auth_router, include_in_schema=False)
