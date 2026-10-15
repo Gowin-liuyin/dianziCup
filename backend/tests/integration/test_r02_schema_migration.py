@@ -83,7 +83,7 @@ def test_empty_and_legacy_upgrade_keep_columns_and_old_claims(
         assert actual_columns == set(mapped_table.c.keys()), table_name
     with empty_schema_engine.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert revision == "0011_job_delivery_and_cursors"
+        assert revision == "0012_source_page_fingerprint"
         assert {column["name"] for column in inspector.get_columns("enrichment_results")} == set(
             enrichment_results.c.keys()
         )
@@ -102,3 +102,41 @@ def test_empty_and_legacy_upgrade_keep_columns_and_old_claims(
             assert old_claim["schema_version"] == 1
             assert old_claim["provenance_status"] == "legacy_unverified"
             assert old_claim["object_json"] is None
+
+
+def test_0011_page_receipt_history_migrates_without_inventing_request_fingerprint(
+    empty_schema_engine: Engine,
+) -> None:
+    migration_url = empty_schema_engine.url.render_as_string(hide_password=False)
+    run_migrations(migration_url, "0011_job_delivery_and_cursors")
+    with empty_schema_engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO sources(source_id,name,category,base_origin,visibility,created_at) VALUES ('legacy-source','legacy-source','vendor_advisory','https://example.invalid','public',CURRENT_TIMESTAMP)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO source_cursors(source_id,stream_kind,updated_at) VALUES ('legacy-source','live',CURRENT_TIMESTAMP)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO source_page_receipts(source_id,stream_kind,page_key,input_cursor,output_cursor,revision_ids,failed_job_ids,entry_count,committed_at) VALUES ('legacy-source','live',:key,'{}','{}','[]','[]',0,CURRENT_TIMESTAMP)"
+            ),
+            {"key": "a" * 64},
+        )
+    run_migrations(migration_url)
+    with empty_schema_engine.connect() as connection:
+        old = connection.execute(
+            text(
+                "SELECT page_key,entry_count,request_sha256 FROM source_page_receipts WHERE source_id='legacy-source'"
+            )
+        ).one()
+        assert old == ("a" * 64, 0, None)
+    column = next(
+        column
+        for column in inspect(empty_schema_engine).get_columns("source_page_receipts")
+        if column["name"] == "request_sha256"
+    )
+    assert column["nullable"] is True

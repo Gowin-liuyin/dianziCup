@@ -224,6 +224,7 @@ source_page_receipts = Table(
     Column("revision_ids", JSONB(), nullable=False),
     Column("failed_job_ids", JSONB(), nullable=False),
     Column("entry_count", Integer(), nullable=False),
+    Column("request_sha256", Text(), nullable=True),
     Column("committed_at", DateTime(timezone=True), nullable=False),
     ForeignKeyConstraint(
         ["source_id", "stream_kind"], ["source_cursors.source_id", "source_cursors.stream_kind"]
