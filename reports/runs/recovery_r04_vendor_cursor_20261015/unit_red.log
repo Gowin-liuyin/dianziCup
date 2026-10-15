@@ -1,0 +1,963 @@
+..FFF.........................FFFFFF...............FFFFFFFFFFFFFFFFFFFFF [ 83%]
+FFFFFFFF......                                                           [100%]
+================================== FAILURES ===================================
+_ test_only_fixed_endpoints_and_query_positions[vllm_vendor-cursor2-expected2] _
+
+kind = 'vllm_vendor', cursor = {}
+expected = {'per_page': ['10'], 'state': ['published']}
+
+    @pytest.mark.parametrize(
+        ("kind", "cursor", "expected"),
+        [
+            (
+                "nvd_ollama",
+                {},
+                {"keywordSearch": ["ollama"], "resultsPerPage": ["20"], "startIndex": ["0"]},
+            ),
+            (
+                "nvd_ollama",
+                {"offset": 20},
+                {"keywordSearch": ["ollama"], "resultsPerPage": ["20"], "startIndex": ["20"]},
+            ),
+            ("vllm_vendor", {}, {"per_page": ["10"], "state": ["published"]}),
+            ("vllm_vendor", {"page": 1}, {"per_page": ["10"], "state": ["published"]}),
+            (
+                "vllm_vendor",
+                {"cursor_version": 2, "after": "Y3Vyc29yOnYyOpHOAAg-eQ=="},
+                {"per_page": ["10"], "state": ["published"], "after": ["Y3Vyc29yOnYyOpHOAAg-eQ=="]},
+            ),
+        ],
+    )
+    def test_only_fixed_endpoints_and_query_positions(kind, cursor, expected):
+        parts = urlsplit(source_page_url(kind, cursor))
+        assert parts.scheme == "https"
+        assert parts.hostname == ("services.nvd.nist.gov" if kind == "nvd_ollama" else "api.github.com")
+>       assert parse_qs(parts.query) == expected
+E       AssertionError: assert {'page': ['1'...['published']} == {'per_page': ...['published']}
+E         
+E         Omitting 2 identical items, use -vv to show
+E         Left contains 1 more item:
+E         {'page': ['1']}
+E         Use -v to get more diff
+
+tests\unit\test_r04_source_jobs.py:54: AssertionError
+_ test_only_fixed_endpoints_and_query_positions[vllm_vendor-cursor3-expected3] _
+
+kind = 'vllm_vendor', cursor = {'page': 1}
+expected = {'per_page': ['10'], 'state': ['published']}
+
+    @pytest.mark.parametrize(
+        ("kind", "cursor", "expected"),
+        [
+            (
+                "nvd_ollama",
+                {},
+                {"keywordSearch": ["ollama"], "resultsPerPage": ["20"], "startIndex": ["0"]},
+            ),
+            (
+                "nvd_ollama",
+                {"offset": 20},
+                {"keywordSearch": ["ollama"], "resultsPerPage": ["20"], "startIndex": ["20"]},
+            ),
+            ("vllm_vendor", {}, {"per_page": ["10"], "state": ["published"]}),
+            ("vllm_vendor", {"page": 1}, {"per_page": ["10"], "state": ["published"]}),
+            (
+                "vllm_vendor",
+                {"cursor_version": 2, "after": "Y3Vyc29yOnYyOpHOAAg-eQ=="},
+                {"per_page": ["10"], "state": ["published"], "after": ["Y3Vyc29yOnYyOpHOAAg-eQ=="]},
+            ),
+        ],
+    )
+    def test_only_fixed_endpoints_and_query_positions(kind, cursor, expected):
+        parts = urlsplit(source_page_url(kind, cursor))
+        assert parts.scheme == "https"
+        assert parts.hostname == ("services.nvd.nist.gov" if kind == "nvd_ollama" else "api.github.com")
+>       assert parse_qs(parts.query) == expected
+E       AssertionError: assert {'page': ['1'...['published']} == {'per_page': ...['published']}
+E         
+E         Omitting 2 identical items, use -vv to show
+E         Left contains 1 more item:
+E         {'page': ['1']}
+E         Use -v to get more diff
+
+tests\unit\test_r04_source_jobs.py:54: AssertionError
+_ test_only_fixed_endpoints_and_query_positions[vllm_vendor-cursor4-expected4] _
+
+kind = 'vllm_vendor'
+cursor = {'after': 'Y3Vyc29yOnYyOpHOAAg-eQ==', 'cursor_version': 2}
+expected = {'after': ['Y3Vyc29yOnYyOpHOAAg-eQ=='], 'per_page': ['10'], 'state': ['published']}
+
+    @pytest.mark.parametrize(
+        ("kind", "cursor", "expected"),
+        [
+            (
+                "nvd_ollama",
+                {},
+                {"keywordSearch": ["ollama"], "resultsPerPage": ["20"], "startIndex": ["0"]},
+            ),
+            (
+                "nvd_ollama",
+                {"offset": 20},
+                {"keywordSearch": ["ollama"], "resultsPerPage": ["20"], "startIndex": ["20"]},
+            ),
+            ("vllm_vendor", {}, {"per_page": ["10"], "state": ["published"]}),
+            ("vllm_vendor", {"page": 1}, {"per_page": ["10"], "state": ["published"]}),
+            (
+                "vllm_vendor",
+                {"cursor_version": 2, "after": "Y3Vyc29yOnYyOpHOAAg-eQ=="},
+                {"per_page": ["10"], "state": ["published"], "after": ["Y3Vyc29yOnYyOpHOAAg-eQ=="]},
+            ),
+        ],
+    )
+    def test_only_fixed_endpoints_and_query_positions(kind, cursor, expected):
+>       parts = urlsplit(source_page_url(kind, cursor))
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\test_r04_source_jobs.py:51: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+source_kind = 'vllm_vendor'
+cursor = {'after': 'Y3Vyc29yOnYyOpHOAAg-eQ==', 'cursor_version': 2}
+
+    def source_page_url(source_kind: SourceKind, cursor: dict[str, JsonValue]) -> str:
+        """游标仅是已校验整数位置，不能变成任意 URL 或修改固定查询。"""
+        if source_kind not in {"nvd_ollama", "vllm_vendor"}:
+            raise SourceDocumentError("unknown fixed source")
+        key, initial = ("offset", 0) if source_kind == "nvd_ollama" else ("page", 1)
+        position = cursor.get(key, initial)
+        if set(cursor) - {key} or type(position) is not int or position < initial:
+>           raise SourceDocumentError("invalid fixed source cursor")
+E           ai_intel.ingestion.source_documents.SourceDocumentError: invalid fixed source cursor
+
+src\ai_intel\ingestion\source_jobs.py:68: SourceDocumentError
+___ test_recorded_github_link_drives_cursor_without_following_numeric_alias ___
+
+    def test_recorded_github_link_drives_cursor_without_following_numeric_alias():
+>       following = _next_position("vllm_vendor", b"[{}]", {}, {"Link": RECORDED_LINK})
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:145: TypeError
+__________ test_vendor_full_page_without_next_is_terminal[headers0] ___________
+
+headers = {}
+
+    @pytest.mark.parametrize("headers", [{}, {"LINK": '<https://api.github.com/unused>; rel="prev"'}])
+    def test_vendor_full_page_without_next_is_terminal(headers):
+>       assert _next_position("vllm_vendor", json.dumps([{}] * 10).encode(), {}, headers) == {}
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:155: TypeError
+__________ test_vendor_full_page_without_next_is_terminal[headers1] ___________
+
+headers = {'LINK': '<https://api.github.com/unused>; rel="prev"'}
+
+    @pytest.mark.parametrize("headers", [{}, {"LINK": '<https://api.github.com/unused>; rel="prev"'}])
+    def test_vendor_full_page_without_next_is_terminal(headers):
+>       assert _next_position("vllm_vendor", json.dumps([{}] * 10).encode(), {}, headers) == {}
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:155: TypeError
+___________ test_legacy_vendor_cursor_requires_explicit_restart[2] ____________
+
+page = 2
+
+    @pytest.mark.parametrize("page", [2, 3, 1_000_001])
+    def test_legacy_vendor_cursor_requires_explicit_restart(page):
+>       with pytest.raises(JobExecutionError, match="legacy_vendor_cursor_requires_restart") as caught:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'ai_intel.workers.executor.JobExecutionError'>
+
+tests\unit\test_r04_source_jobs.py:161: Failed
+___________ test_legacy_vendor_cursor_requires_explicit_restart[3] ____________
+
+page = 3
+
+    @pytest.mark.parametrize("page", [2, 3, 1_000_001])
+    def test_legacy_vendor_cursor_requires_explicit_restart(page):
+>       with pytest.raises(JobExecutionError, match="legacy_vendor_cursor_requires_restart") as caught:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'ai_intel.workers.executor.JobExecutionError'>
+
+tests\unit\test_r04_source_jobs.py:161: Failed
+________ test_legacy_vendor_cursor_requires_explicit_restart[1000001] _________
+
+page = 1000001
+
+    @pytest.mark.parametrize("page", [2, 3, 1_000_001])
+    def test_legacy_vendor_cursor_requires_explicit_restart(page):
+        with pytest.raises(JobExecutionError, match="legacy_vendor_cursor_requires_restart") as caught:
+>           source_page_url("vllm_vendor", {"page": page})
+
+tests\unit\test_r04_source_jobs.py:162: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+source_kind = 'vllm_vendor', cursor = {'page': 1000001}
+
+    def source_page_url(source_kind: SourceKind, cursor: dict[str, JsonValue]) -> str:
+        """游标仅是已校验整数位置，不能变成任意 URL 或修改固定查询。"""
+        if source_kind not in {"nvd_ollama", "vllm_vendor"}:
+            raise SourceDocumentError("unknown fixed source")
+        key, initial = ("offset", 0) if source_kind == "nvd_ollama" else ("page", 1)
+        position = cursor.get(key, initial)
+        if set(cursor) - {key} or type(position) is not int or position < initial:
+            raise SourceDocumentError("invalid fixed source cursor")
+        if position > 1_000_000:
+>           raise SourceDocumentError("source cursor position limit exceeded")
+E           ai_intel.ingestion.source_documents.SourceDocumentError: source cursor position limit exceeded
+
+src\ai_intel\ingestion\source_jobs.py:70: SourceDocumentError
+_ test_next_link_cannot_change_approved_target[https://evil.example/repositories/599547518/security-advisories] _
+
+uri = 'https://evil.example/repositories/599547518/security-advisories'
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "https://evil.example/repositories/599547518/security-advisories",
+            "http://api.github.com/repositories/599547518/security-advisories",
+            "https://127.0.0.1/repositories/599547518/security-advisories",
+            "https://api.github.com:444/repositories/599547518/security-advisories",
+            "https://user@api.github.com/repositories/599547518/security-advisories",
+            "https://api.github.com/repositories/599547519/security-advisories",
+            VENDOR_URL + "/other",
+        ],
+    )
+    def test_next_link_cannot_change_approved_target(uri):
+        link = f'<{uri}?per_page=10&state=published&after=next>; rel="next"'
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, {"Link": link})
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:199: TypeError
+_ test_next_link_cannot_change_approved_target[http://api.github.com/repositories/599547518/security-advisories] _
+
+uri = 'http://api.github.com/repositories/599547518/security-advisories'
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "https://evil.example/repositories/599547518/security-advisories",
+            "http://api.github.com/repositories/599547518/security-advisories",
+            "https://127.0.0.1/repositories/599547518/security-advisories",
+            "https://api.github.com:444/repositories/599547518/security-advisories",
+            "https://user@api.github.com/repositories/599547518/security-advisories",
+            "https://api.github.com/repositories/599547519/security-advisories",
+            VENDOR_URL + "/other",
+        ],
+    )
+    def test_next_link_cannot_change_approved_target(uri):
+        link = f'<{uri}?per_page=10&state=published&after=next>; rel="next"'
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, {"Link": link})
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:199: TypeError
+_ test_next_link_cannot_change_approved_target[https://127.0.0.1/repositories/599547518/security-advisories] _
+
+uri = 'https://127.0.0.1/repositories/599547518/security-advisories'
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "https://evil.example/repositories/599547518/security-advisories",
+            "http://api.github.com/repositories/599547518/security-advisories",
+            "https://127.0.0.1/repositories/599547518/security-advisories",
+            "https://api.github.com:444/repositories/599547518/security-advisories",
+            "https://user@api.github.com/repositories/599547518/security-advisories",
+            "https://api.github.com/repositories/599547519/security-advisories",
+            VENDOR_URL + "/other",
+        ],
+    )
+    def test_next_link_cannot_change_approved_target(uri):
+        link = f'<{uri}?per_page=10&state=published&after=next>; rel="next"'
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, {"Link": link})
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:199: TypeError
+_ test_next_link_cannot_change_approved_target[https://api.github.com:444/repositories/599547518/security-advisories] _
+
+uri = 'https://api.github.com:444/repositories/599547518/security-advisories'
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "https://evil.example/repositories/599547518/security-advisories",
+            "http://api.github.com/repositories/599547518/security-advisories",
+            "https://127.0.0.1/repositories/599547518/security-advisories",
+            "https://api.github.com:444/repositories/599547518/security-advisories",
+            "https://user@api.github.com/repositories/599547518/security-advisories",
+            "https://api.github.com/repositories/599547519/security-advisories",
+            VENDOR_URL + "/other",
+        ],
+    )
+    def test_next_link_cannot_change_approved_target(uri):
+        link = f'<{uri}?per_page=10&state=published&after=next>; rel="next"'
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, {"Link": link})
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:199: TypeError
+_ test_next_link_cannot_change_approved_target[https://user@api.github.com/repositories/599547518/security-advisories] _
+
+uri = 'https://user@api.github.com/repositories/599547518/security-advisories'
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "https://evil.example/repositories/599547518/security-advisories",
+            "http://api.github.com/repositories/599547518/security-advisories",
+            "https://127.0.0.1/repositories/599547518/security-advisories",
+            "https://api.github.com:444/repositories/599547518/security-advisories",
+            "https://user@api.github.com/repositories/599547518/security-advisories",
+            "https://api.github.com/repositories/599547519/security-advisories",
+            VENDOR_URL + "/other",
+        ],
+    )
+    def test_next_link_cannot_change_approved_target(uri):
+        link = f'<{uri}?per_page=10&state=published&after=next>; rel="next"'
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, {"Link": link})
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:199: TypeError
+_ test_next_link_cannot_change_approved_target[https://api.github.com/repositories/599547519/security-advisories] _
+
+uri = 'https://api.github.com/repositories/599547519/security-advisories'
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "https://evil.example/repositories/599547518/security-advisories",
+            "http://api.github.com/repositories/599547518/security-advisories",
+            "https://127.0.0.1/repositories/599547518/security-advisories",
+            "https://api.github.com:444/repositories/599547518/security-advisories",
+            "https://user@api.github.com/repositories/599547518/security-advisories",
+            "https://api.github.com/repositories/599547519/security-advisories",
+            VENDOR_URL + "/other",
+        ],
+    )
+    def test_next_link_cannot_change_approved_target(uri):
+        link = f'<{uri}?per_page=10&state=published&after=next>; rel="next"'
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, {"Link": link})
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:199: TypeError
+_ test_next_link_cannot_change_approved_target[https://api.github.com/repos/vllm-project/vllm/security-advisories/other] _
+
+uri = 'https://api.github.com/repos/vllm-project/vllm/security-advisories/other'
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "https://evil.example/repositories/599547518/security-advisories",
+            "http://api.github.com/repositories/599547518/security-advisories",
+            "https://127.0.0.1/repositories/599547518/security-advisories",
+            "https://api.github.com:444/repositories/599547518/security-advisories",
+            "https://user@api.github.com/repositories/599547518/security-advisories",
+            "https://api.github.com/repositories/599547519/security-advisories",
+            VENDOR_URL + "/other",
+        ],
+    )
+    def test_next_link_cannot_change_approved_target(uri):
+        link = f'<{uri}?per_page=10&state=published&after=next>; rel="next"'
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, {"Link": link})
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:199: TypeError
+_ test_next_link_requires_exact_fixed_query[per_page=10&state=published&after=x&after=y] _
+
+query = 'per_page=10&state=published&after=x&after=y'
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "per_page=10&state=published&after=x&after=y",
+            "per_page=10&state=published&after=x&page=2",
+            "per_page=10&state=published&after=x&token=x",
+            "per_page=20&state=published&after=x", "per_page=10&state=draft&after=x",
+            "per_page=10&state=published", "per_page=10&state=published&after=",
+            "per_page=10&state=published&after=x#fragment",
+            "per_page=10&state=published&after=x%0A", "per_page=10&state=published&after=%ZZ",
+        ],
+    )
+    def test_next_link_requires_exact_fixed_query(query):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, {"Link": f'<{VENDOR_URL}?{query}>; rel="next"'})
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:216: TypeError
+_ test_next_link_requires_exact_fixed_query[per_page=10&state=published&after=x&page=2] _
+
+query = 'per_page=10&state=published&after=x&page=2'
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "per_page=10&state=published&after=x&after=y",
+            "per_page=10&state=published&after=x&page=2",
+            "per_page=10&state=published&after=x&token=x",
+            "per_page=20&state=published&after=x", "per_page=10&state=draft&after=x",
+            "per_page=10&state=published", "per_page=10&state=published&after=",
+            "per_page=10&state=published&after=x#fragment",
+            "per_page=10&state=published&after=x%0A", "per_page=10&state=published&after=%ZZ",
+        ],
+    )
+    def test_next_link_requires_exact_fixed_query(query):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, {"Link": f'<{VENDOR_URL}?{query}>; rel="next"'})
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:216: TypeError
+_ test_next_link_requires_exact_fixed_query[per_page=10&state=published&after=x&token=x] _
+
+query = 'per_page=10&state=published&after=x&token=x'
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "per_page=10&state=published&after=x&after=y",
+            "per_page=10&state=published&after=x&page=2",
+            "per_page=10&state=published&after=x&token=x",
+            "per_page=20&state=published&after=x", "per_page=10&state=draft&after=x",
+            "per_page=10&state=published", "per_page=10&state=published&after=",
+            "per_page=10&state=published&after=x#fragment",
+            "per_page=10&state=published&after=x%0A", "per_page=10&state=published&after=%ZZ",
+        ],
+    )
+    def test_next_link_requires_exact_fixed_query(query):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, {"Link": f'<{VENDOR_URL}?{query}>; rel="next"'})
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:216: TypeError
+_ test_next_link_requires_exact_fixed_query[per_page=20&state=published&after=x] _
+
+query = 'per_page=20&state=published&after=x'
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "per_page=10&state=published&after=x&after=y",
+            "per_page=10&state=published&after=x&page=2",
+            "per_page=10&state=published&after=x&token=x",
+            "per_page=20&state=published&after=x", "per_page=10&state=draft&after=x",
+            "per_page=10&state=published", "per_page=10&state=published&after=",
+            "per_page=10&state=published&after=x#fragment",
+            "per_page=10&state=published&after=x%0A", "per_page=10&state=published&after=%ZZ",
+        ],
+    )
+    def test_next_link_requires_exact_fixed_query(query):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, {"Link": f'<{VENDOR_URL}?{query}>; rel="next"'})
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:216: TypeError
+_ test_next_link_requires_exact_fixed_query[per_page=10&state=draft&after=x] __
+
+query = 'per_page=10&state=draft&after=x'
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "per_page=10&state=published&after=x&after=y",
+            "per_page=10&state=published&after=x&page=2",
+            "per_page=10&state=published&after=x&token=x",
+            "per_page=20&state=published&after=x", "per_page=10&state=draft&after=x",
+            "per_page=10&state=published", "per_page=10&state=published&after=",
+            "per_page=10&state=published&after=x#fragment",
+            "per_page=10&state=published&after=x%0A", "per_page=10&state=published&after=%ZZ",
+        ],
+    )
+    def test_next_link_requires_exact_fixed_query(query):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, {"Link": f'<{VENDOR_URL}?{query}>; rel="next"'})
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:216: TypeError
+___ test_next_link_requires_exact_fixed_query[per_page=10&state=published] ____
+
+query = 'per_page=10&state=published'
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "per_page=10&state=published&after=x&after=y",
+            "per_page=10&state=published&after=x&page=2",
+            "per_page=10&state=published&after=x&token=x",
+            "per_page=20&state=published&after=x", "per_page=10&state=draft&after=x",
+            "per_page=10&state=published", "per_page=10&state=published&after=",
+            "per_page=10&state=published&after=x#fragment",
+            "per_page=10&state=published&after=x%0A", "per_page=10&state=published&after=%ZZ",
+        ],
+    )
+    def test_next_link_requires_exact_fixed_query(query):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, {"Link": f'<{VENDOR_URL}?{query}>; rel="next"'})
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:216: TypeError
+_ test_next_link_requires_exact_fixed_query[per_page=10&state=published&after=] _
+
+query = 'per_page=10&state=published&after='
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "per_page=10&state=published&after=x&after=y",
+            "per_page=10&state=published&after=x&page=2",
+            "per_page=10&state=published&after=x&token=x",
+            "per_page=20&state=published&after=x", "per_page=10&state=draft&after=x",
+            "per_page=10&state=published", "per_page=10&state=published&after=",
+            "per_page=10&state=published&after=x#fragment",
+            "per_page=10&state=published&after=x%0A", "per_page=10&state=published&after=%ZZ",
+        ],
+    )
+    def test_next_link_requires_exact_fixed_query(query):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, {"Link": f'<{VENDOR_URL}?{query}>; rel="next"'})
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:216: TypeError
+_ test_next_link_requires_exact_fixed_query[per_page=10&state=published&after=x#fragment] _
+
+query = 'per_page=10&state=published&after=x#fragment'
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "per_page=10&state=published&after=x&after=y",
+            "per_page=10&state=published&after=x&page=2",
+            "per_page=10&state=published&after=x&token=x",
+            "per_page=20&state=published&after=x", "per_page=10&state=draft&after=x",
+            "per_page=10&state=published", "per_page=10&state=published&after=",
+            "per_page=10&state=published&after=x#fragment",
+            "per_page=10&state=published&after=x%0A", "per_page=10&state=published&after=%ZZ",
+        ],
+    )
+    def test_next_link_requires_exact_fixed_query(query):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, {"Link": f'<{VENDOR_URL}?{query}>; rel="next"'})
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:216: TypeError
+_ test_next_link_requires_exact_fixed_query[per_page=10&state=published&after=x%0A] _
+
+query = 'per_page=10&state=published&after=x%0A'
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "per_page=10&state=published&after=x&after=y",
+            "per_page=10&state=published&after=x&page=2",
+            "per_page=10&state=published&after=x&token=x",
+            "per_page=20&state=published&after=x", "per_page=10&state=draft&after=x",
+            "per_page=10&state=published", "per_page=10&state=published&after=",
+            "per_page=10&state=published&after=x#fragment",
+            "per_page=10&state=published&after=x%0A", "per_page=10&state=published&after=%ZZ",
+        ],
+    )
+    def test_next_link_requires_exact_fixed_query(query):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, {"Link": f'<{VENDOR_URL}?{query}>; rel="next"'})
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:216: TypeError
+_ test_next_link_requires_exact_fixed_query[per_page=10&state=published&after=%ZZ] _
+
+query = 'per_page=10&state=published&after=%ZZ'
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "per_page=10&state=published&after=x&after=y",
+            "per_page=10&state=published&after=x&page=2",
+            "per_page=10&state=published&after=x&token=x",
+            "per_page=20&state=published&after=x", "per_page=10&state=draft&after=x",
+            "per_page=10&state=published", "per_page=10&state=published&after=",
+            "per_page=10&state=published&after=x#fragment",
+            "per_page=10&state=published&after=x%0A", "per_page=10&state=published&after=%ZZ",
+        ],
+    )
+    def test_next_link_requires_exact_fixed_query(query):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, {"Link": f'<{VENDOR_URL}?{query}>; rel="next"'})
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:216: TypeError
+__________ test_ambiguous_or_malformed_link_fails_explicitly[empty] ___________
+
+headers = {'Link': ''}
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            {"Link": ""}, {"Link": "not a Link header"},
+            {"Link": RECORDED_LINK + ", " + RECORDED_LINK},
+            {"Link": RECORDED_LINK.replace('rel="next"', 'rel="next next"')},
+            {"Link": RECORDED_LINK, "link": RECORDED_LINK},
+            {"Link": RECORDED_LINK + "\n"}, {"Link": " " * 8193},
+            {"Link": ", ".join(['<https://api.github.com/unused>; rel="prev"'] * 17)},
+        ],
+        ids=["empty", "malformed", "duplicate-next", "duplicate-rel", "duplicate-header",
+             "control", "too-long", "too-many"],
+    )
+    def test_ambiguous_or_malformed_link_fails_explicitly(headers):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, headers)
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:234: TypeError
+________ test_ambiguous_or_malformed_link_fails_explicitly[malformed] _________
+
+headers = {'Link': 'not a Link header'}
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            {"Link": ""}, {"Link": "not a Link header"},
+            {"Link": RECORDED_LINK + ", " + RECORDED_LINK},
+            {"Link": RECORDED_LINK.replace('rel="next"', 'rel="next next"')},
+            {"Link": RECORDED_LINK, "link": RECORDED_LINK},
+            {"Link": RECORDED_LINK + "\n"}, {"Link": " " * 8193},
+            {"Link": ", ".join(['<https://api.github.com/unused>; rel="prev"'] * 17)},
+        ],
+        ids=["empty", "malformed", "duplicate-next", "duplicate-rel", "duplicate-header",
+             "control", "too-long", "too-many"],
+    )
+    def test_ambiguous_or_malformed_link_fails_explicitly(headers):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, headers)
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:234: TypeError
+______ test_ambiguous_or_malformed_link_fails_explicitly[duplicate-next] ______
+
+headers = {'Link': '<https://api.github.com/repositories/599547518/security-advisories?per_page=10&state=published&after=Y3Vyc29...epositories/599547518/security-advisories?per_page=10&state=published&after=Y3Vyc29yOnYyOpHOAAg-eQ%3D%3D>; rel="next"'}
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            {"Link": ""}, {"Link": "not a Link header"},
+            {"Link": RECORDED_LINK + ", " + RECORDED_LINK},
+            {"Link": RECORDED_LINK.replace('rel="next"', 'rel="next next"')},
+            {"Link": RECORDED_LINK, "link": RECORDED_LINK},
+            {"Link": RECORDED_LINK + "\n"}, {"Link": " " * 8193},
+            {"Link": ", ".join(['<https://api.github.com/unused>; rel="prev"'] * 17)},
+        ],
+        ids=["empty", "malformed", "duplicate-next", "duplicate-rel", "duplicate-header",
+             "control", "too-long", "too-many"],
+    )
+    def test_ambiguous_or_malformed_link_fails_explicitly(headers):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, headers)
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:234: TypeError
+______ test_ambiguous_or_malformed_link_fails_explicitly[duplicate-rel] _______
+
+headers = {'Link': '<https://api.github.com/repositories/599547518/security-advisories?per_page=10&state=published&after=Y3Vyc29yOnYyOpHOAAg-eQ%3D%3D>; rel="next next"'}
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            {"Link": ""}, {"Link": "not a Link header"},
+            {"Link": RECORDED_LINK + ", " + RECORDED_LINK},
+            {"Link": RECORDED_LINK.replace('rel="next"', 'rel="next next"')},
+            {"Link": RECORDED_LINK, "link": RECORDED_LINK},
+            {"Link": RECORDED_LINK + "\n"}, {"Link": " " * 8193},
+            {"Link": ", ".join(['<https://api.github.com/unused>; rel="prev"'] * 17)},
+        ],
+        ids=["empty", "malformed", "duplicate-next", "duplicate-rel", "duplicate-header",
+             "control", "too-long", "too-many"],
+    )
+    def test_ambiguous_or_malformed_link_fails_explicitly(headers):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, headers)
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:234: TypeError
+_____ test_ambiguous_or_malformed_link_fails_explicitly[duplicate-header] _____
+
+headers = {'Link': '<https://api.github.com/repositories/599547518/security-advisories?per_page=10&state=published&after=Y3Vyc29...epositories/599547518/security-advisories?per_page=10&state=published&after=Y3Vyc29yOnYyOpHOAAg-eQ%3D%3D>; rel="next"'}
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            {"Link": ""}, {"Link": "not a Link header"},
+            {"Link": RECORDED_LINK + ", " + RECORDED_LINK},
+            {"Link": RECORDED_LINK.replace('rel="next"', 'rel="next next"')},
+            {"Link": RECORDED_LINK, "link": RECORDED_LINK},
+            {"Link": RECORDED_LINK + "\n"}, {"Link": " " * 8193},
+            {"Link": ", ".join(['<https://api.github.com/unused>; rel="prev"'] * 17)},
+        ],
+        ids=["empty", "malformed", "duplicate-next", "duplicate-rel", "duplicate-header",
+             "control", "too-long", "too-many"],
+    )
+    def test_ambiguous_or_malformed_link_fails_explicitly(headers):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, headers)
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:234: TypeError
+_________ test_ambiguous_or_malformed_link_fails_explicitly[control] __________
+
+headers = {'Link': '<https://api.github.com/repositories/599547518/security-advisories?per_page=10&state=published&after=Y3Vyc29yOnYyOpHOAAg-eQ%3D%3D>; rel="next"\n'}
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            {"Link": ""}, {"Link": "not a Link header"},
+            {"Link": RECORDED_LINK + ", " + RECORDED_LINK},
+            {"Link": RECORDED_LINK.replace('rel="next"', 'rel="next next"')},
+            {"Link": RECORDED_LINK, "link": RECORDED_LINK},
+            {"Link": RECORDED_LINK + "\n"}, {"Link": " " * 8193},
+            {"Link": ", ".join(['<https://api.github.com/unused>; rel="prev"'] * 17)},
+        ],
+        ids=["empty", "malformed", "duplicate-next", "duplicate-rel", "duplicate-header",
+             "control", "too-long", "too-many"],
+    )
+    def test_ambiguous_or_malformed_link_fails_explicitly(headers):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, headers)
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:234: TypeError
+_________ test_ambiguous_or_malformed_link_fails_explicitly[too-long] _________
+
+headers = {'Link': '                                                                                                            ...                                                                                                                     '}
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            {"Link": ""}, {"Link": "not a Link header"},
+            {"Link": RECORDED_LINK + ", " + RECORDED_LINK},
+            {"Link": RECORDED_LINK.replace('rel="next"', 'rel="next next"')},
+            {"Link": RECORDED_LINK, "link": RECORDED_LINK},
+            {"Link": RECORDED_LINK + "\n"}, {"Link": " " * 8193},
+            {"Link": ", ".join(['<https://api.github.com/unused>; rel="prev"'] * 17)},
+        ],
+        ids=["empty", "malformed", "duplicate-next", "duplicate-rel", "duplicate-header",
+             "control", "too-long", "too-many"],
+    )
+    def test_ambiguous_or_malformed_link_fails_explicitly(headers):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, headers)
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:234: TypeError
+_________ test_ambiguous_or_malformed_link_fails_explicitly[too-many] _________
+
+headers = {'Link': '<https://api.github.com/unused>; rel="prev", <https://api.github.com/unused>; rel="prev", <https://api.githu...hub.com/unused>; rel="prev", <https://api.github.com/unused>; rel="prev", <https://api.github.com/unused>; rel="prev"'}
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            {"Link": ""}, {"Link": "not a Link header"},
+            {"Link": RECORDED_LINK + ", " + RECORDED_LINK},
+            {"Link": RECORDED_LINK.replace('rel="next"', 'rel="next next"')},
+            {"Link": RECORDED_LINK, "link": RECORDED_LINK},
+            {"Link": RECORDED_LINK + "\n"}, {"Link": " " * 8193},
+            {"Link": ", ".join(['<https://api.github.com/unused>; rel="prev"'] * 17)},
+        ],
+        ids=["empty", "malformed", "duplicate-next", "duplicate-rel", "duplicate-header",
+             "control", "too-long", "too-many"],
+    )
+    def test_ambiguous_or_malformed_link_fails_explicitly(headers):
+        with pytest.raises(SourceDocumentError):
+>           _next_position("vllm_vendor", b"[]", {}, headers)
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:234: TypeError
+_____________ test_repeating_same_after_fails_instead_of_looping ______________
+
+    def test_repeating_same_after_fails_instead_of_looping():
+        with pytest.raises(SourceDocumentError):
+>           _next_position(
+                "vllm_vendor", b"[]", {"cursor_version": 2, "after": NEXT_AFTER},
+                {"Link": RECORDED_LINK},
+            )
+E           TypeError: _next_position() takes 3 positional arguments but 4 were given
+
+tests\unit\test_r04_source_jobs.py:239: TypeError
+____ test_vendor_cursor_maximum_survives_url_encoding_and_source_boundary _____
+
+    def test_vendor_cursor_maximum_survives_url_encoding_and_source_boundary():
+        after = "/+=" * 682 + "ab"
+>       url = source_page_url("vllm_vendor", {"cursor_version": 2, "after": after})
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\test_r04_source_jobs.py:247: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+source_kind = 'vllm_vendor'
+cursor = {'after': '/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+...=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=/+=ab', 'cursor_version': 2}
+
+    def source_page_url(source_kind: SourceKind, cursor: dict[str, JsonValue]) -> str:
+        """游标仅是已校验整数位置，不能变成任意 URL 或修改固定查询。"""
+        if source_kind not in {"nvd_ollama", "vllm_vendor"}:
+            raise SourceDocumentError("unknown fixed source")
+        key, initial = ("offset", 0) if source_kind == "nvd_ollama" else ("page", 1)
+        position = cursor.get(key, initial)
+        if set(cursor) - {key} or type(position) is not int or position < initial:
+>           raise SourceDocumentError("invalid fixed source cursor")
+E           ai_intel.ingestion.source_documents.SourceDocumentError: invalid fixed source cursor
+
+src\ai_intel\ingestion\source_jobs.py:68: SourceDocumentError
+___ test_source_boundary_accepts_new_and_historical_vendor_requests[extra0] ___
+extra = {}
+
+    @pytest.mark.parametrize("extra", [{}, {"after": NEXT_AFTER}, {"page": "12"}])
+    def test_source_boundary_accepts_new_and_historical_vendor_requests(extra):
+        parameters = {"per_page": "[redacted test credential]", "state": "[redacted test credential]", **extra}
+        response = SourceResponse("vllm_vendor", b"[]", VENDOR_URL + "?" + urlencode(parameters),
+                                  datetime.now(UTC))
+>       assert _request_parameters(response) == parameters
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\test_r04_source_jobs.py:258: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = SourceResponse(source_kind='vllm_vendor', body=b'[]', request_url='https://api.github.com/repos/vllm-project/vllm/secu...page=[redacted test credential]&state=[redacted test credential]', observed_at=datetime.datetime(2026, [redacted test credential], 15, 6, 38, 54, 120[redacted test credential]5, tzinfo=datetime.timezone.utc))
+
+    def _request_parameters(response: SourceResponse) -> dict[str, str]:
+        if response.source_kind not in SOURCE_DEFINITIONS:
+            raise SourceDocumentError("unsupported source kind")
+        if (
+            not isinstance(response.request_url, str)
+            or len(response.request_url) > 2000
+            or response.request_url != response.request_url.strip()
+            or any(ord(character) < 32 or ord(character) == 127 for character in response.request_url)
+        ):
+            raise SourceDocumentError("invalid source request URL")
+        try:
+            parts = urlsplit(response.request_url)
+            pairs = parse_qsl(parts.query, strict_parsing=True, keep_blank_values=True, errors="strict")
+        except (ValueError, UnicodeError):
+            raise SourceDocumentError("invalid source request URL") from None
+        parameters = dict(pairs)
+        if parts.fragment or len(parameters) != len(pairs):
+            raise SourceDocumentError("invalid source request URL")
+        if response.source_kind == "nvd_ollama":
+            base = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+            allowed = {"keywordSearch", "resultsPerPage", "startIndex"}
+            fixed = parameters.get("keywordSearch") == "ollama"
+            count_key, position_key, minimum = "resultsPerPage", "startIndex", 0
+        else:
+            base = "https://api.github.com/repos/vllm-project/vllm/security-advisories"
+            allowed = {"per_page", "state", "page"}
+            fixed = parameters.get("state") == "[redacted test credential]"
+            count_key, position_key, minimum = "per_page", "page", 1
+        if (
+            f"{parts.scheme}://{parts.netloc}{parts.path}" != base
+            or set(parameters) != allowed
+            or not fixed
+        ):
+>           raise SourceDocumentError("source request URL is outside approved scope")
+E           ai_intel.ingestion.source_documents.SourceDocumentError: source request URL is outside approved scope
+
+src\ai_intel\ingestion\source_documents.py:159: SourceDocumentError
+___ test_source_boundary_accepts_new_and_historical_vendor_requests[extra1] ___
+extra = {'after': '[redacted test credential]'}
+
+    @pytest.mark.parametrize("extra", [{}, {"after": NEXT_AFTER}, {"page": "12"}])
+    def test_source_boundary_accepts_new_and_historical_vendor_requests(extra):
+        parameters = {"per_page": "[redacted test credential]", "state": "[redacted test credential]", **extra}
+        response = SourceResponse("vllm_vendor", b"[]", VENDOR_URL + "?" + urlencode(parameters),
+                                  datetime.now(UTC))
+>       assert _request_parameters(response) == parameters
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\test_r04_source_jobs.py:258: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = SourceResponse(source_kind='vllm_vendor', body=b'[]', request_url='https://api.github.com/repos/vllm-project/vllm/secu...[redacted test credential fragment][redacted test credential fragment]Q%3D%3D', observed_at=datetime.datetime(2026, [redacted test credential], 15, 6, 38, 54, 130129, tzinfo=datetime.timezone.utc))
+
+    def _request_parameters(response: SourceResponse) -> dict[str, str]:
+        if response.source_kind not in SOURCE_DEFINITIONS:
+            raise SourceDocumentError("unsupported source kind")
+        if (
+            not isinstance(response.request_url, str)
+            or len(response.request_url) > 2000
+            or response.request_url != response.request_url.strip()
+            or any(ord(character) < 32 or ord(character) == 127 for character in response.request_url)
+        ):
+            raise SourceDocumentError("invalid source request URL")
+        try:
+            parts = urlsplit(response.request_url)
+            pairs = parse_qsl(parts.query, strict_parsing=True, keep_blank_values=True, errors="strict")
+        except (ValueError, UnicodeError):
+            raise SourceDocumentError("invalid source request URL") from None
+        parameters = dict(pairs)
+        if parts.fragment or len(parameters) != len(pairs):
+            raise SourceDocumentError("invalid source request URL")
+        if response.source_kind == "nvd_ollama":
+            base = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+            allowed = {"keywordSearch", "resultsPerPage", "startIndex"}
+            fixed = parameters.get("keywordSearch") == "ollama"
+            count_key, position_key, minimum = "resultsPerPage", "startIndex", 0
+        else:
+            base = "https://api.github.com/repos/vllm-project/vllm/security-advisories"
+            allowed = {"per_page", "state", "page"}
+            fixed = parameters.get("state") == "[redacted test credential]"
+            count_key, position_key, minimum = "per_page", "page", 1
+        if (
+            f"{parts.scheme}://{parts.netloc}{parts.path}" != base
+            or set(parameters) != allowed
+            or not fixed
+        ):
+>           raise SourceDocumentError("source request URL is outside approved scope")
+E           ai_intel.ingestion.source_documents.SourceDocumentError: source request URL is outside approved scope
+
+src\ai_intel\ingestion\source_documents.py:159: SourceDocumentError
+============================== warnings summary ===============================
+D:\dianzi\backend\.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\dianzi\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/unit/test_r04_source_jobs.py::test_only_fixed_endpoints_and_query_positions[vllm_vendor-cursor2-expected2]
+FAILED tests/unit/test_r04_source_jobs.py::test_only_fixed_endpoints_and_query_positions[vllm_vendor-cursor3-expected3]
+FAILED tests/unit/test_r04_source_jobs.py::test_only_fixed_endpoints_and_query_positions[vllm_vendor-cursor4-expected4]
+FAILED tests/unit/test_r04_source_jobs.py::test_recorded_github_link_drives_cursor_without_following_numeric_alias
+FAILED tests/unit/test_r04_source_jobs.py::test_vendor_full_page_without_next_is_terminal[headers0]
+FAILED tests/unit/test_r04_source_jobs.py::test_vendor_full_page_without_next_is_terminal[headers1]
+FAILED tests/unit/test_r04_source_jobs.py::test_legacy_vendor_cursor_requires_explicit_restart[2]
+FAILED tests/unit/test_r04_source_jobs.py::test_legacy_vendor_cursor_requires_explicit_restart[3]
+FAILED tests/unit/test_r04_source_jobs.py::test_legacy_vendor_cursor_requires_explicit_restart[1000001]
+FAILED tests/unit/test_r04_source_jobs.py::test_next_link_cannot_change_approved_target[https://evil.example/repositories/599547518/security-advisories]
+FAILED tests/unit/test_r04_source_jobs.py::test_next_link_cannot_change_approved_target[http://api.github.com/repositories/599547518/security-advisories]
+FAILED tests/unit/test_r04_source_jobs.py::test_next_link_cannot_change_approved_target[https://127.0.0.1/repositories/599547518/security-advisories]
+FAILED tests/unit/test_r04_source_jobs.py::test_next_link_cannot_change_approved_target[https://api.github.com:444/repositories/599547518/security-advisories]
+FAILED tests/unit/test_r04_source_jobs.py::test_next_link_cannot_change_approved_target[https://user@api.github.com/repositories/599547518/security-advisories]
+FAILED tests/unit/test_r04_source_jobs.py::test_next_link_cannot_change_approved_target[https://api.github.com/repositories/599547519/security-advisories]
+FAILED tests/unit/test_r04_source_jobs.py::test_next_link_cannot_change_approved_target[https://api.github.com/repos/vllm-project/vllm/security-advisories/other]
+FAILED tests/unit/test_r04_source_jobs.py::test_next_link_requires_exact_fixed_query[per_page=10&state=published&after=x&after=y]
+FAILED tests/unit/test_r04_source_jobs.py::test_next_link_requires_exact_fixed_query[per_page=10&state=published&after=x&page=2]
+FAILED tests/unit/test_r04_source_jobs.py::test_next_link_requires_exact_fixed_query[per_page=10&state=published&after=x&token=x]
+FAILED tests/unit/test_r04_source_jobs.py::test_next_link_requires_exact_fixed_query[per_page=20&state=published&after=x]
+FAILED tests/unit/test_r04_source_jobs.py::test_next_link_requires_exact_fixed_query[per_page=10&state=draft&after=x]
+FAILED tests/unit/test_r04_source_jobs.py::test_next_link_requires_exact_fixed_query[per_page=10&state=published]
+FAILED tests/unit/test_r04_source_jobs.py::test_next_link_requires_exact_fixed_query[per_page=10&state=published&after=]
+FAILED tests/unit/test_r04_source_jobs.py::test_next_link_requires_exact_fixed_query[per_page=10&state=published&after=x#fragment]
+FAILED tests/unit/test_r04_source_jobs.py::test_next_link_requires_exact_fixed_query[per_page=10&state=published&after=x%0A]
+FAILED tests/unit/test_r04_source_jobs.py::test_next_link_requires_exact_fixed_query[per_page=10&state=published&after=%ZZ]
+FAILED tests/unit/test_r04_source_jobs.py::test_ambiguous_or_malformed_link_fails_explicitly[empty]
+FAILED tests/unit/test_r04_source_jobs.py::test_ambiguous_or_malformed_link_fails_explicitly[malformed]
+FAILED tests/unit/test_r04_source_jobs.py::test_ambiguous_or_malformed_link_fails_explicitly[duplicate-next]
+FAILED tests/unit/test_r04_source_jobs.py::test_ambiguous_or_malformed_link_fails_explicitly[duplicate-rel]
+FAILED tests/unit/test_r04_source_jobs.py::test_ambiguous_or_malformed_link_fails_explicitly[duplicate-header]
+FAILED tests/unit/test_r04_source_jobs.py::test_ambiguous_or_malformed_link_fails_explicitly[control]
+FAILED tests/unit/test_r04_source_jobs.py::test_ambiguous_or_malformed_link_fails_explicitly[too-long]
+FAILED tests/unit/test_r04_source_jobs.py::test_ambiguous_or_malformed_link_fails_explicitly[too-many]
+FAILED tests/unit/test_r04_source_jobs.py::test_repeating_same_after_fails_instead_of_looping
+FAILED tests/unit/test_r04_source_jobs.py::test_vendor_cursor_maximum_survives_url_encoding_and_source_boundary
+FAILED tests/unit/test_r04_source_jobs.py::test_source_boundary_accepts_new_and_historical_vendor_requests[extra0]
+FAILED tests/unit/test_r04_source_jobs.py::test_source_boundary_accepts_new_and_historical_vendor_requests[extra1]
+38 failed, 48 passed, 1 warning in 0.96s

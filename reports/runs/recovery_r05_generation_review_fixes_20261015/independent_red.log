@@ -1,0 +1,105 @@
+FFFF....................                                                 [100%]
+================================== FAILURES ===================================
+____ test_credential_value_in_metadata_version_is_withheld[prompt_version] ____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000021B471E5A00>
+version_field = 'prompt_version'
+
+    @pytest.mark.parametrize('version_field', ['prompt_version', 'schema_version'])
+    def test_credential_value_in_metadata_version_is_withheld(monkeypatch, version_field):
+        client, calls = prepared(monkeypatch)
+        synthetic_credential = client._credential.get_secret_value()
+        try:
+            result = client.generate(request(**{version_field: synthetic_credential}), Answer)
+        except GenerationFailure as failure:
+            assert failure.code == 'model_credential_in_input'
+            assert not calls
+        else:
+>           assert synthetic_credential not in repr(asdict(result.attempts[0]))
+E           assert 'fixture-gen...ential-12345' not in "{'provider'...: 'unknown'}"
+E             
+E             'fixture-generation-credential-12345' is contained here:
+E             ?           ^^
+E               ersion': 'fixture-generation-credential-12345', 'schema_version': 's1', 'codec_version': 'generation-wire-1', 'prompt_sha256': '38d3276881adfa417fa7de15ccc92325f892b3c273478712889c4a1c6a0ad5f5', 'schema_sha256': '2b86404aef09d1c3020645ac9824c88dc47c41cb58f87dff0b5d2c3b4c194bcd', 'body_sha256': 'bba970a78d03335c26e73619d58af279c6fd12de61a23e60325769b964fd61fd', 'response_sha256': '93f5d6a7c28740ff57d4692ba6bb925d5191c98c41943001c410dad8c110ae79', 'started_at': datetime.datetime(2026, 10, 15, 6, 43, 5...
+E             
+E             ...Full output truncated (2 lines hidden), use '-vv' to show
+
+D:\dianzi\reports\runs\recovery_r05_generation_review_1_20261015\test_generation_independent_boundaries_v2.py:28: AssertionError
+____ test_credential_value_in_metadata_version_is_withheld[schema_version] ____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000021B492C7320>
+version_field = 'schema_version'
+
+    @pytest.mark.parametrize('version_field', ['prompt_version', 'schema_version'])
+    def test_credential_value_in_metadata_version_is_withheld(monkeypatch, version_field):
+        client, calls = prepared(monkeypatch)
+        synthetic_credential = client._credential.get_secret_value()
+        try:
+            result = client.generate(request(**{version_field: synthetic_credential}), Answer)
+        except GenerationFailure as failure:
+            assert failure.code == 'model_credential_in_input'
+            assert not calls
+        else:
+>           assert synthetic_credential not in repr(asdict(result.attempts[0]))
+E           assert 'fixture-gen...ential-12345' not in "{'provider'...: 'unknown'}"
+E             
+E             'fixture-generation-credential-12345' is contained here:
+E             ?           ^^
+E               ersion': 'fixture-generation-credential-12345', 'codec_version': 'generation-wire-1', 'prompt_sha256': '38d3276881adfa417fa7de15ccc92325f892b3c273478712889c4a1c6a0ad5f5', 'schema_sha256': '2b86404aef09d1c3020645ac9824c88dc47c41cb58f87dff0b5d2c3b4c194bcd', 'body_sha256': 'bba970a78d03335c26e73619d58af279c6fd12de61a23e60325769b964fd61fd', 'response_sha256': '93f5d6a7c28740ff57d4692ba6bb925d5191c98c41943001c410dad8c110ae79', 'started_at': datetime.datetime(2026, 10, 15, 6, 43, 57, 79697, tzinfo=datetim...
+E             
+E             ...Full output truncated (2 lines hidden), use '-vv' to show
+
+D:\dianzi\reports\runs\recovery_r05_generation_review_1_20261015\test_generation_independent_boundaries_v2.py:28: AssertionError
+___ test_all_nested_object_schemas_forbid_extra_before_network[TypedChild] ____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000021B492C7DA0>
+child_type = <class 'test_generation_independent_boundaries_v2.TypedChild'>
+
+    @pytest.mark.parametrize('child_type', [TypedChild, DataclassChild])
+    def test_all_nested_object_schemas_forbid_extra_before_network(monkeypatch, child_type):
+        class Root(BaseModel):
+            model_config = ConfigDict(extra='forbid')
+            nested: child_type
+    
+        client, calls = prepared(monkeypatch, responses=[wire(raw='{"nested":{"required":1,"extra":"silently dropped"}}')])
+        try:
+            result = client.generate(request(), Root)
+        except GenerationFailure as failure:
+            assert failure.code in {'model_schema_must_forbid_extra', 'model_format_invalid'}
+            if failure.code == 'model_schema_must_forbid_extra':
+                assert calls == []
+        else:
+>           pytest.fail('nested unknown property was silently accepted')
+E           Failed: nested unknown property was silently accepted
+
+D:\dianzi\reports\runs\recovery_r05_generation_review_1_20261015\test_generation_independent_boundaries_v2.py:56: Failed
+_ test_all_nested_object_schemas_forbid_extra_before_network[DataclassChild] __
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000021B492D3E90>
+child_type = <class 'test_generation_independent_boundaries_v2.DataclassChild'>
+
+    @pytest.mark.parametrize('child_type', [TypedChild, DataclassChild])
+    def test_all_nested_object_schemas_forbid_extra_before_network(monkeypatch, child_type):
+        class Root(BaseModel):
+            model_config = ConfigDict(extra='forbid')
+            nested: child_type
+    
+        client, calls = prepared(monkeypatch, responses=[wire(raw='{"nested":{"required":1,"extra":"silently dropped"}}')])
+        try:
+            result = client.generate(request(), Root)
+        except GenerationFailure as failure:
+            assert failure.code in {'model_schema_must_forbid_extra', 'model_format_invalid'}
+            if failure.code == 'model_schema_must_forbid_extra':
+                assert calls == []
+        else:
+>           pytest.fail('nested unknown property was silently accepted')
+E           Failed: nested unknown property was silently accepted
+
+D:\dianzi\reports\runs\recovery_r05_generation_review_1_20261015\test_generation_independent_boundaries_v2.py:56: Failed
+- generated xml file: C:\Users\yinha\.codex\worktrees\recovery-r05-generation-review-fixes\dianzi\reports\runs\recovery_r05_generation_review_fixes_20261015\independent_red.xml -
+=========================== short test summary info ===========================
+FAILED ::test_credential_value_in_metadata_version_is_withheld[prompt_version]
+FAILED ::test_credential_value_in_metadata_version_is_withheld[schema_version]
+FAILED ::test_all_nested_object_schemas_forbid_extra_before_network[TypedChild]
+FAILED ::test_all_nested_object_schemas_forbid_extra_before_network[DataclassChild]
+4 failed, 20 passed in 0.98s

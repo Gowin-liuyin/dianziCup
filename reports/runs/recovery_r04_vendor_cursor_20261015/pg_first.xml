@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="19" time="45.549" timestamp="2026-10-15T14:41:46.194132+08:00" hostname="yin"><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_actual_vendor_page_with_unknown_package_persists_all_ten_records" time="3.996" /><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_real_job_commits_revision_receipt_cursor_and_terminal_state_together" time="0.977" /><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_failed_page_never_publishes_revision_or_advances_cursor[storage]" time="0.859" /><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_failed_page_never_publishes_revision_or_advances_cursor[invalid_json]" time="0.790" /><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_failed_page_never_publishes_revision_or_advances_cursor[wrong_offset]" time="0.756" /><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_failed_page_never_publishes_revision_or_advances_cursor[timeout]" time="0.798" /><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_failed_page_never_publishes_revision_or_advances_cursor[auth]" time="0.798" /><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_next_page_is_durable_delayed_or_explicitly_partial[1]" time="1.134" /><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_next_page_is_durable_delayed_or_explicitly_partial[2]" time="1.096" /><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_real_pg_timeout_does_not_erase_prior_successful_window" time="1.182" /><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_vendor_two_pages_commit_actual_after_and_terminal_window[False]" time="3.321"><failure message="AssertionError: assert None == (datetime.datetime(2026, 10, 15, 6, 0, tzinfo=datetime.timezone.utc) + datetime.timedelta(seconds=7))&#10; +  where None = scalar(&lt;sqlalchemy.sql.selectable.Select object at 0x7c779981e750&gt;)&#10; +    where scalar = &lt;sqlalchemy.orm.session.Session object at 0x7c779a54bda0&gt;.scalar&#10; +    and   &lt;sqlalchemy.sql.selectable.Select object at 0x7c779981e750&gt; = where(Column('job_id', Text(), ForeignKey('job_runs.job_id'), table=&lt;outbox_events&gt;, nullable=False) == '7e2d987c-3720-431f-aca3-2103b6d626de')&#10; +      where where = &lt;sqlalchemy.sql.selectable.Select object at 0x7c779a54a6c0&gt;.where&#10; +        where &lt;sqlalchemy.sql.selectable.Select object at 0x7c779a54a6c0&gt; = select(Column('next_delivery_at', DateTime(timezone=True), table=&lt;outbox_events&gt;))&#10; +          where Column('next_delivery_at', DateTime(timezone=True), table=&lt;outbox_events&gt;) = &lt;sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x7c779c6cecf0&gt;.next_delivery_at&#10; +            where &lt;sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x7c779c6cecf0&gt; = Table('outbox_events', MetaData(), Column('event_id', Text(), table=&lt;outbox_events&gt;, primary_key=True, nullable=False)...DateTime(timezone=True), table=&lt;outbox_events&gt;), Column('last_error_code', Text(), table=&lt;outbox_events&gt;), schema=None).c&#10; +      and   Column('job_id', Text(), ForeignKey('job_runs.job_id'), table=&lt;outbox_events&gt;, nullable=False) = &lt;sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x7c779c6cecf0&gt;.job_id&#10; +        where &lt;sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x7c779c6cecf0&gt; = Table('outbox_events', MetaData(), Column('event_id', Text(), table=&lt;outbox_events&gt;, primary_key=True, nullable=False)...DateTime(timezone=True), table=&lt;outbox_events&gt;), Column('last_error_code', Text(), table=&lt;outbox_events&gt;), schema=None).c&#10; +  and   datetime.timedelta(seconds=7) = timedelta(seconds=7)">job_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r04_vendor_cursor_20261015?options=-c+search_path%3Dtest_r02_schema_80afe30d76e54a2287bd95b7dc3f520c+-c+statement_timeout%3D10000)
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-22/test_vendor_two_pages_commit_a0')
+last_page_empty = False
+
+    @pytest.mark.parametrize("last_page_empty", [False, True])
+    def test_vendor_two_pages_commit_actual_after_and_terminal_window(
+        job_engine, tmp_path, last_page_empty
+    ):
+        body = (FIXTURES / "vllm_api_page_20261015_public.json").read_bytes()
+        first = queue(job_engine, kind="vllm_vendor")
+        current = [NOW]
+        seen_urls = []
+    
+        def read_page(url):
+            seen_urls.append(url)
+            if len(seen_urls) == 1:
+                return FetchResult(url, 200, "application/json", body, {"Link": RECORDED_LINK})
+            assert url == (
+                "https://api.github.com/repos/vllm-project/vllm/security-advisories?"
+                "per_page=10&amp;state=published&amp;after=Y3Vyc29yOnYyOpHOAAg-eQ%3D%3D"
+            )
+            record = json.loads(body)[0]
+            record.update(
+                ghsa_id="GHSA-2345-2345-2345",
+                cve_id=None,
+                html_url="https://github.com/vllm-project/vllm/security/advisories/GHSA-2345-2345-2345",
+            )
+            last_body = b"[]" if last_page_empty else json.dumps([record]).encode()
+            return FetchResult(url, 200, "application/json", last_body)
+    
+        handler = build_source_page_handler(
+            ContentStore(tmp_path), fetcher=read_page, clock=lambda: current[0]
+        )
+        assert (
+            execute_job(
+                job_engine, first, "worker-first", {SOURCE_JOB_TYPE: handler}, clock=lambda: current[0]
+            )
+            == "succeeded"
+        )
+        with Session(job_engine) as session:
+            next_job = session.scalar(select(job_runs.c.job_id).where(job_runs.c.job_id != first))
+&gt;           assert session.scalar(
+                select(outbox_events.c.next_delivery_at).where(outbox_events.c.job_id == next_job)
+            ) == NOW + timedelta(seconds=7)
+E           AssertionError: assert None == (datetime.datetime(2026, 10, 15, 6, 0, tzinfo=datetime.timezone.utc) + datetime.timedelta(seconds=7))
+E            +  where None = scalar(&lt;sqlalchemy.sql.selectable.Select object at 0x7c779981e750&gt;)
+E            +    where scalar = &lt;sqlalchemy.orm.session.Session object at 0x7c779a54bda0&gt;.scalar
+E            +    and   &lt;sqlalchemy.sql.selectable.Select object at 0x7c779981e750&gt; = where(Column('job_id', Text(), ForeignKey('job_runs.job_id'), table=&lt;outbox_events&gt;, nullable=False) == '7e2d987c-3720-431f-aca3-2103b6d626de')
+E            +      where where = &lt;sqlalchemy.sql.selectable.Select object at 0x7c779a54a6c0&gt;.where
+E            +        where &lt;sqlalchemy.sql.selectable.Select object at 0x7c779a54a6c0&gt; = select(Column('next_delivery_at', DateTime(timezone=True), table=&lt;outbox_events&gt;))
+E            +          where Column('next_delivery_at', DateTime(timezone=True), table=&lt;outbox_events&gt;) = &lt;sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x7c779c6cecf0&gt;.next_delivery_at
+E            +            where &lt;sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x7c779c6cecf0&gt; = Table('outbox_events', MetaData(), Column('event_id', Text(), table=&lt;outbox_events&gt;, primary_key=True, nullable=False)...DateTime(timezone=True), table=&lt;outbox_events&gt;), Column('last_error_code', Text(), table=&lt;outbox_events&gt;), schema=None).c
+E            +      and   Column('job_id', Text(), ForeignKey('job_runs.job_id'), table=&lt;outbox_events&gt;, nullable=False) = &lt;sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x7c779c6cecf0&gt;.job_id
+E            +        where &lt;sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x7c779c6cecf0&gt; = Table('outbox_events', MetaData(), Column('event_id', Text(), table=&lt;outbox_events&gt;, primary_key=True, nullable=False)...DateTime(timezone=True), table=&lt;outbox_events&gt;), Column('last_error_code', Text(), table=&lt;outbox_events&gt;), schema=None).c
+E            +  and   datetime.timedelta(seconds=7) = timedelta(seconds=7)
+
+tests/integration/test_r04_source_jobs_pg.py:312: AssertionError</failure></testcase><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_vendor_two_pages_commit_actual_after_and_terminal_window[True]" time="3.577"><failure message="AssertionError: assert None == (datetime.datetime(2026, 10, 15, 6, 0, tzinfo=datetime.timezone.utc) + datetime.timedelta(seconds=7))&#10; +  where None = scalar(&lt;sqlalchemy.sql.selectable.Select object at 0x7c779a53ffe0&gt;)&#10; +    where scalar = &lt;sqlalchemy.orm.session.Session object at 0x7c779a1cd880&gt;.scalar&#10; +    and   &lt;sqlalchemy.sql.selectable.Select object at 0x7c779a53ffe0&gt; = where(Column('job_id', Text(), ForeignKey('job_runs.job_id'), table=&lt;outbox_events&gt;, nullable=False) == '3a93f0a6-f21f-4e62-94f2-e47d7f68d8b7')&#10; +      where where = &lt;sqlalchemy.sql.selectable.Select object at 0x7c779ccc4320&gt;.where&#10; +        where &lt;sqlalchemy.sql.selectable.Select object at 0x7c779ccc4320&gt; = select(Column('next_delivery_at', DateTime(timezone=True), table=&lt;outbox_events&gt;))&#10; +          where Column('next_delivery_at', DateTime(timezone=True), table=&lt;outbox_events&gt;) = &lt;sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x7c779c6cecf0&gt;.next_delivery_at&#10; +            where &lt;sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x7c779c6cecf0&gt; = Table('outbox_events', MetaData(), Column('event_id', Text(), table=&lt;outbox_events&gt;, primary_key=True, nullable=False)...DateTime(timezone=True), table=&lt;outbox_events&gt;), Column('last_error_code', Text(), table=&lt;outbox_events&gt;), schema=None).c&#10; +      and   Column('job_id', Text(), ForeignKey('job_runs.job_id'), table=&lt;outbox_events&gt;, nullable=False) = &lt;sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x7c779c6cecf0&gt;.job_id&#10; +        where &lt;sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x7c779c6cecf0&gt; = Table('outbox_events', MetaData(), Column('event_id', Text(), table=&lt;outbox_events&gt;, primary_key=True, nullable=False)...DateTime(timezone=True), table=&lt;outbox_events&gt;), Column('last_error_code', Text(), table=&lt;outbox_events&gt;), schema=None).c&#10; +  and   datetime.timedelta(seconds=7) = timedelta(seconds=7)">job_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r04_vendor_cursor_20261015?options=-c+search_path%3Dtest_r02_schema_725a8a62f5824ab481258c320a15f24b+-c+statement_timeout%3D10000)
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-22/test_vendor_two_pages_commit_a1')
+last_page_empty = True
+
+    @pytest.mark.parametrize("last_page_empty", [False, True])
+    def test_vendor_two_pages_commit_actual_after_and_terminal_window(
+        job_engine, tmp_path, last_page_empty
+    ):
+        body = (FIXTURES / "vllm_api_page_20261015_public.json").read_bytes()
+        first = queue(job_engine, kind="vllm_vendor")
+        current = [NOW]
+        seen_urls = []
+    
+        def read_page(url):
+            seen_urls.append(url)
+            if len(seen_urls) == 1:
+                return FetchResult(url, 200, "application/json", body, {"Link": RECORDED_LINK})
+            assert url == (
+                "https://api.github.com/repos/vllm-project/vllm/security-advisories?"
+                "per_page=10&amp;state=published&amp;after=Y3Vyc29yOnYyOpHOAAg-eQ%3D%3D"
+            )
+            record = json.loads(body)[0]
+            record.update(
+                ghsa_id="GHSA-2345-2345-2345",
+                cve_id=None,
+                html_url="https://github.com/vllm-project/vllm/security/advisories/GHSA-2345-2345-2345",
+            )
+            last_body = b"[]" if last_page_empty else json.dumps([record]).encode()
+            return FetchResult(url, 200, "application/json", last_body)
+    
+        handler = build_source_page_handler(
+            ContentStore(tmp_path), fetcher=read_page, clock=lambda: current[0]
+        )
+        assert (
+            execute_job(
+                job_engine, first, "worker-first", {SOURCE_JOB_TYPE: handler}, clock=lambda: current[0]
+            )
+            == "succeeded"
+        )
+        with Session(job_engine) as session:
+            next_job = session.scalar(select(job_runs.c.job_id).where(job_runs.c.job_id != first))
+&gt;           assert session.scalar(
+                select(outbox_events.c.next_delivery_at).where(outbox_events.c.job_id == next_job)
+            ) == NOW + timedelta(seconds=7)
+E           AssertionError: assert None == (datetime.datetime(2026, 10, 15, 6, 0, tzinfo=datetime.timezone.utc) + datetime.timedelta(seconds=7))
+E            +  where None = scalar(&lt;sqlalchemy.sql.selectable.Select object at 0x7c779a53ffe0&gt;)
+E            +    where scalar = &lt;sqlalchemy.orm.session.Session object at 0x7c779a1cd880&gt;.scalar
+E            +    and   &lt;sqlalchemy.sql.selectable.Select object at 0x7c779a53ffe0&gt; = where(Column('job_id', Text(), ForeignKey('job_runs.job_id'), table=&lt;outbox_events&gt;, nullable=False) == '3a93f0a6-f21f-4e62-94f2-e47d7f68d8b7')
+E            +      where where = &lt;sqlalchemy.sql.selectable.Select object at 0x7c779ccc4320&gt;.where
+E            +        where &lt;sqlalchemy.sql.selectable.Select object at 0x7c779ccc4320&gt; = select(Column('next_delivery_at', DateTime(timezone=True), table=&lt;outbox_events&gt;))
+E            +          where Column('next_delivery_at', DateTime(timezone=True), table=&lt;outbox_events&gt;) = &lt;sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x7c779c6cecf0&gt;.next_delivery_at
+E            +            where &lt;sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x7c779c6cecf0&gt; = Table('outbox_events', MetaData(), Column('event_id', Text(), table=&lt;outbox_events&gt;, primary_key=True, nullable=False)...DateTime(timezone=True), table=&lt;outbox_events&gt;), Column('last_error_code', Text(), table=&lt;outbox_events&gt;), schema=None).c
+E            +      and   Column('job_id', Text(), ForeignKey('job_runs.job_id'), table=&lt;outbox_events&gt;, nullable=False) = &lt;sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x7c779c6cecf0&gt;.job_id
+E            +        where &lt;sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x7c779c6cecf0&gt; = Table('outbox_events', MetaData(), Column('event_id', Text(), table=&lt;outbox_events&gt;, primary_key=True, nullable=False)...DateTime(timezone=True), table=&lt;outbox_events&gt;), Column('last_error_code', Text(), table=&lt;outbox_events&gt;), schema=None).c
+E            +  and   datetime.timedelta(seconds=7) = timedelta(seconds=7)
+
+tests/integration/test_r04_source_jobs_pg.py:312: AssertionError</failure></testcase><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_vendor_full_page_without_link_completes_without_unnecessary_next_job" time="4.900"><failure message="AssertionError: assert 21 == 1&#10; +  where 21 = scalar(&lt;sqlalchemy.sql.selectable.Select object at 0x7c779a99fef0&gt;)&#10; +    where scalar = &lt;sqlalchemy.orm.session.Session object at 0x7c779a5df350&gt;.scalar&#10; +    and   &lt;sqlalchemy.sql.selectable.Select object at 0x7c779a99fef0&gt; = select_from(Table('job_runs', MetaData(), Column('job_id', Text(), table=&lt;job_runs&gt;, primary_key=True, nullable=False), Column('te...ob_runs&gt;), Column('error_code', Text(), table=&lt;job_runs&gt;), Column('result_ref', Text(), table=&lt;job_runs&gt;), schema=None))&#10; +      where select_from = &lt;sqlalchemy.sql.selectable.Select object at 0x7c779a99df10&gt;.select_from&#10; +        where &lt;sqlalchemy.sql.selectable.Select object at 0x7c779a99df10&gt; = select(&lt;sqlalchemy.sql.functions.count at 0x7c779a9cc2c0; count&gt;)&#10; +          where &lt;sqlalchemy.sql.functions.count at 0x7c779a9cc2c0; count&gt; = &lt;sqlalchemy.sql.functions._FunctionGenerator object at 0x7c779cc9ecf0&gt;()&#10; +            where &lt;sqlalchemy.sql.functions._FunctionGenerator object at 0x7c779cc9ecf0&gt; = func.count">job_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r04_vendor_cursor_20261015?options=-c+search_path%3Dtest_r02_schema_8be628ff4cf14c7fbd7253fcbbaa82dc+-c+statement_timeout%3D10000)
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-22/test_vendor_full_page_without_0')
+
+    def test_vendor_full_page_without_link_completes_without_unnecessary_next_job(job_engine, tmp_path):
+        body = (FIXTURES / "vllm_api_page_20261015_public.json").read_bytes()
+        job_id = queue(job_engine, kind="vllm_vendor")
+        handler = build_source_page_handler(
+            ContentStore(tmp_path),
+            fetcher=lambda url: FetchResult(url, 200, "application/json", body),
+            clock=lambda: NOW,
+        )
+        assert (
+            execute_job(job_engine, job_id, "worker", {SOURCE_JOB_TYPE: handler}, clock=lambda: NOW)
+            == "succeeded"
+        )
+        with Session(job_engine) as session:
+            assert session.scalar(select(source_cursors.c.cursor_json))["window_complete"] is True
+&gt;           assert session.scalar(select(func.count()).select_from(job_runs)) == 1
+E           AssertionError: assert 21 == 1
+E            +  where 21 = scalar(&lt;sqlalchemy.sql.selectable.Select object at 0x7c779a99fef0&gt;)
+E            +    where scalar = &lt;sqlalchemy.orm.session.Session object at 0x7c779a5df350&gt;.scalar
+E            +    and   &lt;sqlalchemy.sql.selectable.Select object at 0x7c779a99fef0&gt; = select_from(Table('job_runs', MetaData(), Column('job_id', Text(), table=&lt;job_runs&gt;, primary_key=True, nullable=False), Column('te...ob_runs&gt;), Column('error_code', Text(), table=&lt;job_runs&gt;), Column('result_ref', Text(), table=&lt;job_runs&gt;), schema=None))
+E            +      where select_from = &lt;sqlalchemy.sql.selectable.Select object at 0x7c779a99df10&gt;.select_from
+E            +        where &lt;sqlalchemy.sql.selectable.Select object at 0x7c779a99df10&gt; = select(&lt;sqlalchemy.sql.functions.count at 0x7c779a9cc2c0; count&gt;)
+E            +          where &lt;sqlalchemy.sql.functions.count at 0x7c779a9cc2c0; count&gt; = &lt;sqlalchemy.sql.functions._FunctionGenerator object at 0x7c779cc9ecf0&gt;()
+E            +            where &lt;sqlalchemy.sql.functions._FunctionGenerator object at 0x7c779cc9ecf0&gt; = func.count
+
+tests/integration/test_r04_source_jobs_pg.py:352: AssertionError</failure></testcase><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_malicious_vendor_link_rolls_back_entire_page[private-host]" time="3.434" /><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_malicious_vendor_link_rolls_back_entire_page[duplicate-next]" time="4.494" /><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_malicious_vendor_link_rolls_back_entire_page[mixed-query]" time="4.072" /><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_malicious_vendor_link_rolls_back_entire_page[other-repository]" time="3.478" /><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_vendor_repeated_after_preserves_prior_page_receipt_and_cursor" time="3.523" /><testcase classname="tests.integration.test_r04_source_jobs_pg" name="test_legacy_vendor_page_cursor_is_blocked_without_fetch_or_receipt_reset" time="0.830" /></testsuite></testsuites>

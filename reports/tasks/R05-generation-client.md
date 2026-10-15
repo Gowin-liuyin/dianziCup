@@ -106,3 +106,56 @@ fb955索引905 nodes/4114 edges，trace `GenerationClient.generate → enforce_e
 
 
 修订记录：2026-10-15T14:20:31+08:00，封存后仅将5个本包生成coverage SQLite缓存经绝对路径白名单核对移动至仓外C:/Users/yinha/.codex/tmp/dianzi-r05-generation-client-20261015/coverage，保留hash和实际移动收据coverage_cache_move.json；未递归清理/移动，也未动用户或他Agent文件。后续runner默认在此仓外缓存路径使用独立COVERAGE_FILE；既有命令收据中的旧位置是当次实际捕获位置，原raw coverage JSON/XML/log没有改变。
+
+## 10. 独立审查两项Must的修复批次
+
+本节首次写作时间：由本节末实际写作收据登记；历史首次创建时间保持不变。主控在本轮授权仅修两个已确证缺陷，作者仍为/root/r04_knowledge_api；独立审查者/root/r05_generation_independent_review未参与实现。状态awaiting_review，整R05仍partial，未push/未accepted。本节取代前文当前状态指向，前文各时点和失败原样保留。
+
+修复基线322b51ac2835fcd7a5597317cc2f843dc3e97812；隔离worktree `C:/Users/yinha/.codex/worktrees/recovery-r05-generation-review-fixes/dianzi`，分支codex/r05-generation-review-fixes。源码冻结691a20db07d6594faf35c2cb1de738edcca6c617，backend/src tree=9eb16e6f6c3992b7465476e29d3c873cf7f9c6db。仅修改generation.py，新增直接单元测试test_r05_generation_review_fixes.py；没有修改共享network、schema、锁、settings、认证、公开API、进度、金标或阈值。本节和本包run目录为单独证据提交。
+
+### 10.1 复现、根因、修复与复用
+
+| 问题 | 确证输入/实际结果 | 根因及实际修复 | 自检/独立状态 |
+|---|---|---|---|
+| R05-M1，安全阻断 | reviewer的合成客户端凭据放进prompt_version或schema_version，满足pattern，调用成功后元数据包含凭据 | body已有已知凭据检查，但两个标识不在body；现在在编码、schema处理及联网前检查request的model/prompt/schema全部公开版本标识，复用已有known-credential子串规则和固定model_credential_in_input，异常attempts为空 | 原probe两例失败保留；18个新两wire×三字段×原样/前缀/后缀负例检查零编码/零网络/零元数据凭据；独立复核待审查者登记 |
+| R05-M2，合同阻断 | 根BaseModel extra forbid，但嵌套TypedDict或stdlib dataclass显式ConfigDict(extra=ignore)，输出嵌套extra被丢弃后成功 | 旧遍历只识别BaseModel与typing参数，未取得子类型有效配置；改为检查已锁Pydantic实际core validation graph的model/dataclass/typed-dict配置和fields显式override，包含容器、union、definitions/递归引用，metadata/config展示/serialization支路不作为验证节点扫描 | 原probe两例失败保留；16个ignore/allow覆盖直接/list/mapping/union配置拒绝为零网络；8个有效默认继承/显式forbid正负输出与1个递归模型通过；独立复核待登记 |
+
+原审查probe的v2更正过harness，作者直接只读复跑原文件，在322基线实际4 failed/20 passed，不把v1 harness错误列为业务缺陷。v2原字节复制至本run/reviewer_probe_v2.py，hash与原文件一致，便于提交后独立复跑；未改审查者源文件。修复后同24项全部通过。所有凭据均为显式synthetic fixture值；没有读取实际产品key。
+
+复用已锁Pydantic2.13.5/pydantic-core2.46.5生成的有效验证配置，使用标准库dict/list/tuple/集合迭代，不新增反射框架、依赖或provider能力。根据[官方core schema定义](https://pydantic.dev/docs/validation/dev/api/pydantic-core/pydantic_core_schema/)，结合锁版本schema_probe实际输出核对extra_behavior/extra_fields_behavior；默认TypedDict和stdlib dataclass在严格父配置下实际继承forbid，合规正例保留，没有将默认继承本身误报。自由键的有类型dict映射继续有效，映射值中的对象仍递归检查。必要新增代码弥补元数据旁路和类型遍历缺口；不是扩大模型公共接口。Pydantic升级需复跑这些合同，任意自定义validator执行逻辑不在本批授权输入范围，response_schema仍由可信业务代码提供。
+
+### 10.2 调用方、索引与入口
+
+本批先读AGENTS、00执行地图、R05、T18及其02/05/07合同、实际CR-R04-R05_model_post、新Ponytail5.2 full/review、状态/交接。仓内未发现名为CR-R14的文件，已向主控报告；两项修复严格落实现有extra forbid与秘密保护合同，无新增合同差异。
+
+主控随后确认CR-R14为派发口误，正确合同就是CR-R04-R05_model_post，无需新的合同文件或授权。派发消息确认为本批记录依据，消息发送秒没有独立日志，不补造。
+
+CBM0.11.0独立项目r05_review_fixes_322b51a在本WT backend/src索引953nodes/4509edges；冻结后独立项目r05_review_fixes_691a20d刷新953nodes/4507edges、72文件，cache只在/tmp/dianzi-cbm-r05-review-fixes-20261015，不含holdout/秘密。architecture/schema/trace、源码及rg调用方交叉核对：require_strict_schema唯一调用者GenerationClient.generate；完整路径为可信业务调用→私有外发许可→请求/版本/有效schema→两wire encode→NetworkGateway.post_json→固定origin HTTP→严格JSON/schema→安全metadata→返回。当前源码依然没有产品API/worker调用入口，仅unit/contract/本机HTTP调用，不能拿索引没有边单独当未接线证据；rg和源码一致支持这一限制。调用签名、异常固定码和正常返回未改变；新增阻断作用于原本不合合同的输入/schema。
+
+cbm_frozen_generate首次用简名GenerationClient.generate返回function not found，exit1原样保存；根据图返回的完整qualified name重查exit0，28出向/0入向，非业务测试失败。
+
+### 10.3 冻结版本实际验证
+
+本轮所有命令cwd为上述WT/backend；完整argv、+08开始/结束秒、退出码、code_sha在同名receipt.json，原始日志/XML/coverage保存在 `reports/runs/recovery_r05_generation_review_fixes_20261015/`。本机Windows CPython3.12.13，68个锁包独立uv sync；没有修改其他Agent虚拟环境。`-o addopts=`只用于显式隔离target，完整unit原始默认coverage60门完整运行，不更改分母或skip。
+
+| 冻结检查 | 上海时间2026-10-15 | 实际结果/证据 |
+|---|---|---|
+| 原始unit全门 | 14:46:51–14:47:18 | exit0，617 passed，0 failed/skip，1依赖弃用warning；unit_frozen.log/xml；raw3449/5364=64.29903057419835%，coverage JSON保留42现有excluded lines，未改覆盖配置 |
+| 定向完整行为 | 14:46:51–14:46:59 | exit0，162 passed，0 failed/skip；target_frozen.log/xml；103 generation unit + 24既有wire/T18 contract + 7真实本机HTTP + 4共享timeout security + 24审查v2 |
+| mypy src | 14:46:51–14:46:52 | exit0，72源码；mypy_frozen.* |
+| Ruff src/tests | 14:46:51–14:46:52 | exit0；ruff_frozen.* |
+| format check src/tests | 14:46:51–14:46:52 | exit0，166文件；format_frozen.* |
+| schema展示hook/serializer定向负例 | 14:49:43–14:49:44 | exit0，4 passed；schema_presentation_frozen.*；只增加run内可复现probe，691a20业务源码未变 |
+
+原始失败保留：14:43:54–14:43:57的independent_red=exit1/4failed20passed；首次ruff=exit1/4格式问题（行长/导入），仅两拥有文件修复后通过，不隐藏日志。完整unit唯一warning来自Starlette测试客户端弃用httpx提示，未新增依赖解决与本批无关的弃用，留给依赖维护触发时处理。
+
+unit/contract/security：本表范围passed；integration：仅真实本机HTTP传输7例passed（隔离DNS/loopback socket，不证明供应商TLS/网络）；PG/Redis/OpenSearch/向量/图/产品API集成not_run；frontend/e2e/live/manual均not_run，供应商实际调用0、费用unknown，真实语义/引用回答未证明。未开启fixture后备；未付费、未扫描资产、未执行PoC。pytest HTTP fixture退出关闭server并join线程；本轮没有长期服务、数据库或持久端口。
+
+六类范围与评分：这里只支持T18-C01/C02/C05的生成边界，F2/F3/A1/E1代码准备；embedding、rerank、PG任务链、真实模型接入、端到端引用回答仍由主控后续批次完成，不签整T18/T20/T30/T31/T43，不声称G-B通过。修复后定向独立审查依据由/root/r05_generation_independent_review输出中文报告；作者只登记awaiting_review。
+
+额外4例实际证明：TypedDict/dataclass的json_schema_extra把additionalProperties伪成false仍被有效ignore配置拒绝；BaseModel的真实__get_pydantic_json_schema__ hook同样不能使ignore过关；custom model_serializer不能绕过额外输入拒绝。明确边界：schema类必须为可信业务代码，任意before/plain validator可自行运行Python和预先删除输入，本客户端不承诺证明任意用户代码的无损性，也不接受外部提供schema类；serialization不是输入验证器。该边界已直接通知独立reviewer，不以展示hook测试替代任意代码安全保证。
+
+
+本修复批次写作收据：2026-10-15T14:50:17+08:00，追加本节实际写作结束/最后更新时间/证据截止；本节首字写作开始秒未独立记载，写历史未记录，不根据文件mtime推断。前文首次创建时间保持。本节仅awaiting_review，独立复验结果另由审查者登记。
+
+封存检查补记：staged_diff_check在2026-10-15T14:50:40+08:00实际git exit2，原因仅为CBM原输出/原review probe尾部空行，以及故障traceback/XML原字节空白行；原始证据不裁切、不换全局attributes。业务源码/直接测试提交前diff check为exit0。evidence_index逐条并列captured SHA256/bytes与Git blob SHA256/bytes，保留换行转换差异；静态长sk-token形状扫描不是实际凭据全文/片段检查，后者由主控集成负责。未创建或遗留长期服务资源。
