@@ -1,0 +1,191 @@
+infra/compose/test.override.yaml:12:  opensearch:
+infra/compose/test.override.yaml:25:      OPENSEARCH_URL: http://opensearch:9200
+infra/compose/test.override.yaml:32:      OPENSEARCH_URL: http://opensearch:9200
+infra/compose/test.override.yaml:39:      OPENSEARCH_URL: http://opensearch:9200
+infra/compose/compose.yaml:13:    REDIS_URL: ${COMPOSE_REDIS_URL:?Inject the authenticated Redis URL}
+infra/compose/compose.yaml:63:  opensearch:
+infra/compose/compose.yaml:64:    image: opensearchproject/opensearch@sha256:7b9517dff561f54456fad947f11820fa595a340fd1034fc63d57b77f724b3f8f
+infra/compose/compose.yaml:65:    profiles: [search]
+infra/compose/compose.yaml:68:      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD:?Inject search credential}
+infra/compose/compose.yaml:72:    ports: ["127.0.0.1:${OPENSEARCH_PORT:?Set an exclusive search port}:9200"]
+infra/compose/compose.yaml:74:    volumes: [opensearch_data:/usr/share/opensearch/data]
+infra/compose/compose.yaml:170:  opensearch_data:
+backend/src/ai_intel/infrastructure/settings.py:41:    opensearch_url: str | None = None
+backend/src/ai_intel/infrastructure/settings.py:42:    auth_secret_ref: SecretStr | None = None
+backend/src/ai_intel/infrastructure/settings.py:113:        "search": "configured" if settings.opensearch_url else "degraded_search_not_configured",
+backend/src/ai_intel/api/app.py:20:from ai_intel.api.auth_routes import build_auth_router
+backend/src/ai_intel/api/app.py:21:from ai_intel.api.authentication import (
+backend/src/ai_intel/api/app.py:33:    auth_service: AuthenticationSessionService | None = None,
+backend/src/ai_intel/api/app.py:47:    service = auth_service
+backend/src/ai_intel/api/app.py:102:    auth_router = build_auth_router(lambda: service, configuration)
+backend/src/ai_intel/api/app.py:104:    application.include_router(auth_router, prefix="/v1")
+backend/src/ai_intel/api/app.py:106:    application.include_router(auth_router, prefix="/api/v1", include_in_schema=False)
+backend/src/ai_intel/api/app.py:108:    application.include_router(auth_router, include_in_schema=False)
+backend/src/ai_intel/api/app.py:152:        dependencies["search"] = {"state": "not_configured"}
+backend/src/ai_intel/api/app.py:153:        if settings.opensearch_url:
+backend/src/ai_intel/api/app.py:155:                with httpx.Client(
+backend/src/ai_intel/api/app.py:158:                    response = client.get(settings.opensearch_url.rstrip("/") + "/_cluster/health")
+backend/src/ai_intel/api/app.py:160:                    search = response.json()
+backend/src/ai_intel/api/app.py:161:                dependencies["search"] = {
+backend/src/ai_intel/api/app.py:164:                        isinstance(search, dict)
+backend/src/ai_intel/api/app.py:165:                        and isinstance(search.get("status"), str)
+backend/src/ai_intel/api/app.py:166:                        and search["status"] in {"yellow", "green"}
+backend/src/ai_intel/api/app.py:171:                dependencies["search"] = {
+backend/src/ai_intel/api/app.py:173:                    "reason": "search connection unavailable",
+backend/src/ai_intel/api/app.py:200:                else "required dependencies unavailable or search degraded",
+                    timeout=15,
+                )
+            else:
+                os.killpg(process.pid, signal.SIGKILL)
+            stdout, stderr = process.communicate(timeout=15)
+            returncode = 124
+    for name in ("TEST_DATABASE_URL", "TEST_REDIS_URL"):
+        secret_url = child_environment.get(name)
+        if secret_url:
+            stdout = stdout.replace(secret_url, "[redacted test connection]")
+            stderr = stderr.replace(secret_url, "[redacted test connection]")
+    if emit_output:
+        sys.stdout.write(stdout)
+        sys.stderr.write(stderr)
+    return subprocess.CompletedProcess(command, returncode, stdout, stderr)
+
+
+def read_test_report(report_path: Path) -> dict[str, int]:
+    """数实际 JUnit 用例，避免重复累计父子 testsuite 的汇总属性。"""
+    root = ElementTree.parse(report_path).getroot()
+    cases = root.findall(".//testcase")
+    return {
+        "tests": len(cases),
+        "failed": sum(case.find("failure") is not None for case in cases),
+        "errors": sum(case.find("error") is not None for case in cases),
+        "skipped": sum(case.find("skipped") is not None for case in cases),
+    }
+
+
+def resolve_check_command(requested_scope: str, project_root: Path) -> list[str]:
+    """校验 scope 和真实入口，返回首条执行命令。"""
+    if requested_scope not in SUPPORTED_SCOPES:
+        raise ValueError(f"unknown scope: {requested_scope}")
+    if requested_scope in {"unit", "contract", "integration", "security"}:
+        if not any((project_root / "backend" / "tests" / requested_scope).rglob("test_*.py")):
+            raise NotImplementedErrorScope(requested_scope)
+        return ["uv", "run", "--locked", "pytest", f"tests/{requested_scope}"]
+    if requested_scope in {"frontend", "e2e"}:
+        package_file = project_root / "frontend" / "package.json"
+        if not package_file.is_file():
+            raise NotImplementedErrorScope(requested_scope)
+        package = json.loads(package_file.read_text(encoding="utf-8"))
+        scripts = package.get("scripts", {})
+        script = "test" if requested_scope == "frontend" else "test:e2e"
+        if not isinstance(scripts, dict) or script not in scripts:
+            raise NotImplementedErrorScope(requested_scope)
+        return ["npm.cmd" if os.name == "nt" else "npm", "run", script]
+    return []
+
+
+def _report_result(scope: str, report_path: Path, returncode: int) -> int:
+    try:
+        counts = read_test_report(report_path)
+    except (OSError, ElementTree.ParseError):
+        print(f"ERROR {scope}: actual test report missing or invalid", file=sys.stderr)
+        return returncode if returncode else 1
+    print(json.dumps({"scope": scope, **counts, "tool_exit": returncode}))
+    if returncode:
+        return returncode
+    if counts["tests"] == 0:
+        return 3
+    if counts["failed"] or counts["errors"]:
+        return 1
+    if counts["skipped"]:
+        print(f"ERROR {scope}: skipped tests are not accepted", file=sys.stderr)
+        return 4
+    return 0
+
+
+def run_scope_checks(
+    requested_scope: str, timeout_seconds: int = 600, fixture_only: bool = False
+) -> int:
+    """执行所请求层；all 在一个层失败后仍执行其它层，输出实际各层结果。"""
+    if requested_scope == "all":
+        results = [
+            run_scope_checks(scope, timeout_seconds, fixture_only)
+            for scope in SUPPORTED_SCOPES[:-1]
+        ]
+        print(
+            json.dumps(
+                {"scope": "all", "exits": dict(zip(SUPPORTED_SCOPES[:-1], results, strict=True))}
+            )
+        )
+        return 124 if 124 in results else next((code for code in results if code), 0)
+    try:
+        command = resolve_check_command(requested_scope, PROJECT_ROOT)
+        if requested_scope in {"contract", "integration"} and not (
+            requested_scope == "contract" and fixture_only
+        ):
+            require_isolated_test_database()
+        with tempfile.TemporaryDirectory(prefix=f"dianzi-{requested_scope}-") as directory:
+            report_path = Path(directory) / "junit.xml"
+            if requested_scope in {"unit", "contract", "integration", "security"}:
+                command += [f"--junitxml={report_path}"]
+                if requested_scope != "unit":
+                    command += ["--cov-fail-under=0"]
+                if requested_scope == "contract" and fixture_only:
+                    command += ["-m", "not real_pg"]
+                completed = _run_command(command, BACKEND_DIR, timeout_seconds)
+            else:
+                frontend_directory = PROJECT_ROOT / "frontend"
+                if requested_scope == "frontend":
+                    for step in ("lint", "typecheck"):
+                        result = _run_command(
+                            [command[0], "run", step], frontend_directory, timeout_seconds
+                        )
+                        if result.returncode:
+                            return result.returncode
+                environment = dict(os.environ)
+                if requested_scope == "e2e":
+                    environment["PLAYWRIGHT_JUNIT_OUTPUT_FILE"] = str(report_path)
+                    command += ["--", "--reporter=junit"]
+                else:
+                    command += ["--", "--reporter=junit", f"--outputFile={report_path}"]
+                completed = _run_command(command, frontend_directory, timeout_seconds, environment)
+                if requested_scope == "frontend" and completed.returncode == 0:
+                    build = _run_command(
+                        [command[0], "run", "build"], frontend_directory, timeout_seconds
+                    )
+                    if build.returncode:
+                        return build.returncode
+            return _report_result(requested_scope, report_path, completed.returncode)
+    except NotImplementedErrorScope as not_ready:
+        print(f"ERROR not_implemented: {not_ready.scope}", file=sys.stderr)
+        return 3
+    except TestEnvironmentError as blocked:
+        print(f"ERROR blocked: {blocked}", file=sys.stderr)
+        return 4
+    except OSError as unavailable:
+        print(
+            f"ERROR blocked: check tool unavailable ({type(unavailable).__name__})", file=sys.stderr
+        )
+        return 4
+
+
+def run_compose_services(
+    *arguments: str, test_project: bool = False
+) -> subprocess.CompletedProcess[str]:
+    """固定文件与显式项目；可用 JSON argv 指定受控 WSL Docker，不用 shell/eval。"""
+    try:
+        prefix = json.loads(os.environ.get("DIANZI_DOCKER_COMMAND_JSON", '["docker"]'))
+    except json.JSONDecodeError as invalid_prefix:
+        raise TestEnvironmentError(
+            "DIANZI_DOCKER_COMMAND_JSON must be an argument array"
+        ) from invalid_prefix
+    if (
+        not isinstance(prefix, list)
+        or not prefix
+        or not all(isinstance(item, str) and item for item in prefix)
+    ):
+        raise TestEnvironmentError("DIANZI_DOCKER_COMMAND_JSON must be a nonempty string array")
+    variable = "DIANZI_TEST_COMPOSE_PROJECT" if test_project else "DIANZI_COMPOSE_PROJECT"
+    project_name = os.environ.get(variable, "")
+    if not re.fullmatch(r"dianzi-(test|dev)-[a-z0-9_]{3,48}", project_name):
+        raise TestEnvironmentError(f"{variable} requires an explicit dianzi test/dev project")
+{"httpx_client_verify_default": true, "trust_env_disabled_in_router": true}

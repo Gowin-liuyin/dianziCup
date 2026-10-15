@@ -1,0 +1,539 @@
+READ_FILE backend/src/ai_intel/api/app.py
+1:"""默认真实依赖装配；导入无网络，健康请求执行有界的实际探测。"""
+2:
+3:from collections.abc import AsyncIterator
+4:from contextlib import asynccontextmanager
+5:from datetime import UTC, datetime
+6:
+7:import httpx
+8:from alembic.script import ScriptDirectory
+9:from fastapi import APIRouter, FastAPI, Request
+10:from fastapi.exceptions import RequestValidationError
+11:from fastapi.middleware.cors import CORSMiddleware
+12:from fastapi.responses import JSONResponse
+13:from redis import Redis
+14:from redis.exceptions import RedisError
+15:from sqlalchemy import text
+16:from sqlalchemy.engine import Engine
+17:from sqlalchemy.exc import SQLAlchemyError
+18:from starlette.exceptions import HTTPException
+19:
+20:from ai_intel.api.auth_routes import build_auth_router
+21:from ai_intel.api.authentication import (
+22:    AuthenticationSessionService,
+23:    DatabaseUserDirectory,
+24:    cookie_secure_for_environment,
+25:)
+26:from ai_intel.api.problems import problem_response
+27:from ai_intel.infrastructure.database import MIGRATIONS_DIR, build_engine
+28:from ai_intel.infrastructure.runtime_observations import read_runtime_readiness
+29:from ai_intel.infrastructure.settings import ApplicationSettings, load_application_settings
+30:
+31:
+32:def create_application(
+33:    auth_service: AuthenticationSessionService | None = None,
+34:    *,
+35:    settings: ApplicationSettings | None = None,
+36:) -> FastAPI:
+37:    """配置真实PG目录，始终装认证；显式注入服务仅用于隔离测试。"""
+38:    configuration = settings or load_application_settings()
+39:    engine = build_engine(configuration) if configuration.database_url else None
+40:    cache = None
+41:    if configuration.redis_url:
+42:        cache = Redis.from_url(
+43:            configuration.redis_url.get_secret_value(),
+44:            socket_connect_timeout=configuration.dependency_timeout_seconds,
+45:            socket_timeout=configuration.dependency_timeout_seconds,
+46:        )
+47:    service = auth_service
+48:    if service is None and engine is not None:
+49:        service = AuthenticationSessionService(
+50:            DatabaseUserDirectory(engine),
+51:            configuration.allowed_origins,
+52:            cookie_secure_for_environment(configuration.app_env),
+53:        )
+54:
+55:    @asynccontextmanager
+56:    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+57:        """进程只拥有自身连接池；不自动迁移或修改已有事实。"""
+58:        try:
+59:            yield
+60:        finally:
+61:            if cache is not None:
+62:                cache.close()
+63:            if engine is not None:
+64:                engine.dispose()
+65:
+66:    application = FastAPI(title="ai-intel-backend", version="0.1.0", lifespan=lifespan)
+67:    application.add_middleware(
+68:        CORSMiddleware,
+69:        allow_origins=list(configuration.allowed_origins),
+70:        allow_credentials=True,
+71:        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+72:        allow_headers=["Content-Type", "X-CSRF-Token", "Idempotency-Key"],
+73:        expose_headers=["X-Request-ID"],
+74:    )
+75:
+76:    @application.exception_handler(RequestValidationError)
+77:    async def invalid_request(request: Request, error: RequestValidationError) -> JSONResponse:
+78:        """错误不回显Pydantic输入，身份伪造审计仅记录固定字段名。"""
+79:        identity_fields = {"tenant_id", "user_id", "role", "permissions"}
+80:        submitted_keys = {
+81:            str(location)
+82:            for detail in error.errors()
+83:            for location in detail.get("loc", ())
+84:            if location in identity_fields
+85:        }
+86:        if service is not None and submitted_keys:
+87:            service.record_identity_spoof_attempt(dict.fromkeys(submitted_keys, ""))
+88:        return problem_response(request, 422, "validation_error", "request schema invalid")
+89:
+90:    @application.exception_handler(HTTPException)
+91:    async def http_error(request: Request, error: HTTPException) -> JSONResponse:
+92:        """路由错误遵循同一问题合同，保留Allow但不回显任意异常文本。"""
+93:        code, detail = {
+94:            404: ("not_found", "requested resource is not available"),
+95:            405: ("method_not_allowed", "request method is not allowed"),
+96:        }.get(error.status_code, ("http_error", "request could not be completed"))
+97:        response = problem_response(request, error.status_code, code, detail)
+98:        if error.headers and "Allow" in error.headers:
+99:            response.headers["Allow"] = error.headers["Allow"]
+100:        return response
+101:
+102:    auth_router = build_auth_router(lambda: service, configuration)
+103:    health_router = build_health_router(configuration, engine, cache)
+104:    application.include_router(auth_router, prefix="/v1")
+105:    application.include_router(health_router, prefix="/v1")
+106:    application.include_router(auth_router, prefix="/api/v1", include_in_schema=False)
+107:    application.include_router(health_router, prefix="/api/v1", include_in_schema=False)
+108:    application.include_router(auth_router, include_in_schema=False)
+109:    application.include_router(health_router, include_in_schema=False)
+110:    return application
+111:
+112:
+113:def build_health_router(
+114:    settings: ApplicationSettings, engine: Engine | None, cache: Redis | None
+115:) -> APIRouter:
+116:    """配置不等于就绪；PG迁移、Redis及已配置搜索均实际探测。"""
+117:    router = APIRouter(prefix="/health")
+118:
+119:    @router.get("/live")
+120:    def health_live() -> dict[str, str]:
+121:        return {"status": "live"}
+122:
+123:    @router.get("/ready")
+124:    def health_ready() -> JSONResponse:
+125:        dependencies: dict[str, dict[str, str]] = {}
+126:        dependencies["database"] = {"state": "not_configured"}
+127:        if engine is not None:
+128:            try:
+129:                with engine.connect() as connection:
+130:                    connection.execute(text("SELECT 1"))
+131:                    installed = connection.execute(
+132:                        text("SELECT version_num FROM alembic_version")
+133:                    ).scalar_one_or_none()
+134:                expected = ScriptDirectory(str(MIGRATIONS_DIR)).get_current_head()
+135:                dependencies["database"] = {
+136:                    "state": "ready" if installed == expected else "migration_required"
+137:                }
+138:            except SQLAlchemyError:
+139:                dependencies["database"] = {
+140:                    "state": "unavailable",
+141:                    "reason": "database connection or schema unavailable",
+142:                }
+143:        dependencies["cache"] = {"state": "not_configured"}
+144:        if cache is not None:
+145:            try:
+146:                dependencies["cache"] = {"state": "ready" if cache.ping() else "unavailable"}
+147:            except RedisError:
+148:                dependencies["cache"] = {
+149:                    "state": "unavailable",
+150:                    "reason": "cache connection unavailable",
+151:                }
+152:        dependencies["search"] = {"state": "not_configured"}
+153:        if settings.opensearch_url:
+154:            try:
+155:                with httpx.Client(
+156:                    timeout=settings.dependency_timeout_seconds, trust_env=False
+157:                ) as client:
+158:                    response = client.get(settings.opensearch_url.rstrip("/") + "/_cluster/health")
+159:                    response.raise_for_status()
+160:                    search = response.json()
+161:                dependencies["search"] = {
+162:                    "state": "ready"
+163:                    if (
+164:                        isinstance(search, dict)
+165:                        and isinstance(search.get("status"), str)
+166:                        and search["status"] in {"yellow", "green"}
+167:                    )
+168:                    else "unavailable"
+169:                }
+170:            except (httpx.HTTPError, ValueError):
+171:                dependencies["search"] = {
+172:                    "state": "unavailable",
+173:                    "reason": "search connection unavailable",
+174:                }
+175:        dependencies.update(
+176:            {component: {"state": "not_observed_or_stale"} for component in ("worker", "scheduler")}
+177:        )
+178:        if engine is not None and dependencies["database"]["state"] == "ready":
+179:            try:
+180:                dependencies.update(read_runtime_readiness(engine, datetime.now(UTC)))
+181:            except SQLAlchemyError:
+182:                for component in ("worker", "scheduler"):
+183:                    dependencies[component] = {"state": "unavailable"}
+184:        core_ready = all(dependencies[name]["state"] == "ready" for name in ("database", "cache"))
+185:        ready = core_ready and all(
+186:            dependency["state"] == "ready" for dependency in dependencies.values()
+187:        )
+188:        if ready:
+189:            status = "ready"
+190:        elif core_ready:
+191:            status = "degraded"
+192:        else:
+193:            status = "not_ready"
+194:        return JSONResponse(
+195:            status_code=200 if ready else 503,
+196:            content={
+197:                "status": status,
+198:                "reason": "all core dependencies available"
+199:                if ready
+200:                else "required dependencies unavailable or search degraded",
+201:                "dependencies": dependencies,
+202:                "data_mode": settings.data_mode,
+203:            },
+204:        )
+205:
+206:    return router
+207:
+208:
+209:app = create_application()
+READ_FILE backend/src/ai_intel/infrastructure/database.py
+1:"""数据库引擎、会话边界与迁移执行。
+2:
+3:职责: 提供每请求独立 Session 与显式事务边界; 迁移经 alembic 程序化配置执行,
+4:不在生产路径自动 drop/create。
+5:"""
+6:
+7:from __future__ import annotations
+8:
+9:from collections.abc import Iterator
+10:from contextlib import contextmanager
+11:from pathlib import Path
+12:
+13:from alembic import command
+14:from alembic.config import Config
+15:from sqlalchemy import create_engine
+16:from sqlalchemy.engine import Engine, make_url
+17:from sqlalchemy.orm import Session, sessionmaker
+18:
+19:from ai_intel.infrastructure.settings import ApplicationSettings
+20:
+21:MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "migrations"
+22:
+23:
+24:class MissingDatabaseUrlError(RuntimeError):
+25:    """数据库连接串未配置: 明确报错, 不静默回退到默认库。"""
+26:
+27:
+28:def build_engine(settings: ApplicationSettings) -> Engine:
+29:    """按配置构建同步引擎; 每请求独立 Session 的基础。"""
+30:    if settings.database_url is None:
+31:        raise MissingDatabaseUrlError("DATABASE_URL is required for persistence")
+32:    database_url = make_url(settings.database_url.get_secret_value())
+33:    if database_url.get_backend_name() != "postgresql":
+34:        raise MissingDatabaseUrlError("DATABASE_URL must use PostgreSQL")
+35:    return create_engine(
+36:        database_url.set(drivername="postgresql+psycopg"),
+37:        pool_pre_ping=True,
+38:        pool_size=5,
+39:        max_overflow=5,
+40:        pool_timeout=settings.dependency_timeout_seconds,
+41:        connect_args={
+42:            "connect_timeout": max(1, int(settings.dependency_timeout_seconds)),
+43:            "options": f"-c statement_timeout={int(settings.dependency_timeout_seconds * 1000)} "
+44:            f"-c lock_timeout={int(settings.dependency_timeout_seconds * 1000)}",
+45:        },
+46:    )
+47:
+48:
+49:@contextmanager
+50:def session_scope(engine: Engine) -> Iterator[Session]:
+51:    """请求/任务级会话边界: 显式提交或回滚, 会话不跨线程共享。"""
+52:    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+53:    session = session_factory()
+54:    try:
+55:        yield session
+56:        session.commit()
+57:    except Exception:
+58:        session.rollback()
+59:        raise
+60:    finally:
+61:        session.close()
+62:
+63:
+64:def run_migrations(database_url: str, target_revision: str = "head") -> None:
+65:    """执行迁移到目标版本; 供空库升级与既有数据升级复用, 版本记录在 alembic_version。"""
+66:    alembic_config = Config()
+67:    alembic_config.set_main_option("script_location", str(MIGRATIONS_DIR))
+68:    alembic_config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+69:    command.upgrade(alembic_config, target_revision)
+70:
+71:
+72:def run_downgrade(database_url: str, target_revision: str) -> None:
+73:    """回滚到指定版本; 回滚失败由 alembic 原样抛出, 不吞异常。"""
+74:    alembic_config = Config()
+75:    alembic_config.set_main_option("script_location", str(MIGRATIONS_DIR))
+76:    alembic_config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+77:    command.downgrade(alembic_config, target_revision)
+78:
+79:
+80:def current_migration_revision(database_url: str) -> str | None:
+81:    """读取当前迁移版本号; 未初始化的库返回 None。"""
+82:    from sqlalchemy import text
+83:
+84:    engine = create_engine(database_url)
+85:    with engine.connect() as connection:
+86:        exists = connection.execute(
+87:            text("SELECT to_regclass(:name)"), {"name": "alembic_version"}
+88:        ).scalar()
+89:        if exists is None:
+90:            return None
+91:        return connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
+READ_FILE backend/src/ai_intel/infrastructure/runtime_observations.py
+1:"""PG存储运行观测；仅证明组件最近执行，不替代事实或任务状态。"""
+2:
+3:from datetime import UTC, datetime, timedelta
+4:
+5:from sqlalchemy import select
+6:from sqlalchemy.dialects.postgresql import insert
+7:from sqlalchemy.engine import Engine
+8:
+9:from ai_intel.knowledge.models import runtime_observations
+10:
+11:RUNTIME_MAX_AGE_SECONDS = 45
+12:
+13:
+14:def record_runtime_observation(engine: Engine, component: str, observed_at: datetime) -> None:
+15:    """实际执行成功后更新观测；PG失败抛出，不能先写假就绪。"""
+16:    if component not in {"worker", "scheduler"}:
+17:        raise ValueError("unsupported runtime component")
+18:    statement = insert(runtime_observations).values(
+19:        component=component, observed_at=observed_at, platform_version="0.1.0"
+20:    )
+21:    with engine.begin() as connection:
+22:        connection.execute(
+23:            statement.on_conflict_do_update(
+24:                index_elements=[runtime_observations.c.component],
+25:                set_={"observed_at": observed_at, "platform_version": "0.1.0"},
+26:            )
+27:        )
+28:
+29:
+30:def read_runtime_readiness(engine: Engine, now: datetime) -> dict[str, dict[str, str]]:
+31:    """未观测、过期或时钟在未来均不就绪；只返回固定组件与状态。"""
+32:    with engine.connect() as connection:
+33:        rows = connection.execute(
+34:            select(runtime_observations.c.component, runtime_observations.c.observed_at)
+35:        ).all()
+36:        observed: dict[str, datetime] = {str(row[0]): row[1] for row in rows}
+37:    earliest = now - timedelta(seconds=RUNTIME_MAX_AGE_SECONDS)
+38:    return {
+39:        component: {
+40:            "state": "ready"
+41:            if component in observed and earliest <= observed[component].astimezone(UTC) <= now
+42:            else "not_observed_or_stale"
+43:        }
+44:        for component in ("worker", "scheduler")
+45:    }
+READ_FILE backend/src/ai_intel/workers/runtime.py
+1:"""真实Redis/Celery运行入口；PG记录执行观测，不使用Celery结果作为真相。"""
+2:
+3:from datetime import UTC, datetime
+4:
+5:from celery import Celery
+6:from celery.beat import PersistentScheduler
+7:from sqlalchemy import text
+8:from sqlalchemy.exc import SQLAlchemyError
+9:
+10:from ai_intel.infrastructure.database import build_engine
+11:from ai_intel.infrastructure.runtime_observations import record_runtime_observation
+12:from ai_intel.infrastructure.settings import ConfigurationError, load_application_settings
+13:
+14:
+15:def build_celery_application() -> Celery:
+16:    """缺PG/Redis配置立即失败；仅JSON任务、单队列、受控并发与超时。"""
+17:    settings = load_application_settings()
+18:    if settings.database_url is None or settings.redis_url is None:
+19:        raise ConfigurationError("DATABASE_URL and REDIS_URL are required for workers")
+20:    application = Celery("ai_intel", broker=settings.redis_url.get_secret_value(), backend=None)
+21:    application.conf.update(
+22:        accept_content=["json"],
+23:        task_serializer="json",
+24:        result_serializer="json",
+25:        task_ignore_result=True,
+26:        task_store_errors_even_if_ignored=False,
+27:        task_default_queue="ai_intel",
+28:        worker_concurrency=1,
+29:        worker_prefetch_multiplier=1,
+30:        worker_max_tasks_per_child=100,
+31:        task_acks_late=True,
+32:        task_reject_on_worker_lost=True,
+33:        task_soft_time_limit=25,
+34:        task_time_limit=30,
+35:        broker_connection_timeout=settings.dependency_timeout_seconds,
+36:        broker_connection_retry_on_startup=False,
+37:        broker_transport_options={"visibility_timeout": 120, "socket_timeout": 3},
+38:        enable_utc=True,
+39:        timezone="UTC",
+40:        beat_max_loop_interval=10,
+41:        beat_scheduler="ai_intel.workers.runtime:ObservedScheduler",
+42:        beat_schedule={
+43:            "observe-worker": {
+44:                "task": "ai_intel.runtime.observe_worker",
+45:                "schedule": 10.0,
+46:                "options": {"expires": 20},
+47:            }
+48:        },
+49:    )
+50:    return application
+51:
+52:
+53:def observe_runtime_component(component: str) -> dict[str, str]:
+54:    """运行进程完成实际PG查询再提交观测；失败只返回固定错误类别。"""
+55:    engine = build_engine(load_application_settings())
+56:    try:
+57:        with engine.connect() as connection:
+58:            connection.execute(text("SELECT 1")).scalar_one()
+59:        record_runtime_observation(engine, component, datetime.now(UTC))
+60:        return {"component": component, "state": "observed"}
+61:    except SQLAlchemyError:
+62:        raise RuntimeError("runtime database unavailable") from None
+63:    finally:
+64:        engine.dispose()
+65:
+66:
+67:class ObservedScheduler(PersistentScheduler):
+68:    """复用Celery持久化调度器；每次实际tick完成后提交scheduler观测。"""
+69:
+70:    def tick(self) -> float:
+71:        delay = super().tick()
+72:        observe_runtime_component("scheduler")
+73:        return float(delay)
+74:
+75:
+76:celery_app = build_celery_application()
+77:
+78:
+79:def observe_worker() -> dict[str, str]:
+80:    """Celery实际消费后记录worker，不以调度发送或导入成功冒充执行。"""
+81:    return observe_runtime_component("worker")
+82:
+83:
+84:celery_app.task(name="ai_intel.runtime.observe_worker", ignore_result=True)(observe_worker)
+READ_FILE backend/migrations/versions/0005_runtime_observations.py
+1:"""R01运行观测；新增独立表，不修改已有业务记录。
+2:
+3:Revision ID: 0005_runtime_observations
+4:Revises: 0004_jobs_outbox
+5:"""
+6:
+7:import sqlalchemy as sa
+8:from alembic import op
+9:
+10:revision = "0005_runtime_observations"
+11:down_revision = "0004_jobs_outbox"
+12:branch_labels = None
+13:depends_on = None
+14:
+15:
+16:def upgrade() -> None:
+17:    """记录worker/scheduler实际执行时点，健康检查据此判断失效。"""
+18:    op.create_table(
+19:        "runtime_observations",
+20:        sa.Column("component", sa.Text(), primary_key=True),
+21:        sa.Column("observed_at", sa.DateTime(timezone=True), nullable=False),
+22:        sa.Column("platform_version", sa.Text(), nullable=False),
+23:        sa.CheckConstraint("component IN ('worker', 'scheduler')", name="ck_runtime_component"),
+24:    )
+25:
+26:
+27:def downgrade() -> None:
+28:    """仅删运行观测；恢复现有应用时不需要删除事实或任务。"""
+29:    op.drop_table("runtime_observations")
+READ_FILE backend/tests/unit/test_r01_worker_configuration.py
+1:"""运行入口导入与队列配置；合成连接仅检查装配，不计broker/PG live。"""
+2:
+3:import importlib
+4:import os
+5:import subprocess
+6:import sys
+7:
+8:import pytest
+9:
+10:
+11:def test_worker_refuses_missing_dependencies_before_starting() -> None:
+12:    environment = dict(os.environ)
+13:    environment.pop("DATABASE_URL", None)
+14:    environment.pop("REDIS_URL", None)
+15:    result = subprocess.run(
+16:        [sys.executable, "-c", "import ai_intel.workers.runtime"],
+17:        env=environment,
+18:        capture_output=True,
+19:        text=True,
+20:        timeout=10,
+21:    )
+22:    assert result.returncode != 0
+23:    assert "DATABASE_URL and REDIS_URL are required for workers" in result.stderr
+24:
+25:
+26:def test_worker_configuration_reuses_single_queue_and_discards_results(
+27:    monkeypatch: pytest.MonkeyPatch,
+28:) -> None:
+29:    monkeypatch.setenv(
+30:        "DATABASE_URL", "postgresql+psycopg://test_user@127.0.0.1:25432/test_fixture"
+31:    )
+32:    monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:26379/0")
+33:    runtime = importlib.import_module("ai_intel.workers.runtime")
+34:    application = runtime.build_celery_application()
+35:    assert application.backend is None or application.conf.result_backend is None
+36:    assert application.conf.accept_content == ["json"]
+37:    assert application.conf.task_ignore_result is True
+38:    assert application.conf.task_store_errors_even_if_ignored is False
+39:    assert application.conf.worker_concurrency == 1
+40:    assert application.conf.worker_prefetch_multiplier == 1
+41:    assert application.conf.task_default_queue == "ai_intel"
+42:    assert application.conf.broker_connection_retry_on_startup is False
+43:    assert application.conf.task_time_limit == 30
+44:    assert application.conf.beat_scheduler == "ai_intel.workers.runtime:ObservedScheduler"
+45:    assert application.conf.beat_schedule["observe-worker"]["options"]["expires"] == 20
+46:    application.close()
+docs/plan/12_recovery_task_cards_20261014.md:3:日期：2026-10-14。状态：建设目标已授权，R00已独立核验生效；R01实施中。依据：[完整交付恢复计划](11_full_delivery_recovery_20261014.md)。
+docs/plan/12_recovery_task_cards_20261014.md:11:新增测试使用 `backend/tests/<层>/test_rxx_*.py` 与 `frontend/e2e/` 等实际必要路径，不创建空测试凑数量。涉及后端按卡运行针对性 pytest、Ruff、format、mypy，再跑相关回归；前端运行 lint、typecheck、test、build 和对应浏览器流程。R01 补齐 `python scripts/dev.py check --scope contract|integration|security|frontend|e2e|all`，未实现项返回非零并明确原因。
+docs/plan/12_recovery_task_cards_20261014.md:17:主线：`R00 → R01 → R02 → R03 → R04 → R05 → R06 → R07 → R08 → R09 → R10 → R11 → R12 → R13 → R14 → R15 → R16 → R17 → R18 → R19 → R20 → R21 → R22 → R24-A → R23 → R24-B`。
+docs/plan/12_recovery_task_cards_20261014.md:21:这是建议线性遍历顺序；本次按manifest.recovery能力DAG并行。可提前的独立部分仅限：R19 标注工具/候选集从 R04 后开始，R20 基础监控从 R01 后接入，R22 观测从 R04 后分段记录，R24 文档骨架从 R00 后建立。跨阶段检查点见主计划。实际并行编码须有明确授权与文件所有权，不把可提前准备解释为跳过验收。
+docs/plan/12_recovery_task_cards_20261014.md:27:- **输入 → 输出：**官方题目、原合同、附件、当前代码和日志 → CR-R01–R09、逐 T 卡复核表、需求/效果/测试映射、阶段与资源清单。
+docs/plan/12_recovery_task_cards_20261014.md:33:## R01 · 运行入口、部署与质量检查可用
+docs/plan/12_recovery_task_cards_20261014.md:46:- **前置：**R01。
+docs/plan/12_recovery_task_cards_20261014.md:226:- **前置：**基础指标随R01开始；全验收R16–R18后。
+docs/plan/12_recovery_task_cards_20261014.md:278:| T02 | R01 | T32 | R14、R18 |
+docs/plan/12_recovery_task_cards_20261014.md:279:| T03 | R01、R20 | T33 | R14 |
+docs/plan/12_recovery_task_cards_20261014.md:282:| T06 | R01、R02、R20 | T36 | R16 |
+docs/plan/12_recovery_task_cards_20261014.md:286:| T10 | R04 | T40 | R01、R04、R17 |
+docs/plan/12_recovery_task_cards_20261014.md:316:冻结15d0272bd2a9e25d19397d8147e9c3cbe6016f9b经[独立定向复核](../../reports/reviews/recovery/G-A-R00-review-1-recheck.md)确认R00与三个输出切片accepted，CR-R01–09准确落实生效；前述awaiting_review为其所标日期的历史状态。后续按manifest.recovery能力DAG推进；原T最终前置/全部切片/六验收、人工金标与阶段门保持。G-A仍in_progress，R01–03尚未验收。
+scripts\verify_plan.py:490:        violations.append("RECOVERY_CHANGE_RECORDS: CR-R01–CR-R09须各有正式变更记录")
+backend/tests\contract\test_r01_compose_configuration.py:1:"""R01 Compose 实际配置渲染与隔离边界；config 不启动或下载服务。"""
+backend/tests\security\test_r01_http_authentication.py:1:"""R01 HTTP边界；显式内存fixture只验证路由，不计持久化或live。"""
+backend/tests\contract\test_r01_quality_checks.py:1:"""R01 检查入口负例：隔离资源、实际测试计数、超时和失败必须可观察。"""
+backend/src\ai_intel\workers\runtime.py:11:from ai_intel.infrastructure.runtime_observations import record_runtime_observation
+backend/src\ai_intel\workers\runtime.py:59:        record_runtime_observation(engine, component, datetime.now(UTC))
+backend/src\ai_intel\infrastructure\runtime_observations.py:9:from ai_intel.knowledge.models import runtime_observations
+backend/src\ai_intel\infrastructure\runtime_observations.py:14:def record_runtime_observation(engine: Engine, component: str, observed_at: datetime) -> None:
+backend/src\ai_intel\infrastructure\runtime_observations.py:18:    statement = insert(runtime_observations).values(
+backend/src\ai_intel\infrastructure\runtime_observations.py:24:                index_elements=[runtime_observations.c.component],
+backend/src\ai_intel\infrastructure\runtime_observations.py:34:            select(runtime_observations.c.component, runtime_observations.c.observed_at)
+backend/src\ai_intel\api\app.py:28:from ai_intel.infrastructure.runtime_observations import read_runtime_readiness
+backend/src\ai_intel\knowledge\models.py:178:runtime_observations = Table(
+backend/src\ai_intel\knowledge\models.py:179:    "runtime_observations",
+600 root /tmp/dianzi-r01-infra-20261015/connection.json
+29.2.0

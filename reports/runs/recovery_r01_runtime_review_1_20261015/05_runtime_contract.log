@@ -1,0 +1,580 @@
+1-# 完整交付恢复计划：从当前代码到赛题九与新规划的全部效果
+2-
+3-日期：2026-10-14。基线：`main@8e265dc039a67319140f003f6a070ea714bf7bef`。
+4-
+5:文档状态：**建设目标与CR-R01–CR-R09已获用户授权；R00准确落实已独立核验accepted**。本次工作是细查规划、官方题目和代码后制定执行方案，未开始本方案的产品开发，未改写已有任务验收状态。本方案与原冻结合同冲突的部分，统一通过下文 R00 的变更记录生效，不以本文件的存在视为已批准。
+6-
+7-配套文件：[现状审计](../../reports/reviews/PLAN-AUDIT-20261014.md)、[执行任务卡](12_recovery_task_cards_20261014.md)、[本轮证据](../../reports/runs/plan_audit_20261014/)。原有 [60 张任务索引](00_execution_map.md)、[评分合同](01_scope_and_scoring.md)、[评测合同](06_testing_and_evaluation.md)继续保留。
+8-
+9-## 1. 判断与执行策略
+10-
+11-当前仓库是“有基础合同、部分持久化能力和较多纯逻辑测试的早期实现”，尚未形成可用的情报产品。不能用 `24/60 accepted` 推导完成度为 40%，也不能把剩余工作理解成接几个密钥和补前端。默认应用只有两个健康检查路由；来源采集、真实模型、事实持久化和用户页面尚未贯通。具体复现和代码位置见审计报告。
+12-
+13-新规划的主线值得保留：AI 安全垂直情报、无 CVE 公告、九维富化、可解释关系图、多跳问答、版本自查、MCP/CLI/SDK 和可扩展插件。原仓库合同中更严格的证据、四态研判、历史版本、权限、更新重判与盲测要求也必须保留。两者合并后的目标是一个能持续运行、能回答真实问题、能解释失败与未知、能被第三方 Agent 调用且有真实评测证据的完整系统。
+14-
+15-执行顺序改变为：**先打通一个小而真实的全链路，再扩大覆盖和深度，持续积累运行证据，最后冻结评测与交付材料**。第一条链必须同时经过真实来源、数据库、真实模型和真实页面；仅实现解析函数、fixture 测试、架构图或静态页面不算里程碑。
+16-
+17-用户接受由 Codex 高强度连续推进约三天，费用不是压缩范围的理由。本计划把 72 小时作为首轮集中交付窗口，而不是“届时无条件宣布完成”。未达到的效果继续保留为必做项；准确率、召回率、来源可用性和真实运行时长不能通过增加模型调用量保证。
+18-
+19-## 2. 官方要求和两份规划如何合并
+20-
+21-官方依据为仓库内四页赛题 PDF；根目录副本 SHA-256 为 `37f28bc38db91ec0407551b1254c8bc882432a8488ce896c681e1210814c6cf3`。附件中的已有实测文字仅作为附件作者的历史记录，本轮没有据此认证当前凭据、网络或产品已接通。
+22-
+23-| ID | 初赛 / 决赛分值 | 必须交付的效果 | 本计划责任任务 | 最终证据 |
+24-|---|---:|---|---|---|
+25-| F1 | 15 / 10 | 至少七类来源、持续自动采集、实时或准实时更新、去重；论文、标准、政策有内容 | R03–R06、R09、R22 | 来源类别登记、真实运行日志、修订与去重案例 |
+26-| F2 | 15 / 10 | 多维富化、自动关联、影响和修复分析 | R07、R08、R10、R11、R13 | 九维适用矩阵、关系证据、版本与资产结果 |
+27-| F3 | 15 / 10 | 多轮、跨文档、多跳与深度分析；决赛个性化推荐 | R12–R17 | 带引用回答、必要证据删除实验、不同用户推荐 |
+28-| P1 | 5 / 5 | ≤6h 时效目标与稳定性；发布/发现/入库时间分别保留 | R06、R20–R22 | 独立参考集合、延迟分布、超时和漏采、真实运行跨度 |
+29-| P2 | 5 / 5 | 初赛准确率≥95%；决赛准确率和召回率均≥95% | R07、R10、R11、R19、R21、R22 | 冻结分母、事实/关系/事件覆盖、逐维度误差 |
+30-| P3 | 5 / 10 | 初赛多跳准确率≥85%；决赛准确率≥95%且可解释，记录完整响应时间 | R12、R14、R15、R19、R21、R22 | 逐题结果、引用支持、冷热缓存及并发延迟 |
+31-| A1 | 15 / 15 | 有真实职责、工具选择、持久化和可扩展性的 Agent 协作，效果有对照 | R14、R18、R21 | 可审计任务轨迹、同条件基线/消融、新插件演示 |
+32:| E1 | 10 / 10 | 端到端自动化、自愈、CI/CD、自动运维和恢复 | R01–R03、R06、R16、R20、R23 | 干净环境部署、故障演练、备份恢复与流水线 |
+33-| D1 | 15 / 10 | 与实际实现一致的技术文档 | R24 | Word+PDF 报告、接口/插件文档、复现说明 |
+34-| D2 | — / 10 | 完整演示与有证据的答辩 | R17、R22、R24 | 视频、匿名 PPT、演示录像、问答材料 |
+35-| X1 | — / 5 | 创新、系统性、实用性、协作 | R14、R16、R18、R21、R23、R24 | 对照结果、变更/评审记录、可复现扩展案例 |
+36-| R1 | 不另计分 | 论文、技术标准、政策法规与 AI 安全风险知识 | R04、R09、R12 | 各类真实资料与可追溯问答 |
+37-| R2 | 不另计分 | 自行部署；报告 Word+PDF、视频、初赛 PPT 的 PDF、决赛主办模板和匿名要求 | R20、R23、R24 | 提交清单和实际文件，模板未提供时明确阻塞 |
+38-
+39-两阶段各 100 分，不能沿用附件中只有初赛权重的一张自评表。官方未明确所有聚合口径：同时报告发布至入库、首次发现至入库和可问答完成延迟；不以 P95 合格代替全部记录合格。≤5 秒出现在决赛问答合格档，优秀档没有重复该限制；仍必须测完整回答耗时，不能拿首字、HTTP 202 或任务提交耗时替代。
+40-
+41-## 3. 最终用户能完成什么
+42-
+43-下面的 U01–U14 都是最终范围，阶段先后不代表后面的功能可删。
+44-
+45-| 场景 | 用户操作与可见结果 | 验收条件 |
+46-|---|---|---|
+47-| U01 新情报发现 | 打开工作台看到真实来源更新、时间、状态和延迟；无 CVE 公告也能打开 | 实际轮询触发入库，重启不丢游标，重复采集不重复建事件 |
+48-| U02 情报证据详情 | 查看九维富化、各维状态、来源原文与版本 | 每个事实可定位；未发现、失败、不适用、冲突分别展示 |
+49-| U03 关联图谱 | 点击漏洞与组件、论文、ATLAS、处置之间的边查看理由 | 自动生成，理由指向证据；模型推测与确认边明确区分 |
+50-| U04 依赖版本自查 | 上传受支持清单或输入组件/版本，获得影响、修复和依据 | 生态正确；未知不会变为“安全”；没有命中不等于确定排除 |
+51-| U05 资产研判 | 两个版本/配置不同的授权资产得到不同、可解释的结论 | 四态、条件树、资产快照、规则版本、证据包与受限 OpenVEX |
+52-| U06 深度问答 | 单文档、多轮、时间范围、多跳、机制与政策问题能完成 | 每个关键论断有支持证据；缺必要证据能保留未知 |
+53-| U07 个性化推荐 | 不同用户按资产、关注对象和主题收到不同建议 | 理由可核查，退订有效，重复提醒受控，原结论撤回同步更新 |
+54-| U08 变化与历史 | 公告扩大影响范围、修复版本变化或新增资产后看到重判 | 同时覆盖旧命中、新命中、旧空结果；历史可查询 |
+55-| U09 Agent 任务追踪 | 打开任务树查看角色、工具、状态、证据与停止原因 | 展示实际执行记录；中断恢复不重复产生副作用 |
+56-| U10 运维闭环 | 查看来源失败、积压、重试、死信和恢复；执行受控重放 | 恢复后结果与正常流程一致；没有假绿灯和假进度 |
+57-| U11 外部 Agent 接入 | Codex/Claude Code 调用 MCP 查询、自查、问答与任务轮询 | 在实际客户端完成，鉴权与权限有效；其余客户端分项认证 |
+58-| U12 CLI/SDK/插件 | CLI 可在 CI 使用，SDK 可调用；新增来源或富化插件不改核心 | 三类扩展点有真实样例、权限隔离和兼容性测试 |
+59-| U13 日报/周报 | 生成可下载报告，摘要能跳回证据和当前结论 | 从真实库生成，带数据时刻；日报不复活已撤回结论 |
+60-| U14 比赛交付 | 在新环境启动产品，复现核心场景，打开评分证据与材料 | 技术报告、演示、视频、匿名材料、代码版本和评测一致 |
+61-
+62-## 4. 现有代码保留、补强和重开范围
+63-
+64-| 范围 | 当前事实 | 后续处理 |
+65-|---|---|---|
+66:| T00–T04 | 有合同、骨架、枚举、质量命令和依赖锁定 | 保留；R00 对齐新增范围，R01 修正检查入口与服务部署 |
+67-| T05 | 有 PostgreSQL 迁移、不可变原文和修订相关实现 | 保留并在隔离真实数据库复跑；扩展到全部知识事实 |
+68:| T06 | 有密码、权限、用户目录、认证路由；默认应用未装配，部分会话/审计驻内存 | R01/R02 接通并持久化，多进程测试，不另写第二套认证 |
+69:| T07 | 有 SQL jobs/outbox，是可复用基础 | R03 验证租约、延迟重试、竞争提交与 Celery 实际消费 |
+70-| T08–T16 | 网关/解析/归一化等局部代码存在；持续真实采集链缺失，PDF/NVD 有实证错误 | 按 R03–R06 重开集成验收；保留正确纯函数，替换不真实的实现 |
+71-| T18 | 验证器和 FixtureProvider 存在，真实模型调用接口缺失 | R05 实现真实生成、向量和重排；不能只记 blocked_live |
+72-| T17、T19–T23 | 部分关联/富化逻辑可复用，核心账本驻内存，九维不完整 | R02、R07–R10 扩展并真正持久化、调度与发布 |
+73-| T24–T39 | 状态 pending；核心资产、版本、检索、问答、Agent、更新与推荐尚待建设 | R11–R16、R13 按依赖实现，不因新方案漏写而移除 |
+74-| T40–T44 | 前端目前为极小骨架；有认证后端准备，但产品页面未建成 | R04 起逐条闭环接 UI，R17 完成统一体验 |
+75-| T45–T59 | 正式安全、性能、盲测、部署、运行与材料尚待完成 | R19–R24，从第一天积累证据，最后独立核验 |
+76-
+77-R00 创建逐任务复核表；每条记录 `implementation / verification(unit,contract,integration,live,manual) / evidence / reopen_reason`。有错误实现的任务标 needs_changes；外部尚未测的能力才标 blocked_live。旧 accepted 历史不删除，追加更正记录并经审查更新状态，防止后续继续沿用虚假前置。
+78-
+79-## 5. 架构取舍：一个业务核心，所有入口共享
+80-
+81-```mermaid
+82-flowchart LR
+83-  SOURCES[真实来源与自有 webhook] --> GATE[受控外联网关]
+84-  GATE --> RAW[不可变原文与解析]
+85-  RAW --> PG[(PostgreSQL 事实/版本/任务/权限)]
+86-  PG --> OUTBOX[事务 outbox]
+87:  OUTBOX --> WORK[Celery + Redis worker / scheduler]
+88-  WORK --> ENR[富化/关联/规则与资产研判]
+89-  ENR --> PG
+90-  PG --> OS[(OpenSearch BM25)]
+91-  PG --> VECTOR[(pgvector 语义向量)]
+92-  PG --> GRAPH[(Neo4j 关系投影)]
+93-  OS --> RET[授权检索 + 图扩展 + 重排]
+94-  VECTOR --> RET
+95-  GRAPH --> RET
+96-  RET --> QA[LangGraph 调查/回答/证据校验]
+97-  QA --> PG
+98-  PG --> CORE[共享业务服务]
+99-  CORE --> WEB[Web 工作台]
+100-  CORE --> REST[REST]
+101-  CORE --> MCP[MCP]
+102-  REST --> CLI[CLI / SDK]
+103-```
+104-
+105-- 沿用 FastAPI、Python、React/TypeScript 的模块化单体；同一业务服务供 API、MCP 和任务调用。新增能力按模块落地，不拆一批微服务。
+106-- PostgreSQL 是事实、任务、租户、依赖、规则与有效状态的唯一权威。向量、全文和图均为可重建投影。召回后回查数据库当前版本和权限；索引落后不返回已知失效结论。
+107-- 按新规划引入 pgvector 作为唯一语义向量存储，OpenSearch 保留 BM25；不同时维护两套语义索引。pgvector 的模型维度、模型版本和重建策略随索引版本冻结。其向量类型与索引能力以[官方仓库](https://github.com/pgvector/pgvector)为依据。
+108-- 为落实显式图检索和图谱展示，引入 Neo4j 投影，但图边先在 PostgreSQL 审核与版本化，再由 outbox 投影；绝不让 GraphWriter 绕过事实合同。图谱不可用时标降级，不能把无图检索的结果计为 GraphRAG 实测。
+109:- 消息执行统一 Celery+Redis，复用现有 jobs/outbox；不再同时引入 Streams、NATS、Kafka。附件的消息队列效果通过可靠投递、幂等、重试、死信和恢复实现。
+110-- 原文字节和导出报告采用内容寻址对象存储接口；保留当前本地实现供测试，部署使用 MinIO 适配。先保存可校验字节再提交元数据，孤立对象可回收，已引用对象不可变。
+111-- LangGraph 检查点采用数据库持久化；只保存工作流进度，不代替业务事务。官方文档区分内存与数据库 checkpointer，执行时必须验证跨进程恢复：[LangGraph persistence](https://docs.langchain.com/oss/python/langgraph/persistence)。
+112:- Prometheus/Grafana 负责运行指标；模型/工具追踪记录在本项目任务表，并接 Langfuse 供调试。日志、trace 和提示词均需脱敏。依赖版本在 R00/R01 验证后锁定，不在计划里编造未验证兼容版本。
+113-
+114-这比原仓库首版多了 pgvector、Neo4j、MinIO 和追踪服务，属于明确架构变更。其理由是承接新规划所要求的真实语义检索、图扩展、原文对象存储和执行追踪；不是为了把组件名称堆满。先让每个组件服务于可验收场景，再纳入部署。
+115-
+116-## 6. 来源、富化和证据的落地细节
+117-
+118-### 6.1 来源类别和采集通道分开统计
+119-
+120-官方类别沿用原合同的八类：结构化漏洞、厂商公告、安全社区、项目仓库、技术博客、论文、标准、政策。附件九条通道作为 connector 清单，不能直接宣称九个互不重叠的官方类别。
+121-
+122-| 业务通道 | 实现策略 | 官方类别映射与限制 |
+123-|---|---|---|
+124-| CVE/NVD | 根据真实 API 响应实现分页、更新时间窗口、修订与回补 | 结构化漏洞；先修复已证实的 NVD 层级和 CVSS 取值错误 |
+125-| GHSA/OSV | 分开实现公告同步与包版本富化，保留别名和生态 | 结构化漏洞/安全社区需明确归属，不重复凑类别 |
+126-| 厂商公告/项目 release | 固定产品配置；P0 每 5 分钟、P1 每 30 分钟的建设目标；遵守来源限额 | 厂商公告、项目仓库需各有真实入口；第三方仓库默认轮询 |
+127-| huntr/AVID | 允许公开页面或官方公开数据仓库；无权接口记阻塞 | AI 专属平台是垂直特色，不天然等于独立官方类别 |
+128-| KEV/EPSS | 拉取真实数据版本与日期，作为富化状态更新 | 辅助富化源；“未列入”只针对所用快照，不宣称无在野利用 |
+129-| 博客/RSS | RSS 发现 + 正文抓取 + canonical URL 与内容版本 | 技术博客；先验证实际 feed，不照搬附件的失效 RSS |
+130-| arXiv/论文 | API/RSS/已授权检索回补，论文版本与证据定位 | 学术论文；日更发现难以证明≤6h，目标发现周期≤1h，受配额限制则披露 |
+131-| CNNVD/CNVD | 先查当前官方入口与授权方式；可用公开入口增量，人工导入另标 | 国内来源冗余；不把手工导入计为全自动，不绕过验证 |
+132-| 标准/政策/ATLAS | 标准与政策分别登记官方文档和更新入口，版本监测 | 标准、政策分别有真内容；ATLAS 是知识体系，不替代政策法规 |
+133-
+134-先选择 3 个有可靠资料的 AI 产品形成纵深案例，再扩至 5 个；建议从 Ollama、vLLM、Dify、ComfyUI、Triton 的真实资料中核定。包名、部署产品名、版本体系分别建模，不把 Ollama 自动当成同名 PyPI 包。无 CVE 公告使用稳定内部 ID 与公开别名，后补 CVE 不更换主键。
+135-
+136-所有 poll/backfill 经统一网关；每个来源保存游标、ETag、Last-Modified、重叠窗口、下次调度时间、失败分类与最后成功时间。单页内容、修订和 outbox 成功提交后才推进游标。重启、重复投递、分页中断、A→B→A 修订必须实测。第三方短周期轮询与自有 webhook 分别标注；附件“3 类事件驱动实时通道”的话术不直接采用。
+137-
+138-对所有纳入时效评分的发现源，目标轮询间隔不超过 1h；P0 更短。EPSS 等上游本身日更的数据区分“上游生成周期”和“本系统发现延迟”，不能借辅助源名义排除本应统计的新公告。因来源限制做不到的记录偏差，不承诺未经实测的≤6h。
+139-
+140-### 6.2 九维富化和六类关联
+141-
+142-九维全部实现：CVSS、EPSS、KEV、CWE、ATLAS、受影响/修复版本、论文/分析文章、PoC/检测模板存在性、公网暴露统计。每维封装现有 `DimensionStatus`，携带数据版本、观察时间、证据、错误分类与新鲜度。修复建议、影响机制和政策/标准知识卡另行保留，不能被九维统计挤掉。
+--
+226-以下是工程时间盒与目标顺序，不是已完成事实、工时保证或新的验收阈值。以启动实施批次的时间为 T+0。本次用户已授权主控+subagent并行，按满足能力切片与独立文件分工，公共合同/迁移/锁文件只由一个集成人负责。不得靠多个 Agent 同时改同一核心文件赶进度。
+227-
+228-| 时间目标 | 主交付 | 同时积累 | 检查点与未达处理 |
+229-|---|---|---|---|
+230:| 0–6h | R00–R03：合同合并、可启动服务、认证、真实持久化和任务消费 | 环境/凭据清单、原始响应、测试基线 | G-A：API/worker 重启后状态一致；未达只修这条链 |
+231-| 6–12h | R04–R05：NVD+厂商来源→证据→页面→真实模型回答 | 真实采集观测、开发集候选 | G-B：用户能登录看真实条目并追溯答案；不能用 fixture 过门 |
+232-| 12–24h | R06–R10：来源广度、九维、知识卡、六类关系与图投影 | 持续采集、标注复核、来源可用性记录 | G-C：来源分类和每维均有真实证据；缺源不静默改类别 |
+233-| 24–36h | R11–R14：版本/资产、授权观察、真实混合检索、多跳与 Agent | 金标建设、早期基线、故障样例 | G-D：资产差异和必要证据删除实验可复现 |
+234-| 36–48h | R15–R18：推荐、变化重判、完整页面、MCP/CLI/SDK/插件 | 客户端实测、插件扩展示例、运行报告 | G-E：U01–U13 有端到端证据，旧空结果能更新 |
+235-| 48–60h | R19–R21：冻结评测材料、全链路安全/恢复、性能与对照 | 报告、图表、演示素材可并行整理 | G-F：同数据/模型/预算对照，错误清单与指标分母齐全 |
+236-| 60–72h | R22正式评测→R24-A候选材料→R23独立复现/审计→R24-B交付冻结 | 继续真实运行，冻结版本 | G-G：逐项验收；未通过项继续修复和重测，不改目标 |
+237-
+238:R19 的标注工具和候选集在 R04 真实闭环独立通过后准备，R05模型live阻塞不影响独立准备，正式冻结发生在后段；R20 的指标和隔离原则从 R01 起接入；R24 的报告骨架可早建，结果只填已取得的证据。这些并行的是材料积累和运行任务，不能跳过产品依赖。
+239-
+240-最迟第一条来源链通过后开始真实运行观测。早期观测与最终冻结版本的运行分段统计，版本变化不能拼接成“同一版本连续稳定”。三天编码窗口不自动产生三天产品运行记录。原 T54 建议 7 天并非官方固定时长；继续按实际开始/结束记录，若采用较短窗口必须说明限制，不能宣称七天通过。
+241-
+242-## 10. 评测从开发第一天开始
+243-
+244-保留原评测合同，不用附件的“200 条关系 + 100 题”缩减既有范围。先用 20–30 起事件和 20 题验证规则；候选规模沿用原计划约 150 起真实事件、800–900 条事实、约 200 题、100–120 组资产、30–40 组变化、60 组安全配对。附件 200 条关系和约 100 题作为覆盖子集。实际规模在标注完成后冻结，未完成记录缺口，不伪造金标。
+245-
+246-- 按事件家族分 dev/holdout，修订、转载、问题和资产组合不跨集合泄漏；保留时间切分。holdout 答案不进入检索库或开发 Agent 的一般上下文。
+247-- Codex 负责抓取、整理候选、生成证据包、执行和分析；人主要完成材料，但真实金标仍需按已有合同做双人核验与分歧裁决。把复核做成短证据包和批次清单，减少人工操作；模型不能成为唯一出题人和裁判。
+248-- 富化准确率、召回率、事件覆盖和维度覆盖分别报告。关系判断另有正负例和冲突例，不能只测已输出的正确边。
+249-- 问答包括事实、多文档、多跳、条件资产、机制/标准政策、时间修订、多轮、未知与冲突。整题判分之外报告论断准确、引用支持、多跳正确、错误拒答和覆盖。
+250-- 多跳题进行必要证据删除/替换实验；真正依赖多份证据，不能用模型记忆答对充当检索推理。
+251-- 时延区分排队、检索、模型、校验、完整完成，区分冷/热缓存、简单/深度、联网/已入库、并发量和错误；请求失败和超时保留在全量统计。
+252-- 基线 B0 强检索、B1 单 Agent、B2 固定四角色、B2b 固定九角色、B3 缺口调度、B5 全量重算；B4 外部实现只有真实部署运行才称复现。数据、模型、工具权限、预算、硬件一致。
+253-- 开发集调优后冻结代码、数据、模型、提示词、schema、索引、预算、时钟与配置 hash，再跑 holdout。反馈修复后使用版本化复测，不能选择性删难题或修改分母。
+254-
+255-## 11. 必须先登记的变更单
+256-
+257-| 编号 | 当前冲突 | 拟采用决策 | 影响与验证 |
+258-|---|---|---|---|
+259:| CR-R01 | 旧四角色 vs 新九角色 | 九个职责角色，确定性角色无需 LLM；保留四角色基线 | T33/T47、Agent schema 与对照配置 |
+260-| CR-R02 | 旧 OpenSearch 向量、首版无图数据库 vs pgvector/Neo4j/MinIO | §5 架构；PG 权威、可重建投影、单队列 | 部署、迁移、索引、恢复、性能成本 |
+261-| CR-R03 | 原八类与附件九通道；实时/日更话术矛盾 | 类别与通道分开，来源实测登记，分时延口径 | F1/P1 证据；不改官方评分分母 |
+262-| CR-R04 | 公开 schema 与内部合同不一致 | 稳定内部 ID、版本证据适配、异步联合类型、四态自查 | API/MCP/SDK 正负合同样例和兼容迁移 |
+263-| CR-R05 | 等级胜出、范围并集、任一撤回 vs 冲突保留 | 来源断言独立、优先展示不等于事实裁决、显式撤回 | 对立来源、不同版本范围、修订反转 |
+264-| CR-R06 | 公开暴露统计 vs FOFA 授权资产 | 两条链同时保留，分别授权和计量 | 明细零泄漏、资产边界、未知不等于否定 |
+265-| CR-R07 | 60 卡串行阶段、晚做 UI/运行观测 vs 72h 全链路路线 | R 卡作为原任务的恢复与整合工作包，不删除原验收 | manifest 映射、阶段检查点、独立验收 |
+266-| CR-R08 | 附件较小评测集、20%抽检/演示全绿倾向 | 保留冻结评测合同，关键发布全校验，演示显式标签 | 盲测隔离、真实/合成分离、所有失败计入 |
+267-| CR-R09 | API Key/OAuth、插件执行与发布范围新增 | 先共享认证的 API Key + 两种 MCP transport；OAuth 仅在选定客户端要求时实现并验证 | 密钥/租户/撤销/沙箱测试；公共发布单独授权 |
+268-
+269-费用上限的用户说明适用于后续授权的实施工作；不等于已有可用产品模型凭据。Codex 的编程模型与产品调用的模型 API 是两件事。R00 只检查所需变量是否存在和能力探测结果，不输出密钥；产品生成、embedding、reranker 和测绘账户分别记录。
+270-
+271-## 12. 交付门槛与失败处理
+272-
+273-每张 R 卡以 `awaiting_review` 交付，包含输入输出、实际命令、退出码、数量、日志、代码版本和明确缺口；经独立审查才能 accepted。阶段内可使用自动检查真实通过且无合同冲突的 awaiting_review 前置，跨阶段要有检查记录。单卡完成即停，除非收到明确有界批次授权。此提案本身没有启动连续自动开发或无人值守任务。
+274-
+275-出现以下情况按根因处理，不扩大补丁：真实接口字段与文档不符、模型凭据/配额不可用、来源不可达、容器资源不足、证据无法裁定、同一根因连续两次修复无进展。先保留最小复现、影响任务与可继续部分；不得用其他算法或演示数据静默替代原效果。
+276-
+277-最终交付必须同时满足：U01–U14 各有证据；F1–X1、R1/R2 均有实现和验收映射；真实模型与来源有 live 记录；权限/历史/更新边界通过；正式评测原始结果可复跑；干净环境部署通过；材料与代码一致。尚有阻塞就如实交付差距，不用“全部完成”“生产可用”概括。
+278-
+279:下一步是 R00：把本方案的架构、合同和执行顺序变更落实为可审查记录，然后从 R01 开始修复产品运行底座。不是直接续写 T24，也不是重新生成一个平行仓库。
+280-
+281-## R00落实与现行执行入口
+282-
+283-记录时间：2026-10-14T21:05:58+08:00；准确落实awaiting_review。全部60T/110切片/26执行节点以manifest.recovery为机器可校验合同，原T前置与C01–C06完整保留。正文任务映射已与覆盖索引同步。九变更单各有兼容/迁移/回滚/影响。旧重复键状态原字节归档progress/history/task_state_pre_recovery_8e265dc.json.txt；当前八层验证不默认passed。T55/T56候选原卡验收归R24-A；T59候选A+最终B；A后整R24保持partial。
+284-
+285-
+286-### R00生效登记 · 2026-10-14T22:19:34+08:00
+287-
+288:冻结15d0272bd2a9e25d19397d8147e9c3cbe6016f9b经[独立定向复核](../../reports/reviews/recovery/G-A-R00-review-1-recheck.md)确认R00与三个输出切片accepted，CR-R01–09准确落实生效；前述awaiting_review为其所标日期的历史状态。后续按manifest.recovery能力DAG推进；原T最终前置/全部切片/六验收、人工金标与阶段门保持。G-A仍in_progress，R01–03尚未验收。
+# 恢复与完整交付任务卡
+
+日期：2026-10-14。状态：建设目标已授权，R00已独立核验生效；R01实施中。依据：[完整交付恢复计划](11_full_delivery_recovery_20261014.md)。
+
+R00–R24 是原 60 张任务卡的修复、补充与集成工作包，不能代替或删除原任务验收项。R00 批准映射前，原 `task_manifest.json` 与执行地图仍为当前约束。本文件的测试路径和命令目标是未来交付要求，不是已运行证明。
+
+## 通用执行合同
+
+每卡开始读取 AGENTS、执行地图、原任务卡、引用合同、状态与最新交接，核对 Git diff 和资源。先明确输入输出与回归案例，再改代码；生产数据与测试数据隔离。每卡报告保存于 `reports/tasks/Rxx.md`，原始日志保存于 `reports/runs/<run_id>/`，同时回填其覆盖的原 T 卡证据链接。
+
+新增测试使用 `backend/tests/<层>/test_rxx_*.py` 与 `frontend/e2e/` 等实际必要路径，不创建空测试凑数量。涉及后端按卡运行针对性 pytest、Ruff、format、mypy，再跑相关回归；前端运行 lint、typecheck、test、build 和对应浏览器流程。R01 补齐 `python scripts/dev.py check --scope contract|integration|security|frontend|e2e|all`，未实现项返回非零并明确原因。
+
+所有真实数据库测试使用独立项目名、独立端口/数据库、专用 DSN 和显式 test 标识；禁止沿用硬编码默认 DSN 执行清库、downgrade 或 `compose down`。每卡结束记录 `implementation` 与各层 `verification`，代码完成最多 awaiting_review，独立评审后才能 accepted。前置仅在同阶段且所需自动检查真实通过时允许 awaiting_review。
+
+## 依赖与交付顺序
+
+主线：`R00 → R01 → R02 → R03 → R04 → R05 → R06 → R07 → R08 → R09 → R10 → R11 → R12 → R13 → R14 → R15 → R16 → R17 → R18 → R19 → R20 → R21 → R22 → R24-A → R23 → R24-B`。
+
+R24-A先产出供审查的报告、演示和候选提交包；R23独立复现并审查；R24-B再做最终冻结。两步属于同一张R24卡，A完成时R24保持partial/in_progress，不能提前验收整卡，避免“独立审查需要文档、文档又等待独立审查”的循环。
+
+这是建议线性遍历顺序；本次按manifest.recovery能力DAG并行。可提前的独立部分仅限：R19 标注工具/候选集从 R04 后开始，R20 基础监控从 R01 后接入，R22 观测从 R04 后分段记录，R24 文档骨架从 R00 后建立。跨阶段检查点见主计划。实际并行编码须有明确授权与文件所有权，不把可提前准备解释为跳过验收。
+
+## R00 · 合同合并、状态纠偏与执行批次冻结
+
+- **原任务 / 要求：**T00、T01、T04（切片，非整卡完成）；D1/E1/X1。
+- **前置：**本轮审计与用户的新规划；无产品实施前置。
+- **输入 → 输出：**官方题目、原合同、附件、当前代码和日志 → CR-R01–R09、逐 T 卡复核表、需求/效果/测试映射、阶段与资源清单。
+- **改动边界：**`docs/decisions/`、相关 `docs/plan/`、`contracts/`、`progress/`、`reports/`；本卡不改生产业务实现。
+- **实施：**逐条处理主计划的合同冲突；登记代码级缺失与 live 缺口；保留旧验收历史；状态文件拒绝重复JSON键，verification按证据补齐而不默认passed；确认队列、向量/图、schema、认证、暴露统计及资产两条链。探测运行资源和必要变量是否配置，不打印值；核定产品模型能力与接口文档。
+- **核验：**①初/决赛各100分；②13个要求和U01–U14无漏项；③T00–T59均有归属；④public schema异步/四态/输入上限正反样例一致；⑤旧accepted的纠偏有证据与复核路径；⑥费用、凭据、资产和发布范围分别登记。
+- **完成证据：**变更记录可审查，`verify_plan.py`覆盖新旧映射并通过；缺凭据列出影响任务，继续独立代码准备。没有实施授权时本卡不向后自动执行。
+
+## R01 · 运行入口、部署与质量检查可用
+
+- **原任务 / 要求：**T02、T03、T06、T40（切片，非整卡完成）；E1/R2。
+- **前置：**R00变更已生效。
+- **输入 → 输出：**配置与锁文件 → 可启动API/worker/scheduler/frontend、实际依赖装配、可区分的live/ready状态、隔离测试环境。
+- **改动边界：**`backend/src/ai_intel/api/app.py`、`infrastructure/settings.py`、依赖锁文件、`infra/compose/`、`scripts/dev.py`、CI、最小前端入口。
+- **实施：**把真实数据库/认证服务装配进默认应用，注册路由；为新增基础设施建立明确profile与健康检查；建立开发与测试Compose项目；CI补contract及适当集成范围；启动错误明确退出，不用空服务标ready。
+- **测试：**①干净环境启动；②默认应用可访问认证入口；③缺密钥/连接失败返回明确not-ready；④测试DSN不能指向常规开发库；⑤各scope确实发现并运行测试，0项不算通过；⑥锁定安装、静态检查、前端构建成功。
+- **完成证据：**真实启动日志、OpenAPI路由清单、容器健康、隔离DB标识和检查命令；目前Docker未运行的问题在此解决，未解决则integration blocked。
+
+## R02 · 会话、知识账本和版本真正持久化
+
+- **原任务 / 要求：**T04、T05、T06、T17、T19、T21（切片，非整卡完成）；E1/F1/F2。
+- **前置：**R01。
+- **输入 → 输出：**已校验文档/实体/断言/会话 → PostgreSQL中的版本、证据、断言、关系、审核状态、租户审计与可重启会话。
+- **改动边界：**`knowledge/`、`enrichment/structured.py`、`api/authentication.py`、`infrastructure/content_store.py`、迁移与对应集成测试。
+- **实施：**保留现有纯业务判断，将in-memory ledger替换为显式repository与事务；原文不可变；稳定ID、source assertion与supersede关系持久化；会话和共享限流有跨进程后端；对象存储接口接本地与MinIO适配。
+- **测试：**①进程重启仍能读取同一事实；②发布一半失败全部回滚；③不同租户不可读搜导出；④A→B→A保留三个修订及证据；⑤supersede不覆盖历史且当前状态正确；⑥并发重复发布只产生一个业务版本/outbox。
+- **完成证据：**真实PG事务与重启测试，不接受仅返回`transactional: true`；迁移从空库/上一版本升级，备份样本可校验。
+
+## R03 · 真实任务执行、网关、游标和幂等
+
+- **原任务 / 要求：**T07、T08、T16（切片，非整卡完成）；E1/F1/P1。
+- **前置：**R02。
+- **输入 → 输出：**来源调度/业务outbox → 可消费任务、有限重试、持久化游标与失败轨迹。
+- **改动边界：**`workers/`、`infrastructure/outbox.py`、`infrastructure/network.py`、`ingestion/scheduler.py`、来源配置与迁移。
+- **实施：**接Celery/Redis但任务状态仍在PG；唯一重试层；新增next_retry_at、租约到期与owner校验；单页提交后推进游标；外联网关控制域名、重定向、DNS、响应大小、超时与秘密注入。
+- **测试：**①两个worker竞争同任务；②worker中途退出后接管；③重复outbox投递幂等；④退避时间未到不可领取；⑤过期租约不得提交；⑥429/401/403/超时/重定向到私网分别处理，秘密不进日志。
+- **完成证据：**真实worker消费与失败恢复日志；不能只调用纯函数模拟完成。
+
+## R04 · 第一条可操作的真实情报闭环
+
+- **原任务 / 要求：**T09、T10、T12、T17、T40、T41（切片，非整卡完成）；D2/F1/F2/R1。
+- **前置：**R03。
+- **输入 → 输出：**真实NVD响应和一个厂商公开公告 → 原文、解析片段、归一化记录、事件列表/详情/证据页面。
+- **改动边界：**`ingestion/parsing/`、`ingestion/sources/nvd.py`、厂商connector、事件业务路由、`frontend/src/features/`、来源配置。
+- **实施：**修复NVD wrapper与cvssData映射；真实PDF文本层解析与页码/片段定位；不把扫描PDF误称可解析，必要时OCR作为独立受控步骤；登录、列表、详情、来源和证据链接最小可用。无需CVE也能建事件。
+- **测试：**①留档真实API样本正常解析；②官方四页文本PDF能提取和定位；③确无文本层时状态准确；④同源重复无新事件、实质修订有新版本；⑤无CVE公告与后补CVE保留主键；⑥浏览器登录到证据全流程，刷新仍在。
+- **完成证据：**两源实际抓取→数据库→页面录像和HTTP/任务日志；开始记录真实采集观测，不把演示注入混入统计。
+
+## R05 · 真实生成、embedding、reranker与首个引用回答
+
+- **原任务 / 要求：**T18、T20、T30、T31、T43（切片，非整卡完成）；A1/F2/F3。
+- **前置：**R04；真实产品模型凭据与能力可用。
+- **输入 → 输出：**证据片段和用户问题 → 实际生成/向量/重排结果，含provider/model/prompt/schema版本、耗时与用量。
+- **改动边界：**`infrastructure/models/`、模型配置、最小`retrieval/`、`answering/`和问答页面；不得把FixtureProvider作为live后备。
+- **实施：**依据提供者真实文档实现三类接口；必要能力探测；结构化输出与有限修复；真实embedding写入pgvector；先以一个事件完成证据检索与引用回答，再交R12扩展。
+- **测试：**①实际生成且证据可打开；②embedding维度/模型空间不混用；③真实重排可运行；④鉴权、超时、错误JSON、拒绝分别可见；⑤production拒绝fixture；⑥删去唯一证据不能仍输出确定事实。
+- **完成证据：**脱敏live调用元数据和端到端回答；凭据不可用则live blocked，不能把接口验证器算模型实现完成。
+
+## R06 · 来源广度、持续采集与时效可观测
+
+- **原任务 / 要求：**T08、T11、T12、T13、T14、T15、T16、T49、T54（切片，非整卡完成）；E1/F1/P1/R1。
+- **前置：**R04；R05不阻塞独立来源适配。
+- **输入 → 输出：**各类公开/授权来源 → 八类来源登记、九通道能力矩阵、增量/回补、延迟与缺失统计。
+- **改动边界：**`ingestion/sources/`、`config/sources/`、scheduler、来源状态路由/页面和监测指标。
+- **实施：**按主计划§6逐一接通并留原始样本；论文、标准、政策分别有真实内容；第三方轮询、自有签名webhook和demo入口隔离；当前不可达的源有可核实替代与缺口，不擅改类别口径。
+- **测试：**①各类至少一个真实入口；②分页断点和时间窗口边界不漏；③停机后回补及重复去重；④无发布时间/未来时间单列；⑤独立参考集合发现漏采；⑥demo数据不进入真实来源数/延迟分母。
+- **完成证据：**来源×类别×实时模式×live状态表；每源游标/失败记录；持续监测实际开始时刻。
+
+## R07 · 九维富化全部落地
+
+- **原任务 / 要求：**T13、T19、T20、T22、T23、T41（切片，非整卡完成）；F2/P2/R1。
+- **前置：**R02、R05、R06。
+- **输入 → 输出：**事件与证据 → 九个维度的值、状态、新鲜度、来源与可审计任务。
+- **改动边界：**`enrichment/`、维度schema、维度状态表/任务、详情页和对应测试。
+- **实施：**补CVSS/EPSS/KEV/CWE/ATLAS/版本/文献/PoC/暴露；本卡暴露接接口合同，R08完成live；按适用性矩阵处理无CVE风险。厂商修复与一般缓解分开，影响和政策知识卡保留。
+- **测试：**①九维各有正例；②适用但缺失计入召回缺口；③无CVE的EPSS等不伪造；④评分冲突并存；⑤一维失败不抹掉其他维成功；⑥模型输出、证据与值不一致不能发布。
+- **完成证据：**逐维真实样本、状态矩阵、任务轨迹；无支持的维度不能涂绿。
+
+# 05 · API、工具与运行时Agent合同
+
+> R00恢复合同补充（2026-10-14T21:05:58+08:00）：用户已批准CR-R01–CR-R09建设决策与完整有界批次；准确落实awaiting_review。独立核对生效后以[变更记录](../decisions/CR-R07.md)和manifest.recovery执行。原T卡最终范围/原前置/六项验收完整保留；执行依赖按能力切片。新review/push规则见用户执行提示词，未完成live/人工不算通过。
+
+
+以下为本项目待实现接口，不是第三方API。已有仓库接口需T00映射。统一前缀 `/v1`；前后端与worker不能各自定义不同状态。
+
+## 1. 认证与会话
+
+首版只服务预先创建的团队用户，不开放公共注册。密码使用经过维护的Argon2实现；随机不透明session token至少32随机字节，服务端保存hash。Cookie设HttpOnly、SameSite，生产Secure；限制有效期，登出撤销。不要自创加密或签名算法。
+
+维护viewer、analyst、tenant_admin、system_admin角色和明确权限表。tenant_admin不能修改公共来源或其他租户。创建首个用户通过管理CLI读取秘密输入，不把默认密码写进代码或命令日志。
+
+会话使用CSRF token和严格Origin/CORS检查；csrf随机值与session绑定，由登录响应或认证后的csrf接口取得，前端内存使用。不得用开放跨域加credentials。租户、角色、权限版本由服务端认证上下文注入，请求体同名字段应拒绝或忽略并记录，绝不信任。
+
+## 2. HTTP公共规则
+
+写入接口需要 `Idempotency-Key`，作用域包括当前tenant、route和主体。相同键+相同请求返回原操作；相同键+不同请求返回409。不要把token或凭据纳入可见日志。
+
+成功同步操作200/201；已接收长任务202且返回job_id；400非法业务输入；401无登录；403明确权限不足；404不可见对象与不存在对象统一；409冲突或幂等碰撞；422schema错误；429预算/限流；503依赖不可用。
+
+统一RFC9457 `application/problem+json`：type/title/status/detail/instance；保留兼容扩展`error.code, error.message, error.retryable, error.details, trace_id`（CR-R04）。details只含可公开字段，禁止原始异常栈、密钥或其他租户标识。
+
+分页：cursor + limit（默认20，最大100）；按稳定排序键分页，返回next_cursor。客户端不能提供原始SQL、OpenSearch DSL或任意sort表达式。
+
+## 3. 接口清单
+
+| 方法与路径 | 输入核心字段 | 返回/权限 |
+|---|---|---|
+| POST `/auth/login` | username、password | session、csrf；登录限流 |
+| GET `/auth/me` | 无 | 当前用户、tenant、角色，不返回凭据 |
+| GET `/auth/csrf` | 已认证会话 | 当前session绑定CSRF值 |
+| POST `/auth/logout` | CSRF | 撤销session |
+| GET `/sources` | category、enabled、cursor | 来源与健康状态；私有范围过滤 |
+| POST `/sources/{id}/collect` | stream_kind、bounded_window | 202 job；相应管理员 |
+| GET `/events` | q、product、risk_type、updated_after、cursor | 事件列表与摘要状态 |
+| GET `/events/{id}` | 无 | 事实、维度状态、修订时间线 |
+| GET `/events/{id}/claims` | status、cursor | 事实与证据标识 |
+| GET `/evidence/{id}` | 无 | 指定版本、原文片段与定位 |
+| GET `/document-revisions/{id}` | 无 | 允许展示的正文、解析质量；不暴露存储路径 |
+| POST `/asset-snapshots` | asset_id可选、display_name、snapshot | 201快照；analyst |
+| POST `/asset-imports` | JSON/CSV上传、import_kind | 202解析任务；大小/行数限制 |
+| GET `/assets` | product、cursor | 本tenant资产与快照 |
+| GET `/assets/{id}/snapshots` | cursor | 历史快照 |
+| POST `/asset-observations/search` | approved_scope_id、product_key、fields | 202被动查询；analyst且FOFA授权 |
+| POST `/assessments` | event_id、asset_snapshot_id、rule_id可选 | 202研判任务 |
+| GET `/assessments/{id}` | 无 | 结果、freshness、缺口 |
+| GET `/assessments/{id}/evidence` | 无 | 完整条件树与证据包 |
+| POST `/investigations` | question、asset_ids、event_ids、budget_profile | 202调查任务 |
+| GET `/investigations/{id}` | 无 | 任务状态、停止原因、结果引用 |
+| GET `/investigations/{id}/tool-runs` | cursor | 脱敏实际工具轨迹 |
+| POST `/questions` | QuestionRequest | 200完成回答或202调查；计时规则统一 |
+| GET `/answers/{id}` | 无 | 回答、引用、freshness与版本 |
+| GET `/conversations/{id}` | cursor | 仅本人/授权范围历史 |
+| GET `/changes` | asset_id、event_id、cursor | 更新原因、旧新结果与状态 |
+| POST `/subscriptions` | product_keys、asset_ids、risk_topics | 201本人订阅 |
+| PATCH `/subscriptions/{id}` | enabled、过滤条件 | 200；逐字段授权校验 |
+| GET `/recommendations` | unread、cursor | 推荐原因、证据、关联资产 |
+| POST `/recommendations/{id}/read` | 无 | 已读，不更改其他用户状态 |
+| POST `/exports/openvex` | assessment_ids、export_profile | 202/200经过校验的导出；analyst |
+| GET `/jobs/{id}` | 无 | 业务状态、分阶段结果、错误摘要 |
+| GET `/health/live` | 无 | 进程活性；不伪称外部依赖正常 |
+| GET `/health/ready` | 无 | 必须依赖可用性，未配置关键项说明 |
+| GET `/operations/status` | 无 | source freshness、积压、索引滞后；管理员 |
+
+外部标准/政策/论文作为事件或知识实体检索，通过kind筛选，不需要另建没有数据的空接口。
+
+## 4. 请求与响应关键结构
+
+`QuestionRequest`：question（非空、长度上限4096）；conversation_id可选；asset_ids最多20；event_ids最多20；mode=auto/library/investigate；known_at可选；valid_at可选。不同时间语义见03，不允许只提供模糊“历史”标志。
+
+`AnswerResponse`：answer_id、status、answer_text、claims、evidence、assessment_refs、limitations、freshness、data_mode、knowledge_epoch、started_at、completed_at、latency_milliseconds、trace_id。
+
+`JobResponse`：job_id、status、completed_steps、pending_steps、failed_steps、result_refs、error、created_at、updated_at。completed_steps只来自真实任务状态，不按页面动画递增。
+
+所有对象引用在返回前重新核对可见范围。访问他人answer/trace/export与访问他人asset同样拒绝。
+
+## 5. 连接器接口
+
+`discover_updates(cursor, window) -> DiscoveryPage`
+
+`fetch_record(candidate, request_context) -> RawFetchResult`
+
+`normalize_record(raw_fetch_result) -> NormalizedDocument`
+
+`probe_capabilities() -> ConnectorCapabilities`
+
+DiscoveryPage包含candidates、next_cursor、has_more、window_complete；不以列表空自动推断已到末页。候选含source_record_id、uri、upstream_modified_at可空、upstream_version可空。
+
+连接器不能直接改Claim或Assessment。normalize只做来源解析，不调用LLM判断真实影响。
+
+## 6. 三类模型接口
+
+`generate_structured(messages, output_schema, model_context) -> StructuredGenerationResult`
+
+`embed_texts(texts, model_context) -> EmbeddingBatch`
+
+`rerank_passages(query, passages, model_context) -> RankedPassages`
+
+ModelContext含provider_id、approved_model_id、timeout、token_budget、data_policy、run_id，不含公开可见密钥。服务端注入认证信息。
+
+记录provider/model revision、prompt_version、schema_version、输入hash、调用时间、token计数和费用。费用未知写unknown，不能填0。模型拒绝、超时、错误JSON和无检索结果分别处理。
+
+真实接口依据已配置提供者官方文档实现，禁止假定所有“兼容”服务支持同样的工具或结构化输出参数。没有模型key时只做fixture合同测试并明确live阻塞。
+
+## 7. 工具注册表
+
+| 工具 | 填补的缺口 | 外部/权限 |
+|---|---|---|
+| search_intelligence | 事件、机制、补充资料 | 受控公开检索，预算限制 |
+| get_advisory | 官方描述、版本、修复 | 仅注册来源/允许URL |
+| get_inventory | 当前资产与组件 | tenant只读，不向公开研究角色暴露全部私有字段 |
+| get_public_observations | 被动产品/版本观察 | FOFA授权范围与字段白名单 |
+| compare_versions | 版本包含关系 | 纯计算，不联网 |
+| evaluate_rule | 已发布规则判断 | 纯计算服务，固定快照 |
+| search_papers | 论文候选与机制证据 | 注册学术来源 |
+| read_evidence | 指定span与revision | ACL、时间与状态检查 |
+| find_changes | 某对象历史变化 | tenant与已知时间范围 |
+
+初版不提供shell、代码执行、任意SQL、任意内网URL、任意修改资产工具。每个工具定义输入schema、输出schema、角色、预算、超时、缓存/执行键和会填的槽位。
+
+## 8. 工具输入输出与幂等
+
+模型提出 `tool_name, arguments, goal_id`；gateway注入tenant、user、policy和预算。模型自报tenant、authorization、skip_validation全部拒绝。
+
+ToolResult包含tool_run_id、status、data、evidence_ids、searched_scope、observed_at、executed_at、retryable、error_code、usage、is_synthetic。`no_result`说明查询范围，不能推论全网不存在。
+
+同工具+目标快照+参数hash+策略版本使用call_key；已成功结果可复用。失败是否重试根据错误分类和总预算；不得由四个角色分别对同一失败再重复8次。
+
+## 9. Agent输出schema
+
+PlannerDecision：goal_id、missing_requirements[]、candidate_action_id可选、action=call_tool/finish/request_information/wait_for_approval、reason_code、short_reason。只能选择服务端列出的candidate_action_id。
+
+ExtractionBatch：document_revision_id、candidates[]；每项subject_key、predicate、object、qualifiers、quote_text、block_id、origin；缺证字段为空并写reason，不擅自编造。
+
+AssetDecision：asset_snapshot_id、rule_id、requested_tool_action可选、assessment_ref可选、missing_fields[]、scope_limitations[]。不允许模型自填最终确定判定绕过evaluate_rule。
+
+AnswerDraft：conclusions[]（text、kind=source_fact/rule_result/project_suggestion、support_ids[]）、limitations[]、recommended_actions[]。source_fact/rule_result必须指向当前可见的已验证证据或Assessment；project_suggestion与官方修复明确区分。
+
+对应运行时提示词在 `docs/runtime_prompts/`。这些提示词不授予工具权限，安全依然由服务端执行。
+
+## 10. 故障与前端行为
+
+前端显示queued/running/partial/failed/stale/not_configured，不拿空数组统一展示“暂无风险”。刷新页面后可用job_id恢复进度。无权限不显示对象标题、数量或敏感错误细节。
+
+模型或搜索不可用时，允许显示已有结构化事实，但显著标注降级。不能把fallback模板当成正常高质量问答评测结果。
+
+## 11. 公共v2适配合同（CR-R04/09）
+
+内部上述证据/ACL/历史合同保持；公共八对象定义见contracts/schemas/public_api_v2.json。ask为kind=completed/task联合，task返回轮询句柄且无answer强制字段；check_stack四态含reason_code，无匹配或unsupported不叫clean。同步最多200组件；独立上传最大10485760字节/10000组件异步解析，不是同数组超限自动202。六只读MCP工具和本人订阅写工具经共享业务与PG认证，stdio stdout只协议。REST增加/api/v1路径兼容适配，分页/8k预算不拆断事实证据；客户端实测与三扩展沙箱在R18。
+
+CLI退出码冻结：0=成功、无确认高风险且结论确定；1=存在确认高风险（结果仍显示其他未知）；2=未确认高风险但存在unknown/conflict/unsupported；3=执行/认证/网络失败。严重等级筛选参数须文档化，不能把0称绝对安全。
+
+
+### R00生效登记 · 2026-10-14T22:19:34+08:00
+
+冻结15d0272bd2a9e25d19397d8147e9c3cbe6016f9b经[独立定向复核](../../reports/reviews/recovery/G-A-R00-review-1-recheck.md)确认R00与三个输出切片accepted，CR-R01–09准确落实生效；前述awaiting_review为其所标日期的历史状态。后续按manifest.recovery能力DAG推进；原T最终前置/全部切片/六验收、人工金标与阶段门保持。G-A仍in_progress，R01–03尚未验收。
+
+# 09 · 工程运维、文档与比赛交付
+
+## 1. CI从骨架期建立
+
+每次改动运行格式、lint、类型、unit；涉及schema/连接器运行contract；涉及持久化、权限、任务或索引运行integration。前端运行lint、typecheck、组件测试和build；关键流程运行浏览器E2E。
+
+CI隔离测试环境，读取锁文件，不使用生产秘密。pipeline必须检查测试数、skip和失败，禁止用 `|| true`掩盖失败。依赖审计/秘密扫描采用明确白名单与审查记录，不用全局忽略。
+
+任务所新增的检查要进入CI，不能只在Agent一次会话里手动执行后再失去覆盖。
+
+## 2. CD与部署
+
+容器从锁定依赖构建，非root运行，提供healthcheck。数据库/Redis/OpenSearch在私网；对外入口有TLS和认证；开发模式只能本地或明确隔离。
+
+流水线顺序：测试→构建→扫描→生成制品清单→部署staging→smoke→记录结果→人工批准→正式部署。不能未经授权向公网发布或推送用户仓库。
+
+迁移先备份，兼容读写窗口明确。失败回滚到前版应用；数据库破坏性回滚须人工计划，不让Agent自动drop表。
+
+## 3. 自动运维与监控
+
+必须观测：源采集成功/失败/新鲜度、漏页/失败条目、队列积压、重试/死信、worker心跳、模型与工具用量、索引滞后、stale研判、重验证失败、问答错误/延迟、推荐队列和存储容量。
+
+日志结构：timestamp、level、service、trace_id、job_id、event_code、耗时、错误类型；tenant可用内部ID，不写原始私有正文和密钥。用户可见任务轨迹与管理员日志分开。
+
+告警包括来源持续失败、队列持续积压、索引落后超过门限、stale结果积压、恢复失败和费用接近预算。门限在开发实测后冻结；不是任意“5分钟”就称有理论依据。
+
+自动恢复限于有限重试、重连、隔离坏记录、受控重放和索引重建；不自动放宽权限、删除数据、修改生产代码或购买资源。
+
+## 4. 恢复演练
+
+在隔离环境分别停止worker、Redis、OpenSearch；模拟数据库短暂不可用、来源超时和模型拒绝。检查原文/游标不丢失、outbox可重放、结果不重复、旧任务不覆盖新任务、前端正确显示降级。
+
+备份PostgreSQL、原文对象、规则/提示词配置和版本清单。另起干净环境恢复，验证对象hash、记录计数、核心API与一条完整研判。只有“备份命令返回成功”不算恢复通过。
+
+## 5. 持续运行
+
+建议至少一次连续7天的真实运行观察，自设检查而非官方时长。采集与统计脚本由Agent实现，实际运行等待真实时间，不能改时间戳伪造7天。
+
+开始/结束时间、配置hash、异常中断和缺失区间如实记录。人工查看每日异常摘要；需要未来自动提醒由用户另行安排，不把本计划当已创建定时服务。
+
+## 6. 技术报告
+
+以Markdown维护内容源，最终按比赛要求输出Word与PDF。报告需有：核心亮点预览、评分覆盖、架构、Agent、三模块、数据合同、关键实现、实验设置、实测结果、错误分析、复用边界、部署与局限。
+
+图表从实际模型/接口和运行结果生成，架构不画不存在的组件。数值引用具体run_id与数据版本。没有实验的结果留空并写未验证，不填预期百分比。
+
+T55可实现文档构建脚本；实际Word/PDF要检查渲染、目录、表格、图编号、字体与分页。代码Agent缺文档渲染工具时报告阻塞，不仅因文件存在就算生成成功。
+
+## 7. 演示与答辩
+
+主流程：新情报→自动归并富化→不同资产的不同结论→多跳问答→个性化推荐→公告修订后更新→真实工具轨迹与恢复结果。
+
+至少准备8个片段覆盖：来源广度；富化维度；问答质量；推荐；Agent选择；变化重判；性能与稳定性；部署/文档/协作证据。正式时长待主办方确认，脚本可以裁剪但不能假演。
+
+实时、历史回放、合成配置、缓存与离线快照均标识。现场修改一项版本/配置时应走同一实际代码路径，不用前端预写答案。
+
+视频由真实运行录屏，声音和画面校验。备用视频或离线回放标明用途，不能冒充实时联网。
+
+## 8. 提交清单与匿名
+
+初赛：技术报告Word/PDF、操作视频、讲解PPT的PDF。决赛：技术报告Word/PDF、视频、按主办方模板制作的匿名答辩PPT。原始PDF第2—3页注明源码审阅方式与匿名要求。[A01]
+
+匿名检查包括PPT正文、截图用户名/路径、文件属性、作者信息、演示数据、备注与图中标识；不能只删封面名字。原始赛题PDF和真实内部身份不必被篡改，匿名副本单独生成。
+
+公开发布、共享源码或数据需人工确认许可、脱敏与比赛规则，不自动push外网。
+
+## 9. 复用与协作记录
+
+维护依赖/许可证清单、参考研究与实际复现状态。代码审查、跨模块接口、标注复核和任务报告作为协作证据；不能只放一张虚构分工表。
+
+交付前由未参与该模块的队员或独立审查Agent从干净环境按文档复现，记录困难与修订。没有独立复现时明确未完成，不能自称第三方已验证。
+0b6a7ad docs(R01): distinguish direct Git whitespace exit from shell status
+e75ae5d docs(R01): record final delivery checks and actual report timestamps
+a3ab25a docs(R01): preserve isolated Compose runtime and CI verification evidence
+d7290cf fix(R01): allow bounded cold start and register nonroot worker identity
+bc24286 feat(R01): pin verified application bases and restrict Docker contexts
+4fa79ef checkpoint G-A R01 add bounded Celery runtime and PostgreSQL execution health
+9f93161 fix(R01): keep Compose inputs outside host application settings
+dbbfcd1 fix(R01): validate exact Docker build inputs
+a413eaf feat(R01): isolate Compose profiles and run real backend CI scopes
+05aa146 docs(G-A/R01): align task report header with frozen verification
+7fe8db0 docs(G-A/R01): preserve isolated PostgreSQL and quality verification evidence
+c71d0db fix(G-A/R01): make check output reliable on Windows consoles
+f7fdf91 feat(G-A/R01): run honest checks with isolated test resources
+.github/workflows/ci.yml
+backend/migrations/versions/0005_runtime_observations.py
+backend/src/ai_intel/api/app.py
+backend/src/ai_intel/infrastructure/database.py
+backend/src/ai_intel/infrastructure/runtime_observations.py
+backend/src/ai_intel/knowledge/models.py
+backend/src/ai_intel/workers/runtime.py
+backend/tests/conftest.py
+backend/tests/contract/test_r01_compose_configuration.py
+backend/tests/contract/test_r01_quality_checks.py
+backend/tests/contract/test_t07_jobs_outbox.py
+backend/tests/integration/test_t03_development_services.py
+backend/tests/integration/test_t05_persistence_and_raw_store.py
+backend/tests/integration/test_t07_jobs_and_outbox.py
+backend/tests/security/test_r01_admin_error_redaction.py
+backend/tests/unit/test_r01_worker_configuration.py
+backend/tests/unit/test_t02_project_skeleton.py
+config/dev.env.example
+infra/compose/README.md
+infra/compose/compose.test.host.yaml
+infra/compose/compose.test.yaml
+infra/compose/compose.yaml
+infra/compose/test.host.override.yaml
+infra/compose/test.override.yaml
+infra/docker/backend.Dockerfile
+infra/docker/backend.Dockerfile.dockerignore
+infra/docker/frontend.Dockerfile
+infra/docker/frontend.Dockerfile.dockerignore
+scripts/admin_user.py
+scripts/dev.py

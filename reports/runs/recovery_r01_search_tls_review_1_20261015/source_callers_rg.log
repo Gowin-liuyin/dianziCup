@@ -1,0 +1,45 @@
+backend/tests/integration/test_r01_search_tls_live.py:20:from ai_intel.api.app import create_application
+backend/tests/integration/test_r01_search_tls_live.py:23:pytestmark = pytest.mark.real_search_tls
+backend/tests/integration/test_r01_search_tls_live.py:38:        "TEST_SEARCH_TLS_URL",
+backend/tests/integration/test_r01_search_tls_live.py:39:        "TEST_SEARCH_TLS_USERNAME",
+backend/tests/integration/test_r01_search_tls_live.py:40:        "TEST_SEARCH_TLS_PASSWORD",
+backend/tests/integration/test_r01_search_tls_live.py:41:        "TEST_SEARCH_TLS_CA_FILE",
+backend/tests/integration/test_r01_search_tls_live.py:42:        "TEST_SEARCH_TLS_WRONG_CA_FILE",
+backend/tests/integration/test_r01_search_tls_live.py:47:    parsed = urlsplit(configured["TEST_SEARCH_TLS_URL"])
+backend/tests/integration/test_r01_search_tls_live.py:49:    assert Path(configured["TEST_SEARCH_TLS_CA_FILE"]).is_file()
+backend/tests/integration/test_r01_search_tls_live.py:51:        url=configured["TEST_SEARCH_TLS_URL"],
+backend/tests/integration/test_r01_search_tls_live.py:52:        username=configured["TEST_SEARCH_TLS_USERNAME"],
+backend/tests/integration/test_r01_search_tls_live.py:53:        password=SecretStr(configured["TEST_SEARCH_TLS_PASSWORD"]),
+backend/tests/integration/test_r01_search_tls_live.py:54:        ca_file=configured["TEST_SEARCH_TLS_CA_FILE"],
+backend/tests/integration/test_r01_search_tls_live.py:55:        wrong_ca_file=configured["TEST_SEARCH_TLS_WRONG_CA_FILE"],
+backend/tests/integration/test_r01_search_tls_live.py:60:def test_real_search_tls_trust_authentication_and_failure_are_observable(
+backend/tests/integration/test_r01_search_tls_live.py:82:        opensearch_ca_file=ca,
+backend/tests/integration/test_r01_search_tls_live.py:85:    with TestClient(create_application(settings=settings)) as client:
+backend/tests/integration/test_r01_search_tls_live.py:104:    context = ssl.create_default_context(cafile=real_tls_settings.ca_file)
+backend/tests/integration/test_r01_search_tls_live.py:145:            opensearch_ca_file=real_tls_settings.ca_file,
+backend/tests/integration/test_r01_search_tls_live.py:147:        with TestClient(create_application(settings=settings)) as client:
+infra/compose\README.md:67:Set `COMPOSE_OPENSEARCH_USERNAME` and inject the matching application password
+infra/compose\README.md:68:through `COMPOSE_OPENSEARCH_PASSWORD`. The existing
+infra/compose\compose.yaml:15:    OPENSEARCH_USERNAME: ${COMPOSE_OPENSEARCH_USERNAME:-}
+infra/compose\compose.yaml:16:    OPENSEARCH_PASSWORD: ${COMPOSE_OPENSEARCH_PASSWORD:-${OPENSEARCH_INITIAL_ADMIN_PASSWORD:?Inject search credential}}
+infra/compose\compose.yaml:17:    OPENSEARCH_CA_FILE: /run/ai-intel/search/root-ca.pem
+infra/compose\compose.yaml:78:      OPENSEARCH_USERNAME: ${COMPOSE_OPENSEARCH_USERNAME:-}
+infra/compose\compose.yaml:109:      test: [CMD-SHELL, 'curl -fsS --cacert /usr/share/opensearch/config/tls/root-ca.pem -u "$${OPENSEARCH_USERNAME}:$${OPENSEARCH_INITIAL_ADMIN_PASSWORD}" https://localhost:9200/_cluster/health >/dev/null']
+infra/compose\test.override.yaml:23:      OPENSEARCH_USERNAME: !reset null
+infra/compose\test.override.yaml:24:      OPENSEARCH_PASSWORD: !reset null
+infra/compose\test.override.yaml:25:      OPENSEARCH_CA_FILE: !reset null
+infra/compose\test.override.yaml:33:      OPENSEARCH_USERNAME: !reset null
+infra/compose\test.override.yaml:34:      OPENSEARCH_PASSWORD: !reset null
+infra/compose\test.override.yaml:35:      OPENSEARCH_CA_FILE: !reset null
+infra/compose\test.override.yaml:43:      OPENSEARCH_USERNAME: !reset null
+infra/compose\test.override.yaml:44:      OPENSEARCH_PASSWORD: !reset null
+infra/compose\test.override.yaml:45:      OPENSEARCH_CA_FILE: !reset null
+infra/compose\secure-search.host.override.yaml:12:      test: [CMD-SHELL, 'curl -fsS --cacert /usr/share/opensearch/config/tls/root-ca.pem -u "$${OPENSEARCH_USERNAME}:$${OPENSEARCH_INITIAL_ADMIN_PASSWORD}" https://localhost:${SECURE_OPENSEARCH_PORT:?Set an exclusive HTTPS port}/_cluster/health >/dev/null']
+backend/src\ai_intel\api\app.py:33:def create_application(
+backend/src\ai_intel\api\app.py:104:    health_router = build_health_router(configuration, engine, cache)
+backend/src\ai_intel\api\app.py:114:def build_health_router(
+backend/src\ai_intel\api\app.py:156:                tls_context = ssl.create_default_context(cafile=settings.opensearch_ca_file)
+backend/src\ai_intel\api\app.py:162:                    search_auth = httpx.BasicAuth(
+backend/src\ai_intel\api\app.py:223:app = create_application()
+backend/src\ai_intel\infrastructure\settings.py:44:    opensearch_ca_file: str | None = None
+backend/src\ai_intel\infrastructure\settings.py:55:                "OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD must be configured together"

@@ -1,0 +1,1085 @@
+docs/plan\12_recovery_task_cards_20261014.md
+docs/plan\11_full_delivery_recovery_20261014.md
+docs/plan\10_provenance_decisions.md
+docs/plan\09_operations_delivery.md
+docs/plan\08_code_style.md
+docs/plan\07_sources_and_resources.md
+docs/plan\06_testing_and_evaluation.md
+docs/plan\05_api_and_tool_contracts.md
+docs/plan\04_workflows_and_algorithms.md
+docs/plan\03_data_contracts.md
+docs/plan\02_architecture.md
+docs/plan\01_scope_and_scoring.md
+docs/plan\00_execution_map.md
+
+# T02 · 项目骨架、依赖锁定与质量命令
+
+阶段：G1｜前置：T01｜评分/要求：E1、D1
+
+## 1. 开始前必须读取
+
+`AGENTS.md`、`progress/task_state.json`、`progress/context_handoff.md`以及：
+
+- `docs/plan/02_architecture.md`
+- `docs/plan/08_code_style.md`
+- `docs/plan/06_testing_and_evaluation.md`
+
+确认前置已有所需实现和实际测试证据；同阶段仅代码验收通过的前置可继续内部开发，live阻塞保持可见。跨阶段必须经阶段检查。不得因为任务编号较大就猜测前置已做。
+
+## 2. 本任务资源
+
+无额外外部资源；按当前环境执行。
+
+未具备资源：先做不依赖它的本任务步骤，验证状态标blocked/not_run；无法继续时写阻塞与最小所需输入，不编造测试通过。
+
+## 3. 修改边界与目标产物
+
+允许修改：`backend/pyproject.toml`；`backend/uv.lock`；`backend/src/ai_intel/`；`backend/tests/unit/`；`frontend/`；`scripts/dev.py`；`infra/`；`README.md`；`.github/workflows/`；`reports/tasks/`。
+
+另允许本任务指定测试、相关最小迁移、报告与进度文件。任何跨模块公共合同改动先说明；改变语义或栈/阈值要变更审批。不创建与本任务无关的未来模块。
+
+目标产物：`backend/uv.lock`；`frontend/package-lock.json`；`scripts/dev.py`；`.github/workflows/ci.yml`；`reports/tasks/T02.md`。
+
+测试/检查位置：`backend/tests/unit/test_t02_project_skeleton.py`。这是需要本任务创建并实际执行的位置，不是现有测试证明。
+
+## 4. 按顺序实施
+
+1. 只创建API最小入口、前端空工作台和必要包目录，不批量建立几十个空Service类。
+
+2. 验证Python、Node和必要依赖兼容，生成真实uv.lock与package-lock.json，记录版本；不使用latest镜像或手工写锁文件。
+
+3. 配置Ruff、mypy、pytest与TypeScript strict、lint、Vitest；冻结内部覆盖门槛，禁止忽略所有错误。
+
+4. 实现scripts/dev.py的检查入口和参数验证；未建设的scope明确返回非零not_implemented，不能空跑成功。
+
+5. 提供health/live和最小前端加载；health/ready尚未检查依赖时必须说明状态而非固定ready。
+
+6. 配置初始CI执行已存在检查，README区分已可运行命令和待后续任务实现的命令。
+
+## 5. 最低验收案例
+
+每项都要有实际输入与可观察断言；允许参数化，但case ID保留。负例不能只测“没有报错”。不能把被测实现输出再作为期望值。
+
+| ID | 输入/场景 | 必须检查的结果 |
+|---|---|---|
+| T02-C01 | 干净虚拟环境按锁安装 | API可导入、前端可构建、最小测试执行数大于0 |
+| T02-C02 | 错误Python/Node版本 | 明确版本不兼容，不绕过锁文件 |
+| T02-C03 | 故意加入类型错误 | 类型检查非零退出 |
+| T02-C04 | 执行未实现integration scope | nonzero/not_implemented，不能返回PASS |
+| T02-C05 | 缺必须配置 | 清楚配置错误，不在导入时联网或泄露秘密 |
+| T02-C06 | 前端没有API数据 | 展示未连接状态，不显示假业务统计 |
+
+## 6. 执行与回归
+
+主检查：
+
+```text
+cd backend && uv run pytest tests/unit/test_t02_project_skeleton.py -v
+```
+
+命令是待实现的工程合同。若文件/工具不存在，应在本任务或前置中补齐，不得声称运行过。涉及后端的改动另跑Ruff、格式、类型与相关已有回归；前端跑lint/typecheck/build；纯文档任务检查链接、字段和引用，不凑假unit测试。
+
+单元/合同测试可以使用fixture；live、性能、持续运行与人工标注不得以fixture代替。结果记录命令、工作目录、开始/结束、退出码、测试数、失败/skip、日志路径和输入版本。
+
+## 7. 完成与停止
+
+更新 `reports/tasks/T02.md`、`progress/task_state.json`、交接与阻塞。每个相关评分项只登记本任务确有证据的能力，不能由代码存在推断优秀档已达到。
+
+自检通过进入awaiting_review；没有独立验收不自行写accepted。存在安全、合同或数据问题标needs_changes/blocked。默认本轮到此停止；有界批处理按同阶段顺序继续，遇阶段检查点或风险变更停止。
+
+## 恢复合并验收附录（R00 / CR-R07已独立核验生效）
+
+最终需要：R01:T02。原C01–C06、实施范围、引用合同和原前置保留。恢复执行前置按manifest.recovery.work_packages.requires_slices；最终前置仍为原depends_on。单R完成不得自动验收整卡；独立review须核对当前冻结版本/真实证据。记录时间：2026-10-14T21:05:58+08:00。
+
+# T03 · 开发依赖容器与配置分层
+
+阶段：G1｜前置：T02｜评分/要求：E1、P1、R2
+
+## 1. 开始前必须读取
+
+`AGENTS.md`、`progress/task_state.json`、`progress/context_handoff.md`以及：
+
+- `docs/plan/02_architecture.md`
+- `docs/plan/09_operations_delivery.md`
+
+确认前置已有所需实现和实际测试证据；同阶段仅代码验收通过的前置可继续内部开发，live阻塞保持可见。跨阶段必须经阶段检查。不得因为任务编号较大就猜测前置已做。
+
+## 2. 本任务资源
+
+需要本地Docker或明确授权的等价容器环境。
+
+未具备资源：先做不依赖它的本任务步骤，验证状态标blocked/not_run；无法继续时写阻塞与最小所需输入，不编造测试通过。
+
+## 3. 修改边界与目标产物
+
+允许修改：`infra/compose/`；`config/`；`backend/src/ai_intel/infrastructure/`；`backend/tests/integration/`；`scripts/dev.py`；`reports/tasks/`。
+
+另允许本任务指定测试、相关最小迁移、报告与进度文件。任何跨模块公共合同改动先说明；改变语义或栈/阈值要变更审批。不创建与本任务无关的未来模块。
+
+目标产物：`infra/compose/compose.yaml`；`backend/src/ai_intel/infrastructure/settings.py`；`reports/tasks/T03.md`。
+
+测试/检查位置：`backend/tests/integration/test_t03_development_services.py`。这是需要本任务创建并实际执行的位置，不是现有测试证明。
+
+## 4. 按顺序实施
+
+1. 创建core与search/observability可区分的Compose服务，锁定经验证的PostgreSQL、Redis、OpenSearch镜像。
+
+2. 配置私网、持久卷、健康检查、资源限制和本地端口；不把数据库/搜索直接暴露公网。
+
+3. 实现Settings：APP_ENV与DATA_MODE分开，秘密引用与非秘密配置分开；缺必需项给出明确错误。
+
+4. 提供本地开发启动/关闭与依赖检查，关闭不删除数据卷；销毁数据需要显式确认。
+
+5. 在真实容器上建立连接、写入/读取最小数据并重启确认持久性；不能只mock数据库。
+
+6. 更新CI集成服务配置及README，记录实际内存/磁盘需求与未验证的平台。
+
+## 5. 最低验收案例
+
+每项都要有实际输入与可观察断言；允许参数化，但case ID保留。负例不能只测“没有报错”。不能把被测实现输出再作为期望值。
+
+| ID | 输入/场景 | 必须检查的结果 |
+|---|---|---|
+| T03-C01 | 首次启动依赖 | 健康检查可用且从应用访问成功 |
+| T03-C02 | 重启容器 | 已写持久数据保留 |
+| T03-C03 | 搜索profile未启动 | 可识别降级，不谎报全依赖ready |
+| T03-C04 | production配fixture或默认秘密 | 配置验证拒绝 |
+| T03-C05 | 无容器权限 | integration标blocked，不用SQLite冒充 |
+| T03-C06 | 关闭开发服务 | 不删除卷和用户文件 |
+
+## 6. 执行与回归
+
+主检查：
+
+```text
+cd backend && uv run pytest tests/integration/test_t03_development_services.py -v
+```
+
+命令是待实现的工程合同。若文件/工具不存在，应在本任务或前置中补齐，不得声称运行过。涉及后端的改动另跑Ruff、格式、类型与相关已有回归；前端跑lint/typecheck/build；纯文档任务检查链接、字段和引用，不凑假unit测试。
+
+单元/合同测试可以使用fixture；live、性能、持续运行与人工标注不得以fixture代替。结果记录命令、工作目录、开始/结束、退出码、测试数、失败/skip、日志路径和输入版本。
+
+## 7. 完成与停止
+
+更新 `reports/tasks/T03.md`、`progress/task_state.json`、交接与阻塞。每个相关评分项只登记本任务确有证据的能力，不能由代码存在推断优秀档已达到。
+
+自检通过进入awaiting_review；没有独立验收不自行写accepted。存在安全、合同或数据问题标needs_changes/blocked。默认本轮到此停止；有界批处理按同阶段顺序继续，遇阶段检查点或风险变更停止。
+
+## 恢复合并验收附录（R00 / CR-R07已独立核验生效）
+
+最终需要：R01:T03、R20:T03。原C01–C06、实施范围、引用合同和原前置保留。恢复执行前置按manifest.recovery.work_packages.requires_slices；最终前置仍为原depends_on。单R完成不得自动验收整卡；独立review须核对当前冻结版本/真实证据。记录时间：2026-10-14T21:05:58+08:00。
+
+# T06 · 用户认证、租户权限与审计基础
+
+阶段：G1｜前置：T05｜评分/要求：E1、F3、X1
+
+## 1. 开始前必须读取
+
+`AGENTS.md`、`progress/task_state.json`、`progress/context_handoff.md`以及：
+
+- `docs/plan/03_data_contracts.md`
+- `docs/plan/05_api_and_tool_contracts.md`
+- `docs/plan/09_operations_delivery.md`
+
+确认前置已有所需实现和实际测试证据；同阶段仅代码验收通过的前置可继续内部开发，live阻塞保持可见。跨阶段必须经阶段检查。不得因为任务编号较大就猜测前置已做。
+
+## 2. 本任务资源
+
+无额外外部资源；按当前环境执行。
+
+未具备资源：先做不依赖它的本任务步骤，验证状态标blocked/not_run；无法继续时写阻塞与最小所需输入，不编造测试通过。
+
+## 3. 修改边界与目标产物
+
+允许修改：`backend/src/ai_intel/api/`；`backend/src/ai_intel/infrastructure/`；`backend/src/ai_intel/domain/`；`backend/tests/security/`；`scripts/`；`reports/tasks/`。
+
+另允许本任务指定测试、相关最小迁移、报告与进度文件。任何跨模块公共合同改动先说明；改变语义或栈/阈值要变更审批。不创建与本任务无关的未来模块。
+
+目标产物：`backend/src/ai_intel/api/authentication.py`；`backend/src/ai_intel/domain/access.py`；`reports/tasks/T06.md`。
+
+测试/检查位置：`backend/tests/security/test_t06_authentication_and_scope.py`。这是需要本任务创建并实际执行的位置，不是现有测试证明。
+
+## 4. 按顺序实施
+
+1. 实现预创建用户、成熟Argon2密码hash、不透明随机session、注销和过期，不开放公共注册。
+
+2. 实现CSRF、Origin/CORS和Cookie策略，production必须Secure，登录有有限速率控制。
+
+3. 在服务端构造AccessScope与权限表，区分tenant_admin和system_admin；请求体不接受自报权限。
+
+4. 建立范围化repository查询范式和不可见对象统一404规则，公共证据和私有资产分别处理。
+
+5. 增加审计事件与trace_id；记录安全事件不打印密码、cookie、token和私有正文。
+
+6. 提供管理CLI安全创建测试用户；无默认生产账号、无前端硬编码密钥。
+
+## 5. 最低验收案例
+
+每项都要有实际输入与可观察断言；允许参数化，但case ID保留。负例不能只测“没有报错”。不能把被测实现输出再作为期望值。
+
+| ID | 输入/场景 | 必须检查的结果 |
+|---|---|---|
+| T06-C01 | 正确账号登录/注销 | session生成后有效，注销立即失效 |
+| T06-C02 | tenant B请求tenant A资产/证据 | 一律不可见，无名称泄露 |
+| T06-C03 | 伪造请求体tenant_id或role | 不获得权限 |
+| T06-C04 | 无CSRF/错误Origin写请求 | 拒绝 |
+| T06-C05 | 过期/错误session或暴力登录 | 正确拒绝与限流，不泄露账户细节 |
+| T06-C06 | 日志与前端构建扫描 | 无真实密钥、密码或会话值 |
+
+## 6. 执行与回归
+
+主检查：
+
+```text
+cd backend && uv run pytest tests/security/test_t06_authentication_and_scope.py -v
+```
+
+命令是待实现的工程合同。若文件/工具不存在，应在本任务或前置中补齐，不得声称运行过。涉及后端的改动另跑Ruff、格式、类型与相关已有回归；前端跑lint/typecheck/build；纯文档任务检查链接、字段和引用，不凑假unit测试。
+
+单元/合同测试可以使用fixture；live、性能、持续运行与人工标注不得以fixture代替。结果记录命令、工作目录、开始/结束、退出码、测试数、失败/skip、日志路径和输入版本。
+
+## 7. 完成与停止
+
+更新 `reports/tasks/T06.md`、`progress/task_state.json`、交接与阻塞。每个相关评分项只登记本任务确有证据的能力，不能由代码存在推断优秀档已达到。
+
+自检通过进入awaiting_review；没有独立验收不自行写accepted。存在安全、合同或数据问题标needs_changes/blocked。默认本轮到此停止；有界批处理按同阶段顺序继续，遇阶段检查点或风险变更停止。
+
+## 恢复合并验收附录（R00 / CR-R07已独立核验生效）
+
+最终需要：R01:T06、R02:T06、R20:T06。原C01–C06、实施范围、引用合同和原前置保留。恢复执行前置按manifest.recovery.work_packages.requires_slices；最终前置仍为原depends_on。单R完成不得自动验收整卡；独立review须核对当前冻结版本/真实证据。记录时间：2026-10-14T21:05:58+08:00。
+
+# T40 · 前端骨架、认证与统一状态组件
+
+阶段：G3｜前置：T02、T06｜评分/要求：F1、F2、F3、D2、E1
+
+## 1. 开始前必须读取
+
+`AGENTS.md`、`progress/task_state.json`、`progress/context_handoff.md`以及：
+
+- `docs/plan/05_api_and_tool_contracts.md`
+- `docs/plan/08_code_style.md`
+- `docs/plan/09_operations_delivery.md`
+
+确认前置已有所需实现和实际测试证据；同阶段仅代码验收通过的前置可继续内部开发，live阻塞保持可见。跨阶段必须经阶段检查。不得因为任务编号较大就猜测前置已做。
+
+## 2. 本任务资源
+
+无额外外部资源；按当前环境执行。
+
+未具备资源：先做不依赖它的本任务步骤，验证状态标blocked/not_run；无法继续时写阻塞与最小所需输入，不编造测试通过。
+
+## 3. 修改边界与目标产物
+
+允许修改：`frontend/src/`；`frontend/tests/`；`frontend/e2e/`；`reports/tasks/`。
+
+另允许本任务指定测试、相关最小迁移、报告与进度文件。任何跨模块公共合同改动先说明；改变语义或栈/阈值要变更审批。不创建与本任务无关的未来模块。
+
+目标产物：`frontend/src/app/`；`frontend/src/components/`；`reports/tasks/T40.md`。
+
+测试/检查位置：`frontend/tests/t40_frontend_shell.test.tsx`。这是需要本任务创建并实际执行的位置，不是现有测试证明。
+
+## 4. 按顺序实施
+
+1. 建立登录、工作台布局、路由和当前用户上下文，使用后端session/CSRF，不把token持久化到公开脚本。
+
+2. 按features分模块，API客户端从合同生成或严格匹配类型；禁止Any掩盖错误。
+
+3. 实现可复用EvidenceLink、FreshnessBadge、TaskStatus、EmptyState和ErrorPanel，只抽取实际共性。
+
+4. 处理加载、空、失败、无权限、partial、stale和fixture/live标识；无数据不展示随机图表。
+
+5. 保证键盘操作、可读字号、稳定表格和长文本展开，页面文案用清楚中文。
+
+6. 接通真实health/auth接口，测试掉线、退出和刷新后的状态恢复。
+
+## 5. 最低验收案例
+
+每项都要有实际输入与可观察断言；允许参数化，但case ID保留。负例不能只测“没有报错”。不能把被测实现输出再作为期望值。
+
+| ID | 输入/场景 | 必须检查的结果 |
+|---|---|---|
+| T40-C01 | 登录后加载工作台 | 显示真实用户/权限与数据模式 |
+| T40-C02 | 未认证访问私有路由 | 转登录且不泄露缓存内容 |
+| T40-C03 | API断线 | 清晰错误和重试入口，不显示假成功 |
+| T40-C04 | stale/partial/unknown | 视觉与文案区别于正常结果 |
+| T40-C05 | 刷新/退出 | 会话正确恢复或清除私有前端缓存 |
+| T40-C06 | 键盘访问按钮与表格 | 可操作、状态标签非仅靠颜色 |
+
+## 6. 执行与回归
+
+主检查：
+
+```text
+cd frontend && npm run test -- --run tests/t40_frontend_shell.test.tsx
+```
+
+命令是待实现的工程合同。若文件/工具不存在，应在本任务或前置中补齐，不得声称运行过。涉及后端的改动另跑Ruff、格式、类型与相关已有回归；前端跑lint/typecheck/build；纯文档任务检查链接、字段和引用，不凑假unit测试。
+
+单元/合同测试可以使用fixture；live、性能、持续运行与人工标注不得以fixture代替。结果记录命令、工作目录、开始/结束、退出码、测试数、失败/skip、日志路径和输入版本。
+
+## 7. 完成与停止
+
+更新 `reports/tasks/T40.md`、`progress/task_state.json`、交接与阻塞。每个相关评分项只登记本任务确有证据的能力，不能由代码存在推断优秀档已达到。
+
+自检通过进入awaiting_review；没有独立验收不自行写accepted。存在安全、合同或数据问题标needs_changes/blocked。默认本轮到此停止；有界批处理按同阶段顺序继续，遇阶段检查点或风险变更停止。
+
+## 恢复合并验收附录（R00 / CR-R07已独立核验生效）
+
+最终需要：R01:T40、R04:T40、R17:T40。原C01–C06、实施范围、引用合同和原前置保留。恢复执行前置按manifest.recovery.work_packages.requires_slices；最终前置仍为原depends_on。单R完成不得自动验收整卡；独立review须核对当前冻结版本/真实证据。记录时间：2026-10-14T21:05:58+08:00。
+[
+  {
+    "title": "项目骨架、依赖锁定与质量命令",
+    "stage": "G1",
+    "status": "needs_changes",
+    "implementation": "partial",
+    "note": "G0（reports/stages/G0.md）=附限制允许内部开发，放行 G1 离线/内部开发。首派 T02-IMPL（aa25eb40）8 轮零产物无回执，已按兜底终止；代码生成类委派 4 次零交付（工具限制已记录），实现改由主控完成：pytest 9/9（cov 100%）、ruff/format/mypy 0、dev.py 三态合同正确、前端四命令 0、verify_plan 双模式 PLAN_OK。审查链完整：R-T02 needs_changes（P-1/P-2/P-3）→ 主控修复 → R-T02 定向复核 accepted（reports/reviews/R-T02_recheck.md，含 EBADENGINE 行为证明与 24/24 复跑）；RV-FIX-T02 独立快审 accepted 附 3 条件（同源问题已闭合）。遗留非阻断：CR-002 待人工追认、npm audit 2 moderate（dev-only）、覆盖率测量时点差异注记。限制继承：blocked_live≠通过、合成案例≠金标、PLAN_OK≠产品测试、不生成指标数字、D2/X1/R2 不提前判过",
+    "history": [
+      {
+        "recorded_at": "2026-10-14T21:00:38+08:00",
+        "source_archive": "progress/history/task_state_pre_recovery_8e265dc.json.txt",
+        "prior_record": {
+          "status": "accepted",
+          "implementation": "complete",
+          "verification": null,
+          "note": "G0（reports/stages/G0.md）=附限制允许内部开发，放行 G1 离线/内部开发。首派 T02-IMPL（aa25eb40）8 轮零产物无回执，已按兜底终止；代码生成类委派 4 次零交付（工具限制已记录），实现改由主控完成：pytest 9/9（cov 100%）、ruff/format/mypy 0、dev.py 三态合同正确、前端四命令 0、verify_plan 双模式 PLAN_OK。审查链完整：R-T02 needs_changes（P-1/P-2/P-3）→ 主控修复 → R-T02 定向复核 accepted（reports/reviews/R-T02_recheck.md，含 EBADENGINE 行为证明与 24/24 复跑）；RV-FIX-T02 独立快审 accepted 附 3 条件（同源问题已闭合）。遗留非阻断：CR-002 待人工追认、npm audit 2 moderate（dev-only）、覆盖率测量时点差异注记。限制继承：blocked_live≠通过、合成案例≠金标、PLAN_OK≠产品测试、不生成指标数字、D2/X1/R2 不提前判过",
+          "duplicate_key_history": [],
+          "evidence": []
+        },
+        "event": "R00 evidence correction; prior timestamps remain in archive"
+      }
+    ],
+    "verification": {
+      "unit": "passed",
+      "contract": "not_run",
+      "integration": "not_run",
+      "security": "not_run",
+      "frontend": "not_run",
+      "e2e": "not_run",
+      "live": "not_run",
+      "manual": "not_run"
+    },
+    "verification_limits": {
+      "unit": "T16/T21 folder named integration ran in-memory objects; recorded as unit, not real PG integration",
+      "contract": "fixture/recorded parser and format tests; real PDF/NVD negative probes remain failed",
+      "security": "passing domain gateway fixtures do not override logout HTTP failure",
+      "frontend": "T40 only one skeleton component test, no browser business e2e",
+      "live": "blocked means required real sources/model/provider not currently proven; implementation gaps still separate"
+    },
+    "required_slices": [
+      "R01:T02"
+    ],
+    "slice_acceptance": {
+      "R01:T02": {
+        "status": "pending",
+        "evidence": [],
+        "review_ref": null
+      }
+    },
+    "review_ref": null,
+    "evidence": [
+      "reports/reviews/recovery/G-A-baseline-probe.md",
+      "reports/runs/recovery_baseline_probe_20261014/commands.json"
+    ],
+    "reopen_reason": "原最终验收现在须全部能力切片+原前置+原C01–C06+独立review；旧accepted不可作为恢复执行前置。当前层仅记本轮真实证据，明确失败和未测。"
+  },
+  {
+    "title": "开发依赖容器与配置分层",
+    "stage": "G1",
+    "status": "needs_changes",
+    "implementation": "partial",
+    "note": "R-G1A 批量独立审查 accepted 附条件（reports/reviews/R-G1A.md）：真容器 integration 6/6、C04 双负例审查者独立实测、安全边界全过。条件（G1 阶段检查前闭合）：F1 README/CI 更新（§4.6）、F2 C03 容器态回归测试；建议 F3-F5 已记录。报告 reports/tasks/T03.md（主控实现者撰写）",
+    "history": [
+      {
+        "recorded_at": "2026-10-14T21:00:38+08:00",
+        "source_archive": "progress/history/task_state_pre_recovery_8e265dc.json.txt",
+        "prior_record": {
+          "status": "accepted",
+          "implementation": "complete",
+          "verification": null,
+          "note": "R-G1A 批量独立审查 accepted 附条件（reports/reviews/R-G1A.md）：真容器 integration 6/6、C04 双负例审查者独立实测、安全边界全过。条件（G1 阶段检查前闭合）：F1 README/CI 更新（§4.6）、F2 C03 容器态回归测试；建议 F3-F5 已记录。报告 reports/tasks/T03.md（主控实现者撰写）",
+          "duplicate_key_history": [],
+          "evidence": []
+        },
+        "event": "R00 evidence correction; prior timestamps remain in archive"
+      }
+    ],
+    "verification": {
+      "unit": "not_run",
+      "contract": "not_run",
+      "integration": "blocked",
+      "security": "not_run",
+      "frontend": "not_run",
+      "e2e": "not_run",
+      "live": "not_run",
+      "manual": "not_run"
+    },
+    "verification_limits": {
+      "unit": "T16/T21 folder named integration ran in-memory objects; recorded as unit, not real PG integration",
+      "contract": "fixture/recorded parser and format tests; real PDF/NVD negative probes remain failed",
+      "security": "passing domain gateway fixtures do not override logout HTTP failure",
+      "frontend": "T40 only one skeleton component test, no browser business e2e",
+      "live": "blocked means required real sources/model/provider not currently proven; implementation gaps still separate"
+    },
+    "required_slices": [
+      "R01:T03",
+      "R20:T03"
+    ],
+    "slice_acceptance": {
+      "R01:T03": {
+        "status": "pending",
+        "evidence": [],
+        "review_ref": null
+      },
+      "R20:T03": {
+        "status": "pending",
+        "evidence": [],
+        "review_ref": null
+      }
+    },
+    "review_ref": null,
+    "evidence": [
+      "reports/reviews/recovery/G-A-baseline-probe.md",
+      "reports/runs/recovery_baseline_probe_20261014/commands.json"
+    ],
+    "reopen_reason": "原最终验收现在须全部能力切片+原前置+原C01–C06+独立review；旧accepted不可作为恢复执行前置。当前层仅记本轮真实证据，明确失败和未测。"
+  },
+  {
+    "title": "用户认证、租户权限与审计基础",
+    "stage": "G1",
+    "status": "needs_changes",
+    "implementation": "partial",
+    "note": "主控实现：AccessScope 服务端构造、Argon2id、不透明会话+过期+注销、限流、CSRF/Origin/Cookie、审计 trace_id 脱敏、admin CLI。实测 security 9/9、unit 34/34 cov 76.15%、mypy/ruff 0。CR-004。R-T06 审查 needs_changes（M1—M6）→ 主控修复（viewer/权限版本/角色区分/会话哈希键/cookie 环境强制/0003 users 持久化 CLI/伪造身份审计/范围化查询/C06 扩展扫描）→ 终态全绿，待 R-T06 定向复核",
+    "history": [
+      {
+        "recorded_at": "2026-10-14T21:00:38+08:00",
+        "source_archive": "progress/history/task_state_pre_recovery_8e265dc.json.txt",
+        "prior_record": {
+          "status": "accepted",
+          "implementation": "complete",
+          "verification": null,
+          "note": "主控实现：AccessScope 服务端构造、Argon2id、不透明会话+过期+注销、限流、CSRF/Origin/Cookie、审计 trace_id 脱敏、admin CLI。实测 security 9/9、unit 34/34 cov 76.15%、mypy/ruff 0。CR-004。R-T06 审查 needs_changes（M1—M6）→ 主控修复（viewer/权限版本/角色区分/会话哈希键/cookie 环境强制/0003 users 持久化 CLI/伪造身份审计/范围化查询/C06 扩展扫描）→ 终态全绿，待 R-T06 定向复核",
+          "duplicate_key_history": [],
+          "evidence": []
+        },
+        "event": "R00 evidence correction; prior timestamps remain in archive"
+      }
+    ],
+    "verification": {
+      "unit": "passed",
+      "contract": "not_run",
+      "integration": "not_run",
+      "security": "failed",
+      "frontend": "not_run",
+      "e2e": "not_run",
+      "live": "not_run",
+      "manual": "not_run"
+    },
+    "verification_limits": {
+      "unit": "T16/T21 folder named integration ran in-memory objects; recorded as unit, not real PG integration",
+      "contract": "fixture/recorded parser and format tests; real PDF/NVD negative probes remain failed",
+      "security": "passing domain gateway fixtures do not override logout HTTP failure",
+      "frontend": "T40 only one skeleton component test, no browser business e2e",
+      "live": "blocked means required real sources/model/provider not currently proven; implementation gaps still separate"
+    },
+    "required_slices": [
+      "R01:T06",
+      "R02:T06",
+      "R20:T06"
+    ],
+    "slice_acceptance": {
+      "R01:T06": {
+        "status": "pending",
+        "evidence": [],
+        "review_ref": null
+      },
+      "R02:T06": {
+        "status": "pending",
+        "evidence": [],
+        "review_ref": null
+      },
+      "R20:T06": {
+        "status": "pending",
+        "evidence": [],
+        "review_ref": null
+      }
+    },
+    "review_ref": null,
+    "evidence": [
+      "reports/reviews/recovery/G-A-baseline-probe.md",
+      "reports/runs/recovery_baseline_probe_20261014/commands.json"
+    ],
+    "reopen_reason": "原最终验收现在须全部能力切片+原前置+原C01–C06+独立review；旧accepted不可作为恢复执行前置。当前层仅记本轮真实证据，明确失败和未测。"
+  },
+  {
+    "title": "前端骨架、认证与统一状态组件",
+    "stage": "G3",
+    "status": "pending",
+    "implementation": "partial",
+    "history": [
+      {
+        "recorded_at": "2026-10-14T21:00:38+08:00",
+        "source_archive": "progress/history/task_state_pre_recovery_8e265dc.json.txt",
+        "prior_record": {
+          "status": "pending",
+          "implementation": "not_started",
+          "verification": null,
+          "note": null,
+          "duplicate_key_history": [],
+          "evidence": []
+        },
+        "event": "R00 evidence correction; prior timestamps remain in archive"
+      }
+    ],
+    "verification": {
+      "unit": "not_run",
+      "contract": "passed",
+      "integration": "not_run",
+      "security": "failed",
+      "frontend": "passed",
+      "e2e": "not_run",
+      "live": "not_run",
+      "manual": "not_run"
+    },
+    "verification_limits": {
+      "unit": "T16/T21 folder named integration ran in-memory objects; recorded as unit, not real PG integration",
+      "contract": "fixture/recorded parser and format tests; real PDF/NVD negative probes remain failed",
+      "security": "passing domain gateway fixtures do not override logout HTTP failure",
+      "frontend": "T40 only one skeleton component test, no browser business e2e",
+      "live": "blocked means required real sources/model/provider not currently proven; implementation gaps still separate"
+    },
+    "required_slices": [
+      "R01:T40",
+      "R04:T40",
+      "R17:T40"
+    ],
+    "slice_acceptance": {
+      "R01:T40": {
+        "status": "pending",
+        "evidence": [],
+        "review_ref": null
+      },
+      "R04:T40": {
+        "status": "pending",
+        "evidence": [],
+        "review_ref": null
+      },
+      "R17:T40": {
+        "status": "pending",
+        "evidence": [],
+        "review_ref": null
+      }
+    },
+    "review_ref": null,
+    "evidence": [
+      "reports/reviews/recovery/G-A-baseline-probe.md",
+      "reports/runs/recovery_baseline_probe_20261014/commands.json"
+    ],
+    "reopen_reason": "原卡尚未实施/验收；保留原状态历史与最终范围。"
+  },
+  {
+    "title": "运行入口、部署与质量检查可用",
+    "status": "in_progress",
+    "implementation": "not_started",
+    "verification": {
+      "unit": "not_run",
+      "contract": "not_run",
+      "integration": "not_run",
+      "security": "not_run",
+      "frontend": "not_run",
+      "e2e": "not_run",
+      "live": "not_run",
+      "manual": "not_run"
+    },
+    "evidence": [],
+    "review_ref": null,
+    "report": "reports/tasks/R01.md"
+  }
+]
+0b6a7ad docs(R01): distinguish direct Git whitespace exit from shell status
+e75ae5d docs(R01): record final delivery checks and actual report timestamps
+a3ab25a docs(R01): preserve isolated Compose runtime and CI verification evidence
+d7290cf fix(R01): allow bounded cold start and register nonroot worker identity
+bc24286 feat(R01): pin verified application bases and restrict Docker contexts
+4fa79ef checkpoint G-A R01 add bounded Celery runtime and PostgreSQL execution health
+9f93161 fix(R01): keep Compose inputs outside host application settings
+dbbfcd1 fix(R01): validate exact Docker build inputs
+a413eaf feat(R01): isolate Compose profiles and run real backend CI scopes
+05aa146 docs(G-A/R01): align task report header with frozen verification
+7fe8db0 docs(G-A/R01): preserve isolated PostgreSQL and quality verification evidence
+c71d0db fix(G-A/R01): make check output reliable on Windows consoles
+f7fdf91 feat(G-A/R01): run honest checks with isolated test resources
+8b3927d checkpoint G-A R01 bind session identity and reject concurrent auth boundary failures
+ .gitattributes                                     |   3 +
+ .github/workflows/ci.yml                           | 100 ++++-
+ .../versions/0005_runtime_observations.py          |  29 ++
+ backend/pyproject.toml                             |   4 +
+ backend/src/ai_intel/api/app.py                    |  17 +-
+ backend/src/ai_intel/infrastructure/database.py    |   6 +-
+ .../infrastructure/runtime_observations.py         |  45 ++
+ backend/src/ai_intel/knowledge/models.py           |   9 +
+ backend/src/ai_intel/workers/runtime.py            |  84 ++++
+ backend/tests/conftest.py                          | 105 +++++
+ .../contract/test_r01_compose_configuration.py     | 232 +++++++++++
+ backend/tests/contract/test_r01_quality_checks.py  | 221 ++++++++++
+ backend/tests/contract/test_t07_jobs_outbox.py     |  27 +-
+ .../integration/test_t03_development_services.py   | 349 ++++++++--------
+ .../test_t05_persistence_and_raw_store.py          |  52 +--
+ .../tests/integration/test_t07_jobs_and_outbox.py  |  28 +-
+ .../security/test_r01_admin_error_redaction.py     |  23 +
+ .../tests/unit/test_r01_worker_configuration.py    |  46 ++
+ backend/tests/unit/test_t02_project_skeleton.py    |  38 +-
+ config/dev.env.example                             |  29 +-
+ docs/decisions/CR-R10_vitest_security_upgrade.md   |  33 ++
+ infra/compose/README.md                            |  69 +++
+ infra/compose/compose.test.host.yaml               |   3 +
+ infra/compose/compose.test.yaml                    |   3 +
+ infra/compose/compose.yaml                         | 199 ++++++---
+ infra/compose/test.host.override.yaml              |  51 +++
+ infra/compose/test.override.yaml                   |  41 ++
+ infra/docker/backend.Dockerfile                    |  15 +
+ infra/docker/backend.Dockerfile.dockerignore       |  14 +
+ infra/docker/frontend.Dockerfile                   |   9 +
+ infra/docker/frontend.Dockerfile.dockerignore      |  13 +
+ .../bootstrap_runtime.py                           |  56 +++
+ .../scan_staged_secrets.py                         |  42 ++
+ .../supervise_runtime.py                           | 113 +++++
+ .../compose_contract.json                          |  24 ++
+ .../compose_contract.stderr.log                    |   0
+ .../compose_contract.stdout.log                    |  47 +++
+ .../compose_contract.xml                           |  12 +
+ .../delivery/secret_scan.json                      |   7 +
+ .../delivery_final/diff_delivery.json              |  16 +
+ .../delivery_final/diff_delivery.stderr.log        |   0
+ .../delivery_final/diff_delivery.stdout.log        | 258 ++++++++++++
+ .../delivery_final/diff_source.json                |  22 +
+ .../delivery_final/diff_source.stderr.log          |   0
+ .../delivery_final/diff_source.stdout.log          |   0
+ .../delivery_final/secret_scan.json                |   7 +
+ .../final/compose_contract.json                    |  24 ++
+ .../final/compose_contract.stderr.log              |   4 +
+ .../final/compose_contract.stdout.log              |  31 ++
+ .../final/compose_contract.xml                     |   1 +
+ .../final/contract.json                            |  24 ++
+ .../final/contract.stderr.log                      |   0
+ .../final/contract.stdout.log                      |  58 +++
+ .../recovery_r01_infra_20261015/final/contract.xml |   1 +
+ .../recovery_r01_infra_20261015/final/format.json  |  18 +
+ .../final/format.stderr.log                        |   0
+ .../final/format.stdout.log                        |   1 +
+ .../final/integration.json                         |  24 ++
+ .../final/integration.stderr.log                   |   0
+ .../final/integration.stdout.log                   |  37 ++
+ .../final/integration.xml                          |   1 +
+ .../recovery_r01_infra_20261015/final/migrate.json |  14 +
+ .../final/migrate.stderr.log                       |   0
+ .../final/migrate.stdout.log                       |   1 +
+ .../recovery_r01_infra_20261015/final/mypy.json    |  17 +
+ .../final/mypy.stderr.log                          |   0
+ .../final/mypy.stdout.log                          |   1 +
+ .../recovery_r01_infra_20261015/final/ruff.json    |  17 +
+ .../final/ruff.stderr.log                          |   0
+ .../final/ruff.stdout.log                          |   1 +
+ .../final/runtime_health.json                      |  14 +
+ .../final/runtime_health.stderr.log                |  17 +
+ .../final/runtime_health.stdout.log                |   1 +
+ .../final/runtime_logs.json                        |  47 +++
+ .../final/runtime_logs.stderr.log                  |   0
+ .../final/runtime_logs.stdout.log                  |  38 ++
+ .../final/runtime_ps.json                          |  42 ++
+ .../final/runtime_ps.stderr.log                    |   0
+ .../final/runtime_ps.stdout.log                    |   6 +
+ .../final/runtime_up.json                          |  47 +++
+ .../final/runtime_up.stderr.log                    |  32 ++
+ .../final/runtime_up.stdout.log                    |   0
+ .../final/security.json                            |  24 ++
+ .../final/security.stderr.log                      |   0
+ .../final/security.stdout.log                      |  39 ++
+ .../recovery_r01_infra_20261015/final/security.xml |   1 +
+ .../final/source_hashes.json                       |  18 +
+ .../recovery_r01_infra_20261015/final/unit.json    |  23 +
+ .../final/unit.stderr.log                          |   0
+ .../final/unit.stdout.log                          |  44 ++
+ .../recovery_r01_infra_20261015/final/unit.xml     |   1 +
+ .../final_checks/cbm_infra.json                    |  28 ++
+ .../final_checks/cbm_infra.stderr.log              |   0
+ .../final_checks/cbm_infra.stdout.log              |   1 +
+ .../final_checks/cbm_source.json                   |  28 ++
+ .../final_checks/cbm_source.stderr.log             |   0
+ .../final_checks/cbm_source.stdout.log             |   1 +
+ .../final_checks/compose_contract.json             |  24 ++
+ .../final_checks/compose_contract.stderr.log       |   0
+ .../final_checks/compose_contract.stdout.log       |  31 ++
+ .../final_checks/compose_contract.xml              |   1 +
+ .../final_checks/format.json                       |  18 +
+ .../final_checks/format.stderr.log                 |   0
+ .../final_checks/format.stdout.log                 |   1 +
+ .../final_checks/mypy.json                         |  17 +
+ .../final_checks/mypy.stderr.log                   |   0
+ .../final_checks/mypy.stdout.log                   |   1 +
+ .../final_checks/ruff.json                         |  17 +
+ .../final_checks/ruff.stderr.log                   |   0
+ .../final_checks/ruff.stdout.log                   |   1 +
+ .../final_checks/source_hashes.json                |  18 +
+ .../final_security/listeners.json                  |  21 +
+ .../final_security/listeners.stderr.log            |   0
+ .../final_security/listeners.stdout.log            |   6 +
+ .../final_security/resource_opensearch.json        |  26 ++
+ .../final_security/resource_opensearch.stderr.log  |   0
+ .../final_security/resource_opensearch.stdout.log  |   1 +
+ .../final_security/resource_postgres.json          |  26 ++
+ .../final_security/resource_postgres.stderr.log    |   0
+ .../final_security/resource_postgres.stdout.log    |   1 +
+ .../final_security/resource_redis.json             |  26 ++
+ .../final_security/resource_redis.stderr.log       |   0
+ .../final_security/resource_redis.stdout.log       |   1 +
+ .../frozen/scope_contract.json                     |  18 +
+ .../frozen/scope_contract.stderr.log               |   0
+ .../frozen/scope_contract.stdout.log               |  82 ++++
+ .../frozen/scope_integration.json                  |  18 +
+ .../frozen/scope_integration.stderr.log            |   0
+ .../frozen/scope_integration.stdout.log            |  49 +++
+ .../frozen/scope_security.json                     |  18 +
+ .../frozen/scope_security.stderr.log               |   0
+ .../frozen/scope_security.stdout.log               |  48 +++
+ .../frozen/scope_unit.json                         |  18 +
+ .../frozen/scope_unit.stderr.log                   |   0
+ .../frozen/scope_unit.stdout.log                   |  56 +++
+ .../images/application_images.json                 |   7 +
+ .../images/build_backend.json                      |  32 ++
+ .../images/build_backend.stderr.log                |   5 +
+ .../images/build_backend.stdout.log                |  40 ++
+ .../images/build_frontend.json                     |  32 ++
+ .../images/build_frontend.stderr.log               |   4 +
+ .../images/build_frontend.stdout.log               |  30 ++
+ .../images/build_proxy_backend.json                |  38 ++
+ .../images/build_proxy_backend.stderr.log          |   4 +
+ .../images/build_proxy_backend.stdout.log          | 107 +++++
+ .../images/build_proxy_frontend.json               |  38 ++
+ .../images/build_proxy_frontend.stderr.log         |   4 +
+ .../images/build_proxy_frontend.stdout.log         |  68 +++
+ .../recovery_r01_infra_20261015/images/buildx.json |  24 ++
+ .../images/buildx.stderr.log                       |   3 +
+ .../images/buildx.stdout.log                       |   0
+ .../images/inspect_node.json                       |  27 ++
+ .../images/inspect_node.stderr.log                 |   0
+ .../images/inspect_node.stdout.log                 |   1 +
+ .../images/inspect_python.json                     |  27 ++
+ .../images/inspect_python.stderr.log               |   0
+ .../images/inspect_python.stdout.log               |   1 +
+ .../images/inspect_uv.json                         |  27 ++
+ .../images/inspect_uv.stderr.log                   |   0
+ .../images/inspect_uv.stdout.log                   |   1 +
+ .../images/proxy_probe.json                        |  42 ++
+ .../images/proxy_probe.stderr.log                  |   0
+ .../images/proxy_probe.stdout.log                  |   1 +
+ .../images/pull_node.json                          |  24 ++
+ .../images/pull_node.stderr.log                    |   0
+ .../images/pull_node.stdout.log                    |  18 +
+ .../images/pull_python.json                        |  24 ++
+ .../images/pull_python.stderr.log                  |   0
+ .../images/pull_python.stdout.log                  |  18 +
+ .../images/pull_uv.json                            |  24 ++
+ .../images/pull_uv.stderr.log                      |   0
+ .../images/pull_uv.stdout.log                      |  12 +
+ .../images/source_archive.json                     |  22 +
+ .../images/version_node.json                       |  36 ++
+ .../images/version_node.stderr.log                 |   0
+ .../images/version_node.stdout.log                 |   1 +
+ .../images/version_python.json                     |  36 ++
+ .../images/version_python.stderr.log               |   0
+ .../images/version_python.stdout.log               |   1 +
+ .../images/version_uv.json                         |  36 ++
+ .../images/version_uv.stderr.log                   |   0
+ .../images/version_uv.stdout.log                   |   1 +
+ .../images_rebuild/application_images.json         |   6 +
+ .../images_rebuild/build_proxy_backend.json        |  38 ++
+ .../images_rebuild/build_proxy_backend.stderr.log  |   4 +
+ .../images_rebuild/build_proxy_backend.stdout.log  |  52 +++
+ .../prepare_private.json                           |  20 +
+ .../prepare_private.stderr.log                     |   0
+ .../prepare_private.stdout.log                     |   1 +
+ .../recheck_1/cbm_app.json                         |  28 ++
+ .../recheck_1/cbm_app.stderr.log                   |   0
+ .../recheck_1/cbm_app.stdout.log                   |   1 +
+ .../recheck_1/cbm_infra.json                       |  28 ++
+ .../recheck_1/cbm_infra.stderr.log                 |   0
+ .../recheck_1/cbm_infra.stdout.log                 |   1 +
+ .../recheck_1/cbm_settings.json                    |  28 ++
+ .../recheck_1/cbm_settings.stderr.log              |   0
+ .../recheck_1/cbm_settings.stdout.log              |   1 +
+ .../recheck_1/cbm_source.json                      |  28 ++
+ .../recheck_1/cbm_source.stderr.log                |   0
+ .../recheck_1/cbm_source.stdout.log                |   1 +
+ .../recheck_1/compose_contract.json                |  24 ++
+ .../recheck_1/compose_contract.stderr.log          |   0
+ .../recheck_1/compose_contract.stdout.log          |  30 ++
+ .../recheck_1/compose_contract.xml                 |   1 +
+ .../recheck_1/compose_ps.json                      |  34 ++
+ .../recheck_1/compose_ps.stderr.log                |   0
+ .../recheck_1/compose_ps.stdout.log                |   3 +
+ .../recheck_1/compose_up.json                      |  38 ++
+ .../recheck_1/compose_up.stderr.log                |  24 ++
+ .../recheck_1/compose_up.stdout.log                |   0
+ .../recheck_1/contract.json                        |  24 ++
+ .../recheck_1/contract.stderr.log                  |   0
+ .../recheck_1/contract.stdout.log                  |  75 ++++
+ .../recheck_1/contract.xml                         |  13 +
+ .../recheck_1/format.json                          |  18 +
+ .../recheck_1/format.stderr.log                    |   0
+ .../recheck_1/format.stdout.log                    |   1 +
+ .../recheck_1/integration.json                     |  24 ++
+ .../recheck_1/integration.stderr.log               |   0
+ .../recheck_1/integration.stdout.log               |  36 ++
+ .../recheck_1/integration.xml                      |   1 +
+ .../recheck_1/mypy.json                            |  17 +
+ .../recheck_1/mypy.stderr.log                      |   0
+ .../recheck_1/mypy.stdout.log                      |   1 +
+ .../recheck_1/ruff.json                            |  17 +
+ .../recheck_1/ruff.stderr.log                      |   0
+ .../recheck_1/ruff.stdout.log                      |   1 +
+ .../recheck_1/security.json                        |  24 ++
+ .../recheck_1/security.stderr.log                  |   0
+ .../recheck_1/security.stdout.log                  |  54 +++
+ .../recheck_1/security.xml                         |  12 +
+ .../recovery_r01_infra_20261015/recheck_1/t03.json |  24 ++
+ .../recheck_1/t03.stderr.log                       |   0
+ .../recheck_1/t03.stdout.log                       |  30 ++
+ .../recovery_r01_infra_20261015/recheck_1/t03.xml  |   1 +
+ .../recheck_1/unit.json                            |  23 +
+ .../recheck_1/unit.stderr.log                      |   0
+ .../recheck_1/unit.stdout.log                      |  41 ++
+ .../recovery_r01_infra_20261015/recheck_1/unit.xml |   1 +
+ .../runs/recovery_r01_infra_20261015/run_checks.py | 306 ++++++++++++++
+ .../runtime_recheck/authentication_smoke.json      |  14 +
+ .../authentication_smoke.stderr.log                |   0
+ .../authentication_smoke.stdout.log                |   2 +
+ .../runtime_recheck/image_inventory.json           |  31 ++
+ .../runtime_recheck/image_inventory.stderr.log     |   0
+ .../runtime_recheck/image_inventory.stdout.log     |   5 +
+ .../runtime_recheck/image_runtime_identity.json    |  23 +
+ .../image_runtime_identity.stderr.log              |   0
+ .../image_runtime_identity.stdout.log              |   1 +
+ .../runtime_recheck/listeners.json                 |  21 +
+ .../runtime_recheck/listeners.stderr.log           |   0
+ .../runtime_recheck/listeners.stdout.log           |   4 +
+ .../runtime_recheck/resource_opensearch.json       |  26 ++
+ .../runtime_recheck/resource_opensearch.stderr.log |   0
+ .../runtime_recheck/resource_opensearch.stdout.log |   1 +
+ .../runtime_recheck/resource_postgres.json         |  26 ++
+ .../runtime_recheck/resource_postgres.stderr.log   |   0
+ .../runtime_recheck/resource_postgres.stdout.log   |   1 +
+ .../runtime_recheck/resource_redis.json            |  26 ++
+ .../runtime_recheck/resource_redis.stderr.log      |   0
+ .../runtime_recheck/resource_redis.stdout.log      |   1 +
+ .../runtime_recheck/runtime_health.json            |  14 +
+ .../runtime_recheck/runtime_health.stderr.log      |   0
+ .../runtime_recheck/runtime_health.stdout.log      |   3 +
+ .../runtime_recheck/runtime_logs.json              |  47 +++
+ .../runtime_recheck/runtime_logs.stderr.log        |   0
+ .../runtime_recheck/runtime_logs.stdout.log        |  34 ++
+ .../runtime_recheck/runtime_ps.json                |  42 ++
+ .../runtime_recheck/runtime_ps.stderr.log          |   0
+ .../runtime_recheck/runtime_ps.stdout.log          |   7 +
+ .../runtime_recheck/runtime_up.json                |  47 +++
+ .../runtime_recheck/runtime_up.stderr.log          |  43 ++
+ .../runtime_recheck/runtime_up.stdout.log          |   0
+ .../runtime_recheck/secret_scan.json               |   7 +
+ .../cbm_index_c918.json                            |  24 ++
+ .../cbm_index_c918.stderr.log                      | Bin
+ .../cbm_index_c918.stdout.log                      | Bin 0 -> 552 bytes
+ .../cbm_index_recheck.json                         |   1 +
+ .../recovery_r01_quality_20261014/cbm_receipt.json |   9 +
+ .../cbm_trace_c918.json                            |  30 ++
+ .../cbm_trace_c918.stderr.log                      | Bin
+ .../cbm_trace_c918.stdout.log                      | Bin 0 -> 922 bytes
+ .../cbm_trace_main.json                            |   1 +
+ .../recovery_r01_quality_20261014/contract.json    |  20 +
+ .../contract.stderr.log                            | Bin
+ .../contract.stdout.log                            | Bin 0 -> 8091 bytes
+ .../recovery_r01_quality_20261014/contract.xml     | Bin 0 -> 19209 bytes
+ .../final_secret_scan.json                         |   7 +
+ .../runs/recovery_r01_quality_20261014/format.json |  26 ++
+ .../format.stderr.log                              | Bin
+ .../format.stdout.log                              | Bin 0 -> 27 bytes
+ .../docker_version.json                            |  23 +
+ .../docker_version.stderr.log                      | Bin
+ .../docker_version.stdout.log                      | Bin 0 -> 8 bytes
+ .../fresh_resources_20261014_2334/wsl_true.json    |  16 +
+ .../wsl_true.stderr.log                            | Bin
+ .../wsl_true.stdout.log                            | Bin
+ .../frozen_2b79c80/format.json                     |  23 +
+ .../frozen_2b79c80/format.stderr.log               | Bin
+ .../frozen_2b79c80/format.stdout.log               | Bin 0 -> 27 bytes
+ .../frozen_2b79c80/mypy.json                       |  15 +
+ .../frozen_2b79c80/mypy.stderr.log                 | Bin
+ .../frozen_2b79c80/mypy.stdout.log                 | Bin 0 -> 45 bytes
+ .../frozen_2b79c80/quality_contract.json           |  17 +
+ .../frozen_2b79c80/quality_contract.stderr.log     | Bin
+ .../frozen_2b79c80/quality_contract.stdout.log     | Bin 0 -> 2597 bytes
+ .../frozen_2b79c80/quality_contract.xml            | Bin 0 -> 5501 bytes
+ .../frozen_2b79c80/unit.json                       |  16 +
+ .../frozen_2b79c80/unit.stderr.log                 | Bin
+ .../frozen_2b79c80/unit.stdout.log                 | Bin 0 -> 3216 bytes
+ .../frozen_2b79c80/unit.xml                        | Bin 0 -> 6805 bytes
+ .../job_boundary_probe.py                          |  62 +++
+ .../runs/recovery_r01_quality_20261014/mypy.json   |  18 +
+ .../recovery_r01_quality_20261014/mypy.stderr.log  | Bin
+ .../recovery_r01_quality_20261014/mypy.stdout.log  | Bin 0 -> 230 bytes
+ .../offline_recheck_1/mypy.json                    |  14 +
+ .../offline_recheck_1/mypy.stderr.log              | Bin
+ .../offline_recheck_1/mypy.stdout.log              | Bin 0 -> 45 bytes
+ .../offline_recheck_1/offline_contract.json        |  18 +
+ .../offline_recheck_1/offline_contract.stderr.log  | Bin
+ .../offline_recheck_1/offline_contract.stdout.log  | Bin 0 -> 4789 bytes
+ .../offline_recheck_1/offline_contract.xml         | Bin 0 -> 16261 bytes
+ .../offline_recheck_1/ruff.json                    |  21 +
+ .../offline_recheck_1/ruff.stderr.log              | Bin
+ .../offline_recheck_1/ruff.stdout.log              | Bin 0 -> 20 bytes
+ .../scope_all_without_resources.json               |  15 +
+ .../scope_all_without_resources.stderr.log         | Bin 0 -> 170 bytes
+ .../scope_all_without_resources.stdout.log         | Bin 0 -> 7743 bytes
+ .../offline_recheck_1/scope_fixture_contract.json  |  14 +
+ .../scope_fixture_contract.stderr.log              | Bin
+ .../scope_fixture_contract.stdout.log              | Bin 0 -> 6235 bytes
+ .../postgres_integration.json                      |  21 +
+ .../postgres_integration.stderr.log                | Bin
+ .../postgres_integration.stdout.log                | Bin 0 -> 66050 bytes
+ .../postgres_integration.xml                       | Bin 0 -> 66855 bytes
+ .../quality_contract.json                          |  20 +
+ .../quality_contract.stderr.log                    | Bin
+ .../quality_contract.stdout.log                    | Bin 0 -> 2582 bytes
+ .../quality_contract.xml                           | Bin 0 -> 5126 bytes
+ .../recheck_20261014_233550/contract.json          |  20 +
+ .../recheck_20261014_233550/contract.stderr.log    | Bin
+ .../recheck_20261014_233550/contract.stdout.log    | Bin 0 -> 4926 bytes
+ .../recheck_20261014_233550/contract.xml           | Bin 0 -> 16752 bytes
+ .../recheck_20261014_233550/format.json            |  26 ++
+ .../recheck_20261014_233550/format.stderr.log      | Bin
+ .../recheck_20261014_233550/format.stdout.log      | Bin 0 -> 27 bytes
+ .../recheck_20261014_233550/full_integration.json  |  17 +
+ .../full_integration.stderr.log                    | Bin
+ .../full_integration.stdout.log                    | Bin 0 -> 8488 bytes
+ .../recheck_20261014_233550/full_integration.xml   | Bin 0 -> 16650 bytes
+ .../recheck_20261014_233550/job_boundary.json      |  11 +
+ .../job_boundary.stderr.log                        | Bin
+ .../job_boundary.stdout.log                        | Bin 0 -> 260 bytes
+ .../recheck_20261014_233550/mypy.json              |  18 +
+ .../recheck_20261014_233550/mypy.stderr.log        | Bin
+ .../recheck_20261014_233550/mypy.stdout.log        | Bin 0 -> 45 bytes
+ .../recheck_20261014_233550/npm_ci.json            |  11 +
+ .../recheck_20261014_233550/npm_ci.stderr.log      | Bin 0 -> 1277 bytes
+ .../recheck_20261014_233550/npm_ci.stdout.log      | Bin 0 -> 286 bytes
+ .../postgres_integration.json                      |  21 +
+ .../postgres_integration.stderr.log                | Bin
+ .../postgres_integration.stdout.log                | Bin 0 -> 2617 bytes
+ .../postgres_integration.xml                       | Bin 0 -> 3374 bytes
+ .../recheck_20261014_233550/quality_contract.json  |  20 +
+ .../quality_contract.stderr.log                    | Bin 0 -> 278 bytes
+ .../quality_contract.stdout.log                    | Bin 0 -> 2694 bytes
+ .../recheck_20261014_233550/quality_contract.xml   | Bin 0 -> 5501 bytes
+ .../recheck_20261014_233550/ruff.json              |  25 ++
+ .../recheck_20261014_233550/ruff.stderr.log        | Bin
+ .../recheck_20261014_233550/ruff.stdout.log        | Bin 0 -> 20 bytes
+ .../recheck_20261014_233550/scope_contract.json    |  17 +
+ .../scope_contract.stderr.log                      | Bin
+ .../scope_contract.stdout.log                      | Bin 0 -> 6520 bytes
+ .../recheck_20261014_233550/scope_e2e.json         |  17 +
+ .../recheck_20261014_233550/scope_e2e.stderr.log   | Bin 0 -> 81 bytes
+ .../recheck_20261014_233550/scope_e2e.stdout.log   | Bin 0 -> 93 bytes
+ .../scope_e2e_reinstalled.json                     |  14 +
+ .../scope_e2e_reinstalled.stderr.log               | Bin
+ .../scope_e2e_reinstalled.stdout.log               | Bin 0 -> 1242 bytes
+ .../recheck_20261014_233550/scope_frontend.json    |  17 +
+ .../scope_frontend.stderr.log                      | Bin
+ .../scope_frontend.stdout.log                      | Bin 0 -> 275 bytes
+ .../scope_frontend_reinstalled.json                |  14 +
+ .../scope_frontend_reinstalled.stderr.log          | Bin 0 -> 906 bytes
+ .../scope_frontend_reinstalled.stdout.log          | Bin 0 -> 351 bytes
+ .../scope_missing_resources.json                   |  17 +
+ .../scope_missing_resources.stderr.log             | Bin 0 -> 71 bytes
+ .../scope_missing_resources.stdout.log             | Bin
+ .../recheck_20261014_233550/security.json          |  20 +
+ .../recheck_20261014_233550/security.stderr.log    | Bin
+ .../recheck_20261014_233550/security.stdout.log    | Bin 0 -> 3074 bytes
+ .../recheck_20261014_233550/security.xml           | Bin 0 -> 4644 bytes
+ .../recheck_20261014_233550/source_hashes.json     |  13 +
+ .../recheck_20261014_233550/unit.json              |  19 +
+ .../recheck_20261014_233550/unit.stderr.log        | Bin
+ .../recheck_20261014_233550/unit.stdout.log        | Bin 0 -> 3396 bytes
+ .../recheck_20261014_233550/unit.xml               | Bin 0 -> 6805 bytes
+ .../recheck_20261014_234925/contract.json          |  20 +
+ .../recheck_20261014_234925/contract.stderr.log    | Bin
+ .../recheck_20261014_234925/contract.stdout.log    | Bin 0 -> 4926 bytes
+ .../recheck_20261014_234925/contract.xml           | Bin 0 -> 17042 bytes
+ .../recheck_20261014_234925/format.json            |  26 ++
+ .../recheck_20261014_234925/format.stderr.log      | Bin
+ .../recheck_20261014_234925/format.stdout.log      | Bin 0 -> 27 bytes
+ .../recheck_20261014_234925/mypy.json              |  18 +
+ .../recheck_20261014_234925/mypy.stderr.log        | Bin
+ .../recheck_20261014_234925/mypy.stdout.log        | Bin 0 -> 45 bytes
+ .../postgres_integration.json                      |  21 +
+ .../postgres_integration.stderr.log                | Bin
+ .../postgres_integration.stdout.log                | Bin 0 -> 2621 bytes
+ .../postgres_integration.xml                       | Bin 0 -> 3374 bytes
+ .../recheck_20261014_234925/quality_contract.json  |  20 +
+ .../quality_contract.stderr.log                    | Bin
+ .../quality_contract.stdout.log                    | Bin 0 -> 2694 bytes
+ .../recheck_20261014_234925/quality_contract.xml   | Bin 0 -> 5791 bytes
+ .../recheck_20261014_234925/ruff.json              |  25 ++
+ .../recheck_20261014_234925/ruff.stderr.log        | Bin
+ .../recheck_20261014_234925/ruff.stdout.log        | Bin 0 -> 20 bytes
+ .../recheck_20261014_234925/scope_contract.json    |  17 +
+ .../scope_contract.stderr.log                      | Bin
+ .../scope_contract.stdout.log                      | Bin 0 -> 6520 bytes
+ .../recheck_20261014_234925/scope_e2e.json         |  17 +
+ .../recheck_20261014_234925/scope_e2e.stderr.log   | Bin
+ .../recheck_20261014_234925/scope_e2e.stdout.log   | Bin 0 -> 1242 bytes
+ .../recheck_20261014_234925/scope_frontend.json    |  17 +
+ .../scope_frontend.stderr.log                      | Bin
+ .../scope_frontend.stdout.log                      | Bin 0 -> 777 bytes
+ .../scope_missing_resources.json                   |  17 +
+ .../scope_missing_resources.stderr.log             | Bin 0 -> 71 bytes
+ .../scope_missing_resources.stdout.log             | Bin
+ .../recheck_20261014_234925/security.json          |  20 +
+ .../recheck_20261014_234925/security.stderr.log    | Bin
+ .../recheck_20261014_234925/security.stdout.log    | Bin 0 -> 3074 bytes
+ .../recheck_20261014_234925/security.xml           | Bin 0 -> 4644 bytes
+ .../recheck_20261014_234925/source_hashes.json     |  13 +
+ .../recheck_20261014_234925/unit.json              |  19 +
+ .../recheck_20261014_234925/unit.stderr.log        | Bin
+ .../recheck_20261014_234925/unit.stdout.log        | Bin 0 -> 3396 bytes
+ .../recheck_20261014_234925/unit.xml               | Bin 0 -> 6805 bytes
+ .../root_owned_gitattributes_before_restore.txt    |  19 +
+ .../runs/recovery_r01_quality_20261014/ruff.json   |  25 ++
+ .../recovery_r01_quality_20261014/ruff.stderr.log  | Bin
+ .../recovery_r01_quality_20261014/ruff.stdout.log  | Bin 0 -> 1620 bytes
+ .../recovery_r01_quality_20261014/run_checks.py    |  80 ++++
+ .../scope_contract.json                            |  17 +
+ .../scope_contract.stderr.log                      | Bin
+ .../scope_contract.stdout.log                      | Bin 0 -> 9631 bytes
+ .../recovery_r01_quality_20261014/scope_e2e.json   |  17 +
+ .../scope_e2e.stderr.log                           | Bin 0 -> 28 bytes
+ .../scope_e2e.stdout.log                           | Bin
+ .../scope_frontend.json                            |  17 +
+ .../scope_frontend.stderr.log                      | Bin
+ .../scope_frontend.stdout.log                      | Bin 0 -> 777 bytes
+ .../scope_missing_resources.json                   |  17 +
+ .../scope_missing_resources.stderr.log             | Bin 0 -> 71 bytes
+ .../scope_missing_resources.stdout.log             | Bin
+ .../recovery_r01_quality_20261014/secret_scan.json |   6 +
+ .../recovery_r01_quality_20261014/security.json    |  20 +
+ .../security.stderr.log                            | Bin
+ .../security.stdout.log                            | Bin 0 -> 2355 bytes
+ .../recovery_r01_quality_20261014/security.xml     | Bin 0 -> 3235 bytes
+ .../source_hashes.json                             |  13 +
+ .../runs/recovery_r01_quality_20261014/unit.json   |  19 +
+ .../recovery_r01_quality_20261014/unit.stderr.log  | Bin
+ .../recovery_r01_quality_20261014/unit.stdout.log  | Bin 0 -> 3201 bytes
+ .../runs/recovery_r01_quality_20261014/unit.xml    | Bin 0 -> 6805 bytes
+ reports/stages/recovery/G-A.md                     |  31 +-
+ reports/tasks/R01-infra.md                         |  83 ++++
+ reports/tasks/R01-quality.md                       | 112 +++++
+ reports/tasks/R01.md                               |  20 +-
+ scripts/admin_user.py                              |  53 ++-
+ scripts/dev.py                                     | 464 +++++++++++++++------
+ 473 files changed, 7645 insertions(+), 515 deletions(-)

@@ -1,0 +1,108 @@
+..........F.................                                             [100%]
+================================== FAILURES ===================================
+____________ test_audit_and_sources_carry_no_secret_values_t06_c06 ____________
+
+    def test_audit_and_sources_carry_no_secret_values_t06_c06() -> None:
+        """T06-C06: ����¼���Դ��/��־ɨ�������롢cookie��token ����ʵ��Կֵ��"""
+        service = build_service()
+        service.create_precreated_user("analyst-a", "Str0ng-Passphrase!", "tenant-alpha", Role.ANALYST)
+        session_token, _ = service.login("analyst-a", "Str0ng-Passphrase!", ALLOWED_ORIGIN, "client-1")
+        service.logout(session_token)
+        for event in service.audit_events():
+            serialized = str(event).lower()
+            assert "str0ng-passphrase!" not in serialized
+            assert session_token not in str(event)
+            assert "trace_id" in event
+        with pytest.raises(AuditEventError):
+            service._append_audit("manual_probe", {"password": "should-not-be-logged"})
+        import re
+    
+        secret_pattern = re.compile(
+            r"(api[_-]?key|secret[_-]?key|db[_-]?pass|secret|token|password)"
+            r"\s*[:=]\s*['\"][A-Za-z0-9_\-]{16,}['\"]",
+            re.IGNORECASE,
+        )
+        scan_roots = (
+            REPO_ROOT / "backend" / "src",
+            REPO_ROOT / "scripts",
+            REPO_ROOT / "frontend" / "src",
+            REPO_ROOT / "frontend" / "dist",
+            REPO_ROOT / "reports" / "runs",
+        )
+        documented_dev_placeholders = {"dev-only-not-a-secret", "Dev-Only-Not-A-Secret-1!"}
+        secret_value_pattern = re.compile(
+            r"(api[_-]?key|secret[_-]?key|db[_-]?pass|secret|password|passwd|token|jwt)"
+            r"\s*[:=]\s*['\"]([^'\"]{6,})['\"]",
+            re.IGNORECASE,
+        )
+        for source_root in scan_roots:
+            if not source_root.exists():
+                continue
+            for source_path in source_root.rglob("*"):
+                if not source_path.is_file() or source_path.suffix not in {
+                    ".py",
+                    ".ts",
+                    ".tsx",
+                    ".js",
+                    ".log",
+                    ".json",
+                    ".html",
+                }:
+                    continue
+                content = source_path.read_text(encoding="utf-8", errors="ignore")
+                assert not secret_pattern.search(content), source_path
+                for secret_match in secret_value_pattern.finditer(content):
+                    source_line = content[: secret_match.start()].count("\n") + 1
+                    if (
+                        source_path.suffix == ".py"
+                        and secret_match.group(2) == "password authentication failed"
+                        and is_public_authentication_failure_comparison(content, source_line)
+                    ):
+                        continue
+>                   assert secret_match.group(2) in documented_dev_placeholders, (
+                        source_path,
+                        secret_match.group(1),
+                    )
+E                   AssertionError: (WindowsPath('C:/Users/yinha/.codex/worktrees/recovery-r01-candidate/dianzi/frontend/src/api/client.test.ts'), 'token')
+E                   assert 'fixture-csrf' in {'Dev-Only-Not-A-Secret-1!', 'dev-only-not-a-secret'}
+E                    +  where 'fixture-csrf' = <built-in method group of re.Match object at 0x000001E0E10B28E0>(2)
+E                    +    where <built-in method group of re.Match object at 0x000001E0E10B28E0> = <re.Match object; span=(2571, 2592), match='token: "fixture-csrf"'>.group
+
+tests\security\test_t06_authentication_and_scope.py:218: AssertionError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  C:\Users\yinha\.codex\worktrees\recovery-r01-candidate\dianzi\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.12.13-final-0 _______________
+
+Name                                             Stmts   Miss  Cover   Missing
+------------------------------------------------------------------------------
+src\ai_intel\__init__.py                             0      0   100%
+src\ai_intel\api\__init__.py                         0      0   100%
+src\ai_intel\api\app.py                             95     31    67%   39, 46, 55-61, 104, 111-122, 128-131, 137-154, 161, 163
+src\ai_intel\api\auth_routes.py                     85     28    67%   44, 53, 61-68, 100, 110-113, 135-156, 164, 183-186
+src\ai_intel\api\authentication.py                 182     33    82%   94, 106, 123, 127-145, 149-159, 163-173, 178-182, 280, 285-289, 363
+src\ai_intel\api\problems.py                         6      0   100%
+src\ai_intel\domain\__init__.py                      0      0   100%
+src\ai_intel\domain\access.py                       42      1    98%   73
+src\ai_intel\domain\enums.py                        79      0   100%
+src\ai_intel\domain\records.py                      59     59     0%   7-103
+src\ai_intel\domain\schema_export.py                15     15     0%   6-49
+src\ai_intel\domain\values.py                       47     47     0%   7-88
+src\ai_intel\infrastructure\__init__.py              0      0   100%
+src\ai_intel\infrastructure\content_store.py        54     54     0%   3-83
+src\ai_intel\infrastructure\database.py             48     30    38%   30-35, 48-57, 62-65, 70-73, 78-87
+src\ai_intel\infrastructure\models\__init__.py       0      0   100%
+src\ai_intel\infrastructure\models\clients.py       69     69     0%   3-135
+src\ai_intel\infrastructure\network.py              90     12    87%   69-70, 103, 106, 126, 132, 158-162, 184
+src\ai_intel\infrastructure\outbox.py               27     27     0%   3-94
+src\ai_intel\infrastructure\settings.py             64     27    58%   51, 64, 66, 74-87, 94-105, 110-115
+src\ai_intel\ingestion\connectors.py                34      0   100%
+------------------------------------------------------------------------------
+TOTAL                                              996    433    57%
+=========================== short test summary info ===========================
+FAILED tests/security/test_t06_authentication_and_scope.py::test_audit_and_sources_carry_no_secret_values_t06_c06
+1 failed, 27 passed, 1 warning in 2.50s

@@ -1,0 +1,98 @@
+DOCKER = [*WSL, "/tmp/dianzi-docker-static-r01-20261014/portable/docker/docker",
+          "--config", "/tmp/dianzi-docker-static-r01-20261014/runtime/client-config",
+          "--host", "unix:///tmp/dianzi-docker-static-r01-20261014/runtime/docker.sock"]
+PRIVATE_FILE = "/tmp/dianzi-r01-infra-20261015/connection.json"
+HEAD = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+environment = dict(os.environ)
+environment["PYTHONIOENCODING"] = "utf-8"
+environment["DIANZI_DOCKER_COMMAND_JSON"] = json.dumps(DOCKER)
+
+
+def timestamp() -> str:
+    return datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="seconds")
+
+
+def redact(value: str) -> str:
+    for name, secret in environment.items():
+        if secret and ("PASSWORD" in name or "PROXY" in name or name in {"DATABASE_URL", "TEST_DATABASE_URL", "REDIS_URL", "TEST_REDIS_URL"}):
+            value = value.replace(secret, "[redacted test credential]")
+    return value
+
+
+def execute(name: str, command: list[str], cwd: Path = ROOT, timeout: int = 240) -> int:
+    started = timestamp()
+    start_clock = time.monotonic()
+    try:
+        completed = subprocess.run(command, cwd=cwd, env=environment, capture_output=True,
+                                   text=True, encoding="utf-8", errors="replace", timeout=timeout)
+        stdout, stderr, code = completed.stdout, completed.stderr, completed.returncode
+    except subprocess.TimeoutExpired as expired:
+        stdout = expired.stdout.decode(errors="replace") if isinstance(expired.stdout, bytes) else expired.stdout or ""
+        stderr = expired.stderr.decode(errors="replace") if isinstance(expired.stderr, bytes) else expired.stderr or ""
+        code = 124
+    (OUTPUT / f"{name}.stdout.log").write_text(redact(stdout), encoding="utf-8")
+    (OUTPUT / f"{name}.stderr.log").write_text(redact(stderr), encoding="utf-8")
+    counts = None
+    xml = OUTPUT / f"{name}.xml"
+    if xml.is_file():
+        xml.write_text(redact(xml.read_text(encoding="utf-8")), encoding="utf-8")
+        cases = ElementTree.parse(xml).findall(".//testcase")
+        counts = {"tests": len(cases), "failed": sum(c.find("failure") is not None for c in cases),
+                  "errors": sum(c.find("error") is not None for c in cases), "skipped": sum(c.find("skipped") is not None for c in cases)}
+    receipt = {"command": command, "cwd": str(cwd), "start": started, "end": timestamp(),
+               "wall_clock_seconds": time.monotonic() - start_clock, "exit_code": code,
+               "code_sha": HEAD, "counts": counts}
+    (OUTPUT / f"{name}.json").write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"name": name, "exit": code, "counts": counts}), flush=True)
+    return code
+
+
+def load_private_environment() -> None:
+    loaded = subprocess.run([*WSL, "python3", "-c", "import pathlib,sys;sys.stdout.write(pathlib.Path(sys.argv[1]).read_text())", PRIVATE_FILE],
+                            capture_output=True, text=True, encoding="utf-8", timeout=10, check=True)
+    configuration = json.loads(loaded.stdout)
+    assert configuration["run_id"] == "r01_infra_20261015"
+    private_environment = configuration["environment"]
+    for application_name, compose_name in {
+        "DATABASE_URL": "COMPOSE_DATABASE_URL", "REDIS_URL": "COMPOSE_REDIS_URL",
+        "ALLOWED_ORIGINS": "COMPOSE_ALLOWED_ORIGINS",
+    }.items():
+        if application_name in private_environment:
+            private_environment[compose_name] = private_environment.pop(application_name)
+    environment.update(private_environment)
+    environment["DIANZI_TEST_COMPOSE_FILE"] = str(ROOT / "infra/compose/compose.test.host.yaml")
+    environment["DIANZI_COMPOSE_PROJECT"] = environment["DIANZI_TEST_COMPOSE_PROJECT"]
+    environment["DIANZI_COMPOSE_FILE"] = environment["DIANZI_TEST_COMPOSE_FILE"]
+    environment["WSLENV"] = ":".join(sorted({*private_environment, "COMPOSE_DISABLE_ENV_FILE"}))
+
+
+def prepare_private_environment() -> int:
+    source = '''import json,os,pathlib,secrets
+{"uv": null, "python3": "/usr/bin/python3", "rg": null}
+["/tmp/dianzi-cbm-recovery-validator-20261014", "/tmp/dianzi-cbm-r01-dependency-review-1-20261015", "/tmp/dianzi-cbm-r01-frontend-prep-20261014", "/tmp/dianzi-cbm-r01-frontend-keyboard-20261015", "/tmp/dianzi-cbm-recovery-root-20261014", "/tmp/dianzi-cbm-r01-frontend-20261014", "/tmp/dianzi-cbm-r01-behavior-recheck-fd4f1d4-20261015", "/tmp/dianzi-cbm-r01-frontend-recheck-20261015", "/tmp/dianzi-cbm-r01-quality-wt-20261014", "/tmp/dianzi-cbm-r01-secret-classification-20261015", "/tmp/dianzi-cbm-r00-review1-recheck-20261014", "/tmp/dianzi-docker-static-r01-20261014", "/tmp/dianzi-cbm-r01-vitest-candidate-20261014", "/tmp/dianzi-cbm-audit-20261014", "/tmp/dianzi-cbm-r01-infra-wt-20261015", "/tmp/dianzi-cbm-r01-quality-20261014", "/tmp/dianzi-cbm-r01-behavior-review-1-20261014", "/tmp/dianzi-cbm-r00-review1-20261014", "/tmp/dianzi-r01-infra-20261015"]
+Usage: codebase-memory-mcp cli [--quiet] [--progress] [--verbose] [--json] <tool_name> [json_args]
+  --quiet     Show errors only; cannot combine with --progress or outer --verbose
+  --progress  Show lifecycle progress even when stderr is redirected
+  --verbose   Include informational logs (preserves CBM_LOG_LEVEL=debug)
+  --json      Print the raw MCP result envelope
+e0fb7f22e07e206ef1e642fb4ab3a252ca99d364
+4db2001a37c9815759db2be56978e0062e3a7c65
+4db2001a37c9815759db2be56978e0062e3a7c65
+e0fb7f22e07e206ef1e642fb4ab3a252ca99d364
+50667ade2f3dcb4f6d5839a0325639f5abacbe33
+e0cdb1f221699b2ab3e506b3424307852652db65
+diff --git a/backend/pyproject.toml b/backend/pyproject.toml
+index 32e62a2..ab0f608 100644
+--- a/backend/pyproject.toml
++++ b/backend/pyproject.toml
+@@ -53,6 +53,10 @@ disallow_untyped_defs = true
+ warn_unused_ignores = true
+ no_implicit_optional = true
+ 
++[[tool.mypy.overrides]]
++module = ["celery", "celery.*"]
++ignore_missing_imports = true
++
+ [tool.pytest.ini_options]
+ testpaths = ["tests/unit"]
+ addopts = "--cov=ai_intel --cov-report=term-missing --cov-fail-under=60"

@@ -1,0 +1,198 @@
+﻿I001 [*] Import block is un-sorted or un-formatted
+  --> reports\runs\recovery_r01_runtime_recovery_20261015\recover_runtime.py:3:1
+   |
+ 1 |   """Verify and archive the stopped project runtime, then restore its existing limits."""
+ 2 |
+ 3 | / import argparse
+ 4 | | import errno
+ 5 | | import hashlib
+ 6 | | import json
+ 7 | | import os
+ 8 | | from pathlib import Path
+ 9 | | import shutil
+10 | | import socket
+11 | | import stat
+12 | | from datetime import datetime
+   | |_____________________________^
+help: Organize imports
+   |
+7  | import os
+   - from pathlib import Path
+8  | import shutil
+9  | import socket
+10 | import stat
+11 | from datetime import datetime
+   -
+12 + from pathlib import Path
+13 |
+   |
+
+I001 [*] Import block is un-sorted or un-formatted
+ --> reports\runs\recovery_r01_runtime_recovery_20261015\restore_services.py:3:1
+  |
+1 |   """Restore only previously running, labelled project containers without recreating data."""
+2 |
+3 | / import argparse
+4 | | from datetime import datetime
+5 | | import json
+6 | | import os
+7 | | from pathlib import Path
+8 | | import subprocess
+9 | | import time
+  | |___________^
+help: Organize imports
+   |
+3  | import argparse
+   - from datetime import datetime
+4  | import json
+5  | import os
+   - from pathlib import Path
+6  | import subprocess
+7  | import time
+   -
+8  + from datetime import datetime
+9  + from pathlib import Path
+10 |
+   |
+
+F401 [*] `time` imported but unused
+ --> reports\runs\recovery_r01_runtime_recovery_20261015\restore_services.py:9:8
+  |
+7 | from pathlib import Path
+8 | import subprocess
+9 | import time
+  |        ^^^^
+help: Remove unused import: `time`
+  |
+8 | import subprocess
+  - import time
+9 |
+  |
+
+PLW1510 `subprocess.run` without explicit `check` argument
+  --> reports\runs\recovery_r01_runtime_recovery_20261015\restore_services.py:29:14
+   |
+28 | def docker(arguments):
+29 |     result = subprocess.run(DOCKER + arguments, capture_output=True, text=True, timeout=25)
+   |              ^^^^^^^^^^^^^^
+30 |     assert result.returncode == 0, 'Docker operation failed: ' + ' '.join(arguments[:2])
+31 |     return result.stdout
+   |
+help: Add explicit `check=False`
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> reports\runs\recovery_r01_runtime_recovery_20261015\supervise_recovered_daemon.py:3:1
+   |
+ 1 |   """Resume the archived project daemon until its original deadline with the original budget."""
+ 2 |
+ 3 | / import json
+ 4 | | import os
+ 5 | | import selectors
+ 6 | | import signal
+ 7 | | import subprocess
+ 8 | | import time
+ 9 | | from datetime import datetime
+10 | | from pathlib import Path
+   | |________________________^
+help: Organize imports
+   |
+11 |
+   -
+12 | CACHE = Path('/tmp/dianzi-docker-static-r01-20261014')
+   |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> reports\runs\recovery_r01_runtime_recovery_20261015\verify_recovery.py:3:1
+   |
+ 1 |   """Read restored health, kernel boundaries and existing persistence probes."""
+ 2 |
+ 3 | / from datetime import datetime, timezone
+ 4 | | import ipaddress
+ 5 | | import json
+ 6 | | import os
+ 7 | | from pathlib import Path
+ 8 | | import re
+ 9 | | import socket
+10 | | import subprocess
+11 | | import urllib.request
+12 | |
+13 | | from restore_services import CACHE, DOCKER, OUTPUT, RUNTIME, inventory, now
+   | |___________________________________________________________________________^
+help: Organize imports
+   |
+2  |
+   - from datetime import datetime, timezone
+3  | import ipaddress
+4  | import json
+5  | import os
+   - from pathlib import Path
+6  | import re
+7  | import socket
+8  | import subprocess
+9  | import urllib.request
+10 + from datetime import datetime, timezone
+11 + from pathlib import Path
+12 |
+   |
+
+F401 [*] `restore_services.CACHE` imported but unused
+  --> reports\runs\recovery_r01_runtime_recovery_20261015\verify_recovery.py:13:30
+   |
+11 | import urllib.request
+12 |
+13 | from restore_services import CACHE, DOCKER, OUTPUT, RUNTIME, inventory, now
+   |                              ^^^^^
+help: Remove unused import: `restore_services.CACHE`
+   |
+12 |
+   - from restore_services import CACHE, DOCKER, OUTPUT, RUNTIME, inventory, now
+13 + from restore_services import DOCKER, OUTPUT, RUNTIME, inventory, now
+14 |
+   |
+
+PLW1510 `subprocess.run` without explicit `check` argument
+  --> reports\runs\recovery_r01_runtime_recovery_20261015\verify_recovery.py:17:14
+   |
+16 | def postgres_query(name, user, database, port, query):
+17 |     result = subprocess.run([*DOCKER, 'exec', '-i', name, 'psql', '-U', user, '-d', database,
+   |              ^^^^^^^^^^^^^^
+18 |                              '-p', str(port), '-v', 'ON_ERROR_STOP=1', '-A', '-t'],
+19 |                             input=query, text=True, capture_output=True, timeout=10)
+   |
+help: Add explicit `check=False`
+
+DTZ005 `datetime.datetime.now()` called without a `tz` argument
+  --> reports\runs\recovery_r01_runtime_recovery_20261015\verify_recovery.py:48:47
+   |
+47 | def verify():
+48 |     current = inventory('inventory_health_' + datetime.now().strftime('%Y%m%dT%H%M%S'))
+   |                                               ^^^^^^^^^^^^^^
+49 |     recovered_at = datetime.fromisoformat(current['lifecycle']['started_at'])
+50 |     selected = [item for item in current['containers'] if item['name'].startswith('/dianzi-test-')
+   |
+help: Pass a `datetime.timezone` object to the `tz` parameter
+
+I001 [*] Import block is un-sorted or un-formatted
+ --> reports\runs\recovery_r01_runtime_recovery_20261015\windows_loopback_probe.py:3:1
+  |
+1 |   """Confirm Windows can read restored loopback services while the stopped root API stays stopped."""
+2 |
+3 | / from datetime import datetime
+4 | | import json
+5 | | import socket
+6 | | import urllib.request
+  | |_____________________^
+help: Organize imports
+  |
+2 |
+  - from datetime import datetime
+3 | import json
+4 | import socket
+5 | import urllib.request
+  -
+6 + from datetime import datetime
+7 |
+  |
+
+Found 10 errors.
+[*] 7 fixable with the `--fix` option.

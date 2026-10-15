@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="4.032" timestamp="2026-10-15T12:31:01.102626+08:00" hostname="yin"><testcase classname="tests.integration.test_r01_search_tls_live" name="test_real_search_tls_trust_authentication_and_failure_are_observable[correct]" time="3.435"><failure message="AssertionError: assert {'reason': 's...'unavailable'} == {'state': 'ready'}&#10;  &#10;  Differing items:&#10;  {'state': 'unavailable'} != {'state': 'ready'}&#10;  Left contains 1 more item:&#10;  {'reason': 'search connection unavailable'}&#10;  Use -v to get more diff">real_tls_settings = SearchTLSConnection(url='https://localhost:29208', username='ai_intel_search', password=SecretStr('**********'), ca_fi...261015', project='dianzi-test-r01_tls_review2_20261015', container='dianzi-test-r01_tls_review2_20261015-opensearch-1')
+case = 'correct'
+
+    @pytest.mark.parametrize("case", ["correct", "no_ca", "wrong_ca", "wrong_san", "wrong_password"])
+    def test_real_search_tls_trust_authentication_and_failure_are_observable(
+        real_tls_settings: SearchTLSConnection, case: str
+    ) -&gt; None:
+        url = real_tls_settings.url
+        ca: str | None = real_tls_settings.ca_file
+        password = real_tls_settings.password
+        if case == "no_ca":
+            ca = None
+        elif case == "wrong_ca":
+            ca = real_tls_settings.wrong_ca_file
+        elif case == "wrong_san":
+            url = url.replace("localhost", "127.0.0.1")
+        elif case == "wrong_password":
+            password = SecretStr(secrets.token_urlsafe(32))
+        settings = ApplicationSettings(
+            app_env="test",
+            data_mode="live",
+            database_url=None,
+            redis_url=None,
+            opensearch_url=url,
+            opensearch_username=real_tls_settings.username,
+            opensearch_password=password,
+            opensearch_ca_file=ca,
+            dependency_timeout_seconds=3,
+        )
+        with TestClient(create_application(settings=settings)) as client:
+            response = client.get("/v1/health/ready")
+        if (
+            real_tls_settings.password.get_secret_value() in response.text
+            or password.get_secret_value() in response.text
+        ):
+            pytest.fail("secret present in health response")
+        assert response.status_code == 503
+        payload = response.json()
+        if case == "correct":
+&gt;           assert payload["dependencies"]["search"] == {"state": "ready"}
+E           AssertionError: assert {'reason': 's...'unavailable'} == {'state': 'ready'}
+E             
+E             Differing items:
+E             {'state': 'unavailable'} != {'state': 'ready'}
+E             Left contains 1 more item:
+E             {'reason': 'search connection unavailable'}
+E             Use -v to get more diff
+
+ca         = 'D:\\dianzi\\reports\\runs\\recovery_r01_search_tls_review_2_20261015\\public_certificates\\root-ca.pem'
+case       = 'correct'
+client     = &lt;starlette.testclient.TestClient object at 0x00000183D1DF3C20&gt;
+password   = SecretStr('**********')
+payload    = {'data_mode': 'live', 'dependencies': {'cache': {'state': 'not_configured'}, 'database': {'state': 'not_configured'}, ...'state': 'unavailable'}, ...}, 'reason': 'required dependencies unavailable or search degraded', 'status': 'not_ready'}
+real_tls_settings = SearchTLSConnection(url='https://localhost:29208', username='ai_intel_search', password=SecretStr('**********'), ca_fi...261015', project='dianzi-test-r01_tls_review2_20261015', container='dianzi-test-r01_tls_review2_20261015-opensearch-1')
+response   = &lt;Response [503 Service Unavailable]&gt;
+settings   = ApplicationSettings(app_env='test', data_mode='live', database_url=None, redis_url=None, opensearch_url='https://local..._endpoint=None, minio_bucket=None, minio_access_key=None, minio_secret_key=None, minio_secure=True, minio_ca_file=None)
+url        = 'https://localhost:29208'
+
+tests\integration\test_r01_search_tls_live.py:117: AssertionError</failure></testcase></testsuite></testsuites>

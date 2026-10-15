@@ -1,0 +1,345 @@
+backend/tests\unit\test_t19_structured_enrichment.py:3:from __future__ import annotations
+backend/tests\unit\test_t17_relevance_and_event_linking.py:3:from __future__ import annotations
+backend/tests\integration\test_t21_claims_entities_conflicts.py:3:from __future__ import annotations
+backend/tests\unit\test_t06_access_scope_boundaries.py:3:from __future__ import annotations
+backend/tests\conftest.py:3:from __future__ import annotations
+backend/tests\integration\test_t16_incremental_monitoring.py:3:from __future__ import annotations
+backend/tests\unit\test_t05_content_store_boundaries.py:3:from __future__ import annotations
+backend/tests\unit\test_t02_project_skeleton.py:7:from __future__ import annotations
+backend/tests\unit\test_t04_domain_contracts.py:3:from __future__ import annotations
+backend/tests\unit\test_t04_domain_contracts.py:20:UUID_A = "12345678-1234-5678-1234-567812345678"
+backend/tests\unit\test_t04_domain_contracts.py:21:UUID_B = "abcdefab-cdef-5678-1234-567812345678"
+backend/tests\integration\test_t05_persistence_and_raw_store.py:7:from __future__ import annotations
+backend/tests\unit\test_r01_worker_configuration.py:44:    assert application.conf.beat_scheduler == "ai_intel.workers.runtime:ObservedScheduler"
+backend/tests\integration\test_t03_development_services.py:3:from __future__ import annotations
+backend/tests\integration\test_t07_jobs_and_outbox.py:3:from __future__ import annotations
+backend/tests\security\test_t06_authentication_and_scope.py:3:from __future__ import annotations
+backend/tests\security\test_t08_network_and_sources.py:3:from __future__ import annotations
+backend/tests\security\test_r01_http_authentication.py:3:from concurrent.futures import ThreadPoolExecutor
+backend/tests\contract\test_r01_compose_configuration.py:3:from __future__ import annotations
+backend/tests\contract\test_r01_quality_checks.py:3:from __future__ import annotations
+backend/tests\contract\test_t07_jobs_outbox.py:3:from __future__ import annotations
+backend/tests\contract\test_t08_network_redirects.py:3:from __future__ import annotations
+backend/tests\contract\test_t09_document_parsing.py:3:from __future__ import annotations
+backend/tests\contract\test_t11_osv_connector.py:3:from __future__ import annotations
+backend/tests\contract\test_t10_cve_nvd_connectors.py:3:from __future__ import annotations
+backend/tests\contract\test_t12_vendor_blog_connectors.py:3:from __future__ import annotations
+backend/tests\contract\test_t13_community_repository_connectors.py:3:from __future__ import annotations
+backend/tests\contract\test_t14_academic_connector.py:3:from __future__ import annotations
+backend/tests\contract\test_t15_standards_policy_connectors.py:3:from __future__ import annotations
+backend/tests\contract\test_t20_claim_extraction.py:3:from __future__ import annotations
+backend/tests\contract\test_t18_model_clients.py:3:from __future__ import annotations
+backend/tests\contract\test_t40_auth_routes.py:3:from __future__ import annotations
+backend/tests\contract\test_t22_research_and_document_links.py:3:from __future__ import annotations
+backend/tests\contract\test_t23_poc_scores_impact.py:3:from __future__ import annotations
+"""T02 项目骨架验收测试（离线可断言部分）。
+
+覆盖任务卡 T02-C01—C06 中无需真实安装/联网的可观察断言；
+安装与构建类验证由主控命令批执行并在 reports/tasks/T02.md 登记。
+"""
+
+from __future__ import annotations
+
+import re
+import socket
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from ai_intel.api.app import create_application
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DEV_SCRIPT = REPO_ROOT / "scripts" / "dev.py"
+
+
+def run_dev_script(scope_argument: str) -> subprocess.CompletedProcess[str]:
+    """以子进程执行 scripts/dev.py check --scope <scope> 并捕获输出。"""
+    return subprocess.run(
+        [sys.executable, str(DEV_SCRIPT), "check", "--scope", scope_argument],
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+    )
+
+
+def test_unimplemented_scope_exits_nonzero_without_pass(monkeypatch, tmp_path, capsys) -> None:
+    """T02-C04：隔离目录确无 integration 测试时非零，不能空跑成功。"""
+    from scripts import dev
+
+    monkeypatch.setattr(dev, "PROJECT_ROOT", tmp_path)
+    assert dev.main(["check", "--scope", "integration"]) == 3
+    captured = capsys.readouterr()
+    assert "not_implemented" in captured.err
+    assert "PASS" not in captured.out
+
+
+def test_unknown_scope_is_rejected_with_argument_error() -> None:
+    """未知 scope 属参数错误，退出码 2。"""
+    completed = run_dev_script("not-a-scope")
+    assert completed.returncode == 2
+
+
+def test_dev_script_repeat_invocation_is_idempotent(monkeypatch, tmp_path) -> None:
+    """同一空测试目录重复调用退出码一致且非零，不依赖未来 e2e 是否建设。"""
+    from scripts import dev
+
+    monkeypatch.setattr(dev, "PROJECT_ROOT", tmp_path)
+    first = dev.main(["check", "--scope", "integration"])
+    second = dev.main(["check", "--scope", "integration"])
+    assert first == second == 3
+
+
+def test_health_live_reports_process_liveness() -> None:
+    """存活探针仅报告进程可响应。"""
+    client = TestClient(create_application())
+    response = client.get("/health/live")
+    assert response.status_code == 200
+    assert response.json() == {"status": "live"}
+
+
+def test_health_ready_reports_not_ready_without_external_dependencies() -> None:
+    """T02-C06 对应的诚实就绪语义：依赖未接入时 503 且 not_ready，不得谎报 ready。"""
+    client = TestClient(create_application())
+    response = client.get("/health/ready")
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["status"] == "not_ready"
+    assert payload["reason"]
+
+
+def test_application_import_does_not_open_network_connections(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T02-C05 对应：导入/装配应用不得发起任何网络连接。"""
+
+    def forbid_socket_connection(*args: object, **kwargs: object) -> None:
+        raise AssertionError("application assembly must not open network connections")
+
+    monkeypatch.setattr(socket.socket, "connect", forbid_socket_connection)
+    application = create_application()
+    assert application.title == "ai-intel-backend"
+
+
+def test_source_files_contain_no_secret_values() -> None:
+    """T02-C05 对应：源码中不得出现密钥值模式（仅允许占位配置名）。"""
+    secret_pattern = re.compile(
+        r"(api[_-]?key|secret|token|password)\s*[:=]\s*['\"][A-Za-z0-9_\-]{16,}['\"]",
+        re.IGNORECASE,
+    )
+    for source_path in (REPO_ROOT / "scripts").rglob("*.py"):
+        assert not secret_pattern.search(source_path.read_text(encoding="utf-8"))
+    backend_sources = REPO_ROOT / "backend" / "src"
+    for source_path in backend_sources.rglob("*.py"):
+        assert not secret_pattern.search(source_path.read_text(encoding="utf-8"))
+
+
+def test_pyproject_pins_python_312_and_keeps_type_checks_enabled() -> None:
+    """T02-C02/C03 对应：锁文件合同声明 Python 3.12；类型检查不被全局关闭。"""
+    pyproject_text = (REPO_ROOT / "backend" / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'requires-python = ">=3.12,<3.13"' in pyproject_text
+    assert "disallow_untyped_defs = true" in pyproject_text
+    assert "mypy" in pyproject_text
+
+
+def test_wrong_node_version_is_rejected_by_engine_guard() -> None:
+    """T02-C02 Node 子项：engines 声明 + engine-strict 使错误 Node 版本被明确拒绝而非静默运行。"""
+    package_json_text = (REPO_ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
+    assert '"node": ">=24.0.0 <25.0.0"' in package_json_text
+    npmrc_text = (REPO_ROOT / "frontend" / ".npmrc").read_text(encoding="utf-8")
+    assert "engine-strict=true" in npmrc_text
+    assert (REPO_ROOT / "frontend" / ".nvmrc").read_text(encoding="utf-8").strip() == "24"
+
+
+def test_mypy_rejects_injected_type_error_and_recovers(tmp_path) -> None:
+    """T02-C03：临时目录类型错误被拒绝，不向业务源码写文件或干扰其它 Agent。"""
+    probe_path = tmp_path / "type_probe.py"
+    probe_source = (
+        '"""临时类型错误探针, 验证后删除."""\n'
+        "\n"
+        "def _accepts_count(count: int) -> int:\n"
+        "    return count\n"
+        "\n"
+        'PROBE_RESULT: int = _accepts_count("not-a-count")\n'
+    )
+    probe_path.write_text(probe_source, encoding="utf-8")
+    try:
+        blocked = subprocess.run(
+            [sys.executable, "-m", "mypy", str(probe_path)],
+            cwd=str(REPO_ROOT / "backend"),
+            capture_output=True,
+            text=True,
+        )
+        assert blocked.returncode != 0
+        assert "arg-type" in blocked.stdout
+    finally:
+        probe_path.unlink()
+    recovered = subprocess.run(
+        [sys.executable, "-m", "mypy", "src"],
+        cwd=str(REPO_ROOT / "backend"),
+        capture_output=True,
+        text=True,
+    )
+    assert recovered.returncode == 0
+
+
+def test_lockfile_exists_for_clean_environment_install() -> None:
+    """T02-C01 对应的静态部分：真实锁文件存在（干净安装由主控命令批验证并登记）。"""
+    assert (REPO_ROOT / "backend" / "uv.lock").is_file()
+    assert (REPO_ROOT / "frontend" / "package-lock.json").is_file()
+"""R01 Compose 实际配置渲染与隔离边界；config 不启动或下载服务。"""
+
+from __future__ import annotations
+
+import json
+import os
+import secrets
+import shlex
+import subprocess
+from pathlib import Path, PureWindowsPath
+from urllib.parse import urlsplit
+
+import pytest
+from scripts.dev import TestEnvironmentError as IsolationError
+from scripts.dev import require_isolated_test_database
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+COMPOSE_DIRECTORY = PROJECT_ROOT / "infra" / "compose"
+
+
+def configuration_environment() -> dict[str, str]:
+    """显式合成配置，不读取开发 .env 或产品秘密，不连接任何服务。"""
+    password = secrets.token_urlsafe(32)
+    redis_password = secrets.token_urlsafe(32)
+    environment = dict(os.environ)
+    environment.update(
+        COMPOSE_DISABLE_ENV_FILE="1",
+        DIANZI_TEST_RUN_ID="r01_config",
+        POSTGRES_DB="dianzi_config",
+        POSTGRES_USER="dianzi_config",
+        POSTGRES_PASSWORD=password,
+        POSTGRES_PORT="25430",
+        REDIS_PASSWORD=redis_password,
+        REDIS_PORT="26380",
+        OPENSEARCH_INITIAL_ADMIN_PASSWORD=secrets.token_urlsafe(32) + "aA1!",
+        OPENSEARCH_PORT="29200",
+        COMPOSE_DATABASE_URL=f"postgresql+psycopg://dianzi_config:{password}@postgres:5432/dianzi_config",
+        COMPOSE_REDIS_URL=f"redis://:{redis_password}@redis:6379/0",
+        COMPOSE_ALLOWED_ORIGINS='["http://127.0.0.1:25201"]',
+        API_PORT="28201",
+        FRONTEND_PORT="25201",
+        VITE_API_BASE_URL="http://127.0.0.1:28201",
+        PYTHON_IMAGE="unused-config@sha256:" + "0" * 64,
+        UV_IMAGE="unused-config@sha256:" + "0" * 64,
+        NODE_IMAGE="unused-config@sha256:" + "0" * 64,
+        TEST_POSTGRES_USER="test_dianzi_r01_config",
+        TEST_POSTGRES_PASSWORD=password,
+        TEST_POSTGRES_PORT="25436",
+        TEST_REDIS_PASSWORD=redis_password,
+        TEST_REDIS_PORT="26383",
+        TEST_OPENSEARCH_PORT="29201",
+        TEST_OPENSEARCH_TRANSPORT_PORT="29301",
+        TEST_DATABASE_URL=(
+            f"postgresql+psycopg://test_dianzi_r01_config:{password}"
+            "@127.0.0.1:25436/test_dianzi_r01_config"
+        ),
+        TEST_REDIS_URL=f"redis://:{redis_password}@127.0.0.1:26383/0",
+        TEST_OPENSEARCH_URL="http://127.0.0.1:29201",
+    )
+    transferred_names = {
+        name
+        for name in environment
+        if name.startswith(("COMPOSE_", "POSTGRES_", "REDIS_", "OPENSEARCH_", "TEST_"))
+        or name
+        in {
+            "COMPOSE_DISABLE_ENV_FILE",
+            "DIANZI_TEST_RUN_ID",
+            "DATABASE_URL",
+            "ALLOWED_ORIGINS",
+            "API_PORT",
+            "FRONTEND_PORT",
+            "VITE_API_BASE_URL",
+            "PYTHON_IMAGE",
+            "UV_IMAGE",
+            "NODE_IMAGE",
+        }
+    }
+    environment["WSLENV"] = ":".join(sorted(transferred_names))
+    return environment
+
+
+def render_configuration(
+    filename: str, environment: dict[str, str], profile: str = "*"
+) -> subprocess.CompletedProcess[str]:
+    """使用真实 Compose 解析 include/override 和 profile，无 shell/eval。"""
+    prefix = json.loads(os.environ.get("DIANZI_DOCKER_COMMAND_JSON", '["docker"]'))
+    compose_path = COMPOSE_DIRECTORY / filename
+    argument = str(compose_path)
+    if Path(prefix[0]).name.lower() == "wsl.exe":
+        windows_path = PureWindowsPath(compose_path.resolve())
+#!/bin/bash
+#install_demo_configuration.sh [-y]
+
+UNAME=$(uname -s)
+if [ "$UNAME" = "FreeBSD" ]; then
+  OS="freebsd"
+elif [ "$UNAME" = "Darwin" ]; then
+  OS="darwin"
+else
+  OS="other"
+fi
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+if ! [ -x "$(command -v realpath)" ]; then
+    if [ -L "$SCRIPT_PATH" ]; then
+
+        [ -x "$(command -v readlink)" ] || { echo "Not able to resolve symlink. Install realpath or readlink.";exit 1; }
+
+        # try readlink (-f not needed because we know its a symlink)
+        DIR="$( cd "$( dirname $(readlink "$SCRIPT_PATH") )" && pwd -P)"
+    else
+        DIR="$( cd "$( dirname "$SCRIPT_PATH" )" && pwd -P)"
+    fi
+else
+    DIR="$( cd "$( dirname "$(realpath "$SCRIPT_PATH")" )" && pwd -P)"
+fi
+
+
+if [ -z "$OPENSEARCH_HOME" ]; then
+  # move to opensearch root folder and set the variable
+  OPENSEARCH_HOME=`cd "$DIR/../../.."; pwd`
+fi
+
+# now set the path to java: OPENSEARCH_JAVA_HOME -> JAVA_HOME -> bundled JRE -> bundled JDK
+if [ -n "$OPENSEARCH_JAVA_HOME" ]; then
+  JAVA="$OPENSEARCH_JAVA_HOME/bin/java"
+  JAVA_TYPE="OPENSEARCH_JAVA_HOME"
+elif [ -n "$JAVA_HOME" ]; then
+  JAVA="$JAVA_HOME/bin/java"
+  JAVA_TYPE="JAVA_HOME"
+else
+  if [ "$OS" = "darwin" ]; then
+    # macOS bundled Java
+    JAVA="$OPENSEARCH_HOME/jdk.app/Contents/Home/bin/java"
+    JAVA_TYPE="bundled jdk"
+  elif [ "$OS" = "freebsd" ]; then
+    # using FreeBSD default java from ports if JAVA_HOME is not set
+    JAVA="/usr/local/bin/java"
+    JAVA_TYPE="bundled jdk"
+  elif [ -d "$OPENSEARCH_HOME/jre" ]; then
+    JAVA="$OPENSEARCH_HOME/jre/bin/java"
+    JAVA_TYPE="bundled jre"
+  else
+    JAVA="$OPENSEARCH_HOME/jdk/bin/java"
+    JAVA_TYPE="bundled jdk"
+  fi
+fi
+
+if [ ! -x "$JAVA" ]; then
+    echo "could not find java in $JAVA_TYPE at $JAVA" >&2
+    exit 1
+fi
+
+"$JAVA" -Dorg.apache.logging.log4j.simplelog.StatusLogger.level=OFF -cp "$DIR/../*:$DIR/../../../lib/*:$DIR/../deps/*" org.opensearch.security.tools.democonfig.Installer "$DIR" "$@" 2>/dev/null

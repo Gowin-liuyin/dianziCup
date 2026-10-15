@@ -1,0 +1,598 @@
+diff --git a/backend/tests/contract/test_r01_compose_configuration.py b/backend/tests/contract/test_r01_compose_configuration.py
+index 544215d..e4efa3e 100644
+--- a/backend/tests/contract/test_r01_compose_configuration.py
++++ b/backend/tests/contract/test_r01_compose_configuration.py
+@@ -57,10 +57,21 @@ def configuration_environment() -> dict[str, str]:
+         TEST_REDIS_URL=f"redis://:{redis_password}@127.0.0.1:26383/0",
+         TEST_OPENSEARCH_URL="http://127.0.0.1:29201",
+     )
++    return environment
++
++
++def render_configuration(
++    filename: str, environment: dict[str, str], profile: str = "*"
++) -> subprocess.CompletedProcess[str]:
++    """使用真实 Compose 解析 include/override 和 profile，无 shell/eval。"""
++    prefix = json.loads(os.environ.get("DIANZI_DOCKER_COMMAND_JSON", '["docker"]'))
++    compose_path = COMPOSE_DIRECTORY / filename
++    argument = str(compose_path)
++    environment = environment.copy()
+     transferred_names = {
+         name
+         for name in environment
+-        if name.startswith(("COMPOSE_", "POSTGRES_", "REDIS_", "OPENSEARCH_", "TEST_"))
++        if name.startswith(("COMPOSE_", "POSTGRES_", "REDIS_", "OPENSEARCH_", "TEST_", "SECURE_"))
+         or name
+         in {
+             "COMPOSE_DISABLE_ENV_FILE",
+@@ -76,16 +87,6 @@ def configuration_environment() -> dict[str, str]:
+         }
+     }
+     environment["WSLENV"] = ":".join(sorted(transferred_names))
+-    return environment
+-
+-
+-def render_configuration(
+-    filename: str, environment: dict[str, str], profile: str = "*"
+-) -> subprocess.CompletedProcess[str]:
+-    """使用真实 Compose 解析 include/override 和 profile，无 shell/eval。"""
+-    prefix = json.loads(os.environ.get("DIANZI_DOCKER_COMMAND_JSON", '["docker"]'))
+-    compose_path = COMPOSE_DIRECTORY / filename
+-    argument = str(compose_path)
+     if Path(prefix[0]).name.lower() == "wsl.exe":
+         windows_path = PureWindowsPath(compose_path.resolve())
+         argument = f"/mnt/{windows_path.drive[0].lower()}/" + "/".join(windows_path.parts[1:])
+diff --git a/backend/tests/contract/test_r01_search_tls_deployment.py b/backend/tests/contract/test_r01_search_tls_deployment.py
+new file mode 100644
+index 0000000..682b753
+--- /dev/null
++++ b/backend/tests/contract/test_r01_search_tls_deployment.py
+@@ -0,0 +1,86 @@
++"""R01 安全搜索配置合同；不联网、不读取秘密、不启动服务。"""
++
++from __future__ import annotations
++
++import json
++import secrets
++from urllib.parse import urlsplit
++
++import pytest
++from test_r01_compose_configuration import configuration_environment, render_configuration
++
++
++def test_base_pairs_readonly_ca_with_separate_search_authentication() -> None:
++    environment = configuration_environment()
++    environment.update(
++        COMPOSE_OPENSEARCH_USERNAME="ai_intel_search",
++        COMPOSE_OPENSEARCH_PASSWORD=secrets.token_urlsafe(32),
++        OPENSEARCH_CA_HOST_FILE="/tmp/r01-config-root-ca.pem",
++    )
++    result = render_configuration("compose.yaml", environment)
++    assert result.returncode == 0, result.stderr
++    services = json.loads(result.stdout)["services"]
++    for name in ("api", "worker", "scheduler"):
++        service = services[name]
++        settings = service["environment"]
++        assert urlsplit(settings["OPENSEARCH_URL"]).scheme == "https"
++        assert urlsplit(settings["OPENSEARCH_URL"]).username is None
++        assert settings["OPENSEARCH_USERNAME"] == "ai_intel_search"
++        assert settings["OPENSEARCH_PASSWORD"] == environment["COMPOSE_OPENSEARCH_PASSWORD"]
++        ca_mount = next(
++            volume
++            for volume in service["volumes"]
++            if volume["target"] == settings["OPENSEARCH_CA_FILE"]
++        )
++        assert ca_mount["source"] == "/tmp/r01-config-root-ca.pem"
++        assert ca_mount["read_only"] is True
++        assert ca_mount["bind"]["create_host_path"] is False
++        assert all("node-key" not in volume["target"] for volume in service["volumes"])
++    search = services["opensearch"]
++    health = search["healthcheck"]["test"][-1]
++    assert "--cacert" in health
++    assert "-k" not in health and "--insecure" not in health
++    assert search["environment"]["DISABLE_INSTALL_DEMO_CONFIG"] == "true"
++    assert "DISABLE_SECURITY_PLUGIN" not in search["environment"]
++
++
++def test_base_does_not_supply_a_default_search_identity() -> None:
++    environment = configuration_environment()
++    environment.pop("COMPOSE_OPENSEARCH_USERNAME", None)
++    result = render_configuration("compose.yaml", environment)
++    assert result.returncode == 0, result.stderr
++    services = json.loads(result.stdout)["services"]
++    for name in ("api", "worker", "scheduler", "opensearch"):
++        assert services[name]["environment"]["OPENSEARCH_USERNAME"] == ""
++
++
++@pytest.mark.parametrize("filename", ["compose.test.yaml", "compose.test.host.yaml"])
++def test_http_overlay_explicitly_removes_secure_auth_and_ca(filename: str) -> None:
++    result = render_configuration(filename, configuration_environment())
++    assert result.returncode == 0, result.stderr
++    services = json.loads(result.stdout)["services"]
++    for name in ("api", "worker", "scheduler"):
++        settings = services[name]["environment"]
++        assert settings["OPENSEARCH_URL"].startswith("http://")
++        assert (
++            not {"OPENSEARCH_USERNAME", "OPENSEARCH_PASSWORD", "OPENSEARCH_CA_FILE"}
++            & settings.keys()
++        )
++    search = services["opensearch"]
++    assert search["environment"]["DISABLE_SECURITY_PLUGIN"] == "true"
++    assert not any(volume["type"] == "bind" for volume in search["volumes"])
++
++
++def test_secure_host_profile_keeps_tls_and_loopback_without_published_ports() -> None:
++    environment = configuration_environment()
++    environment.update(SECURE_OPENSEARCH_PORT="29202", SECURE_OPENSEARCH_TRANSPORT_PORT="29302")
++    result = render_configuration("compose.search.secure.host.yaml", environment, "search")
++    assert result.returncode == 0, result.stderr
++    services = json.loads(result.stdout)["services"]
++    assert set(services) == {"opensearch"}
++    search = services["opensearch"]
++    assert search["network_mode"] == "host"
++    assert not search.get("ports")
++    assert search["environment"]["network.host"] == "127.0.0.1"
++    assert "DISABLE_SECURITY_PLUGIN" not in search["environment"]
++    assert "--cacert" in search["healthcheck"]["test"][-1]
+diff --git a/backend/tests/integration/test_r01_search_tls_live.py b/backend/tests/integration/test_r01_search_tls_live.py
+new file mode 100644
+index 0000000..b88e71f
+--- /dev/null
++++ b/backend/tests/integration/test_r01_search_tls_live.py
+@@ -0,0 +1,170 @@
++"""真实 TLS 信任、认证与安全故障验证，仅使用本包独占搜索资源。"""
++
++from __future__ import annotations
++
++import json
++import os
++import secrets
++import socket
++import ssl
++import subprocess
++import time
++from dataclasses import dataclass
++from pathlib import Path
++from urllib.parse import urlsplit
++
++import pytest
++from fastapi.testclient import TestClient
++from pydantic import SecretStr
++
++from ai_intel.api.app import create_application
++from ai_intel.infrastructure.settings import ApplicationSettings
++
++pytestmark = pytest.mark.real_search_tls
++
++
++@dataclass(frozen=True)
++class SearchTLSConnection:
++    url: str
++    username: str
++    password: SecretStr
++    ca_file: str
++    wrong_ca_file: str
++
++
++@pytest.fixture()
++def real_tls_settings() -> SearchTLSConnection:
++    required = (
++        "TEST_SEARCH_TLS_URL",
++        "TEST_SEARCH_TLS_USERNAME",
++        "TEST_SEARCH_TLS_PASSWORD",
++        "TEST_SEARCH_TLS_CA_FILE",
++        "TEST_SEARCH_TLS_WRONG_CA_FILE",
++    )
++    configured = {name: os.environ.get(name, "") for name in required}
++    if not all(configured.values()):
++        raise pytest.UsageError("blocked: isolated secure OpenSearch TLS resources required")
++    parsed = urlsplit(configured["TEST_SEARCH_TLS_URL"])
++    assert parsed.scheme == "https" and parsed.hostname == "localhost" and parsed.port == 29202
++    assert Path(configured["TEST_SEARCH_TLS_CA_FILE"]).is_file()
++    return SearchTLSConnection(
++        url=configured["TEST_SEARCH_TLS_URL"],
++        username=configured["TEST_SEARCH_TLS_USERNAME"],
++        password=SecretStr(configured["TEST_SEARCH_TLS_PASSWORD"]),
++        ca_file=configured["TEST_SEARCH_TLS_CA_FILE"],
++        wrong_ca_file=configured["TEST_SEARCH_TLS_WRONG_CA_FILE"],
++    )
++
++
++@pytest.mark.parametrize("case", ["correct", "no_ca", "wrong_ca", "wrong_san", "wrong_password"])
++def test_real_search_tls_trust_authentication_and_failure_are_observable(
++    real_tls_settings: SearchTLSConnection, case: str
++) -> None:
++    url = real_tls_settings.url
++    ca: str | None = real_tls_settings.ca_file
++    password = real_tls_settings.password.get_secret_value()
++    if case == "no_ca":
++        ca = None
++    elif case == "wrong_ca":
++        ca = real_tls_settings.wrong_ca_file
++    elif case == "wrong_san":
++        url = url.replace("localhost", "127.0.0.1")
++    elif case == "wrong_password":
++        password = secrets.token_urlsafe(32)
++    settings = ApplicationSettings(
++        app_env="test",
++        data_mode="live",
++        database_url=None,
++        redis_url=None,
++        opensearch_url=url,
++        opensearch_username=real_tls_settings.username,
++        opensearch_password=password,
++        opensearch_ca_file=ca,
++        dependency_timeout_seconds=3,
++    )
++    with TestClient(create_application(settings=settings)) as client:
++        response = client.get("/v1/health/ready")
++    if real_tls_settings.password.get_secret_value() in response.text or password in response.text:
++        pytest.fail("secret present in health response")
++    assert response.status_code == 503
++    payload = response.json()
++    if case == "correct":
++        assert payload["dependencies"]["search"] == {"state": "ready"}
++    else:
++        assert payload["dependencies"]["search"] == {
++            "state": "unavailable",
++            "reason": "search connection unavailable",
++        }
++    assert "Traceback" not in response.text
++
++
++def test_real_certificate_chain_enforces_hostname_and_required_ca(
++    real_tls_settings: SearchTLSConnection,
++) -> None:
++    context = ssl.create_default_context(cafile=real_tls_settings.ca_file)
++    assert context.check_hostname is True
++    assert context.verify_mode == ssl.CERT_REQUIRED
++    with (
++        socket.create_connection(("127.0.0.1", 29202), timeout=3) as connection,
++        context.wrap_socket(connection, server_hostname="localhost") as secured,
++    ):
++        certificate = secured.getpeercert()
++        assert ("DNS", "localhost") in certificate["subjectAltName"]
++        assert ("DNS", "opensearch") in certificate["subjectAltName"]
++
++
++def test_real_search_fault_returns_safe_503_and_recovers(
++    real_tls_settings: SearchTLSConnection,
++) -> None:
++    prefix = json.loads(os.environ["DIANZI_DOCKER_COMMAND_JSON"])
++    container = "dianzi-test-r01_tls_20261015-opensearch-1"
++    label = subprocess.run(
++        [
++            *prefix,
++            "inspect",
++            container,
++            "--format",
++            '{{index .Config.Labels "com.docker.compose.project"}}',
++        ],
++        capture_output=True,
++        text=True,
++        check=True,
++        timeout=10,
++    )
++    assert label.stdout.strip() == "dianzi-test-r01_tls_20261015"
++    subprocess.run([*prefix, "stop", container], capture_output=True, check=True, timeout=30)
++    try:
++        settings = ApplicationSettings(
++            app_env="test",
++            data_mode="live",
++            database_url=None,
++            redis_url=None,
++            opensearch_url=real_tls_settings.url,
++            opensearch_username=real_tls_settings.username,
++            opensearch_password=real_tls_settings.password,
++            opensearch_ca_file=real_tls_settings.ca_file,
++        )
++        with TestClient(create_application(settings=settings)) as client:
++            response = client.get("/v1/health/ready")
++        if real_tls_settings.password.get_secret_value() in response.text:
++            pytest.fail("secret present in health response")
++        assert response.status_code == 503
++        assert response.json()["dependencies"]["search"] == {
++            "state": "unavailable",
++            "reason": "search connection unavailable",
++        }
++    finally:
++        subprocess.run([*prefix, "start", container], capture_output=True, check=True, timeout=15)
++        deadline = time.monotonic() + 120
++        while True:
++            observed = subprocess.run(
++                [*prefix, "inspect", container, "--format", "{{.State.Health.Status}}"],
++                capture_output=True,
++                text=True,
++                check=True,
++                timeout=10,
++            )
++            if observed.stdout.strip() == "healthy":
++                break
++            assert time.monotonic() < deadline, "secure test search did not recover"
++            time.sleep(1)
+diff --git a/config/dev.env.example b/config/dev.env.example
+index ef21a13..46dda0e 100644
+--- a/config/dev.env.example
++++ b/config/dev.env.example
+@@ -18,6 +18,12 @@ COMPOSE_DATABASE_URL=
+ COMPOSE_REDIS_URL=
+ COMPOSE_ALLOWED_ORIGINS=
+ OPENSEARCH_URL=
++COMPOSE_OPENSEARCH_USERNAME=
++COMPOSE_OPENSEARCH_PASSWORD=
++OPENSEARCH_CA_HOST_FILE=
++OPENSEARCH_NODE_CERT_HOST_FILE=
++OPENSEARCH_NODE_KEY_HOST_FILE=
++OPENSEARCH_SECURITY_CONFIG_HOST_DIRECTORY=
+ ALLOWED_ORIGINS=
+ API_PORT=
+ FRONTEND_PORT=
+diff --git a/infra/compose/README.md b/infra/compose/README.md
+index c7adbcb..b3fa89f 100644
+--- a/infra/compose/README.md
++++ b/infra/compose/README.md
+@@ -10,7 +10,9 @@ into a shared log: its output includes interpolated credentials.
+ Choose an explicit `dianzi-dev-<name>` project. `core` starts PostgreSQL and
+ authenticated Redis; `search` adds OpenSearch with its security plugin enabled.
+ `app`, `worker`, `scheduler` and `frontend` select the actual runtime entrypoints
+-and their required services. Search is optional; when selected, supply its URL.
++and their required services. The base application search endpoint is
++`https://opensearch:9200`; select `search` and prepare its TLS resources before
++expecting application readiness.
+ `COMPOSE_DATABASE_URL`, `COMPOSE_REDIS_URL` and `COMPOSE_ALLOWED_ORIGINS` are
+ deployment inputs: Compose maps them to the application variable names inside
+ containers. They do not configure a pytest or management process on the host.
+@@ -24,7 +26,7 @@ install the checked-in locks, copy only required source/config files and use
+ nonroot application users. The CI service job does not build or start application images.
+ 
+ ```powershell
+-docker compose --project-name dianzi-dev-myname -f infra/compose/compose.yaml --profile core --profile search up -d --wait
++docker compose --project-name dianzi-dev-myname -f infra/compose/compose.yaml --profile core up -d --wait
+ docker compose --project-name dianzi-dev-myname -f infra/compose/compose.yaml --profile app --profile worker --profile scheduler --profile frontend up -d --build
+ docker compose --project-name dianzi-dev-myname -f infra/compose/compose.yaml --profile core --profile search --profile app --profile worker --profile scheduler --profile frontend down
+ ```
+@@ -42,6 +44,77 @@ depends on source bytes and retained versions; no sustained capacity result is
+ claimed. The private network has no outbound route; external business traffic
+ requires the separately authorized gateway configuration.
+ 
++## Secure search initialization
++
++The base disables the demo installer and enables HTTPS and transport TLS.
++`OPENSEARCH_CA_HOST_FILE`, `OPENSEARCH_NODE_CERT_HOST_FILE`,
++`OPENSEARCH_NODE_KEY_HOST_FILE` and `OPENSEARCH_SECURITY_CONFIG_HOST_DIRECTORY`
++must point to prepared resources outside the repository and Docker build context.
++Missing paths fall back to `/dev/null` so explicit HTTP test overlays can still
++render; this is not a usable CA or security configuration and cannot produce a
++healthy secure deployment. Bind mounts are read-only and do not create missing
++host paths. Application containers receive only the public CA at
++`/run/ai-intel/search/root-ca.pem`; node and administrator keys never enter them.
++
++Issue a PKCS#8 node key and a CA-signed certificate with DNS SANs `opensearch`
++and `localhost`. Its DN must match `CN=opensearch,OU=AIIntel,O=Dianzi` in the
++checked-in configuration. A separate client administrator certificate must
++match `CN=security-admin,OU=AIIntel,O=Dianzi`. Protect the containing directory
++with mode 0700 and private keys with mode 0600. The actual pinned image runs as
++UID/GID 1000; make its mounted node key and security configuration readable by
++that user without exposing administrator or CA signing keys to the server.
++
++Set `COMPOSE_OPENSEARCH_USERNAME` and inject the matching application password
++through `COMPOSE_OPENSEARCH_PASSWORD`. The existing
++`OPENSEARCH_INITIAL_ADMIN_PASSWORD` variable supplies the server health account
++password; the demo installer remains disabled, so this variable does not create
++an administrator. There is no default username or password. The account must
++already be in `internal_users.yml` as a BCrypt hash and mapped to a role with
++`cluster:monitor/health`; index read/write permissions require separate explicit
++roles. Never embed userinfo in `OPENSEARCH_URL` or store plaintext passwords in
++the security directory.
++
++Start search without `--wait`, initialize the security index with the bundled
++`securityadmin.sh`, then wait for its authenticated CA-verified health check.
++The first start cannot become healthy before security initialization. Run the
++administrator tool as a bounded temporary operator container with read-only
++PKI/config mounts; the long-running server remains nonroot. For a normal bridge
++project, replace the paths below with your private external directory and use
++the project's private network:
++
++```sh
++docker compose --project-name dianzi-dev-myname -f infra/compose/compose.yaml --profile search up -d --pull never
++docker run --rm --network dianzi-dev-myname_private --user 0 --memory 512m --cpus .2 --pids-limit 128 \
++  --mount type=bind,src=/private/search/pki,dst=/pki,readonly \
++  --mount type=bind,src=/private/search/security,dst=/security,readonly \
++  --entrypoint /usr/share/opensearch/plugins/opensearch-security/tools/securityadmin.sh \
++  opensearchproject/opensearch@sha256:7b9517dff561f54456fad947f11820fa595a340fd1034fc63d57b77f724b3f8f \
++  -h opensearch -p 9200 -cn dianzi-ai-intel -cd /security \
++  -cacert /pki/root-ca.pem -cert /pki/admin.pem -key /pki/admin-key.pem -ff
++docker compose --project-name dianzi-dev-myname -f infra/compose/compose.yaml --profile search up -d --wait --wait-timeout 180 --pull never
++```
++
++Wait for the TLS listener before the bounded administrator command. It validates
++the CA and hostname; do not add `-nhnv`, `curl -k` or disable application TLS
++verification. The reproducible isolated test preparation is
++`reports/runs/recovery_r01_search_tls_20261015/prepare_pki.py`: it uses OpenSSL,
++the pinned image's `hash.sh -env`, random credentials, and an external root-only
++directory. It deliberately refuses an existing directory. Its lab-specific
++paths, three-day certificate lifetime and health-only role must be adapted
++explicitly when preparing another isolated CI fixture.
++
++For the authorized daemon without a bridge, `compose.search.secure.host.yaml`
++selects only search with `--profile search`. Supply exclusive
++`SECURE_OPENSEARCH_PORT` and `SECURE_OPENSEARCH_TRANSPORT_PORT`; both listeners
++bind internally to 127.0.0.1 and published ports are cleared. The R01 TLS run
++uses `dianzi-test-r01_tls_20261015`, 29202/29302 and a separate named data volume.
++The actual operator command uses `--network host -h localhost -p 29202`.
++
++See the official [2.17 Docker configuration](https://docs.opensearch.org/docs/2.17/install-and-configure/install-opensearch/docker/),
++[TLS certificate settings](https://docs.opensearch.org/latest/security/configuration/tls/)
++and [security index administration](https://docs.opensearch.org/latest/security/configuration/security-admin/).
++The commands above were checked against the pinned 2.17 image's actual tools.
++
+ ## Test projects
+ 
+ `compose.test.yaml` includes the base and replaces the development database and
+diff --git a/infra/compose/compose.search.secure.host.yaml b/infra/compose/compose.search.secure.host.yaml
+new file mode 100644
+index 0000000..f19e315
+--- /dev/null
++++ b/infra/compose/compose.search.secure.host.yaml
+@@ -0,0 +1,3 @@
++include:
++  - path: [compose.yaml, secure-search.host.override.yaml]
++    env_file: []
+diff --git a/infra/compose/compose.yaml b/infra/compose/compose.yaml
+index 544abde..be1a08f 100644
+--- a/infra/compose/compose.yaml
++++ b/infra/compose/compose.yaml
+@@ -11,7 +11,10 @@ x-backend: &backend
+     DATA_MODE: live
+     DATABASE_URL: ${COMPOSE_DATABASE_URL:?Inject the application PostgreSQL URL}
+     REDIS_URL: ${COMPOSE_REDIS_URL:?Inject the authenticated Redis URL}
+-    OPENSEARCH_URL: ${OPENSEARCH_URL:-}
++    OPENSEARCH_URL: ${OPENSEARCH_URL:-https://opensearch:9200}
++    OPENSEARCH_USERNAME: ${COMPOSE_OPENSEARCH_USERNAME:-}
++    OPENSEARCH_PASSWORD: ${COMPOSE_OPENSEARCH_PASSWORD:-${OPENSEARCH_INITIAL_ADMIN_PASSWORD:?Inject search credential}}
++    OPENSEARCH_CA_FILE: /run/ai-intel/search/root-ca.pem
+     ALLOWED_ORIGINS: ${COMPOSE_ALLOWED_ORIGINS:?Set exact frontend origins as JSON}
+     RAW_CONTENT_DIRECTORY: /var/lib/ai-intel/raw
+   networks: [private]
+@@ -20,7 +23,13 @@ x-backend: &backend
+   tmpfs: [/tmp]
+   security_opt: [no-new-privileges:true]
+   cap_drop: [ALL]
+-  volumes: [raw_content:/var/lib/ai-intel/raw]
++  volumes:
++    - raw_content:/var/lib/ai-intel/raw
++    - type: bind
++      source: ${OPENSEARCH_CA_HOST_FILE:-/dev/null}
++      target: /run/ai-intel/search/root-ca.pem
++      read_only: true
++      bind: {create_host_path: false}
+ 
+ services:
+   postgres:
+@@ -66,14 +75,38 @@ services:
+     environment:
+       discovery.type: single-node
+       OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD:?Inject search credential}
++      OPENSEARCH_USERNAME: ${COMPOSE_OPENSEARCH_USERNAME:-}
++      DISABLE_INSTALL_DEMO_CONFIG: "true"
+       OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+       DISABLE_PERFORMANCE_ANALYZER_AGENT_CLI: "true"
+       node.store.allow_mmap: "false"
+     ports: ["127.0.0.1:${OPENSEARCH_PORT:?Set an exclusive search port}:9200"]
+     networks: [private]
+-    volumes: [opensearch_data:/usr/share/opensearch/data]
++    volumes:
++      - opensearch_data:/usr/share/opensearch/data
++      - ./opensearch/opensearch.yml:/usr/share/opensearch/config/opensearch.yml:ro
++      - type: bind
++        source: ${OPENSEARCH_CA_HOST_FILE:-/dev/null}
++        target: /usr/share/opensearch/config/tls/root-ca.pem
++        read_only: true
++        bind: {create_host_path: false}
++      - type: bind
++        source: ${OPENSEARCH_NODE_CERT_HOST_FILE:-/dev/null}
++        target: /usr/share/opensearch/config/tls/node.pem
++        read_only: true
++        bind: {create_host_path: false}
++      - type: bind
++        source: ${OPENSEARCH_NODE_KEY_HOST_FILE:-/dev/null}
++        target: /usr/share/opensearch/config/tls/node-key.pem
++        read_only: true
++        bind: {create_host_path: false}
++      - type: bind
++        source: ${OPENSEARCH_SECURITY_CONFIG_HOST_DIRECTORY:-/dev/null}
++        target: /usr/share/opensearch/config/opensearch-security
++        read_only: true
++        bind: {create_host_path: false}
+     healthcheck:
+-      test: [CMD-SHELL, 'curl -fsSk -u "admin:$${OPENSEARCH_INITIAL_ADMIN_PASSWORD}" https://localhost:9200/_cluster/health >/dev/null']
++      test: [CMD-SHELL, 'curl -fsS --cacert /usr/share/opensearch/config/tls/root-ca.pem -u "$${OPENSEARCH_USERNAME}:$${OPENSEARCH_INITIAL_ADMIN_PASSWORD}" https://localhost:9200/_cluster/health >/dev/null']
+       interval: 5s
+       timeout: 5s
+       retries: 24
+diff --git a/infra/compose/opensearch/opensearch.yml b/infra/compose/opensearch/opensearch.yml
+new file mode 100644
+index 0000000..811ceff
+--- /dev/null
++++ b/infra/compose/opensearch/opensearch.yml
+@@ -0,0 +1,20 @@
++cluster.name: dianzi-ai-intel
++node.name: opensearch
++network.host: 0.0.0.0
++discovery.type: single-node
++node.store.allow_mmap: false
++plugins.security.ssl.transport.pemcert_filepath: tls/node.pem
++plugins.security.ssl.transport.pemkey_filepath: tls/node-key.pem
++plugins.security.ssl.transport.pemtrustedcas_filepath: tls/root-ca.pem
++plugins.security.ssl.transport.enforce_hostname_verification: true
++plugins.security.ssl.http.enabled: true
++plugins.security.ssl.http.clientauth_mode: OPTIONAL
++plugins.security.ssl.http.pemcert_filepath: tls/node.pem
++plugins.security.ssl.http.pemkey_filepath: tls/node-key.pem
++plugins.security.ssl.http.pemtrustedcas_filepath: tls/root-ca.pem
++plugins.security.allow_unsafe_democertificates: false
++plugins.security.allow_default_init_securityindex: false
++plugins.security.nodes_dn:
++  - CN=opensearch,OU=AIIntel,O=Dianzi
++plugins.security.authcz.admin_dn:
++  - CN=security-admin,OU=AIIntel,O=Dianzi
+diff --git a/infra/compose/secure-search.host.override.yaml b/infra/compose/secure-search.host.override.yaml
+new file mode 100644
+index 0000000..49620b9
+--- /dev/null
++++ b/infra/compose/secure-search.host.override.yaml
+@@ -0,0 +1,12 @@
++services:
++  opensearch:
++    network_mode: host
++    networks: !reset []
++    ports: !reset []
++    environment:
++      network.host: 127.0.0.1
++      network.publish_host: 127.0.0.1
++      http.port: ${SECURE_OPENSEARCH_PORT:?Set an exclusive HTTPS port}
++      transport.port: ${SECURE_OPENSEARCH_TRANSPORT_PORT:?Set an exclusive transport port}
++    healthcheck:
++      test: [CMD-SHELL, 'curl -fsS --cacert /usr/share/opensearch/config/tls/root-ca.pem -u "$${OPENSEARCH_USERNAME}:$${OPENSEARCH_INITIAL_ADMIN_PASSWORD}" https://localhost:${SECURE_OPENSEARCH_PORT:?Set an exclusive HTTPS port}/_cluster/health >/dev/null']
+diff --git a/infra/compose/test.override.yaml b/infra/compose/test.override.yaml
+index 26b0633..bf5754b 100644
+--- a/infra/compose/test.override.yaml
++++ b/infra/compose/test.override.yaml
+@@ -10,6 +10,7 @@ services:
+       REDIS_PASSWORD: ${TEST_REDIS_PASSWORD:?Inject a random test credential}
+     ports: !override ["127.0.0.1:${TEST_REDIS_PORT:?Set an exclusive test port}:6379"]
+   opensearch:
++    volumes: !override [opensearch_data:/usr/share/opensearch/data]
+     environment:
+       DISABLE_INSTALL_DEMO_CONFIG: "true"
+       DISABLE_SECURITY_PLUGIN: "true"
+@@ -19,6 +20,9 @@ services:
+   api:
+     image: ${TEST_BACKEND_IMAGE:-dianzi-backend:test}
+     environment:
++      OPENSEARCH_USERNAME: !reset null
++      OPENSEARCH_PASSWORD: !reset null
++      OPENSEARCH_CA_FILE: !reset null
+       APP_ENV: test
+       DATABASE_URL: postgresql+psycopg://${TEST_POSTGRES_USER:?Set test user}:${TEST_POSTGRES_PASSWORD:?Inject test credential}@postgres:5432/test_dianzi_${DIANZI_TEST_RUN_ID:?Set test run ID}
+       REDIS_URL: redis://:${TEST_REDIS_PASSWORD:?Inject test credential}@redis:6379/0
+@@ -26,6 +30,9 @@ services:
+   worker:
+     image: ${TEST_BACKEND_IMAGE:-dianzi-backend:test}
+     environment:
++      OPENSEARCH_USERNAME: !reset null
++      OPENSEARCH_PASSWORD: !reset null
++      OPENSEARCH_CA_FILE: !reset null
+       APP_ENV: test
+       DATABASE_URL: postgresql+psycopg://${TEST_POSTGRES_USER:?Set test user}:${TEST_POSTGRES_PASSWORD:?Inject test credential}@postgres:5432/test_dianzi_${DIANZI_TEST_RUN_ID:?Set test run ID}
+       REDIS_URL: redis://:${TEST_REDIS_PASSWORD:?Inject test credential}@redis:6379/0
+@@ -33,6 +40,9 @@ services:
+   scheduler:
+     image: ${TEST_BACKEND_IMAGE:-dianzi-backend:test}
+     environment:
++      OPENSEARCH_USERNAME: !reset null
++      OPENSEARCH_PASSWORD: !reset null
++      OPENSEARCH_CA_FILE: !reset null
+       APP_ENV: test
+       DATABASE_URL: postgresql+psycopg://${TEST_POSTGRES_USER:?Set test user}:${TEST_POSTGRES_PASSWORD:?Inject test credential}@postgres:5432/test_dianzi_${DIANZI_TEST_RUN_ID:?Set test run ID}
+       REDIS_URL: redis://:${TEST_REDIS_PASSWORD:?Inject test credential}@redis:6379/0

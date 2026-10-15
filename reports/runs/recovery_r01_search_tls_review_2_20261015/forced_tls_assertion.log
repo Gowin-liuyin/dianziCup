@@ -1,0 +1,73 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_ test_real_search_tls_trust_authentication_and_failure_are_observable[correct] _
+
+real_tls_settings = SearchTLSConnection(url='https://localhost:29208', username='ai_intel_search', password=SecretStr('**********'), ca_fi...261015', project='dianzi-test-r01_tls_review2_20261015', container='dianzi-test-r01_tls_review2_20261015-opensearch-1')
+case = 'correct'
+
+    @pytest.mark.parametrize("case", ["correct", "no_ca", "wrong_ca", "wrong_san", "wrong_password"])
+    def test_real_search_tls_trust_authentication_and_failure_are_observable(
+        real_tls_settings: SearchTLSConnection, case: str
+    ) -> None:
+        url = real_tls_settings.url
+        ca: str | None = real_tls_settings.ca_file
+        password = real_tls_settings.password
+        if case == "no_ca":
+            ca = None
+        elif case == "wrong_ca":
+            ca = real_tls_settings.wrong_ca_file
+        elif case == "wrong_san":
+            url = url.replace("localhost", "127.0.0.1")
+        elif case == "wrong_password":
+            password = SecretStr(secrets.token_urlsafe(32))
+        settings = ApplicationSettings(
+            app_env="test",
+            data_mode="live",
+            database_url=None,
+            redis_url=None,
+            opensearch_url=url,
+            opensearch_username=real_tls_settings.username,
+            opensearch_password=password,
+            opensearch_ca_file=ca,
+            dependency_timeout_seconds=3,
+        )
+        with TestClient(create_application(settings=settings)) as client:
+            response = client.get("/v1/health/ready")
+        if (
+            real_tls_settings.password.get_secret_value() in response.text
+            or password.get_secret_value() in response.text
+        ):
+            pytest.fail("secret present in health response")
+        assert response.status_code == 503
+        payload = response.json()
+        if case == "correct":
+>           assert payload["dependencies"]["search"] == {"state": "ready"}
+E           AssertionError: assert {'reason': 's...'unavailable'} == {'state': 'ready'}
+E             
+E             Differing items:
+E             {'state': 'unavailable'} != {'state': 'ready'}
+E             Left contains 1 more item:
+E             {'reason': 'search connection unavailable'}
+E             Use -v to get more diff
+
+ca         = 'D:\\dianzi\\reports\\runs\\recovery_r01_search_tls_review_2_20261015\\public_certificates\\root-ca.pem'
+case       = 'correct'
+client     = <starlette.testclient.TestClient object at 0x00000183D1DF3C20>
+password   = SecretStr('**********')
+payload    = {'data_mode': 'live', 'dependencies': {'cache': {'state': 'not_configured'}, 'database': {'state': 'not_configured'}, ...'state': 'unavailable'}, ...}, 'reason': 'required dependencies unavailable or search degraded', 'status': 'not_ready'}
+real_tls_settings = SearchTLSConnection(url='https://localhost:29208', username='ai_intel_search', password=SecretStr('**********'), ca_fi...261015', project='dianzi-test-r01_tls_review2_20261015', container='dianzi-test-r01_tls_review2_20261015-opensearch-1')
+response   = <Response [503 Service Unavailable]>
+settings   = ApplicationSettings(app_env='test', data_mode='live', database_url=None, redis_url=None, opensearch_url='https://local..._endpoint=None, minio_bucket=None, minio_access_key=None, minio_secret_key=None, minio_secure=True, minio_ca_file=None)
+url        = 'https://localhost:29208'
+
+tests\integration\test_r01_search_tls_live.py:117: AssertionError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  C:\Users\yinha\.codex\worktrees\recovery-r01-tls-recheck\dianzi\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: C:\Users\yinha\.codex\worktrees\recovery-r01-tls-recheck\dianzi\backend\review-native.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r01_search_tls_live.py::test_real_search_tls_trust_authentication_and_failure_are_observable[correct]
+1 failed, 6 deselected, 1 warning in 4.03s

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="0.543" timestamp="2026-10-15T12:31:06.553701+08:00" hostname="yin"><testcase classname="tests.integration.test_r01_search_tls_live" name="test_real_search_tls_trust_authentication_and_failure_are_observable[correct]" time="0.001"><error message="failed on setup with &quot;ValueError: Port out of range 0-65535&quot;">@pytest.fixture()
+    def real_tls_settings() -&gt; SearchTLSConnection:
+        required = (
+            "TEST_SEARCH_TLS_URL",
+            "TEST_SEARCH_TLS_USERNAME",
+            "TEST_SEARCH_TLS_CA_FILE",
+            "TEST_SEARCH_TLS_WRONG_CA_FILE",
+            "TEST_SEARCH_TLS_RUN_ID",
+            "TEST_SEARCH_TLS_PROJECT",
+            "TEST_SEARCH_TLS_CONTAINER",
+        )
+        configured = {name: os.environ.get(name, "") for name in required}
+        password = SecretStr(os.environ.get("TEST_SEARCH_TLS_PASSWORD", ""))
+        if not all(configured.values()) or not password.get_secret_value():
+            raise pytest.UsageError("blocked: isolated secure OpenSearch TLS resources required")
+        parsed = urlsplit(configured["TEST_SEARCH_TLS_URL"])
+&gt;       assert parsed.scheme == "https" and parsed.hostname == "localhost" and parsed.port
+                                                                               ^^^^^^^^^^^
+
+configured = {'TEST_SEARCH_TLS_CA_FILE': 'D:\\dianzi\\reports\\runs\\recovery_r01_search_tls_review_2_20261015\\public_certificates...SEARCH_TLS_PROJECT': 'dianzi-test-r01_tls_review2_20261015', 'TEST_SEARCH_TLS_RUN_ID': 'r01_tls_review2_20261015', ...}
+parsed     = SplitResult(scheme='https', netloc='localhost:70000', path='', query='', fragment='')
+password   = SecretStr('**********')
+required   = ('TEST_SEARCH_TLS_URL', 'TEST_SEARCH_TLS_USERNAME', 'TEST_SEARCH_TLS_CA_FILE', 'TEST_SEARCH_TLS_WRONG_CA_FILE', 'TEST_SEARCH_TLS_RUN_ID', 'TEST_SEARCH_TLS_PROJECT', ...)
+
+tests\integration\test_r01_search_tls_live.py:55: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = SplitResult(scheme='https', netloc='localhost:70000', path='', query='', fragment='')
+
+    @property
+    def port(self):
+        port = self._hostinfo[1]
+        if port is not None:
+            if port.isdigit() and port.isascii():
+                port = int(port)
+            else:
+                raise ValueError(f"Port could not be cast to integer value as {port!r}")
+            if not (0 &lt;= port &lt;= 65535):
+&gt;               raise ValueError("Port out of range 0-65535")
+E               ValueError: Port out of range 0-65535
+
+port       = 70000
+self       = SplitResult(scheme='https', netloc='localhost:70000', path='', query='', fragment='')
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\urllib\parse.py:184: ValueError</error></testcase></testsuite></testsuites>

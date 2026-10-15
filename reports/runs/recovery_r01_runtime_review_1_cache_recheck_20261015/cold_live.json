@@ -1,0 +1,16 @@
+{
+  "label": "cold_live",
+  "cwd": "C:\\Users\\yinha\\.codex\\worktrees\\recovery-r01-infra-fix\\dianzi",
+  "argv": [
+    "C:\\Users\\yinha\\.codex\\worktrees\\recovery-r01-infra\\dianzi\\backend\\.venv\\Scripts\\python.exe",
+    "-c",
+    "import json,os,time,urllib.request,urllib.error\nfrom datetime import UTC,datetime\nfrom sqlalchemy import create_engine,text\nopener=urllib.request.build_opener(urllib.request.ProxyHandler({}))\ndeadline=time.monotonic()+30\nwhile True:\n try:\n  with opener.open('http://127.0.0.1:25201/',timeout=3) as response: assert response.status==200\n  break\n except (urllib.error.URLError,OSError):\n  if time.monotonic()>=deadline: raise\n  time.sleep(.5)\nwith opener.open('http://127.0.0.1:28201/v1/health/ready',timeout=6) as response:\n payload=json.load(response);assert response.status==200 and payload['status']=='ready'\n assert all(v['state']=='ready' for v in payload['dependencies'].values())\nengine=create_engine(os.environ['TEST_DATABASE_URL'],connect_args={'connect_timeout':3})\nwith engine.connect() as connection:\n identity=connection.execute(text('SELECT current_database(),current_user')).one();assert identity==('test_dianzi_r01_infra_20261015','test_dianzi_r01_infra')\n version=connection.execute(text('SELECT version_num FROM alembic_version')).scalar_one();assert version=='0005_runtime_observations'\n note=connection.execute(text('SELECT note FROM t03_volume_probe WHERE id=1')).scalar_one();assert note=='survives-down-up'\n rows=connection.execute(text('SELECT component,observed_at FROM runtime_observations ORDER BY component')).all()\n assert {r[0] for r in rows}=={'worker','scheduler'}\n observations={r[0]:r[1].isoformat() for r in rows};ages={r[0]:(datetime.now(UTC)-r[1]).total_seconds() for r in rows};assert all(0<=age<=45 for age in ages.values())\nengine.dispose()\nprint(json.dumps({'frontend_http':200,'api_http':200,'all_required_dependencies_ready':True,'database':identity[0],'user':identity[1],'migration':version,'persistent_probe_note':note,'observations':observations,'ages_seconds':ages,'assertions':7,'pass':7,'fail':0,'skip':0,'ui_e2e_checked':False}))\n"
+  ],
+  "start": "2026-10-15T01:56:14+08:00",
+  "end": "2026-10-15T01:56:15+08:00",
+  "exit": 0,
+  "wall_seconds": 0.9839999999967404,
+  "source_sha": "32d16a4a055a46da2f2183f367075db686ddd790",
+  "evidence_head": "eff45e5f933a002d429ded7557dc29fbf48dd729",
+  "counts": null
+}

@@ -1,0 +1,260 @@
+diff --git a/backend/migrations/versions/0005_runtime_observations.py b/backend/migrations/versions/0005_runtime_observations.py
+new file mode 100644
+index 0000000..f458696
+--- /dev/null
++++ b/backend/migrations/versions/0005_runtime_observations.py
+@@ -0,0 +1,29 @@
++"""R01运行观测；新增独立表，不修改已有业务记录。
++
++Revision ID: 0005_runtime_observations
++Revises: 0004_jobs_outbox
++"""
++
++import sqlalchemy as sa
++from alembic import op
++
++revision = "0005_runtime_observations"
++down_revision = "0004_jobs_outbox"
++branch_labels = None
++depends_on = None
++
++
++def upgrade() -> None:
++    """记录worker/scheduler实际执行时点，健康检查据此判断失效。"""
++    op.create_table(
++        "runtime_observations",
++        sa.Column("component", sa.Text(), primary_key=True),
++        sa.Column("observed_at", sa.DateTime(timezone=True), nullable=False),
++        sa.Column("platform_version", sa.Text(), nullable=False),
++        sa.CheckConstraint("component IN ('worker', 'scheduler')", name="ck_runtime_component"),
++    )
++
++
++def downgrade() -> None:
++    """仅删运行观测；恢复现有应用时不需要删除事实或任务。"""
++    op.drop_table("runtime_observations")
+diff --git a/backend/src/ai_intel/api/app.py b/backend/src/ai_intel/api/app.py
+index 786490b..a5c31d1 100644
+--- a/backend/src/ai_intel/api/app.py
++++ b/backend/src/ai_intel/api/app.py
+@@ -2,6 +2,7 @@
+ 
+ from collections.abc import AsyncIterator
+ from contextlib import asynccontextmanager
++from datetime import UTC, datetime
+ 
+ import httpx
+ from alembic.script import ScriptDirectory
+@@ -24,6 +25,7 @@ from ai_intel.api.authentication import (
+ )
+ from ai_intel.api.problems import problem_response
+ from ai_intel.infrastructure.database import MIGRATIONS_DIR, build_engine
++from ai_intel.infrastructure.runtime_observations import read_runtime_readiness
+ from ai_intel.infrastructure.settings import ApplicationSettings, load_application_settings
+ 
+ 
+@@ -101,6 +103,8 @@ def create_application(
+     health_router = build_health_router(configuration, engine, cache)
+     application.include_router(auth_router, prefix="/v1")
+     application.include_router(health_router, prefix="/v1")
++    application.include_router(auth_router, prefix="/api/v1", include_in_schema=False)
++    application.include_router(health_router, prefix="/api/v1", include_in_schema=False)
+     application.include_router(auth_router, include_in_schema=False)
+     application.include_router(health_router, include_in_schema=False)
+     return application
+@@ -168,8 +172,19 @@ def build_health_router(
+                     "state": "unavailable",
+                     "reason": "search connection unavailable",
+                 }
++        dependencies.update(
++            {component: {"state": "not_observed_or_stale"} for component in ("worker", "scheduler")}
++        )
++        if engine is not None and dependencies["database"]["state"] == "ready":
++            try:
++                dependencies.update(read_runtime_readiness(engine, datetime.now(UTC)))
++            except SQLAlchemyError:
++                for component in ("worker", "scheduler"):
++                    dependencies[component] = {"state": "unavailable"}
+         core_ready = all(dependencies[name]["state"] == "ready" for name in ("database", "cache"))
+-        ready = core_ready and dependencies["search"]["state"] == "ready"
++        ready = core_ready and all(
++            dependency["state"] == "ready" for dependency in dependencies.values()
++        )
+         if ready:
+             status = "ready"
+         elif core_ready:
+diff --git a/backend/src/ai_intel/infrastructure/database.py b/backend/src/ai_intel/infrastructure/database.py
+index fead1e6..ecb9568 100644
+--- a/backend/src/ai_intel/infrastructure/database.py
++++ b/backend/src/ai_intel/infrastructure/database.py
+@@ -38,7 +38,11 @@ def build_engine(settings: ApplicationSettings) -> Engine:
+         pool_size=5,
+         max_overflow=5,
+         pool_timeout=settings.dependency_timeout_seconds,
+-        connect_args={"connect_timeout": max(1, int(settings.dependency_timeout_seconds))},
++        connect_args={
++            "connect_timeout": max(1, int(settings.dependency_timeout_seconds)),
++            "options": f"-c statement_timeout={int(settings.dependency_timeout_seconds * 1000)} "
++            f"-c lock_timeout={int(settings.dependency_timeout_seconds * 1000)}",
++        },
+     )
+ 
+ 
+diff --git a/backend/src/ai_intel/infrastructure/runtime_observations.py b/backend/src/ai_intel/infrastructure/runtime_observations.py
+new file mode 100644
+index 0000000..84f73cf
+--- /dev/null
++++ b/backend/src/ai_intel/infrastructure/runtime_observations.py
+@@ -0,0 +1,45 @@
++"""PG存储运行观测；仅证明组件最近执行，不替代事实或任务状态。"""
++
++from datetime import UTC, datetime, timedelta
++
++from sqlalchemy import select
++from sqlalchemy.dialects.postgresql import insert
++from sqlalchemy.engine import Engine
++
++from ai_intel.knowledge.models import runtime_observations
++
++RUNTIME_MAX_AGE_SECONDS = 45
++
++
++def record_runtime_observation(engine: Engine, component: str, observed_at: datetime) -> None:
++    """实际执行成功后更新观测；PG失败抛出，不能先写假就绪。"""
++    if component not in {"worker", "scheduler"}:
++        raise ValueError("unsupported runtime component")
++    statement = insert(runtime_observations).values(
++        component=component, observed_at=observed_at, platform_version="0.1.0"
++    )
++    with engine.begin() as connection:
++        connection.execute(
++            statement.on_conflict_do_update(
++                index_elements=[runtime_observations.c.component],
++                set_={"observed_at": observed_at, "platform_version": "0.1.0"},
++            )
++        )
++
++
++def read_runtime_readiness(engine: Engine, now: datetime) -> dict[str, dict[str, str]]:
++    """未观测、过期或时钟在未来均不就绪；只返回固定组件与状态。"""
++    with engine.connect() as connection:
++        rows = connection.execute(
++            select(runtime_observations.c.component, runtime_observations.c.observed_at)
++        ).all()
++        observed: dict[str, datetime] = {str(row[0]): row[1] for row in rows}
++    earliest = now - timedelta(seconds=RUNTIME_MAX_AGE_SECONDS)
++    return {
++        component: {
++            "state": "ready"
++            if component in observed and earliest <= observed[component].astimezone(UTC) <= now
++            else "not_observed_or_stale"
++        }
++        for component in ("worker", "scheduler")
++    }
+diff --git a/backend/src/ai_intel/knowledge/models.py b/backend/src/ai_intel/knowledge/models.py
+index c995135..e8fe791 100644
+--- a/backend/src/ai_intel/knowledge/models.py
++++ b/backend/src/ai_intel/knowledge/models.py
+@@ -174,3 +174,12 @@ fetch_attempts = Table(
+     Column("http_status", Integer(), nullable=True),
+     Column("new_event_count", Integer(), nullable=False, server_default="0"),
+ )
++
++runtime_observations = Table(
++    "runtime_observations",
++    metadata,
++    Column("component", Text(), primary_key=True),
++    Column("observed_at", DateTime(timezone=True), nullable=False),
++    Column("platform_version", Text(), nullable=False),
++    CheckConstraint("component IN ('worker', 'scheduler')", name="ck_runtime_component"),
++)
+diff --git a/backend/src/ai_intel/workers/runtime.py b/backend/src/ai_intel/workers/runtime.py
+new file mode 100644
+index 0000000..3d38463
+--- /dev/null
++++ b/backend/src/ai_intel/workers/runtime.py
+@@ -0,0 +1,84 @@
++"""真实Redis/Celery运行入口；PG记录执行观测，不使用Celery结果作为真相。"""
++
++from datetime import UTC, datetime
++
++from celery import Celery
++from celery.beat import PersistentScheduler
++from sqlalchemy import text
++from sqlalchemy.exc import SQLAlchemyError
++
++from ai_intel.infrastructure.database import build_engine
++from ai_intel.infrastructure.runtime_observations import record_runtime_observation
++from ai_intel.infrastructure.settings import ConfigurationError, load_application_settings
++
++
++def build_celery_application() -> Celery:
++    """缺PG/Redis配置立即失败；仅JSON任务、单队列、受控并发与超时。"""
++    settings = load_application_settings()
++    if settings.database_url is None or settings.redis_url is None:
++        raise ConfigurationError("DATABASE_URL and REDIS_URL are required for workers")
++    application = Celery("ai_intel", broker=settings.redis_url.get_secret_value(), backend=None)
++    application.conf.update(
++        accept_content=["json"],
++        task_serializer="json",
++        result_serializer="json",
++        task_ignore_result=True,
++        task_store_errors_even_if_ignored=False,
++        task_default_queue="ai_intel",
++        worker_concurrency=1,
++        worker_prefetch_multiplier=1,
++        worker_max_tasks_per_child=100,
++        task_acks_late=True,
++        task_reject_on_worker_lost=True,
++        task_soft_time_limit=25,
++        task_time_limit=30,
++        broker_connection_timeout=settings.dependency_timeout_seconds,
++        broker_connection_retry_on_startup=False,
++        broker_transport_options={"visibility_timeout": 120, "socket_timeout": 3},
++        enable_utc=True,
++        timezone="UTC",
++        beat_max_loop_interval=10,
++        beat_scheduler="ai_intel.workers.runtime:ObservedScheduler",
++        beat_schedule={
++            "observe-worker": {
++                "task": "ai_intel.runtime.observe_worker",
++                "schedule": 10.0,
++                "options": {"expires": 20},
++            }
++        },
++    )
++    return application
++
++
++def observe_runtime_component(component: str) -> dict[str, str]:
++    """运行进程完成实际PG查询再提交观测；失败只返回固定错误类别。"""
++    engine = build_engine(load_application_settings())
++    try:
++        with engine.connect() as connection:
++            connection.execute(text("SELECT 1")).scalar_one()
++        record_runtime_observation(engine, component, datetime.now(UTC))
++        return {"component": component, "state": "observed"}
++    except SQLAlchemyError:
++        raise RuntimeError("runtime database unavailable") from None
++    finally:
++        engine.dispose()
++
++
++class ObservedScheduler(PersistentScheduler):
++    """复用Celery持久化调度器；每次实际tick完成后提交scheduler观测。"""
++
++    def tick(self) -> float:
++        delay = super().tick()
++        observe_runtime_component("scheduler")
++        return float(delay)
++
++
++celery_app = build_celery_application()
++
++
++def observe_worker() -> dict[str, str]:
++    """Celery实际消费后记录worker，不以调度发送或导入成功冒充执行。"""
++    return observe_runtime_component("worker")
++
++
++celery_app.task(name="ai_intel.runtime.observe_worker", ignore_result=True)(observe_worker)

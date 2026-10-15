@@ -1,0 +1,71 @@
+
+早期 `images/source_archive.json` receipt 被同名新归档覆盖，当前内容属于d7290cf；两份实际源码tar仍在仓库外按完整SHA分别保留，旧bc24286镜像的builder命令/源码SHA/唯一tag和git内容仍可复核。后续记录器已改为SHA命名，未伪造旧receipt时间。
+
+验证：unit/contract/integration/security passed（上述实际限定范围）；frontend浏览器/用户流程 not_run，e2e not_run，产品来源/模型 live not_run，manual not_run；GitHub CI not_run。单HTTP200不算新UI验收，data_mode live不算模型或采集接通。没有持续运行时长/性能/评分优秀档结论。
+
+本项目七服务在交付时保留运行，供主控新非作者review；父daemon到期保持。关闭必须对上述唯一项目和全部实际profile执行down，保留卷；不操作root/quality/frontend其它项目。私有随机test配置可由授权复跑者按已有路径注入，但不可打印/copy入仓库。
+
+E1/R2仅登记隔离工程和运行切片证据，不签整评分项。下一步：主控集成本包及新UI后派发非作者独立review，复跑实际Compose/CI选择的scope和浏览器登录链；GitHub流水线和后续R20故障/恢复、R03任务租约仍保留其原验收要求。
+
+交付检查：授权源码/本报告范围 git diff --check exit0；整个delivery含原始日志的直接Git检查exit2（此前PowerShell步骤exit1），只报告Docker/Celery/ss原始输出行尾空白。原始日志保持不重写，未添加全局或仓库忽略，主控可在其唯一归属的.gitattributes按已有原始证据策略定点登记。最后交付秘密检查包含本报告，结果保存delivery_final/secret_scan.json。
+
+## 独立审查后缓存权限修复
+
+本节属于新工作树 `C:\Users\yinha\.codex\worktrees\recovery-r01-infra-fix\dianzi`、分支 `codex/recovery-r01-infra-fix`。输入 `0b6a7ad5e984439855cd97124d70095c608adb58`；源码冻结 `32d16a4a055a46da2f2183f367075db686ddd790`。旧工作树、旧源码冻结、原始日志未改。独立review第二次冷启动实际出现 frontend `EACCES /app/node_modules/.vite-temp/vite.config.ts.timestamp...mjs`；原 `cold_up/cold_frontend_logs` 保留在主仓 `reports/runs/recovery_r01_runtime_review_1_20261015/`，未覆盖。失败瞬间目录mode未取得，不猜其值，首轮200不能代表冷停启通过。
+
+审查者明确交接并停止唯一项目 `dianzi-test-r01_infra_20261015` 的容器操作，本作者随后核对七容器project/service labels和image IDs。root裸资源25432等、新b504 API/worker/beat和9334新UI未触碰，也未用于本包背书。
+
+官方冻结Node digest `ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1` 在无网络64MiB/.1CPU/64PID探针中真实输出 `uid=1000(node) gid=1000(node)`；现有frontend image `de3c406ba2f65e60273a8e545de8ce0eca3bd9b6c54aebd62de33d8bc382c439` 的USER为node。只改frontend两个缓存tmpfs：`.vite`与`.vite-temp`显式 `uid=1000,gid=1000,mode=0700`，保留非root、只读根、tmpfs、cap_drop和健康检查。其余服务/Dockerfiles/锁/CI/API/settings/models/状态/门槛未改。Docker官方说明tmpfs权限可能重启重置、支持uid/gid/mode：[tmpfs文档](https://docs.docker.com/engine/storage/tmpfs/)；本包另实测两次冷启动。
+
+新配置回归覆盖base、bridge test、host test三个入口的缓存owner、owner权限及非公开写、只读/cap_drop/health。原配置先red：19总例，16passed/3failed/0errors/0skip/exit1；修复后green与冻结32d16a4均19passed/0fail/0error/0skip/exit0。实际命令backend cwd `uv run --locked pytest tests/contract/test_r01_compose_configuration.py -q --cov-fail-under=0 --junitxml=<本run>/red|green|frozen_configuration.xml`。Ruff check、format --check该文件及源码diff-check均exit0。未重跑无变化业务/来源/模型测试，不把历史59/125/35/41当本轮新数量。
+
+新证据在 [recovery_r01_infra_fix_20261015](../runs/recovery_r01_infra_fix_20261015/)，每命令记录argv/cwd/AsiaShanghai秒起止/exit/源码SHA/实际输入hash。没有新拉镜像、构建、模型下载、全局配置或资源延期。两次down均不带volumes参数；两次up均全部六profile、`up -d --wait --wait-timeout 180 --pull never --no-build`。
+
+| 同一独占项目实际命令 | +08:00开始–结束 | 墙钟 / exit / 结果 |
+|---|---|---|
+| 首次前完整down | 01:32:33–01:32:43 | 9.625秒 / 0，保卷 |
+| 第一cold up | 01:32:43–01:34:02 | 78.828秒 / 0，7服务healthy |
+| cold stop/down | 01:35:11–01:35:19 | 7.797秒 / 0，保卷 |
+| 第二cold up | 01:35:19–01:36:33 | 73.844秒 / 0，7服务healthy |
+
+每轮实际API ready200（五依赖全ready）、旧骨架frontend HTTP200；PG核对相同专库/用户，并断言worker/scheduler observed_at均晚于本轮cold start，防止旧观测冒充新执行。容器Node实测runtime UID/GID1000，两缓存UID/GID1000/mode700且W_OK；第二冷停启仍相同。见 `first_ready_recheck_*`、`second_ready_*`、`second_logs`。这不算新UI浏览器流程。
+
+记录器首次在产品cold up exit0后，用默认GBK读UTF8 Compose输出而UnicodeDecodeError；只修本run记录器显式UTF8，以新名recheck补真实验证。原first_ready_containers与明确标注工具transcript `initial_validation_error.log`保留，不伪造旧时间。CBM仅必要infra、仓库外独立cache，26nodes/24edges/exit0；rg交叉调用。不索引秘密/holdout。秘密扫描结果见本run secret_scan.json。
+
+本修复contract和限定真实cold integration/frontend HTTP passed；新UI浏览器/e2e、GitHub CI、产品live、人工新review仍not_run。default dev安全HTTPS搜索的CA/auth装配是主控公共runtime另一问题，本包未关闭TLS或判它通过。仅E1/R2缓存冷启切片有新证据；下一步由主控派非作者对32d16a4定向复验，原R01/G-A/原T全部验收保持。作者不accepted/push，交付七服务继续本项目运行，主控重新派review后接管操作。
+PostgreSQL保存 `JobRun` 与业务任务状态。Celery状态只用于队列观测。LangGraph保存调查检查点，不以聊天历史覆盖事实库。
+
+重试由唯一层管理：HTTP层单次有限请求；可重试的外部错误交给任务执行层按预算重新调度；图节点不再无限重试同一个请求。429读取合法Retry-After，401/403归权限配置错误，不反复攻击账号。
+
+任务允许部分成功。例如论文关联成功、FOFA无权限：保留成功信息，资产维度标blocked，不把整条任务写complete。正文解析失败：留原文，进入待处理，不推进“已可问答”。
+
+## 7. 环境与功能模式
+
+`APP_ENV=development/test/staging/production` 控制部署；`DATA_MODE=fixture/live` 控制数据来源，两者不可混淆。production拒绝fixture模型和fixture来源。demo只能显式展示数据模式与快照时间。
+
+开发API默认仅监听本地或私有Docker网络。数据库、Redis、OpenSearch不直接公开。生产认证、TLS、备份、秘密配置缺项则启动或发布检查失败，不能靠默认账号上线。
+
+## 8. 初始内部预算
+
+初始工具预算建议：任务外部查询最多8次、模型调用最多6次、图循环最多8轮；配置项而非硬编码。具体任务可以申请更高但必须记录。时间和费用预算由T00/T18依据实际提供者配置，未知费用上限不允许批量付费运行。
+
+向量维度由已选择embedding模型的能力探测得出并写入索引版本。模型变化需要新索引和离线重建，不混合不同维度或模型空间。
+
+## 9. 不增加的基础设施
+
+不增加Kafka、Kubernetes、Agent自动安装平台、全能插件商店或自研认证协议。CR-R02明确批准pgvector/Neo4j/MinIO/脱敏追踪，依赖版本与容量在R01真实核实后锁定。不训练基础模型、不重做所有第三方产品能力。新增基础设施必须有明确瓶颈与维护成本说明。
+
+
+### R00生效登记 · 2026-10-14T22:19:34+08:00
+
+冻结15d0272bd2a9e25d19397d8147e9c3cbe6016f9b经[独立定向复核](../../reports/reviews/recovery/G-A-R00-review-1-recheck.md)确认R00与三个输出切片accepted，CR-R01–09准确落实生效；前述awaiting_review为其所标日期的历史状态。后续按manifest.recovery能力DAG推进；原T最终前置/全部切片/六验收、人工金标与阶段门保持。G-A仍in_progress，R01–03尚未验收。
+docs/plan/06_testing_and_evaluation.md:4:> R00恢复合同补充（2026-10-14T21:05:58+08:00）：用户已批准CR-R01–CR-R09建设决策与完整有界批次；准确落实awaiting_review。独立核对生效后以[变更记录](../decisions/CR-R07.md)和manifest.recovery执行。原T卡最终范围/原前置/六项验收完整保留；执行依赖按能力切片。新review/push规则见用户执行提示词，未完成live/人工不算通过。
+docs/plan/06_testing_and_evaluation.md:13:integration：真实PostgreSQL/Redis/OpenSearch、API/worker协作、租户和事务一致性。不能用SQLite代替所有PostgreSQL并发测试。
+docs/plan/06_testing_and_evaluation.md:26:python scripts/dev.py check --scope integration
+docs/plan/06_testing_and_evaluation.md:35:每轮任务先跑指定文件测试，再跑相关回归与静态检查。失败日志不得覆盖，日志用run_id归档。测试数为0、依赖启动失败、全部skip都不能算通过。
+docs/plan/06_testing_and_evaluation.md:137:重复抓取；广告变化；A→B→A修订；多CVE同文；同名不同生态；版本1.10与1.9；fixed边界；未知版本；多分支；下游回补；不完整清单；FOFA无结果；FOFA缺观察时间；一条路径阻断；冲突来源；404非撤回；范围扩大/缩小；新资产；空结果缓存；提交时快照变化；索引落后；无CVE论文；关键证据移除；跨租户读/搜/导出/日志；注入与正常技术文章；429和认证失败；worker中断；outbox重复；有限预算；模型格式错误；推荐退订/撤回；备份恢复；全部skip不得通过。
+docs/plan/06_testing_and_evaluation.md:142:冻结15d0272bd2a9e25d19397d8147e9c3cbe6016f9b经[独立定向复核](../../reports/reviews/recovery/G-A-R00-review-1-recheck.md)确认R00与三个输出切片accepted，CR-R01–09准确落实生效；前述awaiting_review为其所标日期的历史状态。后续按manifest.recovery能力DAG推进；原T最终前置/全部切片/六验收、人工金标与阶段门保持。G-A仍in_progress，R01–03尚未验收。
+docs/plan/11_full_delivery_recovery_20261014.md:77:R00 创建逐任务复核表；每条记录 `implementation / verification(unit,contract,integration,live,manual) / evidence / reopen_reason`。有错误实现的任务标 needs_changes；外部尚未测的能力才标 blocked_live。旧 accepted 历史不删除，追加更正记录并经审查更新状态，防止后续继续沿用虚假前置。
+docs/plan/11_full_delivery_recovery_20261014.md:226:以下是工程时间盒与目标顺序，不是已完成事实、工时保证或新的验收阈值。以启动实施批次的时间为 T+0。本次用户已授权主控+subagent并行，按满足能力切片与独立文件分工，公共合同/迁移/锁文件只由一个集成人负责。不得靠多个 Agent 同时改同一核心文件赶进度。
+docs/plan/11_full_delivery_recovery_20261014.md:283:记录时间：2026-10-14T21:05:58+08:00；准确落实awaiting_review。全部60T/110切片/26执行节点以manifest.recovery为机器可校验合同，原T前置与C01–C06完整保留。正文任务映射已与覆盖索引同步。九变更单各有兼容/迁移/回滚/影响。旧重复键状态原字节归档progress/history/task_state_pre_recovery_8e265dc.json.txt；当前八层验证不默认passed。T55/T56候选原卡验收归R24-A；T59候选A+最终B；A后整R24保持partial。
+docs/plan/11_full_delivery_recovery_20261014.md:288:冻结15d0272bd2a9e25d19397d8147e9c3cbe6016f9b经[独立定向复核](../../reports/reviews/recovery/G-A-R00-review-1-recheck.md)确认R00与三个输出切片accepted，CR-R01–09准确落实生效；前述awaiting_review为其所标日期的历史状态。后续按manifest.recovery能力DAG推进；原T最终前置/全部切片/六验收、人工金标与阶段门保持。G-A仍in_progress，R01–03尚未验收。

@@ -1,0 +1,29 @@
+{
+  "label": "queue_live",
+  "argv": [
+    "wsl.exe",
+    "-d",
+    "Ubuntu-22.04",
+    "-u",
+    "root",
+    "--exec",
+    "/tmp/dianzi-docker-static-r01-20261014/portable/docker/docker",
+    "--config",
+    "/tmp/dianzi-docker-static-r01-20261014/runtime/client-config",
+    "--host",
+    "unix:///tmp/dianzi-docker-static-r01-20261014/runtime/docker.sock",
+    "exec",
+    "dianzi-test-r01_infra_20261015-api-1",
+    "python",
+    "-c",
+    "import json\nfrom ai_intel.workers.runtime import celery_app\nfrom importlib.metadata import version\nconfiguration=celery_app.conf\nassert version('celery')=='5.6.3'\nassert configuration.result_backend is None and configuration.task_ignore_result and not configuration.task_store_errors_even_if_ignored\nassert configuration.accept_content==['json'] and configuration.task_serializer=='json'\nassert configuration.task_default_queue=='ai_intel' and configuration.task_time_limit==30 and configuration.task_soft_time_limit==25\nassert configuration.worker_concurrency==1 and configuration.worker_prefetch_multiplier==1\nstats=celery_app.control.inspect(timeout=6).stats()\nassert stats and len(stats)==1\nworker=next(iter(stats.values()));assert worker['pool']['max-concurrency']==1 and 'prefork' in worker['pool']['implementation']\nprint(json.dumps({'celery':version('celery'),'result_backend':configuration.result_backend,'ignore_result':configuration.task_ignore_result,'content':configuration.accept_content,'default_queue':configuration.task_default_queue,'hard_limit':configuration.task_time_limit,'soft_limit':configuration.task_soft_time_limit,'actual_pool':worker['pool']['implementation'],'actual_concurrency':worker['pool']['max-concurrency'],'assertions':6,'pass':6,'fail':0,'skip':0}))\n"
+  ],
+  "cwd": "C:\\Users\\yinha\\.codex\\worktrees\\recovery-r01-infra\\dianzi",
+  "start": "2026-10-15T01:09:18+08:00",
+  "end": "2026-10-15T01:09:31+08:00",
+  "exit": 0,
+  "wall_seconds": 13.140999999995984,
+  "source_sha": "d7290cf4240929aa98bfbcc381d9e35c32a534a4",
+  "evidence_head": "0b6a7ad5e984439855cd97124d70095c608adb58",
+  "counts": null
+}

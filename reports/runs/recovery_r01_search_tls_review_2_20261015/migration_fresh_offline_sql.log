@@ -1,0 +1,650 @@
+BEGIN;
+
+CREATE TABLE alembic_version (
+    version_num VARCHAR(32) NOT NULL, 
+    CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
+);
+
+-- Running upgrade  -> 0001_core_tables
+
+CREATE TABLE scope_epochs (
+    scope_key TEXT NOT NULL, 
+    epoch BIGINT NOT NULL, 
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (scope_key)
+);
+
+CREATE TABLE sources (
+    source_id TEXT NOT NULL, 
+    name TEXT NOT NULL, 
+    category TEXT NOT NULL, 
+    base_origin TEXT NOT NULL, 
+    visibility TEXT NOT NULL, 
+    tenant_id TEXT, 
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (source_id), 
+    UNIQUE (name)
+);
+
+CREATE TABLE content_objects (
+    content_hash TEXT NOT NULL, 
+    size_bytes BIGINT NOT NULL, 
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (content_hash)
+);
+
+CREATE TABLE documents (
+    document_id TEXT NOT NULL, 
+    source_id TEXT NOT NULL, 
+    kind TEXT NOT NULL, 
+    title TEXT NOT NULL, 
+    published_at TIMESTAMP WITH TIME ZONE, 
+    retrieved_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    content_hash TEXT NOT NULL, 
+    visibility TEXT NOT NULL, 
+    tenant_id TEXT, 
+    schema_version INTEGER NOT NULL, 
+    PRIMARY KEY (document_id), 
+    FOREIGN KEY(source_id) REFERENCES sources (source_id), 
+    FOREIGN KEY(content_hash) REFERENCES content_objects (content_hash)
+);
+
+CREATE INDEX ix_documents_source ON documents (source_id);
+
+CREATE TABLE document_revisions (
+    revision_id TEXT NOT NULL, 
+    document_id TEXT NOT NULL, 
+    revision_index INTEGER NOT NULL, 
+    content_hash TEXT NOT NULL, 
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    is_current BOOLEAN NOT NULL, 
+    supersedes_id TEXT, 
+    visibility TEXT NOT NULL, 
+    tenant_id TEXT, 
+    PRIMARY KEY (revision_id), 
+    CONSTRAINT uq_revision_per_document UNIQUE (document_id, revision_index), 
+    FOREIGN KEY(document_id) REFERENCES documents (document_id), 
+    FOREIGN KEY(content_hash) REFERENCES content_objects (content_hash), 
+    FOREIGN KEY(supersedes_id) REFERENCES document_revisions (revision_id)
+);
+
+CREATE INDEX ix_revisions_document ON document_revisions (document_id);
+
+CREATE TABLE evidence (
+    evidence_id TEXT NOT NULL, 
+    revision_id TEXT NOT NULL, 
+    start_offset INTEGER NOT NULL, 
+    end_offset INTEGER NOT NULL, 
+    locator TEXT NOT NULL, 
+    quote TEXT NOT NULL, 
+    supports_claim BOOLEAN NOT NULL, 
+    visibility TEXT NOT NULL, 
+    tenant_id TEXT, 
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (evidence_id), 
+    CONSTRAINT ck_span_not_inverted CHECK (end_offset >= start_offset), 
+    FOREIGN KEY(revision_id) REFERENCES document_revisions (revision_id)
+);
+
+CREATE INDEX ix_evidence_revision ON evidence (revision_id);
+
+CREATE TABLE claims (
+    claim_id TEXT NOT NULL, 
+    subject TEXT NOT NULL, 
+    predicate TEXT NOT NULL, 
+    object_value TEXT NOT NULL, 
+    claim_status TEXT NOT NULL, 
+    claim_origin TEXT NOT NULL, 
+    condition_value TEXT NOT NULL, 
+    freshness TEXT NOT NULL, 
+    asserted_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    observed_at TIMESTAMP WITH TIME ZONE, 
+    visibility TEXT NOT NULL, 
+    tenant_id TEXT, 
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (claim_id)
+);
+
+CREATE INDEX ix_claims_subject ON claims (subject);
+
+CREATE TABLE fetch_attempts (
+    attempt_id TEXT NOT NULL, 
+    source_id TEXT NOT NULL, 
+    attempted_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    outcome TEXT NOT NULL, 
+    http_status INTEGER, 
+    new_event_count INTEGER DEFAULT '0' NOT NULL, 
+    PRIMARY KEY (attempt_id), 
+    FOREIGN KEY(source_id) REFERENCES sources (source_id)
+);
+
+CREATE INDEX ix_fetch_attempts_source ON fetch_attempts (source_id);
+
+INSERT INTO alembic_version (version_num) VALUES ('0001_core_tables') RETURNING alembic_version.version_num;
+
+-- Running upgrade 0001_core_tables -> 0002_constraints_and_text_blocks
+
+ALTER TABLE sources ADD CONSTRAINT ck_sources_visibility CHECK (visibility IN ('public', 'tenant'));
+
+ALTER TABLE sources ADD CONSTRAINT ck_sources_tenant_xor CHECK ((visibility = 'public' AND tenant_id IS NULL) OR (visibility = 'tenant' AND tenant_id IS NOT NULL));
+
+ALTER TABLE documents ADD CONSTRAINT ck_documents_visibility CHECK (visibility IN ('public', 'tenant'));
+
+ALTER TABLE documents ADD CONSTRAINT ck_documents_tenant_xor CHECK ((visibility = 'public' AND tenant_id IS NULL) OR (visibility = 'tenant' AND tenant_id IS NOT NULL));
+
+ALTER TABLE document_revisions ADD CONSTRAINT ck_document_revisions_visibility CHECK (visibility IN ('public', 'tenant'));
+
+ALTER TABLE document_revisions ADD CONSTRAINT ck_document_revisions_tenant_xor CHECK ((visibility = 'public' AND tenant_id IS NULL) OR (visibility = 'tenant' AND tenant_id IS NOT NULL));
+
+ALTER TABLE evidence ADD CONSTRAINT ck_evidence_visibility CHECK (visibility IN ('public', 'tenant'));
+
+ALTER TABLE evidence ADD CONSTRAINT ck_evidence_tenant_xor CHECK ((visibility = 'public' AND tenant_id IS NULL) OR (visibility = 'tenant' AND tenant_id IS NOT NULL));
+
+ALTER TABLE claims ADD CONSTRAINT ck_claims_visibility CHECK (visibility IN ('public', 'tenant'));
+
+ALTER TABLE claims ADD CONSTRAINT ck_claims_tenant_xor CHECK ((visibility = 'public' AND tenant_id IS NULL) OR (visibility = 'tenant' AND tenant_id IS NOT NULL));
+
+CREATE INDEX ix_claims_subject_predicate_status ON claims (subject, predicate, claim_status);
+
+CREATE UNIQUE INDEX uq_current_revision_per_document ON document_revisions (document_id) WHERE is_current;
+
+CREATE TABLE text_blocks (
+    block_id TEXT NOT NULL, 
+    revision_id TEXT NOT NULL, 
+    ordinal INTEGER NOT NULL, 
+    start_offset INTEGER NOT NULL, 
+    end_offset INTEGER NOT NULL, 
+    text_sha256 TEXT NOT NULL, 
+    block_text TEXT NOT NULL, 
+    PRIMARY KEY (block_id), 
+    CONSTRAINT uq_block_ordinal_per_revision UNIQUE (revision_id, ordinal), 
+    CONSTRAINT ck_block_span_not_inverted CHECK (end_offset >= start_offset), 
+    FOREIGN KEY(revision_id) REFERENCES document_revisions (revision_id)
+);
+
+ALTER TABLE evidence ADD COLUMN block_id TEXT;
+
+ALTER TABLE evidence ADD FOREIGN KEY(block_id) REFERENCES text_blocks (block_id);
+
+ALTER TABLE evidence ADD COLUMN quote_sha256 TEXT;
+
+ALTER TABLE evidence ADD COLUMN verified_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE document_revisions RENAME revision_index TO revision_number;
+
+ALTER TABLE document_revisions RENAME supersedes_id TO previous_revision_id;
+
+UPDATE alembic_version SET version_num='0002_constraints_and_text_blocks' WHERE alembic_version.version_num = '0001_core_tables';
+
+-- Running upgrade 0002_constraints_and_text_blocks -> 0003_users
+
+CREATE TABLE users (
+    user_id TEXT NOT NULL, 
+    username TEXT NOT NULL, 
+    password_hash TEXT NOT NULL, 
+    tenant_id TEXT, 
+    role TEXT NOT NULL, 
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (user_id), 
+    CONSTRAINT ck_users_role CHECK (role IN ('tenant_admin', 'system_admin', 'analyst', 'viewer')), 
+    CONSTRAINT ck_users_tenant_admin_requires_tenant CHECK ((tenant_id IS NULL AND role = 'system_admin') OR tenant_id IS NOT NULL), 
+    UNIQUE (username)
+);
+
+UPDATE alembic_version SET version_num='0003_users' WHERE alembic_version.version_num = '0002_constraints_and_text_blocks';
+
+-- Running upgrade 0003_users -> 0004_jobs_outbox
+
+CREATE TABLE job_runs (
+    job_id TEXT NOT NULL, 
+    tenant_id TEXT, 
+    job_type TEXT NOT NULL, 
+    status TEXT NOT NULL, 
+    idempotency_key TEXT, 
+    payload_sha256 TEXT, 
+    payload_ref TEXT NOT NULL, 
+    attempt_count INTEGER DEFAULT '0' NOT NULL, 
+    max_attempts INTEGER DEFAULT '5' NOT NULL, 
+    lease_owner TEXT, 
+    lease_expires_at TIMESTAMP WITH TIME ZONE, 
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (job_id), 
+    CONSTRAINT uq_job_idempotency_key UNIQUE (idempotency_key), 
+    CONSTRAINT ck_job_status CHECK (status IN ('queued','running','retry_wait','waiting_approval','succeeded','partial','failed','cancelled','blocked'))
+);
+
+CREATE INDEX ix_job_runs_tenant ON job_runs (tenant_id);
+
+CREATE TABLE outbox_events (
+    event_id TEXT NOT NULL, 
+    job_id TEXT NOT NULL, 
+    topic TEXT NOT NULL, 
+    payload_ref TEXT NOT NULL, 
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    published_at TIMESTAMP WITH TIME ZONE, 
+    PRIMARY KEY (event_id), 
+    FOREIGN KEY(job_id) REFERENCES job_runs (job_id)
+);
+
+CREATE INDEX ix_outbox_unpublished ON outbox_events (published_at);
+
+UPDATE alembic_version SET version_num='0004_jobs_outbox' WHERE alembic_version.version_num = '0003_users';
+
+-- Running upgrade 0004_jobs_outbox -> 0005_runtime_observations
+
+CREATE TABLE runtime_observations (
+    component TEXT NOT NULL, 
+    observed_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    platform_version TEXT NOT NULL, 
+    PRIMARY KEY (component), 
+    CONSTRAINT ck_runtime_component CHECK (component IN ('worker', 'scheduler'))
+);
+
+UPDATE alembic_version SET version_num='0005_runtime_observations' WHERE alembic_version.version_num = '0004_jobs_outbox';
+
+-- Running upgrade 0005_runtime_observations -> 0006_auth_state
+
+CREATE TABLE auth_sessions (
+    session_hash TEXT NOT NULL, 
+    user_id TEXT NOT NULL, 
+    csrf_token TEXT NOT NULL, 
+    issued_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    revoked_at TIMESTAMP WITH TIME ZONE, 
+    PRIMARY KEY (session_hash), 
+    CONSTRAINT ck_auth_session_hash_length CHECK (length(session_hash) = 64), 
+    CONSTRAINT ck_auth_session_expiry CHECK (expires_at > issued_at), 
+    FOREIGN KEY(user_id) REFERENCES users (user_id)
+);
+
+CREATE INDEX ix_auth_sessions_user ON auth_sessions (user_id);
+
+CREATE INDEX ix_auth_sessions_expiry ON auth_sessions (expires_at);
+
+CREATE TABLE auth_login_buckets (
+    client_key_hash TEXT NOT NULL, 
+    PRIMARY KEY (client_key_hash), 
+    CONSTRAINT ck_auth_client_hash_length CHECK (length(client_key_hash) = 64)
+);
+
+CREATE TABLE auth_login_attempts (
+    attempt_id TEXT NOT NULL, 
+    client_key_hash TEXT NOT NULL, 
+    attempted_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (attempt_id), 
+    FOREIGN KEY(client_key_hash) REFERENCES auth_login_buckets (client_key_hash)
+);
+
+CREATE INDEX ix_auth_login_attempts_window ON auth_login_attempts (client_key_hash, attempted_at);
+
+CREATE TABLE auth_audit_events (
+    audit_id TEXT NOT NULL, 
+    event_type TEXT NOT NULL, 
+    actor_user_id TEXT, 
+    tenant_id TEXT, 
+    trace_id TEXT NOT NULL, 
+    reason TEXT, 
+    submitted_keys TEXT, 
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (audit_id), 
+    FOREIGN KEY(actor_user_id) REFERENCES users (user_id)
+);
+
+CREATE INDEX ix_auth_audit_scope_time ON auth_audit_events (tenant_id, created_at);
+
+UPDATE alembic_version SET version_num='0006_auth_state' WHERE alembic_version.version_num = '0005_runtime_observations';
+
+-- Running upgrade 0006_auth_state -> 0007_knowledge_state
+
+ALTER TABLE claims ADD COLUMN object_json JSONB;
+
+ALTER TABLE claims ADD COLUMN value_kind TEXT DEFAULT 'text' NOT NULL;
+
+ALTER TABLE claims ADD COLUMN provenance_status TEXT DEFAULT 'legacy_unverified' NOT NULL;
+
+ALTER TABLE claims ADD COLUMN field_fingerprint TEXT;
+
+ALTER TABLE claims ADD COLUMN is_current BOOLEAN DEFAULT true NOT NULL;
+
+ALTER TABLE claims ADD COLUMN schema_version INTEGER DEFAULT '1' NOT NULL;
+
+ALTER TABLE claims ADD COLUMN source_revision_id TEXT;
+
+ALTER TABLE claims ADD FOREIGN KEY(source_revision_id) REFERENCES document_revisions (revision_id);
+
+CREATE UNIQUE INDEX ix_claims_field_fingerprint ON claims (field_fingerprint);
+
+ALTER TABLE evidence ADD COLUMN coordinate_version TEXT DEFAULT 'legacy_unverified' NOT NULL;
+
+CREATE TABLE claim_evidence (
+    claim_id TEXT NOT NULL, 
+    evidence_id TEXT NOT NULL, 
+    support_kind TEXT NOT NULL, 
+    validation_status TEXT NOT NULL, 
+    PRIMARY KEY (claim_id, evidence_id), 
+    CONSTRAINT ck_claim_evidence_support_kind CHECK (support_kind IN ('supports','refutes','context')), 
+    CONSTRAINT ck_claim_evidence_validation_status CHECK (validation_status IN ('validated','unverified')), 
+    FOREIGN KEY(claim_id) REFERENCES claims (claim_id), 
+    FOREIGN KEY(evidence_id) REFERENCES evidence (evidence_id)
+);
+
+CREATE TABLE claim_assertions (
+    assertion_id TEXT NOT NULL, 
+    claim_id TEXT NOT NULL, 
+    source_id TEXT NOT NULL, 
+    revision_id TEXT NOT NULL, 
+    json_path TEXT NOT NULL, 
+    scoring_authority TEXT NOT NULL, 
+    assertion_kind TEXT NOT NULL, 
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (assertion_id), 
+    CONSTRAINT uq_claim_assertion_source UNIQUE (claim_id, source_id, revision_id, json_path, scoring_authority), 
+    FOREIGN KEY(claim_id) REFERENCES claims (claim_id), 
+    FOREIGN KEY(source_id) REFERENCES sources (source_id), 
+    FOREIGN KEY(revision_id) REFERENCES document_revisions (revision_id)
+);
+
+CREATE TABLE claim_status_history (
+    history_id TEXT NOT NULL, 
+    transition_sequence BIGINT GENERATED ALWAYS AS IDENTITY, 
+    claim_id TEXT NOT NULL, 
+    status TEXT NOT NULL, 
+    reason TEXT NOT NULL, 
+    changed_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (history_id), 
+    FOREIGN KEY(claim_id) REFERENCES claims (claim_id)
+);
+
+CREATE TABLE claim_relations (
+    relation_id TEXT NOT NULL, 
+    left_claim_id TEXT NOT NULL, 
+    right_claim_id TEXT NOT NULL, 
+    relation_type TEXT NOT NULL, 
+    reason TEXT NOT NULL, 
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (relation_id), 
+    CONSTRAINT uq_claim_relation UNIQUE (left_claim_id, right_claim_id, relation_type), 
+    CONSTRAINT ck_claim_relation_type CHECK (relation_type IN ('supersedes','disputed')), 
+    FOREIGN KEY(left_claim_id) REFERENCES claims (claim_id), 
+    FOREIGN KEY(right_claim_id) REFERENCES claims (claim_id)
+);
+
+CREATE TABLE entities (
+    entity_id TEXT NOT NULL, 
+    entity_type TEXT NOT NULL, 
+    ecosystem TEXT NOT NULL, 
+    canonical_name TEXT NOT NULL, 
+    scope_key TEXT NOT NULL, 
+    visibility TEXT NOT NULL, 
+    tenant_id TEXT, 
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (entity_id), 
+    CONSTRAINT uq_entity_key UNIQUE (scope_key, entity_type, ecosystem, canonical_name), 
+    CONSTRAINT ck_entities_visibility CHECK (visibility IN ('public','tenant')), 
+    CONSTRAINT ck_entities_scope CHECK ((visibility='public' AND tenant_id IS NULL) OR (visibility='tenant' AND tenant_id IS NOT NULL))
+);
+
+CREATE TABLE entity_aliases (
+    alias_id TEXT NOT NULL, 
+    entity_id TEXT NOT NULL, 
+    source_id TEXT NOT NULL, 
+    revision_id TEXT NOT NULL, 
+    evidence_id TEXT NOT NULL, 
+    alias_value TEXT NOT NULL, 
+    status TEXT NOT NULL, 
+    valid_from TIMESTAMP WITH TIME ZONE, 
+    valid_to TIMESTAMP WITH TIME ZONE, 
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (alias_id), 
+    CONSTRAINT uq_entity_alias_evidence UNIQUE (entity_id, alias_value, evidence_id), 
+    FOREIGN KEY(entity_id) REFERENCES entities (entity_id), 
+    FOREIGN KEY(source_id) REFERENCES sources (source_id), 
+    FOREIGN KEY(revision_id) REFERENCES document_revisions (revision_id), 
+    FOREIGN KEY(evidence_id) REFERENCES evidence (evidence_id)
+);
+
+CREATE TABLE events (
+    event_id TEXT NOT NULL, 
+    event_type TEXT NOT NULL, 
+    title TEXT NOT NULL, 
+    scope_key TEXT NOT NULL, 
+    visibility TEXT NOT NULL, 
+    tenant_id TEXT, 
+    status TEXT NOT NULL, 
+    first_seen_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    business_version INTEGER DEFAULT '1' NOT NULL, 
+    PRIMARY KEY (event_id), 
+    CONSTRAINT ck_events_visibility CHECK (visibility IN ('public','tenant')), 
+    CONSTRAINT ck_events_scope CHECK ((visibility='public' AND tenant_id IS NULL) OR (visibility='tenant' AND tenant_id IS NOT NULL))
+);
+
+CREATE TABLE event_external_ids (
+    event_id TEXT NOT NULL, 
+    id_type TEXT NOT NULL, 
+    id_value TEXT NOT NULL, 
+    scope_key TEXT NOT NULL, 
+    PRIMARY KEY (event_id, id_type, id_value), 
+    CONSTRAINT uq_event_external_scope UNIQUE (scope_key, id_type, id_value), 
+    FOREIGN KEY(event_id) REFERENCES events (event_id)
+);
+
+CREATE TABLE event_documents (
+    event_id TEXT NOT NULL, 
+    revision_id TEXT NOT NULL, 
+    active BOOLEAN DEFAULT true NOT NULL, 
+    associated_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    superseded_at TIMESTAMP WITH TIME ZONE, 
+    PRIMARY KEY (event_id, revision_id), 
+    FOREIGN KEY(event_id) REFERENCES events (event_id), 
+    FOREIGN KEY(revision_id) REFERENCES document_revisions (revision_id)
+);
+
+CREATE TABLE event_operations (
+    operation_id TEXT NOT NULL, 
+    operation_type TEXT NOT NULL, 
+    source_event_id TEXT NOT NULL, 
+    target_event_id TEXT NOT NULL, 
+    inverse_operation_id TEXT, 
+    source_revision_ids JSONB NOT NULL, 
+    target_revision_ids JSONB NOT NULL, 
+    reason TEXT NOT NULL, 
+    recorded_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (operation_id), 
+    CONSTRAINT ck_event_operation_type CHECK (operation_type IN ('merge','undo')), 
+    FOREIGN KEY(source_event_id) REFERENCES events (event_id), 
+    FOREIGN KEY(target_event_id) REFERENCES events (event_id), 
+    FOREIGN KEY(inverse_operation_id) REFERENCES event_operations (operation_id)
+);
+
+CREATE TABLE change_events (
+    change_id TEXT NOT NULL, 
+    scope_key TEXT NOT NULL, 
+    epoch BIGINT NOT NULL, 
+    change_type TEXT NOT NULL, 
+    entity_ids JSONB NOT NULL, 
+    payload JSONB NOT NULL, 
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (change_id), 
+    CONSTRAINT uq_change_scope_epoch UNIQUE (scope_key, epoch)
+);
+
+CREATE TABLE publication_receipts (
+    receipt_id TEXT NOT NULL, 
+    scope_key TEXT NOT NULL, 
+    publication_key TEXT NOT NULL, 
+    payload_sha256 TEXT NOT NULL, 
+    claim_ids JSONB NOT NULL, 
+    epoch BIGINT NOT NULL, 
+    job_id TEXT NOT NULL, 
+    outbox_id TEXT NOT NULL, 
+    change_id TEXT NOT NULL, 
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (receipt_id), 
+    CONSTRAINT uq_publication_key UNIQUE (scope_key, publication_key), 
+    FOREIGN KEY(job_id) REFERENCES job_runs (job_id), 
+    FOREIGN KEY(outbox_id) REFERENCES outbox_events (event_id), 
+    FOREIGN KEY(change_id) REFERENCES change_events (change_id)
+);
+
+CREATE INDEX ix_claim_assertions_lookup ON claim_assertions (source_id, revision_id);
+
+CREATE INDEX ix_claim_status_history_lookup ON claim_status_history (claim_id, changed_at);
+
+CREATE INDEX ix_entity_aliases_lookup ON entity_aliases (entity_id, alias_value);
+
+CREATE INDEX ix_change_events_lookup ON change_events (scope_key, created_at);
+
+UPDATE alembic_version SET version_num='0007_knowledge_state' WHERE alembic_version.version_num = '0006_auth_state';
+
+-- Running upgrade 0007_knowledge_state -> 0008_event_operation_versions
+
+ALTER TABLE event_operations ADD COLUMN source_business_version INTEGER;
+
+ALTER TABLE event_operations ADD COLUMN target_business_version INTEGER;
+
+ALTER TABLE event_operations ADD CONSTRAINT ck_event_operation_versions CHECK ((source_business_version IS NULL AND target_business_version IS NULL) OR (source_business_version IS NOT NULL AND target_business_version IS NOT NULL AND source_business_version >= 1 AND target_business_version >= 1));
+
+UPDATE alembic_version SET version_num='0008_event_operation_versions' WHERE alembic_version.version_num = '0007_knowledge_state';
+
+-- Running upgrade 0008_event_operation_versions -> 0009_enrichment_results
+
+CREATE TABLE enrichment_results (
+    result_id TEXT NOT NULL, 
+    event_id TEXT NOT NULL, 
+    dimension TEXT NOT NULL, 
+    status TEXT NOT NULL, 
+    claim_ids JSONB NOT NULL, 
+    reference_ids JSONB NOT NULL, 
+    error_code TEXT, 
+    searched_at TIMESTAMP WITH TIME ZONE, 
+    source_scope JSONB NOT NULL, 
+    last_job_id TEXT, 
+    input_fingerprint TEXT NOT NULL, 
+    recorded_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    is_current BOOLEAN NOT NULL, 
+    PRIMARY KEY (result_id), 
+    CONSTRAINT ck_enrichment_result_status CHECK (status IN ('available','not_found','not_applicable','conflict','blocked','failed','pending')), 
+    CONSTRAINT ck_enrichment_input_fingerprint CHECK (length(input_fingerprint)=64), 
+    CONSTRAINT ck_enrichment_result_arrays CHECK (jsonb_typeof(claim_ids)='array' AND jsonb_typeof(reference_ids)='array' AND jsonb_typeof(source_scope)='array'), 
+    CONSTRAINT uq_enrichment_result_input UNIQUE (event_id, dimension, input_fingerprint), 
+    FOREIGN KEY(event_id) REFERENCES events (event_id), 
+    FOREIGN KEY(last_job_id) REFERENCES job_runs (job_id)
+);
+
+CREATE UNIQUE INDEX uq_enrichment_result_current ON enrichment_results (event_id, dimension) WHERE is_current;
+
+CREATE INDEX ix_enrichment_result_history ON enrichment_results (event_id, recorded_at);
+
+UPDATE alembic_version SET version_num='0009_enrichment_results' WHERE alembic_version.version_num = '0008_event_operation_versions';
+
+-- Running upgrade 0009_enrichment_results -> 0010_enrichment_publications
+
+ALTER TABLE enrichment_results DROP CONSTRAINT uq_enrichment_result_input;
+
+ALTER TABLE enrichment_results ADD COLUMN publication_key TEXT;
+
+ALTER TABLE enrichment_results ADD COLUMN payload_sha256 TEXT;
+
+ALTER TABLE enrichment_results ADD COLUMN event_version INTEGER;
+
+ALTER TABLE enrichment_results ADD COLUMN observed_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE enrichment_results ADD COLUMN source_version TEXT;
+
+ALTER TABLE enrichment_results ADD COLUMN freshness TEXT;
+
+ALTER TABLE enrichment_results ADD CONSTRAINT uq_enrichment_result_publication UNIQUE (event_id, dimension, publication_key);
+
+ALTER TABLE enrichment_results ADD CONSTRAINT ck_enrichment_publication_digest CHECK (payload_sha256 IS NULL OR length(payload_sha256)=64);
+
+ALTER TABLE enrichment_results ADD CONSTRAINT ck_enrichment_event_version CHECK (event_version IS NULL OR event_version > 0);
+
+ALTER TABLE enrichment_results ADD CONSTRAINT ck_enrichment_freshness CHECK (freshness IS NULL OR freshness IN ('current','stale','unknown'));
+
+UPDATE alembic_version SET version_num='0010_enrichment_publications' WHERE alembic_version.version_num = '0009_enrichment_results';
+
+-- Running upgrade 0010_enrichment_publications -> 0011_job_delivery_and_cursors
+
+ALTER TABLE job_runs DROP CONSTRAINT uq_job_idempotency_key;
+
+CREATE UNIQUE INDEX uq_job_scoped_idempotency ON job_runs (COALESCE(tenant_id, ''), job_type, idempotency_key);
+
+ALTER TABLE job_runs ADD COLUMN next_retry_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE job_runs ADD COLUMN started_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE job_runs ADD COLUMN finished_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE job_runs ADD COLUMN error_code TEXT;
+
+ALTER TABLE job_runs ADD COLUMN result_ref TEXT;
+
+CREATE INDEX ix_job_due ON job_runs (status, next_retry_at, lease_expires_at);
+
+ALTER TABLE outbox_events ADD COLUMN delivery_attempts INTEGER DEFAULT '0' NOT NULL;
+
+ALTER TABLE outbox_events ADD COLUMN next_delivery_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE outbox_events ADD COLUMN last_error_code TEXT;
+
+CREATE TABLE job_payloads (
+    job_id TEXT NOT NULL, 
+    payload BYTEA NOT NULL, 
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (job_id), 
+    CONSTRAINT ck_job_payload_bound CHECK (octet_length(payload) <= 1048576), 
+    FOREIGN KEY(job_id) REFERENCES job_runs (job_id)
+);
+
+CREATE TABLE job_transitions (
+    transition_sequence BIGINT GENERATED ALWAYS AS IDENTITY, 
+    job_id TEXT NOT NULL, 
+    attempt_count INTEGER NOT NULL, 
+    from_status TEXT NOT NULL, 
+    to_status TEXT NOT NULL, 
+    reason TEXT NOT NULL, 
+    changed_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (transition_sequence), 
+    FOREIGN KEY(job_id) REFERENCES job_runs (job_id)
+);
+
+CREATE INDEX ix_job_transition_history ON job_transitions (job_id, transition_sequence);
+
+CREATE TABLE source_cursors (
+    source_id TEXT NOT NULL, 
+    stream_kind TEXT NOT NULL, 
+    cursor_json JSONB DEFAULT '{}'::jsonb NOT NULL, 
+    window_start TIMESTAMP WITH TIME ZONE, 
+    window_end TIMESTAMP WITH TIME ZONE, 
+    watermark_published_at TIMESTAMP WITH TIME ZONE, 
+    last_successful_page INTEGER DEFAULT '0' NOT NULL, 
+    lease_owner TEXT, 
+    lease_expires_at TIMESTAMP WITH TIME ZONE, 
+    generation INTEGER DEFAULT '0' NOT NULL, 
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (source_id, stream_kind), 
+    CONSTRAINT ck_source_cursor_stream CHECK (stream_kind IN ('live','backfill')), 
+    CONSTRAINT ck_source_cursor_generation CHECK (generation >= 0), 
+    FOREIGN KEY(source_id) REFERENCES sources (source_id)
+);
+
+CREATE TABLE source_page_receipts (
+    source_id TEXT NOT NULL, 
+    stream_kind TEXT NOT NULL, 
+    page_key TEXT NOT NULL, 
+    input_cursor JSONB NOT NULL, 
+    output_cursor JSONB NOT NULL, 
+    revision_ids JSONB NOT NULL, 
+    failed_job_ids JSONB NOT NULL, 
+    entry_count INTEGER NOT NULL, 
+    committed_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    PRIMARY KEY (source_id, stream_kind, page_key), 
+    FOREIGN KEY(source_id, stream_kind) REFERENCES source_cursors (source_id, stream_kind), 
+    CONSTRAINT ck_source_page_key CHECK (length(page_key)=64)
+);
+
+UPDATE alembic_version SET version_num='0011_job_delivery_and_cursors' WHERE alembic_version.version_num = '0010_enrichment_publications';
+
+COMMIT;
+

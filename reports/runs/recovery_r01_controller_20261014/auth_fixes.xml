@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="28" time="3.332" timestamp="2026-10-15T00:05:58.640343+08:00" hostname="yin"><testcase classname="tests.security.test_r01_http_authentication" name="test_default_application_registers_authentication_without_false_readiness" time="0.029" /><testcase classname="tests.security.test_r01_http_authentication" name="test_logout_requires_session_bound_csrf_and_origin" time="0.098" /><testcase classname="tests.security.test_r01_http_authentication" name="test_disallowed_login_origin_returns_safe_problem" time="0.050" /><testcase classname="tests.security.test_r01_http_authentication" name="test_strict_login_validation_never_echoes_sensitive_input" time="0.057" /><testcase classname="tests.security.test_r01_http_authentication" name="test_me_returns_authenticated_scope_and_explicit_fixture_mode" time="0.094" /><testcase classname="tests.security.test_r01_http_authentication" name="test_non_ascii_csrf_is_rejected_without_revoking_session" time="0.092" /><testcase classname="tests.security.test_r01_http_authentication" name="test_routing_errors_follow_problem_contract[/v1/auth/missing-404-not_found]" time="0.043" /><testcase classname="tests.security.test_r01_http_authentication" name="test_routing_errors_follow_problem_contract[/v1/auth/login-405-method_not_allowed]" time="0.045" /><testcase classname="tests.security.test_r01_http_authentication" name="test_concurrent_login_reserves_attempt_before_directory_io" time="0.054" /><testcase classname="tests.security.test_r01_http_authentication" name="test_me_reads_one_account_and_its_session_bound_csrf" time="0.084" /><testcase classname="tests.security.test_t06_authentication_and_scope" name="test_login_logout_session_lifecycle_t06_c01" time="0.074" /><testcase classname="tests.security.test_t06_authentication_and_scope" name="test_cross_tenant_objects_are_invisible_without_name_leak_t06_c02" time="0.000" /><testcase classname="tests.security.test_t06_authentication_and_scope" name="test_request_body_self_reported_identity_is_ignored_t06_c03" time="0.076" /><testcase classname="tests.security.test_t06_authentication_and_scope" name="test_write_requests_require_csrf_and_allowed_origin_t06_c04" time="0.074" /><testcase classname="tests.security.test_t06_authentication_and_scope" name="test_expired_or_unknown_session_and_brute_force_are_rejected_t06_c05" time="0.311" /><testcase classname="tests.security.test_t06_authentication_and_scope" name="test_audit_and_sources_carry_no_secret_values_t06_c06" time="0.293"><failure message="AssertionError: (WindowsPath('D:/dianzi/reports/runs/recovery_r01_behavior_review_1_20261014/backend_security.log'), 'token')&#10;assert 'fixture-csrf' in {'Dev-Only-Not-A-Secret-1!', 'dev-only-not-a-secret'}&#10; +  where 'fixture-csrf' = &lt;built-in method group of re.Match object at 0x000001A959009B20&gt;(2)&#10; +    where &lt;built-in method group of re.Match object at 0x000001A959009B20&gt; = &lt;re.Match object; span=(3628, 3649), match='token: &quot;fixture-csrf&quot;'&gt;.group">def test_audit_and_sources_carry_no_secret_values_t06_c06() -&gt; None:
+        """T06-C06: 审计事件与源码/日志扫描无密码、cookie、token 或真实密钥值。"""
+        service = build_service()
+        service.create_precreated_user("analyst-a", "Str0ng-Passphrase!", "tenant-alpha", Role.ANALYST)
+        session_token, _ = service.login("analyst-a", "Str0ng-Passphrase!", ALLOWED_ORIGIN, "client-1")
+        service.logout(session_token)
+        for event in service.audit_events():
+            serialized = str(event).lower()
+            assert "str0ng-passphrase!" not in serialized
+            assert session_token not in str(event)
+            assert "trace_id" in event
+        with pytest.raises(AuditEventError):
+            service._append_audit("manual_probe", {"password": "should-not-be-logged"})
+        import re
+    
+        secret_pattern = re.compile(
+            r"(api[_-]?key|secret[_-]?key|db[_-]?pass|secret|token|password)"
+            r"\s*[:=]\s*['\"][A-Za-z0-9_\-]{16,}['\"]",
+            re.IGNORECASE,
+        )
+        scan_roots = (
+            REPO_ROOT / "backend" / "src",
+            REPO_ROOT / "scripts",
+            REPO_ROOT / "frontend" / "src",
+            REPO_ROOT / "frontend" / "dist",
+            REPO_ROOT / "reports" / "runs",
+        )
+        documented_dev_placeholders = {"dev-only-not-a-secret", "Dev-Only-Not-A-Secret-1!"}
+        secret_value_pattern = re.compile(
+            r"(api[_-]?key|secret[_-]?key|db[_-]?pass|secret|password|passwd|token|jwt)"
+            r"\s*[:=]\s*['\"]([^'\"]{6,})['\"]",
+            re.IGNORECASE,
+        )
+        for source_root in scan_roots:
+            if not source_root.exists():
+                continue
+            for source_path in source_root.rglob("*"):
+                if not source_path.is_file() or source_path.suffix not in {
+                    ".py",
+                    ".ts",
+                    ".tsx",
+                    ".js",
+                    ".log",
+                    ".json",
+                    ".html",
+                }:
+                    continue
+                content = source_path.read_text(encoding="utf-8", errors="ignore")
+                assert not secret_pattern.search(content), source_path
+                for secret_match in secret_value_pattern.finditer(content):
+                    source_line = content[: secret_match.start()].count("\n") + 1
+                    if (
+                        source_path.suffix == ".py"
+                        and secret_match.group(2) == "password authentication failed"
+                        and is_public_authentication_failure_comparison(content, source_line)
+                    ):
+                        continue
+&gt;                   assert secret_match.group(2) in documented_dev_placeholders, (
+                        source_path,
+                        secret_match.group(1),
+                    )
+E                   AssertionError: (WindowsPath('D:/dianzi/reports/runs/recovery_r01_behavior_review_1_20261014/backend_security.log'), 'token')
+E                   assert 'fixture-csrf' in {'Dev-Only-Not-A-Secret-1!', 'dev-only-not-a-secret'}
+E                    +  where 'fixture-csrf' = &lt;built-in method group of re.Match object at 0x000001A959009B20&gt;(2)
+E                    +    where &lt;built-in method group of re.Match object at 0x000001A959009B20&gt; = &lt;re.Match object; span=(3628, 3649), match='token: "fixture-csrf"'&gt;.group
+
+tests\security\test_t06_authentication_and_scope.py:218: AssertionError</failure></testcase><testcase classname="tests.security.test_t06_authentication_and_scope" name="test_secret_scan_distinguishes_public_failure_check_from_credential_literal[rejected_password = 'password authentication failed' in str(failure)-True]" time="0.001" /><testcase classname="tests.security.test_t06_authentication_and_scope" name="test_secret_scan_distinguishes_public_failure_check_from_credential_literal[password = 'password authentication failed'-False]" time="0.000" /><testcase classname="tests.security.test_t06_authentication_and_scope" name="test_secret_scan_distinguishes_public_failure_check_from_credential_literal[password = 'synthetic-credential'-False]" time="0.001" /><testcase classname="tests.security.test_t06_authentication_and_scope" name="test_precreated_users_only_and_no_default_production_account" time="0.000" /><testcase classname="tests.security.test_t06_authentication_and_scope" name="test_cookie_policy_requires_secure_in_production" time="0.000" /><testcase classname="tests.security.test_t06_authentication_and_scope" name="test_tenant_admin_permission_table_and_scope_epoch_role_separation" time="0.000" /><testcase classname="tests.security.test_t06_authentication_and_scope" name="test_identity_spoof_attempt_is_audited_and_write_gate_checks_expiry" time="0.082" /><testcase classname="tests.security.test_t06_authentication_and_scope" name="test_filter_visible_rows_separates_public_and_private" time="0.000" /><testcase classname="tests.security.test_t06_authentication_and_scope" name="test_viewer_role_has_read_public_only" time="0.000" /><testcase classname="tests.contract.test_t40_auth_routes" name="test_auth_routes_login_me_csrf_logout_contract" time="0.100" /><testcase classname="tests.contract.test_t40_auth_routes" name="test_auth_routes_error_mapping_no_false_success" time="0.089" /><testcase classname="tests.contract.test_t40_auth_routes" name="test_default_auth_routes_are_registered_with_honest_missing_dependencies" time="0.013" /></testsuite></testsuites>

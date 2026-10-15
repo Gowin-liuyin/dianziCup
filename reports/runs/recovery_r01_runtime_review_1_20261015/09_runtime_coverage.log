@@ -1,0 +1,483 @@
+backend/tests/security\test_t08_network_and_sources.py:20:from ai_intel.ingestion.connectors import (
+backend/tests/security\test_t08_network_and_sources.py:80:def test_dns_rebinding_between_check_and_connect_is_blocked_t08_c03() -> None:
+backend/tests/security\test_r01_http_authentication.py:36:    response = client.get("/v1/health/ready")
+backend/tests/security\test_r01_http_authentication.py:38:    assert response.json()["status"] == "not_ready"
+backend/tests/security\test_r01_http_authentication.py:169:    with ThreadPoolExecutor(max_workers=8) as pool:
+backend/tests/integration\test_t16_incremental_monitoring.py:7:from ai_intel.ingestion.scheduler import (
+backend/tests/integration\test_t03_development_services.py:60:    engine = create_engine(database_url, connect_args={"connect_timeout": 2})
+backend/tests/integration\test_t03_development_services.py:65:                with engine.connect() as connection:
+backend/tests/integration\test_t03_development_services.py:66:                    assert connection.execute(text("SELECT 1")).scalar_one() == 1
+backend/tests/integration\test_t03_development_services.py:71:            except SQLAlchemyError as not_ready:
+backend/tests/integration\test_t03_development_services.py:73:                    raise AssertionError("isolated PostgreSQL did not become ready") from not_ready
+backend/tests/integration\test_t03_development_services.py:82:    with socket.create_connection(
+backend/tests/integration\test_t03_development_services.py:84:    ) as connection:
+backend/tests/integration\test_t03_development_services.py:85:        connection.settimeout(5)
+backend/tests/integration\test_t03_development_services.py:86:        with connection.makefile("rb") as response:
+backend/tests/integration\test_t03_development_services.py:89:                connection.sendall(
+backend/tests/integration\test_t03_development_services.py:97:            connection.sendall(b"*1\r\n$4\r\nPING\r\n")
+backend/tests/integration\test_t03_development_services.py:128:    engine = create_engine(isolated_test_database_url, connect_args={"connect_timeout": 5})
+backend/tests/integration\test_t03_development_services.py:130:        with engine.begin() as connection:
+backend/tests/integration\test_t03_development_services.py:131:            connection.execute(
+backend/tests/integration\test_t03_development_services.py:137:            connection.execute(
+backend/tests/integration\test_t03_development_services.py:146:        with engine.connect() as connection:
+backend/tests/integration\test_t03_development_services.py:148:                connection.execute(
+backend/tests/integration\test_t03_development_services.py:157:def test_search_dependency_absent_is_reported_as_degraded_not_ready() -> None:
+backend/tests/integration\test_t03_development_services.py:169:    assert "ready" not in readiness.values()
+backend/tests/integration\test_t03_development_services.py:195:    engine = create_engine(isolated_test_database_url, connect_args={"connect_timeout": 5})
+backend/tests/integration\test_t03_development_services.py:197:        with engine.begin() as connection:
+backend/tests/integration\test_t03_development_services.py:198:            connection.execute(
+backend/tests/integration\test_t03_development_services.py:201:            connection.execute(
+backend/tests/integration\test_t03_development_services.py:215:        with engine.connect() as connection:
+backend/tests/integration\test_t03_development_services.py:217:                connection.execute(
+backend/tests/integration\test_t07_jobs_and_outbox.py:18:from ai_intel.workers.jobs import (
+backend/tests/integration\test_t07_jobs_and_outbox.py:33:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t07_jobs_and_outbox.py:34:        job_id = enqueue_job(connection, None, "collect_source_updates", b"payload-a", now)
+backend/tests/integration\test_t07_jobs_and_outbox.py:35:        first_relay = relay_pending_events(connection, now)
+backend/tests/integration\test_t07_jobs_and_outbox.py:37:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t07_jobs_and_outbox.py:38:        second_relay = relay_pending_events(connection, now + timedelta(minutes=1))
+backend/tests/integration\test_t07_jobs_and_outbox.py:40:        unpublished = connection.execute(
+backend/tests/integration\test_t07_jobs_and_outbox.py:52:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t07_jobs_and_outbox.py:54:            connection, None, "parse_document", b"same-payload", now, idempotency_key=key
+backend/tests/integration\test_t07_jobs_and_outbox.py:57:            connection, None, "parse_document", b"same-payload", now, idempotency_key=key
+backend/tests/integration\test_t07_jobs_and_outbox.py:59:        rows = connection.execute(
+backend/tests/integration\test_t07_jobs_and_outbox.py:70:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t07_jobs_and_outbox.py:72:            connection, None, "parse_document", b"original", now, idempotency_key=key
+backend/tests/integration\test_t07_jobs_and_outbox.py:75:            enqueue_job(connection, None, "parse_document", b"different", now, idempotency_key=key)
+backend/tests/integration\test_t07_jobs_and_outbox.py:76:        row = connection.execute(
+backend/tests/integration\test_t07_jobs_and_outbox.py:84:def test_lost_worker_recovers_after_lease_expiry(migrated_engine) -> None:
+backend/tests/integration\test_t07_jobs_and_outbox.py:85:    """T07-C04: worker 中断 → 租约过期后其他 worker 恢复认领, 不丢任务。"""
+backend/tests/integration\test_t07_jobs_and_outbox.py:87:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t07_jobs_and_outbox.py:89:        job_id = enqueue_job(connection, None, job_type, b"payload-c", now)
+backend/tests/integration\test_t07_jobs_and_outbox.py:90:        claimed = claim_next_job(connection, "worker-1", now, job_type=job_type)
+backend/tests/integration\test_t07_jobs_and_outbox.py:93:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t07_jobs_and_outbox.py:94:        recovered = claim_next_job(connection, "worker-2", later, job_type=job_type)
+backend/tests/integration\test_t07_jobs_and_outbox.py:97:            complete_job(connection, job_id, "worker-1", "succeeded", later)
+backend/tests/integration\test_t07_jobs_and_outbox.py:103:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t07_jobs_and_outbox.py:105:        job_id = enqueue_job(connection, None, job_type, b"payload-d", now)
+backend/tests/integration\test_t07_jobs_and_outbox.py:106:        claim_next_job(connection, "worker-1", now, job_type=job_type)
+backend/tests/integration\test_t07_jobs_and_outbox.py:108:            connection, job_id, "worker-1", permanent=True, failed_at=now
+backend/tests/integration\test_t07_jobs_and_outbox.py:110:        status = connection.execute(
+backend/tests/integration\test_t07_jobs_and_outbox.py:120:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t07_jobs_and_outbox.py:121:        job_id = enqueue_job(connection, "tenant-alpha", "enrich_claim", b"secret-payload", now)
+backend/tests/integration\test_t07_jobs_and_outbox.py:123:            read_job_with_scope(connection, job_id, outsider)
+backend/tests/integration\test_t07_jobs_and_outbox.py:127:            cancel_job_with_scope(connection, job_id, outsider, now)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:19:    current_migration_revision,
+backend/tests/integration\test_t05_persistence_and_raw_store.py:20:    run_migrations,
+backend/tests/integration\test_t05_persistence_and_raw_store.py:50:def seed_document(connection, document_id: str, visibility: str, tenant_id: str | None) -> None:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:54:    connection.execute(
+backend/tests/integration\test_t05_persistence_and_raw_store.py:61:    connection.execute(
+backend/tests/integration\test_t05_persistence_and_raw_store.py:77:    connection.execute(
+backend/tests/integration\test_t05_persistence_and_raw_store.py:107:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:108:        seed_document(connection, document_id, "public", None)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:109:        attempts_before = connection.execute(select(fetch_attempts.c.attempt_id)).all()
+backend/tests/integration\test_t05_persistence_and_raw_store.py:111:            connection, store, document_id, b"same-content", "public", None, now
+backend/tests/integration\test_t05_persistence_and_raw_store.py:114:            connection, store, document_id, b"same-content", "public", None, now
+backend/tests/integration\test_t05_persistence_and_raw_store.py:116:        revision_rows = connection.execute(
+backend/tests/integration\test_t05_persistence_and_raw_store.py:121:        attempts_after = connection.execute(select(fetch_attempts.c.attempt_id)).all()
+backend/tests/integration\test_t05_persistence_and_raw_store.py:133:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:134:        seed_document(connection, document_id, "public", None)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:136:            connection, store, document_id, b"content-A", "public", None, base_time
+backend/tests/integration\test_t05_persistence_and_raw_store.py:139:            connection, store, document_id, b"content-B", "public", None, base_time
+backend/tests/integration\test_t05_persistence_and_raw_store.py:142:            connection, store, document_id, b"content-A", "public", None, base_time
+backend/tests/integration\test_t05_persistence_and_raw_store.py:144:        rows = connection.execute(
+backend/tests/integration\test_t05_persistence_and_raw_store.py:160:    with pytest.raises(MissingDocumentError), migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:162:            connection,
+backend/tests/integration\test_t05_persistence_and_raw_store.py:170:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:171:        dangling_revisions = connection.execute(
+backend/tests/integration\test_t05_persistence_and_raw_store.py:177:        removed = cleanup_unreferenced_object(connection, store, stored.content_hash)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:187:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:188:        seed_document(connection, document_id, "public", None)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:190:            connection, store, document_id, b"referenced-content", "public", None, now
+backend/tests/integration\test_t05_persistence_and_raw_store.py:192:        refused = cleanup_unreferenced_object(connection, store, saved.content_hash)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:193:        content_row = connection.execute(
+backend/tests/integration\test_t05_persistence_and_raw_store.py:208:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:209:        seed_document(connection, document_id, "public", None)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:210:        connection.execute(
+backend/tests/integration\test_t05_persistence_and_raw_store.py:221:        connection.execute(
+backend/tests/integration\test_t05_persistence_and_raw_store.py:225:        refused = cleanup_unreferenced_object(connection, store, stored.content_hash)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:235:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:236:        seed_document(connection, public_doc, "public", None)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:238:            save_document_revision(connection, store, public_doc, b"x", "tenant", None, now)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:241:                connection, store, public_doc, b"y", "public", "tenant-alpha", now
+backend/tests/integration\test_t05_persistence_and_raw_store.py:245:                connection, store, public_doc, b"z", "tenant", "tenant-alpha", now
+backend/tests/integration\test_t05_persistence_and_raw_store.py:254:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:255:        seed_document(connection, document_id, "public", None)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:257:            connection, store, document_id, b"public-body", "public", None, now
+backend/tests/integration\test_t05_persistence_and_raw_store.py:261:                connection, saved.revision_id, 0, 3, "line 1", "pub", True, "tenant", None, now
+backend/tests/integration\test_t05_persistence_and_raw_store.py:271:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:272:        seed_document(connection, document_id, "public", None)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:273:        saved = save_document_revision(connection, store, document_id, b"body", "public", None, now)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:274:        block_id = add_text_block(connection, saved.revision_id, 1, 0, len(block_text), block_text)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:277:                connection,
+backend/tests/integration\test_t05_persistence_and_raw_store.py:291:                connection,
+backend/tests/integration\test_t05_persistence_and_raw_store.py:305:            connection,
+backend/tests/integration\test_t05_persistence_and_raw_store.py:338:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:339:        seed_document(connection, document_id, "tenant", "tenant-alpha")
+backend/tests/integration\test_t05_persistence_and_raw_store.py:341:            connection, store, document_id, b"tenant-content", "tenant", "tenant-alpha", now
+backend/tests/integration\test_t05_persistence_and_raw_store.py:345:                connection,
+backend/tests/integration\test_t05_persistence_and_raw_store.py:358:                connection, saved.revision_id, 0, 5, "line 1", "quote", True, "public", None, now
+backend/tests/integration\test_t05_persistence_and_raw_store.py:362:                connection, saved.revision_id, 0, 5, "line 1", "quote", True, "tenant", None, now
+backend/tests/integration\test_t05_persistence_and_raw_store.py:372:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:373:        seed_document(connection, document_id, "public", None)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:375:            connection, store, document_id, b"body-content", "public", None, now
+backend/tests/integration\test_t05_persistence_and_raw_store.py:377:        block_id = add_text_block(connection, saved.revision_id, 1, 0, len(block_text), block_text)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:379:            connection,
+backend/tests/integration\test_t05_persistence_and_raw_store.py:395:                connection,
+backend/tests/integration\test_t05_persistence_and_raw_store.py:410:                connection,
+backend/tests/integration\test_t05_persistence_and_raw_store.py:422:        row = connection.execute(
+backend/tests/integration\test_t05_persistence_and_raw_store.py:430:def test_migration_upgrade_preserves_existing_facts_times_and_unknown_status(
+backend/tests/integration\test_t05_persistence_and_raw_store.py:436:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:437:        connection.execute(
+backend/tests/integration\test_t05_persistence_and_raw_store.py:462:    run_migrations(isolated_test_database_url)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:463:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:464:        row = connection.execute(
+backend/tests/integration\test_t05_persistence_and_raw_store.py:478:def test_repeated_migration_upgrade_preserves_head_revision(
+backend/tests/integration\test_t05_persistence_and_raw_store.py:482:    run_migrations(isolated_test_database_url)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:483:    head_revision = current_migration_revision(isolated_test_database_url)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:485:    run_migrations(isolated_test_database_url)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:486:    assert current_migration_revision(isolated_test_database_url) == head_revision
+backend/tests/integration\test_t05_persistence_and_raw_store.py:494:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:495:        connection.execute(
+backend/tests/integration\test_t05_persistence_and_raw_store.py:511:        attempt_id = record_fetch_attempt(connection, source_id, now, "no_result", None)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:512:        row = connection.execute(
+backend/tests/integration\test_t05_persistence_and_raw_store.py:524:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:525:        first = bump_scope_epoch(connection, scope_key, now)
+backend/tests/integration\test_t05_persistence_and_raw_store.py:526:        second = bump_scope_epoch(connection, scope_key, now)
+"""T03-C01–C06：真实隔离服务验收；缺资源非通过，不触碰常规开发项目。"""
+
+from __future__ import annotations
+
+import json
+import os
+import socket
+import time
+import urllib.request
+from urllib.parse import unquote, urlsplit
+
+import pytest
+from scripts.dev import TestEnvironmentError as IsolationError
+from scripts.dev import require_test_service_url, run_compose_services
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
+
+from ai_intel.infrastructure.settings import (
+    ConfigurationError,
+    describe_dependency_readiness,
+    load_application_settings,
+)
+
+pytestmark = pytest.mark.real_services
+
+
+def run_compose(*arguments: str):
+    """仅运行与隔离 DSN/run_id 一致的专用 Compose 项目。"""
+    try:
+        completed = run_compose_services(*arguments, test_project=True)
+    except (IsolationError, OSError) as unavailable:
+        message = (
+            str(unavailable)
+            if isinstance(unavailable, IsolationError)
+            else type(unavailable).__name__
+        )
+        raise pytest.UsageError(f"blocked: isolated Compose unavailable: {message}") from None
+    assert completed.returncode == 0, "isolated Compose command failed"
+    return completed
+
+
+def _require_running_test_compose(database_url: str) -> None:
+    """生命周期测试先证明目标由本项目 Compose 管理，不操作裸 Docker 实例。"""
+    probe = run_compose("ps", "--format", "json")
+    rows = (
+        json.loads(probe.stdout)
+        if probe.stdout.strip().startswith("[")
+        else [json.loads(line) for line in probe.stdout.splitlines() if line.strip()]
+    )
+    assert any(
+        row.get("Service") == "postgres" and row.get("State") == "running" for row in rows
+    ), "blocked: lifecycle requires its own running Compose PostgreSQL"
+    configuration = json.loads(run_compose("config", "--format", "json").stdout)
+    assert configuration["name"] == os.environ["DIANZI_TEST_COMPOSE_PROJECT"]
+    configured_database = configuration["services"]["postgres"]["environment"]["POSTGRES_DB"]
+    assert configured_database == urlsplit(database_url).path.removeprefix("/")
+
+
+def _wait_for_database(database_url: str) -> None:
+    engine = create_engine(database_url, connect_args={"connect_timeout": 2})
+    deadline = time.monotonic() + 30
+    try:
+        while True:
+            try:
+                with engine.connect() as connection:
+                    assert connection.execute(text("SELECT 1")).scalar_one() == 1
+                return
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise
+            except SQLAlchemyError as not_ready:
+                if time.monotonic() >= deadline:
+                    raise AssertionError("isolated PostgreSQL did not become ready") from not_ready
+            time.sleep(0.25)
+    finally:
+        engine.dispose()
+
+
+def _probe_authenticated_redis() -> None:
+    redis_url = require_test_service_url("TEST_REDIS_URL", "redis", 6379)
+    parsed = urlsplit(redis_url)
+    with socket.create_connection(
+        (parsed.hostname or "", parsed.port or 0), timeout=5
+    ) as connection:
+        connection.settimeout(5)
+        with connection.makefile("rb") as response:
+            if parsed.password:
+                password = unquote(parsed.password).encode()
+                connection.sendall(
+                    b"*2\r\n$4\r\nAUTH\r\n$"
+                    + str(len(password)).encode()
+                    + b"\r\n"
+                    + password
+                    + b"\r\n"
+                )
+                assert response.readline(1024) == b"+OK\r\n", "isolated Redis authentication failed"
+            connection.sendall(b"*1\r\n$4\r\nPING\r\n")
+            assert response.readline(1024) == b"+PONG\r\n"
+
+
+def test_dependencies_report_health_and_accept_application_queries(
+    isolated_test_database_url,
+) -> None:
+    """T03-C01：隔离项目健康、应用侧 PG/Redis/OpenSearch 实际响应。"""
+    running = run_compose("ps", "--format", "json")
+    rows = (
+        json.loads(running.stdout)
+        if running.stdout.strip().startswith("[")
+        else [json.loads(line) for line in running.stdout.splitlines() if line.strip()]
+    )
+    assert {row["Service"] for row in rows if row.get("Health") == "healthy"} >= {
+        "postgres",
+        "redis",
+        "opensearch",
+    }
+    _wait_for_database(isolated_test_database_url)
+    _probe_authenticated_redis()
+    search_url = require_test_service_url("TEST_OPENSEARCH_URL", "http", 9200)
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(search_url.rstrip("/") + "/_cluster/health", timeout=10) as search_response:
+        assert search_response.status == 200
+        assert json.loads(search_response.read(65536))["status"] in {"green", "yellow"}
+
+
+def test_persisted_row_survives_container_restart(isolated_test_database_url) -> None:
+    """T03-C02：仅重启专用 test Compose PG，持久数据仍可读。"""
+    _require_running_test_compose(isolated_test_database_url)
+    engine = create_engine(isolated_test_database_url, connect_args={"connect_timeout": 5})
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "CREATE TABLE IF NOT EXISTS t03_persistence_probe "
+                    "(id int PRIMARY KEY, note text)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO t03_persistence_probe VALUES (1, 'survives-restart') "
+                    "ON CONFLICT DO NOTHING"
+                )
+            )
+        run_compose("restart", "postgres")
+        engine.dispose()
+        _wait_for_database(isolated_test_database_url)
+        with engine.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT note FROM t03_persistence_probe WHERE id = 1")
+                ).scalar_one()
+                == "survives-restart"
+            )
+    finally:
+        engine.dispose()
+
+
+def test_search_dependency_absent_is_reported_as_degraded_not_ready() -> None:
+    """T03-C03：搜索未配置的语义明确降级，不算实际健康。"""
+    settings = load_application_settings(
+        app_env="development",
+        data_mode="fixture",
+        database_url="postgresql://user:pass@127.0.0.1:5432/db",
+        redis_url="redis://127.0.0.1:6379/0",
+        opensearch_url=None,
+    )
+    readiness = describe_dependency_readiness(settings)
+    assert readiness["search"] == "degraded_search_not_configured"
+    assert readiness["database"] == "configured"
+    assert "ready" not in readiness.values()
+
+
+def test_production_rejects_fixture_data_mode() -> None:
+    """T03-C04：production fixture 被拒绝。"""
+    with pytest.raises(ConfigurationError):
+        load_application_settings(
+            app_env="production",
+            data_mode="fixture",
+            database_url="postgresql://user:strong-secret@127.0.0.1:5432/db",
+        )
+
+
+def test_production_rejects_placeholder_secret() -> None:
+    """T03-C04：production 默认开发秘密被拒绝。"""
+    with pytest.raises(ConfigurationError):
+        load_application_settings(
+            app_env="production",
+            data_mode="live",
+            database_url="postgresql://ai_intel:dev-only-not-a-secret@127.0.0.1:5432/db",
+        )
+
+
+def test_stop_services_preserves_volumes_and_user_data(isolated_test_database_url) -> None:
+    """T03-C06：专用 Compose down/up 不删除卷，真实测试行保留。"""
+    _require_running_test_compose(isolated_test_database_url)
+    engine = create_engine(isolated_test_database_url, connect_args={"connect_timeout": 5})
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text("CREATE TABLE IF NOT EXISTS t03_volume_probe (id int PRIMARY KEY, note text)")
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO t03_volume_probe VALUES (1, 'survives-down-up') "
+                    "ON CONFLICT DO NOTHING"
+                )
+            )
+        before = run_compose("config", "--format", "json")
+        configuration = json.loads(before.stdout)
+        assert configuration["name"] == os.environ["DIANZI_TEST_COMPOSE_PROJECT"]
+        assert configuration.get("volumes"), "test PostgreSQL must use a persistent volume"
+        run_compose("down")
+        run_compose("up", "-d", "--wait", "--wait-timeout", "90")
+        engine.dispose()
+        _wait_for_database(isolated_test_database_url)
+        with engine.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT note FROM t03_volume_probe WHERE id = 1")
+                ).scalar_one()
+                == "survives-down-up"
+            )
+    finally:
+        engine.dispose()
+"""应用配置分层: APP_ENV 与 DATA_MODE 分离, 秘密引用与非秘密配置分离。
+
+职责: 加载并校验运行配置; 缺必需项给出可定位错误; production 拒绝 fixture 数据模式
+与默认开发秘密, 避免开发配置静默进入生产。
+"""
+
+from __future__ import annotations
+
+from typing import Literal
+from urllib.parse import urlsplit
+
+from pydantic import Field, SecretStr, ValidationError, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings.exceptions import SettingsError
+
+DEVELOPMENT_SECRET_PLACEHOLDERS = frozenset(
+    {
+        "dev-only-not-a-secret",
+        "changeme",
+        "password",
+    }
+)
+
+AppEnvironment = Literal["development", "test", "staging", "production"]
+DataMode = Literal["fixture", "live"]
+
+
+class ConfigurationError(ValueError):
+    """配置错误: 消息必须指出具体字段与原因, 不吞掉原始校验失败。"""
+
+
+class ApplicationSettings(BaseSettings):
+    """运行配置: 非秘密项直接读取, 秘密项以 SecretStr 承载且只存引用。"""
+
+    model_config = SettingsConfigDict(env_file=None, extra="ignore", hide_input_in_errors=True)
+
+    app_env: AppEnvironment = Field(default="development")
+    data_mode: DataMode = Field(default="live")
+    database_url: SecretStr | None = None
+    redis_url: SecretStr | None = None
+    opensearch_url: str | None = None
+    auth_secret_ref: SecretStr | None = None
+    allowed_origins: tuple[str, ...] = ("http://localhost:5173", "http://127.0.0.1:25173")
+    dependency_timeout_seconds: float = Field(default=3.0, gt=0, le=10)
+    raw_content_directory: str = "var/raw"
+
+    @model_validator(mode="after")
+    def reject_unsafe_allowed_origins(self) -> ApplicationSettings:
+        """凭据跨域只允许精确Origin；不接受通配、路径或用户信息。"""
+        if not self.allowed_origins:
+            raise ConfigurationError("ALLOWED_ORIGINS must contain at least one exact origin")
+        for origin in self.allowed_origins:
+            parsed = urlsplit(origin)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+                or "*" in origin
+            ):
+                raise ConfigurationError("ALLOWED_ORIGINS requires exact http(s) origins")
+            if self.app_env == "production" and parsed.scheme != "https":
+                raise ConfigurationError("ALLOWED_ORIGINS requires HTTPS in production")
+        return self
+
+    @model_validator(mode="after")
+    def production_must_not_use_fixture_or_placeholder_secrets(self) -> ApplicationSettings:
+        """production 拒绝 fixture 数据模式与默认开发秘密; 违规必须显式报错。"""
+        if self.app_env != "production":
+            return self
+        problems: list[str] = []
+        if self.data_mode == "fixture":
+            problems.append("DATA_MODE=fixture is not allowed when APP_ENV=production")
+        database_secret = self.database_url.get_secret_value() if self.database_url else ""
+        for placeholder in DEVELOPMENT_SECRET_PLACEHOLDERS:
+            if placeholder in database_secret:
+                problems.append(
+                    "DATABASE_URL contains a development placeholder secret, "
+                    "which is not allowed when APP_ENV=production"
+                )
+                break
+        if problems:
+            raise ConfigurationError("; ".join(problems))
+        return self
+
+
+def load_application_settings(**overrides: object) -> ApplicationSettings:
+    """构造并校验配置; 缺必需项或组合违规时抛出 ConfigurationError。"""
+    try:
+        return ApplicationSettings.model_validate(overrides)
+    except ValidationError as validation_error:
+        reasons: list[str] = []
+        for error in validation_error.errors(include_input=False, include_url=False):
+            cause = error.get("ctx", {}).get("error")
+            if isinstance(cause, ConfigurationError):
+                reasons.append(str(cause))
+            else:
+                field = error["loc"][0] if error["loc"] else "configuration"
+                reasons.append(f"invalid setting: {field}")
+        raise ConfigurationError("; ".join(reasons)) from None
+    except SettingsError:
+        raise ConfigurationError("invalid environment settings; check field types") from None
+
+
+def describe_dependency_readiness(settings: ApplicationSettings) -> dict[str, str]:
+    """按配置声明依赖就绪状态; 未配置的搜索依赖如实标为降级而非就绪。"""
+    readiness = {
+        "database": "configured" if settings.database_url else "not_configured",
+        "cache": "configured" if settings.redis_url else "not_configured",
+        "search": "configured" if settings.opensearch_url else "degraded_search_not_configured",
+    }
+    return readiness

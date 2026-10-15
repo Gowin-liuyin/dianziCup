@@ -1,0 +1,43 @@
+param(
+    [Parameter(Mandatory = $true)][string]$Id,
+    [Parameter(Mandatory = $true)][string]$Cwd,
+    [Parameter(Mandatory = $true)][string]$Executable,
+    [string[]]$CommandArguments = @()
+)
+
+$ErrorActionPreference = 'Continue'
+$PSNativeCommandUseErrorActionPreference = $false
+$artifactRoot = Split-Path -Parent $PSCommandPath
+$runStartedAt = [DateTimeOffset]::Now
+$runWatch = [System.Diagnostics.Stopwatch]::StartNew()
+$runLogPath = Join-Path $artifactRoot ($Id + '.log')
+Push-Location -LiteralPath $Cwd
+try {
+    & $Executable @CommandArguments *> $runLogPath
+    $commandExitCode = $LASTEXITCODE
+    if ($null -eq $commandExitCode) { $commandExitCode = 0 }
+} catch {
+    $_ | Out-String | Add-Content -LiteralPath $runLogPath
+    $commandExitCode = 1
+} finally {
+    Pop-Location
+}
+$runWatch.Stop()
+$runRecord = [ordered]@{
+    id = $Id
+    candidate_sha = 'd30eeab1d723080decea5f64a992b909a0d834c2'
+    baseline_sha = 'fd4f1d42e1ad2e39ff7c80897fd50511c3faf299'
+    started_at = $runStartedAt.ToString('yyyy-MM-ddTHH:mm:sszzz')
+    finished_at = [DateTimeOffset]::Now.ToString('yyyy-MM-ddTHH:mm:sszzz')
+    wall_seconds = [Math]::Round($runWatch.Elapsed.TotalSeconds, 3)
+    cwd = $Cwd
+    argv = @($Executable) + $CommandArguments
+    exit_code = $commandExitCode
+    log = $runLogPath
+}
+$runRecord | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $artifactRoot ($Id + '.json')) -Encoding utf8
+$runRecord | ConvertTo-Json -Depth 5
+Get-Content -LiteralPath $runLogPath -Tail 12
+exit $commandExitCode
+
+

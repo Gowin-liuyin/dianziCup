@@ -1,0 +1,102 @@
+reports/tasks\R01-infra.md
+commit eff45e5f933a002d429ded7557dc29fbf48dd729
+Author: Gowin-liuyin <yinhaoran0808@outlook.com>
+Date:   Thu Oct 15 01:41:10 2026 +0800
+
+    docs(R01): record cache ownership fix and two cold-start validations
+
+ .../recovery_r01_infra_fix_20261015/cbm_infra.json |  33 ++++
+ .../cbm_infra.stderr.log                           |   0
+ .../cbm_infra.stdout.log                           |   1 +
+ .../recovery_r01_infra_fix_20261015/cold_stop.json |  45 ++++++
+ .../cold_stop.stderr.log                           |  28 ++++
+ .../cold_stop.stdout.log                           |   0
+ .../diff_source.json                               |  24 +++
+ .../diff_source.stderr.log                         |   0
+ .../diff_source.stdout.log                         |   0
+ .../down_before_first.json                         |  45 ++++++
+ .../down_before_first.stderr.log                   |  28 ++++
+ .../down_before_first.stdout.log                   |   0
+ .../first_ready_containers.json                    |  47 ++++++
+ .../first_ready_containers.stderr.log              |   0
+ .../first_ready_containers.stdout.log              |   7 +
+ .../first_ready_recheck_containers.json            |  47 ++++++
+ .../first_ready_recheck_containers.stderr.log      |   0
+ .../first_ready_recheck_containers.stdout.log      |   7 +
+ .../first_ready_recheck_http_pg.json               |  20 +++
+ .../first_ready_recheck_http_pg.stderr.log         |   0
+ .../first_ready_recheck_http_pg.stdout.log         |   3 +
+ .../first_ready_recheck_mounts.json                |  50 ++++++
+ .../first_ready_recheck_mounts.stderr.log          |   0
+ .../first_ready_recheck_mounts.stdout.log          |   3 +
+ .../first_start.json                               |  52 +++++++
+ .../first_start.stderr.log                         |  54 +++++++
+ .../first_start.stdout.log                         |   0
+ .../recovery_r01_infra_fix_20261015/format.json    |  23 +++
+ .../format.stderr.log                              |   0
+ .../format.stdout.log                              |   1 +
+ .../frozen_configuration.json                      |  29 ++++
+ .../frozen_configuration.stderr.log                |   0
+ .../frozen_configuration.stdout.log                |  31 ++++
+ .../frozen_configuration.xml                       |   1 +
+ .../frozen_frontend_image.json                     |  32 ++++
+ .../frozen_frontend_image.stderr.log               |   0
+ .../frozen_frontend_image.stdout.log               |   1 +
+ .../recovery_r01_infra_fix_20261015/green.json     |  29 ++++
+ .../green.stderr.log                               |   0
+ .../green.stdout.log                               |  31 ++++
+ .../runs/recovery_r01_infra_fix_20261015/green.xml |   1 +
+ .../initial_validation_error.log                   |   6 +
+ .../recovery_r01_infra_fix_20261015/labels.json    |  37 +++++
+ .../labels.stderr.log                              |   0
+ .../labels.stdout.log                              |   7 +
+ .../official_node_user.json                        |  41 +++++
+ .../official_node_user.stderr.log                  |   0
+ .../official_node_user.stdout.log                  |   1 +
+ .../runs/recovery_r01_infra_fix_20261015/red.json  |  29 ++++
+ .../recovery_r01_infra_fix_20261015/red.stderr.log |   0
+ .../recovery_r01_infra_fix_20261015/red.stdout.log | 105 +++++++++++++
+ .../runs/recovery_r01_infra_fix_20261015/red.xml   |  61 ++++++++
+ .../runs/recovery_r01_infra_fix_20261015/ruff.json |  22 +++
+ .../ruff.stderr.log                                |   0
+ .../ruff.stdout.log                                |   1 +
+ .../run_fix_checks.py                              | 169 +++++++++++++++++++++
+ .../second_logs.json                               |  52 +++++++
+ .../second_logs.stderr.log                         |   0
+ .../second_logs.stdout.log                         |  39 +++++
+ .../second_ready_containers.json                   |  47 ++++++
+ .../second_ready_containers.stderr.log             |   0
+ .../second_ready_containers.stdout.log             |   7 +
+ .../second_ready_http_pg.json                      |  20 +++
+ .../second_ready_http_pg.stderr.log                |   0
+ .../second_ready_http_pg.stdout.log                |   3 +
+ .../second_ready_mounts.json                       |  50 ++++++
+ .../second_ready_mounts.stderr.log                 |   0
+ .../second_ready_mounts.stdout.log                 |   3 +
+ .../second_start.json                              |  52 +++++++
+ .../second_start.stderr.log                        |  54 +++++++
+ .../second_start.stdout.log                        |   0
+ .../secret_scan.json                               |   6 +
+ reports/tasks/R01-infra.md                         |  29 +++-
+ 73 files changed, 1512 insertions(+), 2 deletions(-)
+include:
+  - path: [compose.yaml, test.override.yaml]
+    env_file: []
+include:
+  - path: [compose.yaml, test.override.yaml, test.host.override.yaml]
+    env_file: []
+  worker:
+    network_mode: host
+    networks: !reset []
+    environment: *host-application-environment
+  scheduler:
+    network_mode: host
+    networks: !reset []
+    environment: *host-application-environment
+  frontend:
+    network_mode: host
+    networks: !reset []
+    ports: !reset []
+    command: [npm, run, dev, --, --host, 127.0.0.1, --port, "${FRONTEND_PORT:?Set an exclusive frontend port}", --strictPort]
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:${FRONTEND_PORT:?Set an exclusive frontend port}/").then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))']

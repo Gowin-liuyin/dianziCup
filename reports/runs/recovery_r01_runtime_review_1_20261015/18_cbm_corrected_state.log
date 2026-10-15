@@ -1,0 +1,106 @@
+{"node_labels":[{"label":"Class","count":131},{"label":"Function","count":106},{"label":"Variable","count":100},{"label":"Method","count":80},{"label":"File","count":50},{"label":"Module","count":50},{"label":"Folder","count":11},{"label":"Decorator","count":6},{"label":"Route","count":3},{"label":"Branch","count":1},{"label":"Project","count":1}],"edge_types":[{"type":"DEFINES","count":1055},{"type":"CALLS","count":290},{"type":"USAGE","count":252},{"type":"WRITES","count":106},{"type":"DEFINES_METHOD","count":75},{"type":"IMPORTS","count":64},{"type":"RAISES","count":60},{"type":"DECORATES","count":58},{"type":"CONTAINS_FILE","count":50},{"type":"CONTAINS_FOLDER","count":11},{"type":"SEMANTICALLY_RELATED","count":10},{"type":"THROWS","count":9},{"type":"INHERITS","count":5},{"type":"ASYNC_CALLS","count":1},{"type":"HAS_BRANCH","count":1},{"type":"SIMILAR_TO","count":1}],"total":27,"returned":27,"has_more":false,"adr_present":false}
+rg: regex parse error:
+    (?:\)
+    ^
+error: unclosed group
+# R01 · 运行入口、部署与质量检查
+
+首次创建时间：2026-10-14T22:07:43+08:00；本次写作开始：2026-10-15T00:23:38+08:00；本次写作结束：2026-10-15T00:28:35+08:00。
+任务状态：in_progress；实现状态：partial（R00已独立核验生效，当前API/质量/前端并行实施）。
+各层验证：unit/contract/security/frontend/e2e/live/manual=not_run；integration=not_run。
+工作分支：codex/full-delivery-recovery。
+输入基线：15d0272bd2a9e25d19397d8147e9c3cbe6016f9b；最新认证修复基线8b3927d；当前运行入口改动尚未冻结。已审代码SHA：4a17ca7（独立needs_changes，不是通过）。
+
+## 当前证据截止与未完成范围
+
+2026-10-15T00:23:38+08:00：本包仍in_progress/partial，G-A没有阶段验收或push。下文初稿记录保留其历史语境；最新事实如下。
+
+- R00已独立核验生效，不再等待授权。默认/v1认证与实际PG目录、健康真实探测已装；/api/v1兼容别名解决CR-R04中路径文字差异，OpenAPI以05合同/v1为主，原/auth与/health保留。
+- 新行为review固定4a17ca7，报告G-A-R01-behavior-review-1.md复现6项：8并发登录绕过5次窗口；非ASCII CSRF抛500；双HTTP组合身份/CSRF；audit3漏洞；历史fixture误报；404/405错误体不符合Problem。不是未证实猜测。8b3927修前3与路由问题，前端0f4498采用一次/me快照。新冻结行为候选fd4f1d4在独立定向复核，尚未接受。
+- 主控74自动回归通过（unit及定向security/contract，覆盖率69.74%，runtime_unit.command.json/XML/log），保留60%门槛。原扫描仍因保留历史fixture日志失败；严格匹配分类待独立核对。没有删除失败或原始证据。静态检查当前50源通过；源码增加后需要重跑并冻结。
+- 真PG25432/Redis26379/Search29200及各WT独立资源已验证；00:23:04根隔离库实际迁移到0005_runtime_observations并创建测试analyst。bootstrap_runtime_receipt.json记录真实库名、用户与端口，只属应用集成准备，不是完整R02会话持久化或worker运行证明。
+- 新运行入口复用Celery5.6.3+Redis6.4.0，beat复用PersistentScheduler，JSON单队列并发1/限时30秒、结果不存；PG只保存最近worker/scheduler实际执行观测，45秒过期不能ready。导入不连接PG，缺PG/Redis立即拒绝。新表0005为增量观测，不修改事实/任务。实际worker/beat尚未启动，不能记通过。
+- Celery无py.typed（真实本机确认）；mypy仅celery/其子模块ignore_missing_imports处理第三方未提供的声明，50源业务检查仍开启，未用Any/cast/ignore掩盖业务合同。此局部配置由独立运行批次review核对。SQL查询和锁等待按依赖超时受控，避免connect_timeout被误当完整查询超时。
+- 管理CLI原来str(IntegrityError)会回显SQL参数/密码哈希；现使用结构化UniqueViolation分类和固定错误，两个合成异常负例通过。真实重复账号红action仍待运行，绝不读取/打印测试或模型密码。
+- 新Vitest候选497740a已独立技术通过，原30ID/门槛未变、audit3→0；CR-R10 proposed等待新明确授权，未改主仓依赖。quality c918279修GBK，旧候选UTF8可运行不等于主仓质量已接。
+- infra独立WT正在配置/运行专用Compose项目与CI；当前不以其他WT裸容器替代Compose生命周期。真实e2e/live/manual均未完成。会话/审计/事实内存与jobs重试/过期缺陷仍由R02/R03修，不能拿R01登录测试接受整T06/T07。
+
+代码编写、测试、文档写作与采集观察窗口分别记录；尚无持续采集窗口或产品模型调用时效指标。
+
+## 1. 用户问题与本包输入输出
+
+R01覆盖T02/T03/T06/T40早期切片，不代替R02会话持久化和R20安全增强。输入为环境、锁文件和预创建账号；输出为真实默认API、认证入口、worker/scheduler、前端登录和准确健康状态，以及安全隔离的检查入口。原任务全部C条件保留。
+
+## 2. 已复现问题与必要修改
+
+默认应用仅两个health路由，未注入认证时/auth/me返回404。退出登录未验证CSRF/Origin，已登录但缺二者仍200。dev.py七个scope仅三个实现；旧集成/合同测试在import探Docker/5432常规开发库，部分测试会对该库downgrade或停开发项目。修复需同时触及全部调用方，不直接运行这些危险路径。
+
+复用现有FastAPI、SQLAlchemy、Argon2、React/Vite和质量工具。为已批准的真实worker/Redis使用Celery成熟依赖，为浏览器流程使用Playwright；新增依赖由主控统一锁定。不会用内存会话测试证明R02持久化。
+
+## 3. 冻结接口与文件所有权
+
+主控：app/auth_routes/settings/数据库配置边界、worker入口、迁移、锁文件、infra、CI与集成文档。quality Agent：dev.py、测试隔离conftest及明确授权的旧测试和新质量合同；resource Agent：仓库外专用运行资源及自身证据。前端工作包另指定唯一所有人。
+
+HTTP主路径/v1，保留现有/auth和/health兼容路由。默认应用总注册认证端点，缺必需依赖返回503或未认证401，不能404消失；只有实际探测数据库/缓存/搜索才能ready。认证上下文返回user_id、tenant_id、role、permissions、permission_version、data_mode；绝不返回秘密。登录严格username/password schema，错误不得回显password；写请求验证会话绑定CSRF及Origin。错误体为RFC9457并保留error兼容扩展。业务启动不自动迁移或创建默认账户；迁移/管理CLI显式执行。
+
+检查环境：DIANZI_TEST_RUN_ID仅小写字母数字/下划线，TEST_DATABASE_URL必须PG、loopback、test_dianzi_<run_id>专用库、test_用户和隔离端口；5432仅精确容器隔离例外，不因CI=true放行。集成测试不在import联网，不用skip包装缺资源。
+
+## 4. 资源与安全边界
+
+原Docker Desktop旧socket障碍未解决。等价Ubuntu专用daemon已实际ping与官方hello exit0，8GiB/2CPU/2048pids硬限额，截止2026-10-17T21:49:15+08:00。资源包正准备PG16+pgvector、Redis7，127.0.0.1:25432/26379，专用test库/卷和随机秘密仓库外保存。数据库应用读写/重启、OpenSearch/向量/图均尚未运行，不能把hello算产品集成。
+
+## 5. 实际验证
+
+R01业务检查尚未运行。资源原始探针见[诊断报告](../reviews/recovery/G-A-R01-socket-root-cause.md)，其业务测试not_run。后续每次执行保存cwd、真实起止、exit、count和配置版本，fixture层与live分别记录。
+
+## 6. 合同差异
+
+暂无超出已批准CR-R01–09的新增差异。R01在R00生效后实施；源/模型、持久化和正式评测仍按对应R卡验收。
+
+## 7. 评分与场景
+
+当前仅工程故障证据，不宣称E1/R2或U01整项通过。登录浏览器链、默认真实装配和隔离运行证明尚待实施。
+
+## 8. 审查与下一步
+
+R00定向复核进行中。R01实现冻结后必须新建未参与实现的reviewer，阶段结束另新G-A reviewer。实现者只能awaiting_review；没有外部模型阻塞G-A工程实施的依据。
+
+## 9. 修订记录
+
+2026-10-14T22:07:43+08:00：/root 首次落盘R01可审查范围、真实问题、冻结HTTP/test输入与文件所有权；仅准备，业务尚未修改。
+2026-10-14T22:59:26+08:00: API早期工作包5个安全fixture原代码全失败（api_red.json/log），修复后连同原认证与URL配置回归25/25通过；mypy48源0、Ruff52文件0。仅fixture安全/合同，不计PG持久化、运行入口或整R01通过。共享迁移ConfigParser百分号错误已通过两合成URL配置例修复；不实际执行downgrade。安全扫描误把PG负例脚本布尔比较中的公开错误文案当密码，以AST只辨明该公开布尔比较，直接字面量凭据仍拒绝，三回归保留。当前npm真实audit3项（1moderate2critical），来源已核对官方advisory，Vitest主版本候选需另正式变更与授权，尚未替换主版本。
+- [round 226] RV-T23 复核中（第 3 轮）；T23 awaiting_review。
+- [round 227] RV-T23 已催办（第 4 轮）。
+- [round 228] RV-T23 复核中（第 5 轮）；T23 awaiting_review。
+- [round 229] RV-T23 兜底中断，RV-T23b 超微终核已派发。
+- [round 230] RV-T23b 超微终核中（第 2 轮）；T23 awaiting_review。
+- [round 230b] T23 accepted（RV-T23b）；G2 14/14 accepted；G2 阶段检查已派发。
+- [round 231] G2-GATE 阶段检查中（第 2 轮）；G2 14/14 accepted。
+- [round 232] G2-GATE 检查中（第 3 轮）。
+- [round 233] G2-GATE 已催办（第 4 轮）。
+- [round 234] G2-GATE 检查中（第 5 轮）。
+- [round 235] G2-GATE 兜底中断，G2-GATEb 超微检查已派发。
+- [round 235b] G2-GATE=pass（附条件）；G2.md 已落；下一步 G1 结转闭合批次（6 项）→ G3。
+- [round 236] G1 结转闭合批次已派发修复者（6 项最小修复）；完成后 G3 开工。
+- [round 237] G1 闭合批次修复中（第 2 轮）。
+- [round 238] G1 闭合批次修复中（第 3 轮）。
+- [round 239] G1 闭合批次已催办（第 4 轮）。
+- [round 240] G1 闭合批次修复中（第 5 轮）；240/256 轮；G3 待开工。
+- [round 241] 闭合批次修复者无产出已中断；G1-CARRYOVER-b（逐项即回）已重派。
+- [round 242] G1-CARRYOVER-b 逐项推进中（第 2 轮）。
+- [round 243] G1-CARRYOVER-b 推进中（第 3 轮）。
+- [round 244] G1-CARRYOVER-b 已催办（第 4 轮）。
+- [round 245] G1-CARRYOVER-b 第 5 轮无产出；下一轮兜底处置。
+- [round 246] ④ 路径冲突裁决：授权 scripts/admin_user.py 仅两分支修改；① 前提修正（not_implemented 为 dev.py scope 语义）；修复者已带裁决续跑。
+- [round 247] 闭合修复者带裁决续跑中。
+- [round 248] 闭合修复者执行中（带裁决）。
+- [round 249] 闭合修复者执行中。
+- [round 250b] G1 闭合批次终态：①④ closed、③部分、②⑤⑥未闭（报告 reports/tasks/G1_carryover_closure.md）；G2-GATE 附条件未完全满足如实登记。
+- [round 251] G1-CLOSE-c（②⑤⑥）已派发；预算余 5 轮。
+- [round 252] G1-CLOSE-c 执行中；预算余 4 轮；恢复点见 reports/tasks/G1_carryover_closure.md。
+- [round 253] 预算余 3 轮；G1-CLOSE-c（11a75684）仍在执行；恢复点: reports/tasks/G1_carryover_closure.md + reports/stages/G2.md + progress/task_state.json；下一动作: 收 ②⑤⑥ 终态并更新闭合报告；Goal 保持 active（T24—T59 未完）。
+- [round 254b] === 最终恢复点（goal rounds 254/256）=== Goal 未完成、保持 active。已完成: G0/G1 验收、G2 14/14 accepted（G2-GATE=pass 附条件）、G1 闭合 ①④ closed+③部分（②⑤⑥ 未闭, G1-CLOSE-c subagent 11a75684 在途未落地）；全绿基线 unit+contract+integration 156/156、mypy 0（46 文件）、cov 86.88%。恢复后第一步: 收 G1-CLOSE-c 产出（若无则按 reports/tasks/G1_carryover_closure.md ②⑤⑥ 精确步骤由主控直接补）, 然后开 G3-T40（问答前置）。未完: G3 T40-42/T30+ 问答主体、G4、G5、G6 T53-59 终审计、真实验收全部 not_run、live 全线 blocked、20 合成案例人工复核、CR-001 追认。禁止动作: 不得把离线放行当最终验收; 不生成指标数字; D2/X1/R2 不提前判过。
+- [round 256] === goal rounds 耗尽（条件 E）=== 恢复点完备（见 round 254b 段）；G1-CLOSE-c 状态: closure report 在；Goal 不标完成、保持 active；恢复后第一步: 收 ②⑤⑥ → G3-T40。
+- [round 256b] G1-CLOSE-c 终态送达: ②⑤⑥ 全 closed（158 passed、cov 89.99%、mypy 0、ruff 0, exit 0）; G1 结转 6 项全部闭合（①前提修正/②留痕/③部分-6DTO在册/④两分支/⑤retry_wait/⑥重定向判别）, G2-GATE 附条件达成; 新增 tests/contract/test_t07_jobs_outbox.py + test_t08_network_redirects.py; Goal 保持 active, 恢复后第一步 G3-T40。
+- [resume r1] 恢复核对: HEAD 097b528、工作树干净、T40 卡已读；并行派发 T40-A 合同核对 + T40-B 前端准备；下一步 按合同实现 T40 认证路径（T40-C01—C06）。
+- [resume r2] T40-B 报告收讫（reports/reviews/T40_frontend_prep.md）: 前端极简从零建/权威命令 npm run {lint,typecheck,test,build}/tsconfig include 缺 tests/后端 auth HTTP 路由未挂载（T06 仅领域服务）→ 决定: 按 resume 指令'最小前置修复'挂 auth/health HTTP 路由（待 T40-A 合同定形），T40-C01/C05 在路由就绪前 fixture 标 live=blocked 不冒充。

@@ -1,0 +1,274 @@
+"""测试资源仅在 fixture 执行时连接；导入及 collect-only 不访问外部资源。"""
+
+from __future__ import annotations
+
+import os
+import sys
+from collections.abc import Generator, Iterator
+from pathlib import Path
+from urllib.parse import unquote, urlsplit
+
+import pytest
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError
+
+from ai_intel.infrastructure.database import run_migrations
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def redact_test_connection_output(output: str) -> str:
+    """测试断言失败也不得把 fixture 参数的真实连接串/密码写入终端或 JUnit。"""
+    for name in ("TEST_DATABASE_URL", "TEST_REDIS_URL"):
+        value = os.environ.get(name, "")
+        if not value:
+            continue
+        output = output.replace(value, "[redacted test connection]")
+        try:
+            password = unquote(urlsplit(value).password or "")
+        except ValueError:
+            continue
+        if password:
+            output = output.replace(password, "[redacted test credential]")
+    return output
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[None]
+) -> Generator[None, pytest.TestReport, pytest.TestReport]:
+    """仅脱敏报告内容，保留测试 outcome、错误/失败/skip 数量。"""
+    report = yield
+    if report.longrepr is not None:
+        original = report.longreprtext
+        redacted = redact_test_connection_output(original)
+        if redacted != original:
+            report.longrepr = redacted
+    report.sections = [
+        (name, redact_test_connection_output(value)) for name, value in report.sections
+    ]
+    return report
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """注册真实资源标记并使测试共享唯一脚本隔离规则，生产不依赖脚本。"""
+    sys.path.insert(0, str(PROJECT_ROOT))
+    config.addinivalue_line(
+        "markers", "real_pg: requires an explicitly isolated PostgreSQL test database"
+    )
+    config.addinivalue_line(
+        "markers", "real_services: requires an explicitly isolated Compose test project"
+    )
+
+
+@pytest.fixture()
+def isolated_test_database_url() -> str:
+    """缺少隔离资源记错误/blocked，不通过 skip 隐藏缺测。"""
+    from scripts.dev import TestEnvironmentError, require_isolated_test_database
+
+    try:
+        return require_isolated_test_database()
+    except TestEnvironmentError as blocked:
+        raise pytest.UsageError(f"blocked: {blocked}") from None
+
+
+@pytest.fixture()
+def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+    """验证实际库/用户身份后迁移；只访问经隔离规则核准的 PostgreSQL。"""
+    engine = create_engine(
+        isolated_test_database_url,
+        connect_args={
+            "connect_timeout": 5,
+            "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+        },
+    )
+    try:
+        with engine.connect() as connection:
+            database_name, username = connection.execute(
+                text("SELECT current_database(), current_user")
+            ).one()
+            assert database_name == engine.url.database
+            assert username == engine.url.username
+        migration_url = engine.url.update_query_dict(
+            {"connect_timeout": "5", "options": "-c statement_timeout=20000 -c lock_timeout=5000"}
+        ).render_as_string(hide_password=False)
+        run_migrations(migration_url)
+    except OperationalError:
+        engine.dispose()
+        raise pytest.UsageError(
+            "blocked: isolated PostgreSQL connection/migration unavailable"
+        ) from None
+    try:
+        yield engine
+    finally:
+        engine.dispose()
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: backend checks and isolated services
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      COMPOSE_DISABLE_ENV_FILE: "1"
+      DIANZI_TEST_COMPOSE_FILE: infra/compose/compose.test.yaml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install locked backend
+        run: uv sync --locked --project backend
+      - name: Static checks
+        working-directory: backend
+        run: |
+          uv run --locked ruff check . ../scripts/dev.py
+          uv run --locked ruff format --check . ../scripts/dev.py
+          uv run --locked mypy src ../scripts/dev.py
+      - name: Create disposable test configuration
+        run: |
+          python - <<'PY'
+          import json, os, secrets
+          from pathlib import Path
+          run_id = f"r01_ci_{os.environ['GITHUB_RUN_ID']}_{os.environ['GITHUB_RUN_ATTEMPT']}"
+          password = secrets.token_urlsafe(32)
+          redis_password = secrets.token_urlsafe(32)
+          search_password = secrets.token_urlsafe(32) + "aA1!"
+          database = f"test_dianzi_{run_id}"
+          database_url = f"postgresql+psycopg://{database}:{password}@127.0.0.1:25436/{database}"
+          redis_url = f"redis://:{redis_password}@127.0.0.1:26383/0"
+          values = {
+              "DIANZI_TEST_RUN_ID": run_id,
+              "DIANZI_TEST_COMPOSE_PROJECT": f"dianzi-test-{run_id}",
+              "TEST_DATABASE_URL": database_url,
+              "TEST_REDIS_URL": redis_url,
+              "TEST_OPENSEARCH_URL": "http://127.0.0.1:29201",
+              "POSTGRES_DB": database, "POSTGRES_USER": database,
+              "POSTGRES_PASSWORD": password, "POSTGRES_PORT": "25436",
+              "REDIS_PASSWORD": redis_password, "REDIS_PORT": "26383",
+              "OPENSEARCH_INITIAL_ADMIN_PASSWORD": search_password,
+              "OPENSEARCH_PORT": "29201",
+              "TEST_POSTGRES_USER": database, "TEST_POSTGRES_PASSWORD": password,
+              "TEST_POSTGRES_PORT": "25436", "TEST_REDIS_PASSWORD": redis_password,
+              "TEST_REDIS_PORT": "26383", "TEST_OPENSEARCH_PORT": "29201",
+              "COMPOSE_DATABASE_URL": database_url, "COMPOSE_REDIS_URL": redis_url,
+              "COMPOSE_ALLOWED_ORIGINS": json.dumps(["http://127.0.0.1:25201"]),
+              "API_PORT": "28201", "FRONTEND_PORT": "25201",
+              "VITE_API_BASE_URL": "http://127.0.0.1:28201",
+          }
+          for value in (password, redis_password, search_password, database_url, redis_url):
+              print(f"::add-mask::{value}")
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as output:
+              for name, value in values.items():
+                  output.write(f"{name}={value}\n")
+          PY
+      - name: Start isolated PostgreSQL Redis and search
+        run: >-
+          docker compose --project-name "$DIANZI_TEST_COMPOSE_PROJECT"
+          -f "$DIANZI_TEST_COMPOSE_FILE" --profile core --profile search
+          up -d --wait --wait-timeout 180
+      - name: Unit tests with actual test counts
+        run: python scripts/dev.py check --scope unit --timeout-seconds 600
+      - name: Contract tests including real PostgreSQL
+        if: ${{ !cancelled() }}
+        run: python scripts/dev.py check --scope contract --timeout-seconds 600
+      - name: Security tests
+        if: ${{ !cancelled() }}
+        run: python scripts/dev.py check --scope security --timeout-seconds 600
+      - name: Integration tests including Compose lifecycle
+        if: ${{ !cancelled() }}
+        run: python scripts/dev.py check --scope integration --timeout-seconds 600
+      - name: Stop only this test project and preserve volumes
+        if: always()
+        run: |
+          test -n "$DIANZI_TEST_COMPOSE_PROJECT"
+          test "$DIANZI_TEST_COMPOSE_PROJECT" = "dianzi-test-$DIANZI_TEST_RUN_ID"
+          docker compose --project-name "$DIANZI_TEST_COMPOSE_PROJECT" -f "$DIANZI_TEST_COMPOSE_FILE" --profile core --profile search down
+
+  frontend:
+    name: frontend checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm ci
+        working-directory: frontend
+      - name: Lint typecheck tests and build with test counts
+        run: python scripts/dev.py check --scope frontend --timeout-seconds 600
+backend/tests/conftest.py:58:        "markers", "real_pg: requires an explicitly isolated PostgreSQL test database"
+backend/tests/conftest.py:77:def migrated_engine(isolated_test_database_url: str) -> Iterator[Engine]:
+backend/tests/contract/test_t07_jobs_outbox.py:16:pytestmark = pytest.mark.real_pg
+backend/tests/contract/test_t07_jobs_outbox.py:19:def test_transient_failure_parks_in_retry_wait_then_retries_exactly_once(migrated_engine) -> None:
+backend/tests/contract/test_t07_jobs_outbox.py:23:    with migrated_engine.begin() as connection:
+backend/tests/contract/test_t07_jobs_outbox.py:40:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:42:pytestmark = pytest.mark.real_pg
+backend/tests/integration\test_t05_persistence_and_raw_store.py:101:    migrated_engine, tmp_path
+backend/tests/integration\test_t05_persistence_and_raw_store.py:107:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:128:def test_content_a_b_a_keeps_three_revisions_in_order(migrated_engine, tmp_path) -> None:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:133:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:155:    migrated_engine, tmp_path
+backend/tests/integration\test_t05_persistence_and_raw_store.py:160:    with pytest.raises(MissingDocumentError), migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:170:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:182:def test_cleanup_refuses_to_delete_referenced_object(migrated_engine, tmp_path) -> None:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:187:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:203:def test_cleanup_refuses_when_only_document_references_object(migrated_engine, tmp_path) -> None:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:208:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:230:def test_save_revision_scope_mismatch_is_rejected(migrated_engine, tmp_path) -> None:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:235:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:249:def test_tenant_none_evidence_on_public_revision_is_rejected(migrated_engine, tmp_path) -> None:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:254:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:265:def test_quote_invariants_reject_tampered_and_out_of_span(migrated_engine, tmp_path) -> None:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:271:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:333:def test_cross_tenant_evidence_reference_is_rejected(migrated_engine, tmp_path) -> None:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:338:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:366:def test_evidence_attach_success_and_quote_consistency(migrated_engine, tmp_path) -> None:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:372:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:431:    migrated_engine, tmp_path, isolated_test_database_url
+backend/tests/integration\test_t05_persistence_and_raw_store.py:436:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:463:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:479:    migrated_engine, isolated_test_database_url
+backend/tests/integration\test_t05_persistence_and_raw_store.py:481:    """非破坏性迁移复跑保持版本记录；测试入口从不执行 downgrade。"""
+backend/tests/integration\test_t05_persistence_and_raw_store.py:489:def test_fetch_attempt_is_recorded_without_counting_new_events(migrated_engine) -> None:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:494:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:520:def test_scope_epoch_bumps_for_cache_invalidation(migrated_engine) -> None:
+backend/tests/integration\test_t05_persistence_and_raw_store.py:524:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t03_development_services.py:193:    """T03-C06：专用 Compose down/up 不删除卷，真实测试行保留。"""
+backend/tests/integration\test_t03_development_services.py:203:                    "INSERT INTO t03_volume_probe VALUES (1, 'survives-down-up') "
+backend/tests/integration\test_t03_development_services.py:211:        run_compose("down")
+backend/tests/integration\test_t03_development_services.py:220:                == "survives-down-up"
+backend/tests/integration\test_t07_jobs_and_outbox.py:27:pytestmark = pytest.mark.real_pg
+backend/tests/integration\test_t07_jobs_and_outbox.py:30:def test_outbox_survives_queue_outage_and_delivers_after_recovery(migrated_engine) -> None:
+backend/tests/integration\test_t07_jobs_and_outbox.py:33:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t07_jobs_and_outbox.py:37:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t07_jobs_and_outbox.py:48:def test_duplicate_message_yields_single_business_result(migrated_engine) -> None:
+backend/tests/integration\test_t07_jobs_and_outbox.py:52:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t07_jobs_and_outbox.py:66:def test_same_idempotency_key_different_payload_conflicts(migrated_engine) -> None:
+backend/tests/integration\test_t07_jobs_and_outbox.py:70:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t07_jobs_and_outbox.py:84:def test_lost_worker_recovers_after_lease_expiry(migrated_engine) -> None:
+backend/tests/integration\test_t07_jobs_and_outbox.py:87:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t07_jobs_and_outbox.py:93:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t07_jobs_and_outbox.py:100:def test_permanent_failure_does_not_retry_forever(migrated_engine) -> None:
+backend/tests/integration\test_t07_jobs_and_outbox.py:103:    with migrated_engine.begin() as connection:
+backend/tests/integration\test_t07_jobs_and_outbox.py:116:def test_guessing_other_tenant_job_id_returns_404_without_leak(migrated_engine) -> None:
+backend/tests/integration\test_t07_jobs_and_outbox.py:120:    with migrated_engine.begin() as connection:
+f7fdf9149b76f47fa57db6d724df74f7514d507a 7da4b6b8184f8e0dd80b48d2064e6b8a1ca5e193 feat(G-A/R01): run honest checks with isolated test resources
+c71d0db46a6bf092cf32b189ce3fa68a17424757 7a7063352f69ed5b6e9b6fe4c83b29190dcf4cfd fix(G-A/R01): make check output reliable on Windows consoles
+7fe8db0e35cde4bd87836339492cccbd014a8d59 f92a17719b040010036feba7d0fd1c3584b94402 docs(G-A/R01): preserve isolated PostgreSQL and quality verification evidence
+05aa1469f83b9db76c35ab4ed4f7a5eec5ad6c79 d20df858152a7ec50a86cc4b30c68f13109199bf docs(G-A/R01): align task report header with frozen verification
+4fa79ef017d958958e1d61a30bda6c43652e7a73 77fd01d543430945e99e127ae31367d799b394bd checkpoint G-A R01 add bounded Celery runtime and PostgreSQL execution health
+8b3927d7e012ebeeaf0db2afd30e67d6c5d4bbe4 d2d49f8fe11ffa854e97d9d550646ca9350fa8d8 checkpoint G-A R01 bind session identity and reject concurrent auth boundary failures

@@ -1,0 +1,103 @@
+"""Resume the archived project daemon until its original deadline with the original budget."""
+
+import json
+import os
+import selectors
+import signal
+import subprocess
+import time
+from datetime import datetime
+from pathlib import Path
+
+
+CACHE = Path('/tmp/dianzi-docker-static-r01-20261014')
+RUNTIME = CACHE / 'runtime'
+CGROUP = Path('/sys/fs/cgroup/dianzi-r01-20261014')
+MAXIMUM_LOG_BYTES = 10 * 1024 * 1024
+assert os.getuid() == 0 and CACHE.resolve() == CACHE
+prepared = json.loads((RUNTIME / 'recovery-prepared.json').read_text())
+archive = Path(prepared['private_archive'])
+assert archive.parent == CACHE and archive.resolve() == archive
+previous = json.loads((archive / 'lifecycle.json').read_text())
+assert previous['deadline'] == '2026-10-17T21:49:15+08:00'
+assert previous['ended_at'] is None and prepared['previous_stop_time'] == 'unknown'
+assert not Path('/proc/' + str(previous['supervisor_pid'])).exists()
+assert not Path('/proc/' + str(previous['daemon_pid'])).exists()
+assert not (RUNTIME / 'dockerd.pid').exists() and not (RUNTIME / 'docker.sock').exists()
+assert not (CGROUP / 'cgroup.procs').read_text().strip()
+assert not any(child.is_dir() for child in CGROUP.iterdir())
+assert all((CGROUP / key).read_text().strip() == value
+           for key, value in prepared['project_limits'].items())
+(CGROUP / 'cgroup.subtree_control').write_text('+memory +cpu +pids')
+supervisor_group = CGROUP / 'supervisor'
+supervisor_group.mkdir()
+(supervisor_group / 'cgroup.procs').write_text(str(os.getpid()))
+started = datetime.now().astimezone()
+deadline_at = datetime.fromisoformat(previous['deadline'])
+assert deadline_at > started
+command = previous['command']
+assert command[0] == str(CACHE / 'portable/docker/dockerd')
+assert command[command.index('--data-root') + 1] == str(RUNTIME / 'data')
+environment = {'PATH': str(CACHE / 'portable/docker') + ':/usr/sbin:/usr/bin:/sbin:/bin',
+               'LANG': 'C.UTF-8'}
+proxy_keys = ('HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy')
+environment.update({key: os.environ[key] for key in proxy_keys if os.environ.get(key)})
+remaining_log_budget = MAXIMUM_LOG_BYTES - (archive / 'dockerd.log').stat().st_size
+assert remaining_log_budget > 0
+daemon = subprocess.Popen(command, cwd=RUNTIME, env=environment, stdin=subprocess.DEVNULL,
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+(RUNTIME / 'supervisor.pid').write_text(str(os.getpid()))
+lifecycle = {'started_at': started.isoformat(timespec='seconds'), 'deadline': previous['deadline'],
+             'supervisor_pid': os.getpid(), 'daemon_pid': daemon.pid, 'command': command,
+             'limits': previous['limits'], 'socket': str(RUNTIME / 'docker.sock'),
+             'cgroup': str(CGROUP), 'ended_at': None,
+             'proxy_keys_forwarded': [key for key in proxy_keys if key in environment],
+             'boot_id': Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+             'recovery_archive': str(archive), 'previous_stop_time': 'unknown',
+             'previous_lifecycle_sha256': next(item['sha256'] for item in prepared['archive_metadata']
+                                              if item['source']['path'].endswith('/lifecycle.json')),
+             'previous_log_bytes': (archive / 'dockerd.log').stat().st_size,
+             'segment_log_budget_bytes': remaining_log_budget}
+(RUNTIME / 'lifecycle.json').write_text(json.dumps(lifecycle, indent=2))
+stop_reason = None
+
+
+def request_stop(signum: int, frame: object) -> None:
+    """Apply orderly shutdown only to the resumed project daemon process group."""
+    global stop_reason
+    stop_reason = 'supervisor_signal_' + str(signum)
+
+
+signal.signal(signal.SIGTERM, request_stop)
+signal.signal(signal.SIGINT, request_stop)
+selector = selectors.DefaultSelector()
+assert daemon.stdout is not None
+selector.register(daemon.stdout, selectors.EVENT_READ)
+deadline = time.monotonic() + (deadline_at - started).total_seconds()
+written = 0
+with (RUNTIME / 'dockerd.log').open('wb') as log:
+    os.chmod(RUNTIME / 'dockerd.log', 0o600)
+    while daemon.poll() is None and stop_reason is None:
+        if time.monotonic() >= deadline or datetime.now().astimezone() >= deadline_at:
+            stop_reason = 'original_72_hour_deadline'
+            break
+        for key, events in selector.select(timeout=1):
+            chunk = os.read(key.fileobj.fileno(), 8192)
+            remaining = remaining_log_budget - written
+            log.write(chunk[:remaining])
+            log.flush()
+            written += min(len(chunk), remaining)
+            if len(chunk) > remaining:
+                stop_reason = 'daemon_log_budget_reached'
+                break
+if daemon.poll() is None:
+    os.killpg(daemon.pid, signal.SIGTERM)
+    try:
+        daemon.wait(timeout=15)
+    except subprocess.TimeoutExpired:
+        os.killpg(daemon.pid, signal.SIGKILL)
+        daemon.wait(timeout=5)
+lifecycle.update(ended_at=datetime.now().astimezone().isoformat(timespec='seconds'),
+                 stop_reason=stop_reason or 'daemon_exited', exit_code=daemon.returncode,
+                 daemon_log_bytes=written)
+(RUNTIME / 'lifecycle.json').write_text(json.dumps(lifecycle, indent=2))

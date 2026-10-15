@@ -1,0 +1,777 @@
+READ_FILE backend/src/ai_intel/api/authentication.py
+1:"""认证与会话: 预创建用户、Argon2id 哈希、不透明会话、限流与安全策略。"""
+2:
+3:from __future__ import annotations
+4:
+5:import hashlib
+6:import hmac
+7:import secrets
+8:import time
+9:import uuid
+10:from collections.abc import Callable
+11:from dataclasses import dataclass
+12:from datetime import UTC, datetime, timedelta
+13:from threading import Lock
+14:from typing import Protocol
+15:
+16:from argon2 import PasswordHasher
+17:from argon2.exceptions import VerifyMismatchError
+18:from sqlalchemy.engine import Engine, RowMapping
+19:
+20:from ai_intel.domain.access import AccessScope, Role
+21:
+22:SESSION_TTL_SECONDS = 30 * 60
+23:MAX_LOGIN_ATTEMPTS = 5
+24:LOGIN_WINDOW_SECONDS = 15 * 60
+25:
+26:
+27:class InvalidCredentialsError(PermissionError):
+28:    """凭证无效: 不区分用户不存在与密码错误, 不泄露账户细节。"""
+29:
+30:
+31:class SessionExpiredError(PermissionError):
+32:    """会话过期或已注销: 与凭证错误分离, 同样不泄露内部状态。"""
+33:
+34:
+35:class CsrfRejectionError(PermissionError):
+36:    """写请求缺少或不匹配 CSRF 令牌, 或 Origin 不在允许清单。"""
+37:
+38:
+39:class LoginRateLimitedError(PermissionError):
+40:    """登录尝试超限: 拒绝时不确认账号是否存在。"""
+41:
+42:
+43:class AuditEventError(ValueError):
+44:    """审计事件携带敏感字段名: 拒绝记录, 防止密码/令牌入日志。"""
+45:
+46:
+47:SENSITIVE_AUDIT_MARKERS = ("password", "cookie", "token", "secret", "authorization")
+48:
+49:
+50:@dataclass(frozen=True)
+51:class Principal:
+52:    """已认证主体: 由服务端从有效会话得出。"""
+53:
+54:    user_id: str
+55:    tenant_id: str | None
+56:    role: Role
+57:
+58:
+59:@dataclass
+60:class UserAccount:
+61:    """预创建用户: 仅存哈希, 不存明文密码。"""
+62:
+63:    user_id: str
+64:    username: str
+65:    password_hash: str
+66:    tenant_id: str | None
+67:    role: Role
+68:
+69:
+70:@dataclass
+71:class SessionRecord:
+72:    """不透明会话记录: 过期或注销即失效。"""
+73:
+74:    session_id: str
+75:    user_id: str
+76:    expires_at: datetime
+77:    csrf_token: str
+78:    revoked: bool = False
+79:
+80:
+81:def cookie_secure_for_environment(app_env: str) -> bool:
+82:    """production 必须 Secure Cookie; 其余环境显式 False, 不默认放行。"""
+83:    return app_env == "production"
+84:
+85:
+86:class InMemoryUserDirectory:
+87:    """预创建用户目录(管理 CLI 与测试共用的最小实现); 无公共注册入口。"""
+88:
+89:    def __init__(self) -> None:
+90:        self._accounts_by_username: dict[str, UserAccount] = {}
+91:
+92:    def add_precreated_user(self, account: UserAccount) -> None:
+93:        """仅允许预创建路径; 不提供任何自助注册接口。"""
+94:        if account.username in self._accounts_by_username:
+95:            raise ValueError("username already exists")
+96:        self._accounts_by_username[account.username] = account
+97:
+98:    def find_by_username(self, username: str) -> UserAccount | None:
+99:        """按用户名查找; 不存在返回 None, 调用方不得据此向客户端区分。"""
+100:        return self._accounts_by_username.get(username)
+101:
+102:    def find_by_id(self, user_id: str) -> UserAccount | None:
+103:        """按用户 id 查找, 服务端会话校验使用。"""
+104:        for account in self._accounts_by_username.values():
+105:            if account.user_id == user_id:
+106:                return account
+107:        return None
+108:
+109:
+110:class UserDirectory(Protocol):
+111:    """认证使用相同目录合同；真实运行接PG，内存目录仅显式fixture。"""
+112:
+113:    def add_precreated_user(self, account: UserAccount) -> None: ...
+114:
+115:    def find_by_username(self, username: str) -> UserAccount | None: ...
+116:
+117:    def find_by_id(self, user_id: str) -> UserAccount | None: ...
+118:
+119:
+120:class DatabaseUserDirectory:
+121:    """数据库用户目录: 预创建用户持久化到 PostgreSQL, 重启后仍可用。"""
+122:
+123:    def __init__(self, engine: Engine) -> None:
+124:        self._engine = engine
+125:
+126:    def add_precreated_user(self, account: UserAccount) -> None:
+127:        """持久化预创建用户; 用户名重复由唯一键拒绝。"""
+128:        from sqlalchemy import insert
+129:        from sqlalchemy.exc import IntegrityError
+130:
+131:        from ai_intel.knowledge.models import users
+132:
+133:        try:
+134:            with self._engine.begin() as connection:
+135:                connection.execute(
+136:                    insert(users).values(
+137:                        user_id=account.user_id,
+138:                        username=account.username,
+139:                        password_hash=account.password_hash,
+140:                        tenant_id=account.tenant_id,
+141:                        role=account.role.value,
+142:                        created_at=datetime.now(UTC),
+143:                    )
+144:                )
+145:        except IntegrityError as duplicate:
+146:            raise ValueError("username already exists") from duplicate
+147:
+148:    def find_by_username(self, username: str) -> UserAccount | None:
+149:        """按用户名查找持久化账户。"""
+150:        from sqlalchemy import select
+151:
+152:        from ai_intel.knowledge.models import users
+153:
+154:        with self._engine.connect() as connection:
+155:            row = (
+156:                connection.execute(select(users).where(users.c.username == username))
+157:                .mappings()
+158:                .first()
+159:            )
+160:        return self._row_to_account(row)
+161:
+162:    def find_by_id(self, user_id: str) -> UserAccount | None:
+163:        """按用户 id 查找持久化账户。"""
+164:        from sqlalchemy import select
+165:
+166:        from ai_intel.knowledge.models import users
+167:
+168:        with self._engine.connect() as connection:
+169:            row = (
+170:                connection.execute(select(users).where(users.c.user_id == user_id))
+171:                .mappings()
+172:                .first()
+173:            )
+174:        return self._row_to_account(row)
+175:
+176:    @staticmethod
+177:    def _row_to_account(row: RowMapping | None) -> UserAccount | None:
+178:        """把数据库行映射回账户对象; 无行返回 None。"""
+179:        if row is None:
+180:            return None
+181:        fields = row
+182:        tenant_value = fields["tenant_id"]
+183:        return UserAccount(
+184:            user_id=str(fields["user_id"]),
+185:            username=str(fields["username"]),
+186:            password_hash=str(fields["password_hash"]),
+187:            tenant_id=str(tenant_value) if tenant_value is not None else None,
+188:            role=Role(str(fields["role"])),
+189:        )
+190:
+191:
+192:class AuthenticationSessionService:
+193:    """登录/注销/会话校验 + 登录限流 + 审计事件(脱敏)。"""
+194:
+195:    def __init__(
+196:        self,
+197:        user_directory: UserDirectory,
+198:        allowed_origins: tuple[str, ...],
+199:        cookie_secure: bool,
+200:        clock: Callable[[], datetime] | None = None,
+201:    ) -> None:
+202:        self._user_directory = user_directory
+203:        self._allowed_origins = allowed_origins
+204:        self._cookie_secure = cookie_secure
+205:        self._clock = clock or (lambda: datetime.now(UTC))
+206:        self._password_hasher = PasswordHasher()
+207:        self._sessions: dict[str, SessionRecord] = {}
+208:        self._login_attempts: dict[str, list[float]] = {}
+209:        self._login_lock = Lock()
+210:        self._audit_events: list[dict[str, str]] = []
+211:
+212:    def create_precreated_user(
+213:        self, username: str, password: str, tenant_id: str | None, role: Role
+214:    ) -> UserAccount:
+215:        """管理路径创建用户: 仅存 Argon2id 哈希, 重复用户名拒绝。"""
+216:        account = UserAccount(
+217:            user_id=str(uuid.uuid4()),
+218:            username=username,
+219:            password_hash=self._password_hasher.hash(password),
+220:            tenant_id=tenant_id,
+221:            role=role,
+222:        )
+223:        self._user_directory.add_precreated_user(account)
+224:        return account
+225:
+226:    def login(
+227:        self, username: str, password: str, origin: str | None, client_key: str
+228:    ) -> tuple[str, SessionRecord]:
+229:        """登录: 凭证与 Origin 校验后签发不透明会话; 失败统一报错。"""
+230:        if origin is not None and origin not in self._allowed_origins:
+231:            raise CsrfRejectionError("origin not allowed")
+232:        self._reserve_login_attempt(client_key)
+233:        account = self._user_directory.find_by_username(username)
+234:        if account is None:
+235:            self._append_audit(
+236:                "login_failed", {"reason": "invalid_credentials", "trace_id": str(uuid.uuid4())}
+237:            )
+238:            raise InvalidCredentialsError("invalid credentials")
+239:        try:
+240:            self._password_hasher.verify(account.password_hash, password)
+241:        except VerifyMismatchError:
+242:            self._append_audit(
+243:                "login_failed", {"reason": "invalid_credentials", "trace_id": str(uuid.uuid4())}
+244:            )
+245:            raise InvalidCredentialsError("invalid credentials") from None
+246:        session_token = secrets.token_urlsafe(32)
+247:        session_record = SessionRecord(
+248:            session_id=self._session_key(session_token),
+249:            user_id=account.user_id,
+250:            expires_at=self._clock() + timedelta(seconds=SESSION_TTL_SECONDS),
+251:            csrf_token=secrets.token_urlsafe(32),
+252:        )
+253:        self._sessions[self._session_key(session_token)] = session_record
+254:        self._append_audit(
+255:            "login_succeeded", {"user_id": account.user_id, "trace_id": str(uuid.uuid4())}
+256:        )
+257:        return session_token, session_record
+258:
+259:    def logout(self, session_token: str) -> None:
+260:        """注销: 立即失效, 重复注销幂等。"""
+261:        session_record = self._sessions.get(self._session_key(session_token))
+262:        if session_record is not None:
+263:            session_record.revoked = True
+264:            self._append_audit(
+265:                "logout", {"user_id": session_record.user_id, "trace_id": str(uuid.uuid4())}
+266:            )
+267:
+268:    def validate_session(self, session_token: str) -> Principal:
+269:        """校验会话得到主体; 过期/注销/未知统一 SessionExpiredError。"""
+270:        principal, _ = self.authenticated_session(session_token)
+271:        return principal
+272:
+273:    def authenticated_session(self, session_token: str) -> tuple[Principal, SessionRecord]:
+274:        """一次会话及账户读取，绑定身份与CSRF；不组合两次HTTP会话快照。"""
+275:        session_record = self._sessions.get(self._session_key(session_token))
+276:        if (
+277:            session_record is None
+278:            or session_record.revoked
+279:            or session_record.expires_at <= self._clock()
+280:        ):
+281:            raise SessionExpiredError("session is not valid")
+282:        account = self._user_directory.find_by_id(session_record.user_id)
+283:        if account is None:
+284:            raise SessionExpiredError("session is not valid")
+285:        return (
+286:            Principal(user_id=account.user_id, tenant_id=account.tenant_id, role=account.role),
+287:            session_record,
+288:        )
+289:
+290:    def session_record(self, session_token: str) -> SessionRecord:
+291:        """返回有效会话记录(含 CSRF 令牌), 供 /auth/csrf 下发; 无效/过期/撤销抛对应错误。"""
+292:        _, record = self.authenticated_session(session_token)
+293:        return record
+294:
+295:    def build_access_scope(self, session_token: str) -> AccessScope:
+296:        """服务端由会话构造 AccessScope; 请求体自报身份在此无入口。"""
+297:        principal = self.validate_session(session_token)
+298:        return AccessScope.for_authenticated_user(
+299:            principal.user_id, principal.tenant_id, principal.role
+300:        )
+301:
+302:    def validate_write_request(
+303:        self, session_token: str, csrf_token: str, origin: str | None
+304:    ) -> None:
+305:        """写请求必须会话有效、CSRF 令牌匹配且 Origin 合法。"""
+306:        session_record = self._sessions.get(self._session_key(session_token))
+307:        if (
+308:            session_record is None
+309:            or session_record.revoked
+310:            or session_record.expires_at <= self._clock()
+311:        ):
+312:            raise SessionExpiredError("session is not valid")
+313:        if not csrf_token.isascii() or not hmac.compare_digest(
+314:            session_record.csrf_token, csrf_token
+315:        ):
+316:            raise CsrfRejectionError("csrf token mismatch")
+317:        if origin is None or origin not in self._allowed_origins:
+318:            raise CsrfRejectionError("origin not allowed")
+319:
+320:    def cookie_attributes(self) -> dict[str, str | bool]:
+321:        """Cookie 策略: HttpOnly + SameSite=Strict; production 强制 Secure。"""
+322:        return {"httponly": True, "samesite": "strict", "secure": self._cookie_secure}
+323:
+324:    def audit_events(self) -> list[dict[str, str]]:
+325:        """审计事件副本: 供测试与审计接口消费。"""
+326:        return [dict(event) for event in self._audit_events]
+327:
+328:    def record_identity_spoof_attempt(self, submitted_fields: dict[str, str]) -> None:
+329:        """请求体携带自报身份字段时记录安全审计事件(仅记字段名与 trace_id, 不记值)。"""
+330:        self._append_audit(
+331:            "identity_spoof_attempt",
+332:            {"submitted_keys": ",".join(sorted(submitted_fields)), "trace_id": str(uuid.uuid4())},
+333:        )
+334:
+335:    @staticmethod
+336:    def _session_key(session_token: str) -> str:
+337:        """会话以服务端哈希为键存储, 落库/内存不保存明文 token(05 §1 合同)。"""
+338:        return hashlib.sha256(session_token.encode("utf-8")).hexdigest()
+339:
+340:    def _reserve_login_attempt(self, client_key: str) -> None:
+341:        """昂贵目录/密码IO前原子占位；成功登录不能清除其他在途尝试。"""
+342:        with self._login_lock:
+343:            now_epoch = time.time()
+344:            attempts = [
+345:                stamp
+346:                for stamp in self._login_attempts.get(client_key, [])
+347:                if now_epoch - stamp < LOGIN_WINDOW_SECONDS
+348:            ]
+349:            if len(attempts) >= MAX_LOGIN_ATTEMPTS:
+350:                raise LoginRateLimitedError("too many login attempts")
+351:            attempts.append(now_epoch)
+352:            self._login_attempts[client_key] = attempts
+353:
+354:    def _append_audit(self, event_type: str, fields: dict[str, str]) -> None:
+355:        """写入审计事件: 拒绝敏感字段名, 事件带 trace_id。"""
+356:        if "trace_id" not in fields:
+357:            raise AuditEventError("audit event requires trace_id")
+358:        for key in fields:
+359:            lowered = key.lower()
+360:            if any(marker in lowered for marker in SENSITIVE_AUDIT_MARKERS):
+361:                raise AuditEventError(f"sensitive field refused in audit event: {key}")
+362:        self._audit_events.append({"event_type": event_type, **fields})
+READ_FILE backend/src/ai_intel/api/auth_routes.py
+1:"""认证HTTP边界：严格输入、Cookie会话及绑定CSRF，身份由服务端获取。"""
+2:
+3:from collections.abc import Callable
+4:
+5:from fastapi import APIRouter, Request
+6:from fastapi.responses import JSONResponse, Response
+7:from pydantic import BaseModel, ConfigDict, Field, SecretStr
+8:from sqlalchemy.exc import SQLAlchemyError
+9:
+10:from ai_intel.api.authentication import (
+11:    SESSION_TTL_SECONDS,
+12:    AuthenticationSessionService,
+13:    CsrfRejectionError,
+14:    InvalidCredentialsError,
+15:    LoginRateLimitedError,
+16:    SessionExpiredError,
+17:)
+18:from ai_intel.api.problems import problem_response
+19:from ai_intel.domain.access import AccessScope
+20:from ai_intel.infrastructure.settings import ApplicationSettings
+21:
+22:SESSION_COOKIE_NAME = "ai_intel_session"
+23:CSRF_HEADER_NAME = "X-CSRF-Token"
+24:
+25:
+26:class LoginRequest(BaseModel):
+27:    """密码只以SecretStr承载；额外的租户或权限声明一律拒绝。"""
+28:
+29:    model_config = ConfigDict(extra="forbid", strict=True, hide_input_in_errors=True)
+30:    username: str = Field(min_length=1, max_length=128)
+31:    password: SecretStr = Field(min_length=1, max_length=1024)
+32:
+33:
+34:def build_auth_router(
+35:    service_provider: Callable[[], AuthenticationSessionService | None],
+36:    settings: ApplicationSettings,
+37:) -> APIRouter:
+38:    """始终注册认证端点；真实服务未配置时明确503，不消失或回退fixture。"""
+39:    router = APIRouter(prefix="/auth")
+40:
+41:    @router.post("/login")
+42:    def auth_login(request: Request, payload: LoginRequest) -> Response:
+43:        service = service_provider()
+44:        if service is None:
+45:            return problem_response(
+46:                request,
+47:                503,
+48:                "authentication_unavailable",
+49:                "authentication database is not configured",
+50:                True,
+51:            )
+52:        origin = request.headers.get("origin")
+53:        if origin is None:
+54:            return problem_response(request, 403, "csrf_rejected", "origin is required")
+55:        client_key = request.client.host if request.client else "unknown"
+56:        try:
+57:            session_token, record = service.login(
+58:                payload.username, payload.password.get_secret_value(), origin, client_key
+59:            )
+60:        except CsrfRejectionError:
+61:            return problem_response(request, 403, "csrf_rejected", "origin not allowed")
+62:        except LoginRateLimitedError:
+63:            return problem_response(
+64:                request, 429, "login_rate_limited", "too many login attempts", True
+65:            )
+66:        except InvalidCredentialsError:
+67:            return problem_response(request, 401, "invalid_credentials", "invalid credentials")
+68:        except SQLAlchemyError:
+69:            return problem_response(
+70:                request,
+71:                503,
+72:                "authentication_unavailable",
+73:                "authentication database is unavailable",
+74:                True,
+75:            )
+76:        response = JSONResponse(
+77:            content={
+78:                "user_id": record.user_id,
+79:                "csrf_token": record.csrf_token,
+80:                "expires_at": record.expires_at.isoformat(),
+81:            }
+82:        )
+83:        response.set_cookie(
+84:            key=SESSION_COOKIE_NAME,
+85:            value=session_token,
+86:            httponly=True,
+87:            samesite="strict",
+88:            secure=bool(service.cookie_attributes()["secure"]),
+89:            max_age=SESSION_TTL_SECONDS,
+90:            path="/",
+91:        )
+92:        return response
+93:
+94:    @router.get("/me")
+95:    def auth_me(request: Request) -> Response:
+96:        session_token = request.cookies.get(SESSION_COOKIE_NAME, "")
+97:        if not session_token:
+98:            return problem_response(request, 401, "unauthenticated", "no session cookie present")
+99:        service = service_provider()
+100:        if service is None:
+101:            return problem_response(
+102:                request,
+103:                503,
+104:                "authentication_unavailable",
+105:                "authentication database is not configured",
+106:                True,
+107:            )
+108:        try:
+109:            principal, record = service.authenticated_session(session_token)
+110:            scope = AccessScope.for_authenticated_user(
+111:                principal.user_id, principal.tenant_id, principal.role
+112:            )
+113:        except (SessionExpiredError, InvalidCredentialsError):
+114:            return problem_response(request, 401, "session_expired", "session is not valid")
+115:        except SQLAlchemyError:
+116:            return problem_response(
+117:                request,
+118:                503,
+119:                "authentication_unavailable",
+120:                "authentication database is unavailable",
+121:                True,
+122:            )
+123:        return JSONResponse(
+124:            content={
+125:                "user_id": principal.user_id,
+126:                "csrf_token": record.csrf_token,
+127:                "tenant_id": principal.tenant_id,
+128:                "role": principal.role.value,
+129:                "permissions": sorted(scope.permissions),
+130:                "permission_version": scope.permission_version,
+131:                "data_mode": settings.data_mode,
+132:                "app_env": settings.app_env,
+133:                "platform_version": "0.1.0",
+134:            }
+135:        )
+136:
+137:    @router.get("/csrf")
+138:    def auth_csrf(request: Request) -> Response:
+139:        service = service_provider()
+140:        if service is None:
+141:            return problem_response(
+142:                request,
+143:                503,
+144:                "authentication_unavailable",
+145:                "authentication database is not configured",
+146:                True,
+147:            )
+148:        try:
+149:            record = service.session_record(request.cookies.get(SESSION_COOKIE_NAME, ""))
+150:        except (SessionExpiredError, InvalidCredentialsError):
+151:            return problem_response(request, 401, "session_expired", "session is not valid")
+152:        except SQLAlchemyError:
+153:            return problem_response(
+154:                request,
+155:                503,
+156:                "authentication_unavailable",
+157:                "authentication database is unavailable",
+158:                True,
+159:            )
+160:        return JSONResponse(
+161:            content={"csrf_token": record.csrf_token, "header_name": CSRF_HEADER_NAME}
+162:        )
+163:
+164:    @router.post("/logout")
+165:    def auth_logout(request: Request) -> Response:
+166:        service = service_provider()
+167:        if service is None:
+168:            return problem_response(
+169:                request,
+170:                503,
+171:                "authentication_unavailable",
+172:                "authentication database is not configured",
+173:                True,
+174:            )
+175:        session_token = request.cookies.get(SESSION_COOKIE_NAME, "")
+176:        try:
+177:            service.validate_write_request(
+178:                session_token,
+179:                request.headers.get(CSRF_HEADER_NAME, ""),
+180:                request.headers.get("origin"),
+181:            )
+182:            service.logout(session_token)
+183:        except CsrfRejectionError:
+184:            return problem_response(
+185:                request, 403, "csrf_rejected", "csrf token and allowed origin are required"
+186:            )
+187:        except (SessionExpiredError, InvalidCredentialsError):
+188:            return problem_response(request, 401, "session_expired", "session is not valid")
+189:        except SQLAlchemyError:
+190:            return problem_response(
+191:                request,
+192:                503,
+193:                "authentication_unavailable",
+194:                "authentication database is unavailable",
+195:                True,
+196:            )
+197:        response = JSONResponse(content={"status": "logged_out"})
+198:        response.delete_cookie(
+199:            SESSION_COOKIE_NAME,
+200:            path="/",
+201:            httponly=True,
+202:            samesite="strict",
+203:            secure=bool(service.cookie_attributes()["secure"]),
+204:        )
+205:        return response
+206:
+207:    return router
+READ_FILE backend/tests/security/test_r01_http_authentication.py
+1:"""R01 HTTP边界；显式内存fixture只验证路由，不计持久化或live。"""
+2:
+3:from concurrent.futures import ThreadPoolExecutor
+4:from threading import Barrier
+5:from time import sleep
+6:
+7:import pytest
+8:from fastapi.testclient import TestClient
+9:
+10:from ai_intel.api.app import create_application
+11:from ai_intel.api.authentication import (
+12:    AuthenticationSessionService,
+13:    InMemoryUserDirectory,
+14:    InvalidCredentialsError,
+15:    LoginRateLimitedError,
+16:    UserAccount,
+17:)
+18:from ai_intel.domain.access import Role
+19:from ai_intel.infrastructure.settings import ApplicationSettings
+20:
+21:ORIGIN = "http://127.0.0.1:25173"
+22:
+23:
+24:def fixture_client() -> TestClient:
+25:    service = AuthenticationSessionService(InMemoryUserDirectory(), (ORIGIN,), False)
+26:    service.create_precreated_user(
+27:        "fixture-analyst", "synthetic-password", "fixture-tenant", Role.ANALYST
+28:    )
+29:    settings = ApplicationSettings(app_env="test", data_mode="fixture", allowed_origins=(ORIGIN,))
+30:    return TestClient(create_application(service, settings=settings))
+31:
+32:
+33:def test_default_application_registers_authentication_without_false_readiness() -> None:
+34:    client = TestClient(create_application(settings=ApplicationSettings(app_env="test")))
+35:    assert client.get("/v1/auth/me").status_code == 401
+36:    response = client.get("/v1/health/ready")
+37:    assert response.status_code == 503
+38:    assert response.json()["status"] == "not_ready"
+39:    assert response.json()["dependencies"]["database"]["state"] == "not_configured"
+40:
+41:
+42:def test_logout_requires_session_bound_csrf_and_origin() -> None:
+43:    client = fixture_client()
+44:    response = client.post(
+45:        "/v1/auth/login",
+46:        json={"username": "fixture-analyst", "password": "synthetic-password"},
+47:        headers={"Origin": ORIGIN},
+48:    )
+49:    assert response.status_code == 200
+50:    csrf = response.json()["csrf_token"]
+51:    assert client.post("/v1/auth/logout").status_code == 403
+52:    assert client.get("/v1/auth/me").status_code == 200
+53:    assert (
+54:        client.post(
+55:            "/v1/auth/logout", headers={"Origin": "https://untrusted.invalid", "X-CSRF-Token": csrf}
+56:        ).status_code
+57:        == 403
+58:    )
+59:    assert (
+60:        client.post("/v1/auth/logout", headers={"Origin": ORIGIN, "X-CSRF-Token": csrf}).status_code
+61:        == 200
+62:    )
+63:    assert client.get("/v1/auth/me").status_code == 401
+64:
+65:
+66:def test_disallowed_login_origin_returns_safe_problem() -> None:
+67:    client = fixture_client()
+68:    response = client.post(
+69:        "/v1/auth/login",
+70:        json={"username": "fixture-analyst", "password": "synthetic-password"},
+71:        headers={"Origin": "https://untrusted.invalid"},
+72:    )
+73:    assert response.status_code == 403
+74:    assert response.headers["content-type"].startswith("application/problem+json")
+75:    assert response.json()["error"]["code"] == "csrf_rejected"
+76:    assert response.json()["trace_id"]
+77:
+78:
+79:def test_strict_login_validation_never_echoes_sensitive_input() -> None:
+80:    client = fixture_client()
+81:    secret_input = "synthetic-secret-value-please-hide"
+82:    for payload in [
+83:        {"username": [], "password": secret_input},
+84:        {"username": "fixture-analyst", "password": {"unsafe": secret_input}},
+85:        {
+86:            "username": "fixture-analyst",
+87:            "password": secret_input,
+88:            "tenant_id": "other-tenant",
+89:            "role": "system_admin",
+90:        },
+91:    ]:
+92:        response = client.post("/v1/auth/login", json=payload, headers={"Origin": ORIGIN})
+93:        assert response.status_code == 422
+94:        assert secret_input not in response.text
+95:        assert "other-tenant" not in response.text
+96:        assert response.headers["content-type"].startswith("application/problem+json")
+97:
+98:
+99:def test_me_returns_authenticated_scope_and_explicit_fixture_mode() -> None:
+100:    client = fixture_client()
+101:    client.post(
+102:        "/v1/auth/login",
+103:        json={"username": "fixture-analyst", "password": "synthetic-password"},
+104:        headers={"Origin": ORIGIN},
+105:    )
+106:    response = client.get("/v1/auth/me")
+107:    assert response.status_code == 200
+108:    body = response.json()
+109:    assert body["tenant_id"] == "fixture-tenant"
+110:    assert body["role"] == "analyst"
+111:    assert body["permission_version"] == 1
+112:    assert body["data_mode"] == "fixture"
+113:    assert "read:asset" in body["permissions"]
+114:    assert "password" not in response.text and "session_token" not in response.text
+115:
+116:
+117:def test_non_ascii_csrf_is_rejected_without_revoking_session() -> None:
+118:    client = fixture_client()
+119:    client.post(
+120:        "/v1/auth/login",
+121:        json={"username": "fixture-analyst", "password": "synthetic-password"},
+122:        headers={"Origin": ORIGIN},
+123:    )
+124:    response = client.post(
+125:        "/v1/auth/logout", headers=[(b"Origin", ORIGIN.encode()), (b"X-CSRF-Token", b"\xff")]
+126:    )
+127:    assert response.status_code == 403
+128:    assert response.headers["content-type"].startswith("application/problem+json")
+129:    assert client.get("/v1/auth/me").status_code == 200
+130:
+131:
+132:@pytest.mark.parametrize(
+133:    ("path", "expected_status", "expected_code"),
+134:    [
+135:        ("/v1/auth/missing", 404, "not_found"),
+136:        ("/v1/auth/login", 405, "method_not_allowed"),
+137:    ],
+138:)
+139:def test_routing_errors_follow_problem_contract(
+140:    path: str, expected_status: int, expected_code: str
+141:) -> None:
+142:    response = fixture_client().get(path)
+143:    assert response.status_code == expected_status
+144:    assert response.headers["content-type"].startswith("application/problem+json")
+145:    assert response.json()["error"]["code"] == expected_code
+146:    if expected_status == 405:
+147:        assert response.headers["Allow"] == "POST"
+148:
+149:
+150:def test_concurrent_login_reserves_attempt_before_directory_io() -> None:
+151:    class SlowDirectory(InMemoryUserDirectory):
+152:        def find_by_username(self, username: str) -> UserAccount | None:
+153:            sleep(0.05)
+154:            return None
+155:
+156:    service = AuthenticationSessionService(SlowDirectory(), (ORIGIN,), False)
+157:    barrier = Barrier(8)
+158:
+159:    def login_attempt(_: int) -> int:
+160:        barrier.wait(timeout=5)
+161:        try:
+162:            service.login("missing-fixture", "synthetic-password", ORIGIN, "same-client")
+163:        except LoginRateLimitedError:
+164:            return 429
+165:        except InvalidCredentialsError:
+166:            return 401
+167:        raise AssertionError("missing user unexpectedly logged in")
+168:
+169:    with ThreadPoolExecutor(max_workers=8) as pool:
+170:        results = list(pool.map(login_attempt, range(8)))
+171:    assert results.count(401) == 5
+172:    assert results.count(429) == 3
+173:
+174:
+175:def test_me_reads_one_account_and_its_session_bound_csrf() -> None:
+176:    class CountingDirectory(InMemoryUserDirectory):
+177:        reads = 0
+178:
+179:        def find_by_id(self, user_id: str) -> UserAccount | None:
+180:            self.reads += 1
+181:            return super().find_by_id(user_id)
+182:
+183:    directory = CountingDirectory()
+184:    service = AuthenticationSessionService(directory, (ORIGIN,), False)
+185:    service.create_precreated_user("fixture-user", "synthetic-password", "tenant-a", Role.ANALYST)
+186:    client = TestClient(
+187:        create_application(
+188:            service,
+189:            settings=ApplicationSettings(
+190:                app_env="test", data_mode="fixture", allowed_origins=(ORIGIN,)
+191:            ),
+192:        )
+193:    )
+194:    login = client.post(
+195:        "/v1/auth/login",
+196:        json={"username": "fixture-user", "password": "synthetic-password"},
+197:        headers={"Origin": ORIGIN},
+198:    )
+199:    snapshot = client.get("/v1/auth/me")
+200:    assert snapshot.json()["csrf_token"] == login.json()["csrf_token"]
+201:    assert snapshot.json()["user_id"] == login.json()["user_id"]
+202:    assert snapshot.json()["tenant_id"] == "tenant-a"
+203:    assert directory.reads == 1
+baseline_ancestor_exit=0
+source_to_evidence_diff_exit=0

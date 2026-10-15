@@ -1,0 +1,37 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________ test_session_hash_only_is_stored _______________________
+pg_auth = AuthCase(engine=Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r02_knowledge_20261015), u...436c-a0b4-495b6ecb0f1a', tenant_id='test-tenant-9ab1f247-610b-436c-a0b4-495b6ecb0f1a', role=<Role.ANALYST: 'analyst'>))
+
+    def test_session_hash_only_is_stored(pg_auth: AuthCase) -> None:
+        token, record = pg_auth.service.login(
+            pg_auth.username, pg_auth.password, ORIGIN, pg_auth.username
+        )
+        with pg_auth.engine.connect() as connection:
+            session_hash = connection.execute(
+                select(auth_sessions.c.session_hash).where(
+                    auth_sessions.c.user_id == pg_auth.account.user_id
+                )
+            ).scalar_one()
+        assert bool(session_hash == hashlib.sha256(token.encode()).hexdigest())
+        assert bool(session_hash != token)
+>       assert bool(session_hash == record.session_id)
+E       AssertionError: assert False
+E        +  where False = bool('[redacted test credential fragment]c3ee...[redacted test credential fragment]46b9d' == 'controlled a...tion mismatch'
+E           
+E           - controlled assertion mismatch
+E           + [redacted test credential])
+
+connection = <sqlalchemy.engine.base.Connection object at 0x000001E1D956F590>
+pg_auth    = AuthCase(engine=Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r02_knowledge_20261015), u...436c-a0b4-495b6ecb0f1a', tenant_id='test-tenant-9ab1f247-610b-436c-a0b4-495b6ecb0f1a', role=<Role.ANALYST: 'analyst'>))
+record     = SessionRecord(user_id='a5394b9c-1929-4b2c-bb93-c5a951c074c8', expires_at=datetime.datetime(2026, 10, 15, 4, 1, 49, 661951, tzinfo=datetime.timezone.utc), revoked=False)
+session_hash = '[redacted test credential]'
+token      = '[redacted test credential]'
+
+tests\integration\test_r02_auth_state.py:394: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[redacted test credential fragment][redacted test credential fragment] [redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]
+- generated xml file: C:\Users\yinha\.codex\worktrees\recovery-r02-minio-review\dianzi\backend\privacy.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r02_auth_state.py::test_session_hash_only_is_stored
+1 failed in 0.71s

@@ -1,0 +1,715 @@
+READ_FILE infra/compose/compose.yaml
+1:x-backend: &backend
+2:  image: ${DIANZI_BACKEND_IMAGE:-dianzi-backend:local}
+3:  build:
+4:    context: ../..
+5:    dockerfile: infra/docker/backend.Dockerfile
+6:    args:
+7:      PYTHON_IMAGE: python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+8:      UV_IMAGE: ghcr.io/astral-sh/uv@sha256:10902f58a1606787602f303954cea099626a4adb02acbac4c69920fe9d278f82
+9:  environment: &backend-environment
+10:    APP_ENV: ${APP_ENV:-development}
+11:    DATA_MODE: live
+12:    DATABASE_URL: ${COMPOSE_DATABASE_URL:?Inject the application PostgreSQL URL}
+13:    REDIS_URL: ${COMPOSE_REDIS_URL:?Inject the authenticated Redis URL}
+14:    OPENSEARCH_URL: ${OPENSEARCH_URL:-}
+15:    ALLOWED_ORIGINS: ${COMPOSE_ALLOWED_ORIGINS:?Set exact frontend origins as JSON}
+16:    RAW_CONTENT_DIRECTORY: /var/lib/ai-intel/raw
+17:  networks: [private]
+18:  init: true
+19:  read_only: true
+20:  tmpfs: [/tmp]
+21:  security_opt: [no-new-privileges:true]
+22:  cap_drop: [ALL]
+23:  volumes: [raw_content:/var/lib/ai-intel/raw]
+24:
+25:services:
+26:  postgres:
+27:    image: pgvector/pgvector@sha256:00ba258a66dac104fd5171074a0084462a64a1369d8513f3d0a634e2f24d15bc
+28:    profiles: [core, app, worker, scheduler, frontend]
+29:    environment:
+30:      POSTGRES_DB: ${POSTGRES_DB:?Set the dedicated database name}
+31:      POSTGRES_USER: ${POSTGRES_USER:?Set the dedicated database user}
+32:      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Inject PostgreSQL credential}
+33:    ports: ["127.0.0.1:${POSTGRES_PORT:?Set an exclusive PostgreSQL port}:5432"]
+34:    networks: [private]
+35:    volumes: [postgres_data:/var/lib/postgresql/data]
+36:    healthcheck:
+37:      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+38:      interval: 5s
+39:      timeout: 3s
+40:      retries: 18
+41:    mem_limit: 512m
+42:    cpus: 0.4
+43:    pids_limit: 128
+44:
+45:  redis:
+46:    image: redis@sha256:4fa24486b8bcca8eec45ee0eb166edc674795e53a2b53d1a9ef263eecebaac85
+47:    profiles: [core, app, worker, scheduler, frontend]
+48:    environment:
+49:      REDIS_PASSWORD: ${REDIS_PASSWORD:?Inject Redis credential}
+50:    command: [/bin/sh, -ec, 'exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}"']
+51:    ports: ["127.0.0.1:${REDIS_PORT:?Set an exclusive Redis port}:6379"]
+52:    networks: [private]
+53:    volumes: [redis_data:/data]
+54:    healthcheck:
+55:      test: [CMD-SHELL, 'REDISCLI_AUTH="$${REDIS_PASSWORD}" redis-cli ping | grep -x PONG']
+56:      interval: 5s
+57:      timeout: 3s
+58:      retries: 18
+59:    mem_limit: 128m
+60:    cpus: 0.1
+61:    pids_limit: 64
+62:
+63:  opensearch:
+64:    image: opensearchproject/opensearch@sha256:7b9517dff561f54456fad947f11820fa595a340fd1034fc63d57b77f724b3f8f
+65:    profiles: [search]
+66:    environment:
+67:      discovery.type: single-node
+68:      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD:?Inject search credential}
+69:      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+70:      DISABLE_PERFORMANCE_ANALYZER_AGENT_CLI: "true"
+71:      node.store.allow_mmap: "false"
+72:    ports: ["127.0.0.1:${OPENSEARCH_PORT:?Set an exclusive search port}:9200"]
+73:    networks: [private]
+74:    volumes: [opensearch_data:/usr/share/opensearch/data]
+75:    healthcheck:
+76:      test: [CMD-SHELL, 'curl -fsSk -u "admin:$${OPENSEARCH_INITIAL_ADMIN_PASSWORD}" https://localhost:9200/_cluster/health >/dev/null']
+77:      interval: 5s
+78:      timeout: 5s
+79:      retries: 24
+80:      start_period: 30s
+81:    mem_limit: 2g
+82:    cpus: 0.5
+83:    pids_limit: 256
+84:
+85:  api:
+86:    <<: *backend
+87:    profiles: [app, frontend]
+88:    command: [uvicorn, ai_intel.api.app:app, --host, 0.0.0.0, --port, "8000"]
+89:    ports: ["127.0.0.1:${API_PORT:?Set an exclusive API port}:8000"]
+90:    depends_on:
+91:      postgres: {condition: service_healthy}
+92:      redis: {condition: service_healthy}
+93:    healthcheck:
+94:      test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/v1/health/ready", timeout=5)']
+95:      interval: 10s
+96:      timeout: 6s
+97:      retries: 6
+98:      start_period: 90s
+99:    mem_limit: 384m
+100:    cpus: 0.25
+101:    pids_limit: 128
+102:
+103:  worker:
+104:    <<: *backend
+105:    profiles: [worker, scheduler]
+106:    command: [celery, -A, ai_intel.workers.runtime:celery_app, worker, --concurrency=1]
+107:    depends_on:
+108:      postgres: {condition: service_healthy}
+109:      redis: {condition: service_healthy}
+110:    healthcheck:
+111:      test: [CMD-SHELL, 'celery -A ai_intel.workers.runtime:celery_app inspect ping --destination "celery@$${HOSTNAME}" --timeout 5']
+112:      interval: 15s
+113:      timeout: 8s
+114:      retries: 6
+115:    mem_limit: 384m
+116:    cpus: 0.25
+117:    pids_limit: 128
+118:
+119:  scheduler:
+120:    <<: *backend
+121:    profiles: [scheduler]
+122:    command: [celery, -A, ai_intel.workers.runtime:celery_app, beat, --schedule=/tmp/celerybeat-schedule, --pidfile=/tmp/celerybeat.pid]
+123:    depends_on:
+124:      worker: {condition: service_healthy}
+125:    healthcheck:
+126:      test: [CMD, python, -c, 'import os,pathlib; os.kill(int(pathlib.Path("/tmp/celerybeat.pid").read_text()),0)']
+127:      interval: 15s
+128:      timeout: 3s
+129:      retries: 6
+130:    mem_limit: 128m
+131:    cpus: 0.1
+132:    pids_limit: 64
+133:
+134:  frontend:
+135:    image: ${DIANZI_FRONTEND_IMAGE:-dianzi-frontend:local}
+136:    build:
+137:      context: ../..
+138:      dockerfile: infra/docker/frontend.Dockerfile
+139:      args:
+140:        NODE_IMAGE: node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+141:    profiles: [frontend]
+142:    environment:
+143:      VITE_API_BASE_URL: ${VITE_API_BASE_URL:?Set the browser reachable API URL}
+144:    command: [npm, run, dev, --, --host, 0.0.0.0, --port, "5173", --strictPort]
+145:    ports: ["127.0.0.1:${FRONTEND_PORT:?Set an exclusive frontend port}:5173"]
+146:    networks: [private]
+147:    depends_on:
+148:      api: {condition: service_healthy}
+149:    init: true
+150:    read_only: true
+151:    tmpfs: [/tmp, /app/node_modules/.vite, /app/node_modules/.vite-temp]
+152:    security_opt: [no-new-privileges:true]
+153:    cap_drop: [ALL]
+154:    healthcheck:
+155:      test: [CMD, node, -e, 'fetch("http://127.0.0.1:5173/").then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))']
+156:      interval: 10s
+157:      timeout: 5s
+158:      retries: 6
+159:    mem_limit: 256m
+160:    cpus: 0.25
+161:    pids_limit: 128
+162:
+163:networks:
+164:  private:
+165:    internal: true
+166:
+167:volumes:
+168:  postgres_data:
+169:  redis_data:
+170:  opensearch_data:
+171:  raw_content:
+READ_FILE infra/compose/test.override.yaml
+1:services:
+2:  postgres:
+3:    environment:
+4:      POSTGRES_DB: test_dianzi_${DIANZI_TEST_RUN_ID:?Set an isolated test run ID}
+5:      POSTGRES_USER: ${TEST_POSTGRES_USER:?Set a dedicated test_ user}
+6:      POSTGRES_PASSWORD: ${TEST_POSTGRES_PASSWORD:?Inject a random test credential}
+7:    ports: !override ["127.0.0.1:${TEST_POSTGRES_PORT:?Set an exclusive test port}:5432"]
+8:  redis:
+9:    environment:
+10:      REDIS_PASSWORD: ${TEST_REDIS_PASSWORD:?Inject a random test credential}
+11:    ports: !override ["127.0.0.1:${TEST_REDIS_PORT:?Set an exclusive test port}:6379"]
+12:  opensearch:
+13:    environment:
+14:      DISABLE_INSTALL_DEMO_CONFIG: "true"
+15:      DISABLE_SECURITY_PLUGIN: "true"
+16:    ports: !override ["127.0.0.1:${TEST_OPENSEARCH_PORT:?Set an exclusive test port}:9200"]
+17:    healthcheck:
+18:      test: [CMD-SHELL, 'curl -fsS http://localhost:9200/_cluster/health >/dev/null']
+19:  api:
+20:    image: ${TEST_BACKEND_IMAGE:-dianzi-backend:test}
+21:    environment:
+22:      APP_ENV: test
+23:      DATABASE_URL: postgresql+psycopg://${TEST_POSTGRES_USER:?Set test user}:${TEST_POSTGRES_PASSWORD:?Inject test credential}@postgres:5432/test_dianzi_${DIANZI_TEST_RUN_ID:?Set test run ID}
+24:      REDIS_URL: redis://:${TEST_REDIS_PASSWORD:?Inject test credential}@redis:6379/0
+25:      OPENSEARCH_URL: http://opensearch:9200
+26:  worker:
+27:    image: ${TEST_BACKEND_IMAGE:-dianzi-backend:test}
+28:    environment:
+29:      APP_ENV: test
+30:      DATABASE_URL: postgresql+psycopg://${TEST_POSTGRES_USER:?Set test user}:${TEST_POSTGRES_PASSWORD:?Inject test credential}@postgres:5432/test_dianzi_${DIANZI_TEST_RUN_ID:?Set test run ID}
+31:      REDIS_URL: redis://:${TEST_REDIS_PASSWORD:?Inject test credential}@redis:6379/0
+32:      OPENSEARCH_URL: http://opensearch:9200
+33:  scheduler:
+34:    image: ${TEST_BACKEND_IMAGE:-dianzi-backend:test}
+35:    environment:
+36:      APP_ENV: test
+37:      DATABASE_URL: postgresql+psycopg://${TEST_POSTGRES_USER:?Set test user}:${TEST_POSTGRES_PASSWORD:?Inject test credential}@postgres:5432/test_dianzi_${DIANZI_TEST_RUN_ID:?Set test run ID}
+38:      REDIS_URL: redis://:${TEST_REDIS_PASSWORD:?Inject test credential}@redis:6379/0
+39:      OPENSEARCH_URL: http://opensearch:9200
+40:  frontend:
+41:    image: ${TEST_FRONTEND_IMAGE:-dianzi-frontend:test}
+READ_FILE infra/compose/test.host.override.yaml
+1:services:
+2:  postgres:
+3:    network_mode: host
+4:    networks: !reset []
+5:    ports: !reset []
+6:    command: [postgres, -c, listen_addresses=127.0.0.1, -p, "${TEST_POSTGRES_PORT:?Set an exclusive test port}"]
+7:    healthcheck:
+8:      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -p ${TEST_POSTGRES_PORT:?Set an exclusive test port} -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+9:  redis:
+10:    network_mode: host
+11:    networks: !reset []
+12:    ports: !reset []
+13:    command: [/bin/sh, -ec, 'exec redis-server --bind 127.0.0.1 --port ${TEST_REDIS_PORT:?Set an exclusive test port} --appendonly yes --requirepass "$${REDIS_PASSWORD}"']
+14:    healthcheck:
+15:      test: [CMD-SHELL, 'REDISCLI_AUTH="$${REDIS_PASSWORD}" redis-cli -h 127.0.0.1 -p ${TEST_REDIS_PORT:?Set an exclusive test port} ping | grep -x PONG']
+16:  opensearch:
+17:    network_mode: host
+18:    networks: !reset []
+19:    ports: !reset []
+20:    environment:
+21:      network.host: 127.0.0.1
+22:      http.port: ${TEST_OPENSEARCH_PORT:?Set an exclusive search port}
+23:      transport.port: ${TEST_OPENSEARCH_TRANSPORT_PORT:?Set an exclusive transport port}
+24:    healthcheck:
+25:      test: [CMD-SHELL, 'curl -fsS http://127.0.0.1:${TEST_OPENSEARCH_PORT:?Set an exclusive search port}/_cluster/health >/dev/null']
+26:  api:
+27:    network_mode: host
+28:    networks: !reset []
+29:    ports: !reset []
+30:    command: [uvicorn, ai_intel.api.app:app, --host, 127.0.0.1, --port, "${API_PORT:?Set an exclusive API port}"]
+31:    environment: &host-application-environment
+32:      DATABASE_URL: ${TEST_DATABASE_URL:?Inject isolated loopback PostgreSQL URL}
+33:      REDIS_URL: ${TEST_REDIS_URL:?Inject isolated loopback Redis URL}
+34:      OPENSEARCH_URL: ${TEST_OPENSEARCH_URL:?Set isolated loopback search URL}
+35:    healthcheck:
+36:      test: [CMD, python, -c, 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:${API_PORT:?Set an exclusive API port}/v1/health/ready", timeout=5)']
+37:  worker:
+38:    network_mode: host
+39:    networks: !reset []
+40:    environment: *host-application-environment
+41:  scheduler:
+42:    network_mode: host
+43:    networks: !reset []
+44:    environment: *host-application-environment
+45:  frontend:
+46:    network_mode: host
+47:    networks: !reset []
+48:    ports: !reset []
+49:    command: [npm, run, dev, --, --host, 127.0.0.1, --port, "${FRONTEND_PORT:?Set an exclusive frontend port}", --strictPort]
+50:    healthcheck:
+51:      test: [CMD, node, -e, 'fetch("http://127.0.0.1:${FRONTEND_PORT:?Set an exclusive frontend port}/").then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))']
+READ_FILE infra/compose/compose.test.host.yaml
+1:include:
+2:  - path: [compose.yaml, test.override.yaml, test.host.override.yaml]
+3:    env_file: []
+READ_FILE infra/docker/backend.Dockerfile
+1:ARG UV_IMAGE=ghcr.io/astral-sh/uv@sha256:10902f58a1606787602f303954cea099626a4adb02acbac4c69920fe9d278f82
+2:ARG PYTHON_IMAGE=python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+3:FROM ${UV_IMAGE} AS uv
+4:FROM ${PYTHON_IMAGE}
+5:COPY --from=uv /uv /usr/local/bin/uv
+6:WORKDIR /app
+7:ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+8:ENV PATH="/opt/venv/bin:$PATH"
+9:COPY backend/pyproject.toml backend/uv.lock ./
+10:RUN uv sync --locked --no-dev --no-install-project
+11:COPY backend/src ./src
+12:COPY backend/migrations ./migrations
+13:RUN uv sync --locked --no-dev && groupadd --gid 10001 ai-intel && useradd --uid 10001 --gid 10001 --create-home --no-log-init ai-intel && mkdir -p /var/lib/ai-intel/raw && chown -R 10001:10001 /app /var/lib/ai-intel
+14:USER 10001:10001
+15:CMD ["uvicorn", "ai_intel.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+READ_FILE infra/docker/frontend.Dockerfile
+1:ARG NODE_IMAGE=node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+2:FROM ${NODE_IMAGE}
+3:WORKDIR /app
+4:COPY --chown=node:node frontend/package.json frontend/package-lock.json ./
+5:RUN npm ci
+6:COPY --chown=node:node frontend/index.html frontend/tsconfig.json frontend/vite.config.ts ./
+7:COPY --chown=node:node frontend/src ./src
+8:USER node
+9:CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173", "--strictPort"]
+READ_FILE infra/docker/backend.Dockerfile.dockerignore
+1:**
+2:!backend
+3:!backend/pyproject.toml
+4:!backend/uv.lock
+5:!backend/src
+6:!backend/src/**
+7:!backend/migrations
+8:!backend/migrations/**
+9:!infra
+10:!infra/docker
+11:!infra/docker/backend.Dockerfile
+12:!infra/docker/backend.Dockerfile.dockerignore
+13:**/__pycache__
+14:**/*.pyc
+READ_FILE infra/docker/frontend.Dockerfile.dockerignore
+1:**
+2:!frontend
+3:!frontend/package.json
+4:!frontend/package-lock.json
+5:!frontend/index.html
+6:!frontend/tsconfig.json
+7:!frontend/vite.config.ts
+8:!frontend/src
+9:!frontend/src/**
+10:!infra
+11:!infra/docker
+12:!infra/docker/frontend.Dockerfile
+13:!infra/docker/frontend.Dockerfile.dockerignore
+READ_FILE infra/compose/README.md
+1:# R01 local and isolated deployment
+2:
+3:Compose 2.24.4 or later is required for `include`, `!override` and `!reset`.
+4:Supply configuration through the environment or a private `--env-file` outside
+5:the repository. Set `COMPOSE_DISABLE_ENV_FILE=1` to prevent implicit `.env` loading.
+6:`config/dev.env.example` lists names only: credentials, URLs, image references
+7:and exclusive host ports must be supplied explicitly. Do not run `compose config`
+8:into a shared log: its output includes interpolated credentials.
+9:
+10:Choose an explicit `dianzi-dev-<name>` project. `core` starts PostgreSQL and
+11:authenticated Redis; `search` adds OpenSearch with its security plugin enabled.
+12:`app`, `worker`, `scheduler` and `frontend` select the actual runtime entrypoints
+13:and their required services. Search is optional; when selected, supply its URL.
+14:`COMPOSE_DATABASE_URL`, `COMPOSE_REDIS_URL` and `COMPOSE_ALLOWED_ORIGINS` are
+15:deployment inputs: Compose maps them to the application variable names inside
+16:containers. They do not configure a pytest or management process on the host.
+17:The backend application URLs use `postgres:5432`, `redis:6379` and, when selected,
+18:the configured search endpoint inside the private network. Browser URLs use the
+19:published localhost ports. `ALLOWED_ORIGINS` must be exact JSON origins.
+20:
+21:The Dockerfiles and Compose build arguments pin the actually pulled official
+22:Python 3.12, uv 0.10.9 and Node 24 RepoDigests. Dockerfiles
+23:install the checked-in locks, copy only required source/config files and use
+24:nonroot application users. The CI service job does not build or start application images.
+25:
+26:```powershell
+27:docker compose --project-name dianzi-dev-myname -f infra/compose/compose.yaml --profile core --profile search up -d --wait
+28:docker compose --project-name dianzi-dev-myname -f infra/compose/compose.yaml --profile app --profile worker --profile scheduler --profile frontend up -d --build
+29:docker compose --project-name dianzi-dev-myname -f infra/compose/compose.yaml --profile core --profile search --profile app --profile worker --profile scheduler --profile frontend down
+30:```
+31:
+32:`down` preserves all named volumes. API readiness verifies the real dependency
+33:connections and installed migration revision. Starting the application does not
+34:migrate a database or create accounts. Apply migrations and create users through
+35:the explicit management CLI after checking the target identity. Scheduler health
+36:checks beat process liveness; it is not evidence that a business task completed.
+37:
+38:The bounded data-service allocation is PostgreSQL 512 MiB/0.4 CPU/128 PIDs,
+39:Redis 128 MiB/0.1 CPU/64 PIDs and OpenSearch 2 GiB/0.5 CPU/256 PIDs (512 MiB heap,
+40:no mmap). Application services add 1.125 GiB/0.85 CPU. Persistent storage size
+41:depends on source bytes and retained versions; no sustained capacity result is
+42:claimed. The private network has no outbound route; external business traffic
+43:requires the separately authorized gateway configuration.
+44:
+45:## Test projects
+46:
+47:`compose.test.yaml` includes the base and replaces the development database and
+48:ports. The database is `test_dianzi_<DIANZI_TEST_RUN_ID>`; supply a dedicated
+49:`TEST_POSTGRES_USER`, random URL-safe test credentials and exclusive test ports.
+50:The application URLs in this overlay use the container service names. The
+51:`TEST_DATABASE_URL`, `TEST_REDIS_URL`, `TEST_OPENSEARCH_URL` consumed by host-side
+52:tests use loopback and the published exclusive ports.
+53:
+54:Set `DIANZI_TEST_COMPOSE_PROJECT=dianzi-test-<DIANZI_TEST_RUN_ID>` and
+55:`DIANZI_TEST_COMPOSE_FILE` to the existing test entry file. The shared quality
+56:entrypoint rejects a nonisolated PostgreSQL DSN before running tests or Compose.
+57:Missing resources fail with `blocked`; no test resource is substituted or skipped.
+58:
+59:`compose.test.host.yaml` is only for the specifically authorized Linux daemon
+60:with bridge networking disabled. It clears published ports and bridge networks;
+61:PostgreSQL, Redis, OpenSearch HTTP/transport, API and frontend bind internally to
+62:127.0.0.1 on exclusive configured ports. It also changes application URLs to the
+63:host-side loopback test URLs. It must not be used as a production deployment.
+64:OpenSearch security is disabled only in explicit localhost test overlays.
+65:
+66:The R01-infra run uses project `dianzi-test-r01_infra_20261015`, PostgreSQL 25436,
+67:Redis 26383, OpenSearch 29201/29301. The private random connection configuration
+68:is root-only outside this repository. The authorized daemon expires at
+69:2026-10-17T21:49:15+08:00; this package does not extend it or change host limits.
+READ_FILE reports/runs/recovery_r01_infra_20261015/run_checks.py
+1:"""本工作包验证记录；只加载本包仓库外随机测试秘密，不输出连接内容。"""
+2:
+3:from __future__ import annotations
+4:
+5:import hashlib
+6:import json
+7:import os
+8:import subprocess
+9:import sys
+10:import time
+11:from datetime import datetime, timedelta, timezone
+12:from pathlib import Path
+13:from xml.etree import ElementTree
+14:
+15:ROOT = Path(__file__).resolve().parents[3]
+16:OUTPUT = Path(__file__).resolve().parent
+17:OUTPUT = OUTPUT / os.environ.get("R01_INFRA_EVIDENCE_SUBDIRECTORY", "")
+18:OUTPUT.mkdir(parents=True, exist_ok=True)
+19:BACKEND = ROOT / "backend"
+20:WSL = ["wsl.exe", "-d", "Ubuntu-22.04", "-u", "root", "--exec"]
+21:DOCKER = [*WSL, "/tmp/dianzi-docker-static-r01-20261014/portable/docker/docker",
+22:          "--config", "/tmp/dianzi-docker-static-r01-20261014/runtime/client-config",
+23:          "--host", "unix:///tmp/dianzi-docker-static-r01-20261014/runtime/docker.sock"]
+24:PRIVATE_FILE = "/tmp/dianzi-r01-infra-20261015/connection.json"
+25:HEAD = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+26:environment = dict(os.environ)
+27:environment["PYTHONIOENCODING"] = "utf-8"
+28:environment["DIANZI_DOCKER_COMMAND_JSON"] = json.dumps(DOCKER)
+29:
+30:
+31:def timestamp() -> str:
+32:    return datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="seconds")
+33:
+34:
+35:def redact(value: str) -> str:
+36:    for name, secret in environment.items():
+37:        if secret and ("PASSWORD" in name or "PROXY" in name or name in {"DATABASE_URL", "TEST_DATABASE_URL", "REDIS_URL", "TEST_REDIS_URL"}):
+38:            value = value.replace(secret, "[redacted test credential]")
+39:    return value
+40:
+41:
+42:def execute(name: str, command: list[str], cwd: Path = ROOT, timeout: int = 240) -> int:
+43:    started = timestamp()
+44:    start_clock = time.monotonic()
+45:    try:
+46:        completed = subprocess.run(command, cwd=cwd, env=environment, capture_output=True,
+47:                                   text=True, encoding="utf-8", errors="replace", timeout=timeout)
+48:        stdout, stderr, code = completed.stdout, completed.stderr, completed.returncode
+49:    except subprocess.TimeoutExpired as expired:
+50:        stdout = expired.stdout.decode(errors="replace") if isinstance(expired.stdout, bytes) else expired.stdout or ""
+51:        stderr = expired.stderr.decode(errors="replace") if isinstance(expired.stderr, bytes) else expired.stderr or ""
+52:        code = 124
+53:    (OUTPUT / f"{name}.stdout.log").write_text(redact(stdout), encoding="utf-8")
+54:    (OUTPUT / f"{name}.stderr.log").write_text(redact(stderr), encoding="utf-8")
+55:    counts = None
+56:    xml = OUTPUT / f"{name}.xml"
+57:    if xml.is_file():
+58:        xml.write_text(redact(xml.read_text(encoding="utf-8")), encoding="utf-8")
+59:        cases = ElementTree.parse(xml).findall(".//testcase")
+60:        counts = {"tests": len(cases), "failed": sum(c.find("failure") is not None for c in cases),
+61:                  "errors": sum(c.find("error") is not None for c in cases), "skipped": sum(c.find("skipped") is not None for c in cases)}
+62:    receipt = {"command": command, "cwd": str(cwd), "start": started, "end": timestamp(),
+63:               "wall_clock_seconds": time.monotonic() - start_clock, "exit_code": code,
+64:               "code_sha": HEAD, "counts": counts}
+65:    (OUTPUT / f"{name}.json").write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+66:    print(json.dumps({"name": name, "exit": code, "counts": counts}), flush=True)
+67:    return code
+68:
+69:
+70:def load_private_environment() -> None:
+71:    loaded = subprocess.run([*WSL, "python3", "-c", "import pathlib,sys;sys.stdout.write(pathlib.Path(sys.argv[1]).read_text())", PRIVATE_FILE],
+72:                            capture_output=True, text=True, encoding="utf-8", timeout=10, check=True)
+73:    configuration = json.loads(loaded.stdout)
+74:    assert configuration["run_id"] == "r01_infra_20261015"
+75:    private_environment = configuration["environment"]
+76:    for application_name, compose_name in {
+77:        "DATABASE_URL": "COMPOSE_DATABASE_URL", "REDIS_URL": "COMPOSE_REDIS_URL",
+78:        "ALLOWED_ORIGINS": "COMPOSE_ALLOWED_ORIGINS",
+79:    }.items():
+80:        if application_name in private_environment:
+81:            private_environment[compose_name] = private_environment.pop(application_name)
+82:    environment.update(private_environment)
+83:    environment["DIANZI_TEST_COMPOSE_FILE"] = str(ROOT / "infra/compose/compose.test.host.yaml")
+84:    environment["DIANZI_COMPOSE_PROJECT"] = environment["DIANZI_TEST_COMPOSE_PROJECT"]
+85:    environment["DIANZI_COMPOSE_FILE"] = environment["DIANZI_TEST_COMPOSE_FILE"]
+86:    environment["WSLENV"] = ":".join(sorted({*private_environment, "COMPOSE_DISABLE_ENV_FILE"}))
+87:
+88:
+89:def prepare_private_environment() -> int:
+90:    source = '''import json,os,pathlib,secrets
+91:directory=pathlib.Path("/tmp/dianzi-r01-infra-20261015")
+92:directory.mkdir(mode=0o700,exist_ok=True)
+93:file=directory/"connection.json"
+94:if file.exists():
+95:    raise SystemExit("private test configuration already exists; preserving it")
+96:run_id="r01_infra_20261015"
+97:password=secrets.token_urlsafe(32)
+98:redis_password=secrets.token_urlsafe(32)
+99:database="test_dianzi_"+run_id
+100:username="test_dianzi_r01_infra"
+101:database_url=f"postgresql+psycopg://{username}:{password}@127.0.0.1:25436/{database}"
+102:redis_url=f"redis://:{redis_password}@127.0.0.1:26383/0"
+103:values={"COMPOSE_DISABLE_ENV_FILE":"1","DIANZI_TEST_RUN_ID":run_id,
+104:"DIANZI_TEST_COMPOSE_PROJECT":"dianzi-test-"+run_id,
+105:"POSTGRES_DB":database,"POSTGRES_USER":username,"POSTGRES_PASSWORD":password,"POSTGRES_PORT":"25436",
+106:"REDIS_PASSWORD":redis_password,"REDIS_PORT":"26383",
+107:"OPENSEARCH_INITIAL_ADMIN_PASSWORD":secrets.token_urlsafe(32)+"aA1!","OPENSEARCH_PORT":"29201",
+108:"COMPOSE_DATABASE_URL":database_url,"COMPOSE_REDIS_URL":redis_url,"COMPOSE_ALLOWED_ORIGINS":json.dumps(["http://127.0.0.1:25201"]),
+109:"API_PORT":"28201","FRONTEND_PORT":"25201","VITE_API_BASE_URL":"http://127.0.0.1:28201",
+110:"PYTHON_IMAGE":"unused-config@sha256:"+"0"*64,"UV_IMAGE":"unused-config@sha256:"+"0"*64,"NODE_IMAGE":"unused-config@sha256:"+"0"*64,
+111:"TEST_POSTGRES_USER":username,"TEST_POSTGRES_PASSWORD":password,"TEST_POSTGRES_PORT":"25436",
+112:"TEST_REDIS_PASSWORD":redis_password,"TEST_REDIS_PORT":"26383","TEST_OPENSEARCH_PORT":"29201","TEST_OPENSEARCH_TRANSPORT_PORT":"29301",
+113:"TEST_DATABASE_URL":database_url,"TEST_REDIS_URL":redis_url,"TEST_OPENSEARCH_URL":"http://127.0.0.1:29201"}
+114:with file.open("x",encoding="utf-8") as output:
+115:    json.dump({"run_id":run_id,"environment":values},output)
+116:file.chmod(0o600)
+117:print(json.dumps({"run_id":run_id,"mode":oct(file.stat().st_mode & 0o777),"created":True}))
+118:'''
+119:    return execute("prepare_private", [*WSL, "python3", "-c", source], timeout=10)
+120:
+121:
+122:def main() -> int:
+123:    action = sys.argv[1]
+124:    if action == "prepare":
+125:        return prepare_private_environment()
+126:    load_private_environment()
+127:    if action in {"proxy_probe", "build_proxy_backend", "build_proxy_frontend"}:
+128:        source = "import os,json;print(json.dumps({name:os.environ[name] for name in ['HTTP_PROXY','HTTPS_PROXY','NO_PROXY'] if name in os.environ}))"
+129:        proxy_result = subprocess.run([*WSL, "python3", "-c", source], capture_output=True, text=True, timeout=10, check=True)
+130:        proxies = json.loads(proxy_result.stdout)
+131:        assert proxies.get("HTTP_PROXY") and proxies.get("HTTPS_PROXY")
+132:        environment.update(proxies)
+133:        environment["WSLENV"] += ":" + ":".join(proxies)
+134:    if action == "proxy_probe":
+135:        source = "import urllib.request;url='https://files.pythonhosted.org/packages/b2/95/37b6846549a76c69beca71974905446130d78bddd88a4414b5b88c88af16/sqlalchemy-2.1.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl';response=urllib.request.urlopen(urllib.request.Request(url,method='HEAD'),timeout=8);print({'official_wheel_http_status':response.status,'content_length':response.headers.get('Content-Length')})"
+136:        return execute(action, [*DOCKER, "run", "--rm", "--network", "host", "--memory", "64m", "--cpus", ".1", "--pids-limit", "64", "--env", "HTTP_PROXY", "--env", "HTTPS_PROXY", "--env", "NO_PROXY", "python:3.12-slim", "python", "-c", source], timeout=15)
+137:    for directory in ("images", "images_rebuild"):
+138:        image_record = OUTPUT.parent / directory / "application_images.json"
+139:        if image_record.is_file():
+140:            environment.update(json.loads(image_record.read_text(encoding="utf-8"))["environment"])
+141:    environment["WSLENV"] += ":TEST_BACKEND_IMAGE:TEST_FRONTEND_IMAGE"
+142:    if action == "image_versions":
+143:        images = {"python": "python:3.12-slim", "node": "node:24-alpine", "uv": "ghcr.io/astral-sh/uv:0.10.9"}
+144:        for name, image in images.items():
+145:            if execute("inspect_" + name, [*DOCKER, "image", "inspect", image, "--format", "{{json .RepoDigests}} {{.Size}}"], timeout=10):
+146:                return 1
+147:            arguments = ["python", "--version"] if name == "python" else ["node", "--version"] if name == "node" else ["/uv", "--version"]
+148:            if execute("version_" + name, [*DOCKER, "run", "--rm", "--network", "none", "--memory", "64m", "--cpus", ".1", "--pids-limit", "64", "--entrypoint", arguments[0], image, *arguments[1:]], timeout=15):
+149:                return 1
+150:        return 0
+151:    if action == "archive":
+152:        members = ["backend/pyproject.toml", "backend/uv.lock", "backend/src", "backend/migrations", "infra/docker", "frontend/package.json", "frontend/package-lock.json", "frontend/index.html", "frontend/tsconfig.json", "frontend/vite.config.ts", "frontend/src"]
+153:        archive = subprocess.check_output(["git", "archive", "--format=tar", HEAD, *members], cwd=ROOT)
+154:        directory = "/tmp/dianzi-r01-infra-20261015/context/" + HEAD
+155:        source = "import pathlib,sys,subprocess;directory=pathlib.Path(sys.argv[1]);directory.mkdir(parents=True,exist_ok=True);archive=directory.parent/(directory.name+'.tar');archive.write_bytes(sys.stdin.buffer.read());subprocess.run(['tar','-xf',str(archive),'-C',str(directory)],check=True)"
+156:        started = timestamp()
+157:        result = subprocess.run([*WSL, "python3", "-c", source, directory], input=archive, capture_output=True, timeout=15)
+158:        receipt = {"start": started, "end": timestamp(), "exit_code": result.returncode, "input_tree": HEAD, "members": members, "archive_sha256": hashlib.sha256(archive).hexdigest(), "archive_bytes": len(archive), "directory": directory}
+159:        (OUTPUT / ("source_archive_" + HEAD[:12] + ".json")).write_text(json.dumps(receipt, indent=2)+"\n", encoding="utf-8")
+160:        print(json.dumps({"archive_bytes": len(archive), "exit": result.returncode}))
+161:        return result.returncode
+162:    if action in {"build_backend", "build_frontend", "build_proxy_backend", "build_proxy_frontend"}:
+163:        component = action.removeprefix("build_").removeprefix("proxy_")
+164:        tag = f"dianzi-r01-infra-{component}:{HEAD[:12]}"
+165:        directory = "/tmp/dianzi-r01-infra-20261015/context/" + HEAD
+166:        environment["DOCKER_BUILDKIT"] = "0"
+167:        environment["WSLENV"] += ":DOCKER_BUILDKIT"
+168:        proxy_arguments = ["--build-arg", "HTTP_PROXY", "--build-arg", "HTTPS_PROXY", "--build-arg", "NO_PROXY"] if "proxy" in action else []
+169:        code = execute(action, [*DOCKER, "build", "--network", "host", "--memory", "512m", *proxy_arguments, "--file", directory + f"/infra/docker/{component}.Dockerfile", "--tag", tag, directory], timeout=180)
+170:        if code == 0:
+171:            record_file = OUTPUT / "application_images.json"
+172:            record = json.loads(record_file.read_text()) if record_file.is_file() else {"input_tree": HEAD, "environment": {}}
+173:            record["environment"]["TEST_" + component.upper() + "_IMAGE"] = tag
+174:            record_file.write_text(json.dumps(record, indent=2)+"\n", encoding="utf-8")
+175:        return code
+176:    if action.startswith("pull_"):
+177:        image = {"pull_python": "python:3.12-slim", "pull_node": "node:24-alpine", "pull_uv": "ghcr.io/astral-sh/uv:0.10.9"}[action]
+178:        return execute(action, [*DOCKER, "pull", image], timeout=180)
+179:    if action == "buildx":
+180:        return execute(action, [*DOCKER, "buildx", "version"], timeout=10)
+181:    if action.startswith("cbm_"):
+182:        prefix = [*WSL, "/usr/bin/env", "CBM_CACHE_DIR=/tmp/dianzi-cbm-r01-infra-wt-20261015", "/tmp/dianzi-cbm-audit-20261014/portable/codebase-memory-mcp", "cli"]
+183:        arguments = {
+184:            "cbm_source": ["index_repository", "--repo-path", "/mnt/c/Users/yinha/.codex/worktrees/recovery-r01-infra/dianzi/backend/src", "--name", "dianzi-r01-infra-source", "--persistence", "false"],
+185:            "cbm_infra": ["index_repository", "--repo-path", "/mnt/c/Users/yinha/.codex/worktrees/recovery-r01-infra/dianzi/infra", "--name", "dianzi-r01-infra-config", "--persistence", "false"],
+186:            "cbm_settings": ["get_file_outline", "--project", "dianzi-r01-infra-source", "--file-path", "ai_intel/infrastructure/settings.py", "--format", "json"],
+187:            "cbm_app": ["get_file_outline", "--project", "dianzi-r01-infra-source", "--file-path", "ai_intel/api/app.py", "--format", "json"],
+188:        }[action]
+189:        return execute(action, [*prefix, *arguments], timeout=15)
+190:    if action == "resources":
+191:        for service in ("postgres", "redis", "opensearch"):
+192:            code = execute("resource_" + service, [*DOCKER, "inspect", "--format", "{{json .HostConfig}}", "dianzi-test-r01_infra_20261015-" + service + "-1"], timeout=10)
+193:            if code:
+194:                return code
+195:        return execute("listeners", [*WSL, "ss", "-H", "-ltnp", "( sport = :25436 or sport = :26383 or sport = :29201 or sport = :29301 or sport = :28201 or sport = :25201 )"], timeout=10)
+196:    if action in {"diff_source", "diff_delivery"}:
+197:        command = ["git", "diff", "--check", "05aa1469f83b9db76c35ab4ed4f7a5eec5ad6c79", "HEAD"]
+198:        if action == "diff_source":
+199:            command += ["--", "infra", ".github/workflows/ci.yml", "config/dev.env.example", "backend/tests/contract/test_r01_compose_configuration.py", "reports/tasks/R01-infra.md"]
+200:        return execute(action, command, timeout=10)
+201:    if action == "secret_scan":
+202:        scanned = [path for path in OUTPUT.parent.rglob("*") if path.is_file()]
+203:        scanned += [path for path in (ROOT / "infra").rglob("*") if path.is_file()]
+204:        scanned += [ROOT / ".github/workflows/ci.yml", ROOT / "config/dev.env.example", BACKEND / "tests/contract/test_r01_compose_configuration.py"]
+205:        if (ROOT / "reports/tasks/R01-infra.md").is_file():
+206:            scanned.append(ROOT / "reports/tasks/R01-infra.md")
+207:        credentials = [value for name, value in environment.items() if value and ("PASSWORD" in name or name in {"DATABASE_URL", "TEST_DATABASE_URL", "REDIS_URL", "TEST_REDIS_URL"})]
+208:        findings = [str(path.relative_to(ROOT)) for path in scanned if any(secret.encode() in path.read_bytes() for secret in credentials)]
+209:        result = {"start": timestamp(), "code_sha": HEAD, "files": len(scanned), "credential_findings": findings, "external_secret_material_read": False}
+210:        (OUTPUT / "secret_scan.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+211:        print(json.dumps({"files": len(scanned), "credential_findings": len(findings)}))
+212:        return 1 if findings else 0
+213:    if action == "config":
+214:        return execute("compose_contract", ["uv", "run", "--locked", "pytest", "tests/contract/test_r01_compose_configuration.py", "-q", "--cov-fail-under=0", f"--junitxml={OUTPUT / 'compose_contract.xml'}"], BACKEND)
+215:    if action.startswith("scope_"):
+216:        scope = action.removeprefix("scope_")
+217:        return execute(action, [str(BACKEND / ".venv/Scripts/python.exe"), "scripts/dev.py", "check", "--scope", scope, "--timeout-seconds", "600"], ROOT, 660)
+218:    if action == "migrate":
+219:        source = '''import os
+220:from sqlalchemy import create_engine,text
+221:from scripts.dev import require_isolated_test_database
+222:from ai_intel.infrastructure.database import run_migrations
+223:url=require_isolated_test_database()
+224:engine=create_engine(url,connect_args={"connect_timeout":5})
+225:with engine.connect() as connection:
+226:    identity=connection.execute(text("SELECT current_database(),current_user")).one()
+227:    assert identity[0]=="test_dianzi_r01_infra_20261015" and identity[1]=="test_dianzi_r01_infra"
+228:run_migrations(url)
+229:with engine.connect() as connection:
+230:    version=connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+231:    print({"database":identity[0],"user":identity[1],"migration":version})
+232:engine.dispose()
+233:'''
+234:        return execute("migrate", [str(BACKEND / ".venv/Scripts/python.exe"), "-c", source], ROOT, 40)
+235:    if action in {"runtime_up", "runtime_ps", "runtime_logs"}:
+236:        command = [*DOCKER, "compose", "--project-name", environment["DIANZI_TEST_COMPOSE_PROJECT"], "-f", "/mnt/c/Users/yinha/.codex/worktrees/recovery-r01-infra/dianzi/infra/compose/compose.test.host.yaml", "--profile", "core", "--profile", "search", "--profile", "app", "--profile", "worker", "--profile", "scheduler", "--profile", "frontend"]
+237:        command += {"runtime_up": ["up", "-d", "--wait", "--wait-timeout", "180", "--pull", "never", "--no-build"], "runtime_ps": ["ps", "--format", "json"], "runtime_logs": ["logs", "--no-color", "--tail", "60", "api", "worker", "scheduler", "frontend"]}[action]
+238:        return execute(action, command, timeout=210)
+239:    if action == "runtime_health":
+240:        source = '''import json,urllib.request
+241:from sqlalchemy import create_engine,text
+242:import os
+243:engine=create_engine(os.environ["TEST_DATABASE_URL"],connect_args={"connect_timeout":5})
+244:with engine.connect() as connection:
+245:    print({"observations":[(str(row[0]),row[1].isoformat()) for row in connection.execute(text("SELECT component,observed_at FROM runtime_observations"))]})
+246:opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
+247:with opener.open("http://127.0.0.1:28201/v1/health/ready",timeout=10) as response:
+248:    payload=json.load(response)
+249:    assert response.status==200 and payload["status"]=="ready"
+250:    print(payload)
+251:with opener.open("http://127.0.0.1:25201/",timeout=10) as response:
+252:    assert response.status==200
+253:    print({"frontend_http_status":response.status})
+254:engine.dispose()
+255:'''
+256:        return execute("runtime_health", [str(BACKEND / ".venv/Scripts/python.exe"), "-c", source], ROOT, 30)
+257:    if action == "authentication_smoke":
+258:        source = '''import json,urllib.request,urllib.error
+259:opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
+260:try:
+261:    opener.open("http://127.0.0.1:28201/v1/auth/me",timeout=5)
+262:    raise AssertionError("anonymous authentication route unexpectedly succeeded")
+263:except urllib.error.HTTPError as denied:
+264:    assert denied.code==401
+265:    print({"anonymous_auth_me":denied.code})
+266:with opener.open("http://127.0.0.1:28201/openapi.json",timeout=5) as response:
+267:    paths=json.load(response)["paths"]
+268:    assert "/v1/auth/login" in paths and "/v1/auth/me" in paths
+269:    print({"authentication_paths":[path for path in paths if path.startswith("/v1/auth/")]})
+270:'''
+271:        return execute(action, [str(BACKEND / ".venv/Scripts/python.exe"), "-c", source], ROOT, 15)
+272:    if action == "image_inventory":
+273:        names = ["python:3.12-slim", "node:24-alpine", "ghcr.io/astral-sh/uv:0.10.9", environment["TEST_BACKEND_IMAGE"], environment["TEST_FRONTEND_IMAGE"]]
+274:        code = execute(action, [*DOCKER, "image", "inspect", *names, "--format", "{{.Id}} {{.Size}}"], timeout=10)
+275:        source = "import json,subprocess,sys;command=json.loads(sys.argv[1]);rows=json.loads(subprocess.check_output(command+['image','inspect']+sys.argv[2:]));print(json.dumps([{'image_id':row['Id'],'nonroot_user':row['Config'].get('User'),'proxy_in_environment':any('proxy' in item.split('=',1)[0].lower() for item in row['Config'].get('Env',[]))} for row in rows]))"
+276:        if code:
+277:            return code
+278:        return execute("image_runtime_identity", [*WSL, "python3", "-c", source, json.dumps(DOCKER[len(WSL):]), environment["TEST_BACKEND_IMAGE"], environment["TEST_FRONTEND_IMAGE"]], timeout=10)
+279:    if action in {"up", "ps", "down"}:
+280:        command = [*DOCKER, "compose", "--project-name", environment["DIANZI_TEST_COMPOSE_PROJECT"], "-f", "/mnt/c/Users/yinha/.codex/worktrees/recovery-r01-infra/dianzi/infra/compose/compose.test.host.yaml", "--profile", "core", "--profile", "search", action]
+281:        if action == "up":
+282:            command += ["-d", "--wait", "--wait-timeout", "180", "--pull", "never"]
+283:        if action == "ps":
+284:            command += ["--format", "json"]
+285:        return execute(f"compose_{action}", command)
+286:    if action in {"unit", "contract", "security", "integration", "t03"}:
+287:        path = "tests/integration/test_t03_development_services.py" if action == "t03" else f"tests/{action}"
+288:        command = ["uv", "run", "--locked", "pytest", path, "-q", f"--junitxml={OUTPUT / (action + '.xml')}"]
+289:        if action != "unit":
+290:            command += ["--cov-fail-under=0"]
+291:        return execute(action, command, BACKEND, 600)
+292:    if action in {"ruff", "format", "mypy"}:
+293:        arguments = {"ruff": ["ruff", "check", "tests/contract/test_r01_compose_configuration.py"],
+294:                     "format": ["ruff", "format", "--check", "tests/contract/test_r01_compose_configuration.py"],
+295:                     "mypy": ["mypy", "src", "../scripts/dev.py"]}[action]
+296:        return execute(action, ["uv", "run", "--locked", *arguments], BACKEND)
+297:    if action == "hashes":
+298:        files = [path for directory in (ROOT / "infra",) for path in directory.rglob("*") if path.is_file()]
+299:        files += [ROOT / ".github/workflows/ci.yml", ROOT / "config/dev.env.example", BACKEND / "tests/contract/test_r01_compose_configuration.py"]
+300:        (OUTPUT / "source_hashes.json").write_text(json.dumps({"code_sha":HEAD,"files":{str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in files}}, indent=2)+"\n", encoding="utf-8")
+301:        return 0
+302:    raise ValueError("unknown work package validation action")
+303:
+304:
+305:if __name__ == "__main__":
+306:    raise SystemExit(main())
+## R01 · 运行入口、部署与质量检查可用
+
+- **原任务 / 要求：**T02、T03、T06、T40（切片，非整卡完成）；E1/R2。
+- **前置：**R00变更已生效。
+- **输入 → 输出：**配置与锁文件 → 可启动API/worker/scheduler/frontend、实际依赖装配、可区分的live/ready状态、隔离测试环境。
+- **改动边界：**`backend/src/ai_intel/api/app.py`、`infrastructure/settings.py`、依赖锁文件、`infra/compose/`、`scripts/dev.py`、CI、最小前端入口。
+- **实施：**把真实数据库/认证服务装配进默认应用，注册路由；为新增基础设施建立明确profile与健康检查；建立开发与测试Compose项目；CI补contract及适当集成范围；启动错误明确退出，不用空服务标ready。
+- **测试：**①干净环境启动；②默认应用可访问认证入口；③缺密钥/连接失败返回明确not-ready；④测试DSN不能指向常规开发库；⑤各scope确实发现并运行测试，0项不算通过；⑥锁定安装、静态检查、前端构建成功。
+- **完成证据：**真实启动日志、OpenAPI路由清单、容器健康、隔离DB标识和检查命令；目前Docker未运行的问题在此解决，未解决则integration blocked。
+
+## R02 · 会话、知识账本和版本真正持久化
+
+- **原任务 / 要求：**T04、T05、T06、T17、T19、T21（切片，非整卡完成）；E1/F1/F2。

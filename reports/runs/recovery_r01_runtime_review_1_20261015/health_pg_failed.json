@@ -1,0 +1,16 @@
+{
+  "label": "health_pg_failed",
+  "argv": [
+    "C:\\Users\\yinha\\.codex\\worktrees\\recovery-r01-infra\\dianzi\\backend\\.venv\\Scripts\\python.exe",
+    "-c",
+    "import json,os,urllib.request,urllib.error\nfrom datetime import UTC,datetime\nfrom sqlalchemy import create_engine,text\nengine=create_engine(os.environ['TEST_DATABASE_URL'],connect_args={'connect_timeout':3})\ntry:\n with engine.connect() as connection:\n  identity=connection.execute(text('SELECT current_database(),current_user')).one()\n  assert identity[0]=='test_dianzi_r01_infra_20261015' and identity[1]=='test_dianzi_r01_infra'\n  version=connection.execute(text('SELECT version_num FROM alembic_version')).scalar_one()\n  rows=connection.execute(text('SELECT component,observed_at,platform_version FROM runtime_observations ORDER BY component')).all()\n  print(json.dumps({'database':identity[0],'user':identity[1],'migration':version,'observations':[{'component':r[0],'observed_at':r[1].isoformat(),'age_seconds':(datetime.now(UTC)-r[1]).total_seconds(),'platform_version':r[2]} for r in rows]}))\nexcept Exception as error:\n print(json.dumps({'database_probe_failed':type(error).__name__}))\nfinally: engine.dispose()\nopener=urllib.request.build_opener(urllib.request.ProxyHandler({}))\ntry: response=opener.open('http://127.0.0.1:28201/v1/health/ready',timeout=10)\nexcept urllib.error.HTTPError as error: response=error\nprint(json.dumps({'api_status':response.status,'payload':json.load(response)}))\n"
+  ],
+  "cwd": "C:\\Users\\yinha\\.codex\\worktrees\\recovery-r01-infra\\dianzi",
+  "start": "2026-10-15T01:10:21+08:00",
+  "end": "2026-10-15T01:10:24+08:00",
+  "exit": 0,
+  "wall_seconds": 3.5469999999986612,
+  "source_sha": "d7290cf4240929aa98bfbcc381d9e35c32a534a4",
+  "evidence_head": "0b6a7ad5e984439855cd97124d70095c608adb58",
+  "counts": null
+}

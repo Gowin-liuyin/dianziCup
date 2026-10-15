@@ -1,0 +1,8 @@
+from pathlib import Path
+import datetime,json,subprocess,hashlib
+ROOT=Path(r'D:\dianzi\reports\runs\recovery_r02_persistence_review_1_20261015')
+WT=Path(r'C:\Users\yinha\.codex\worktrees\recovery-r02-review\dianzi')
+paths=['AGENTS.md','docs/plan/00_execution_map.md','docs/plan/03_data_contracts.md','docs/plan/04_workflows_and_algorithms.md','docs/plan/05_api_and_tool_contracts.md','docs/plan/06_testing_and_evaluation.md','docs/plan/11_full_delivery_recovery_20261014.md','docs/plan/12_recovery_task_cards_20261014.md','docs/tasks/T04_domain_contracts.md','docs/tasks/T05_persistence_and_raw_store.md','docs/tasks/T06_authentication_and_scope.md','docs/tasks/T17_relevance_and_event_linking.md','docs/tasks/T19_structured_enrichment.md','docs/tasks/T21_claims_entities_conflicts.md','docs/decisions/CR-R04-R02_implementation_contract.md','docs/decisions/CR-R05.md','reports/tasks/R02-preflight.md','progress/task_state.json','progress/context_handoff.md']
+result={'recorded_at':datetime.datetime.now().astimezone().isoformat(),'fixed_tree_authority_files':{p:hashlib.sha256((WT/p).read_bytes()).hexdigest() for p in paths},'main_status_snapshot':subprocess.run(['git','status','--short'],cwd=r'D:\dianzi',capture_output=True,text=True,check=True).stdout,'main_branch':subprocess.run(['git','branch','--show-current'],cwd=r'D:\dianzi',capture_output=True,text=True,check=True).stdout.strip(),'main_status_is_read_only':True}
+(ROOT/'authority_and_main_status.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
+print('authority manifest recorded; main status protected; no main changes applied')

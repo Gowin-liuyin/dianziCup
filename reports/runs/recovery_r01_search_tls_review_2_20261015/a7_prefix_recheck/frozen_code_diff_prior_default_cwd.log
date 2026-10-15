@@ -1,0 +1,716 @@
+diff --git a/backend/migrations/versions/0012_source_page_fingerprint.py b/backend/migrations/versions/0012_source_page_fingerprint.py
+deleted file mode 100644
+index 0c49ac6..0000000
+--- a/backend/migrations/versions/0012_source_page_fingerprint.py
++++ /dev/null
+@@ -1,28 +0,0 @@
+-"""保存服务端页面请求指纹，旧回执留空并要求显式恢复。
+-
+-Revision ID: 0012_source_page_fingerprint
+-Revises: 0011_job_delivery_and_cursors
+-"""
+-
+-import sqlalchemy as sa
+-from alembic import op
+-
+-revision = "0012_source_page_fingerprint"
+-down_revision = "0011_job_delivery_and_cursors"
+-branch_labels = None
+-depends_on = None
+-
+-
+-def upgrade() -> None:
+-    """不能从条数和游标伪造旧页面正文指纹。"""
+-    op.add_column("source_page_receipts", sa.Column("request_sha256", sa.Text()))
+-    op.create_check_constraint(
+-        "ck_source_page_request_sha256",
+-        "source_page_receipts",
+-        "request_sha256 IS NULL OR request_sha256 ~ '^[0-9a-f]{64}$'",
+-    )
+-
+-
+-def downgrade() -> None:
+-    """回退会丢失幂等输入依据，只允许前向修复或隔离备份恢复。"""
+-    raise RuntimeError("source page request fingerprints require forward-only recovery")
+diff --git a/backend/src/ai_intel/infrastructure/dns_resolver.py b/backend/src/ai_intel/infrastructure/dns_resolver.py
+index fc20929..8342db6 100644
+--- a/backend/src/ai_intel/infrastructure/dns_resolver.py
++++ b/backend/src/ai_intel/infrastructure/dns_resolver.py
+@@ -1,10 +1,8 @@
+ """显式配置的标准DoH解析复用同一个有界HTTPS网关，不放宽公网IP限制。"""
+ 
+-import time
+ from base64 import urlsafe_b64encode
+ 
+ import dns.exception
+-import dns.flags
+ import dns.message
+ import dns.rcode
+ import dns.rdatatype
+@@ -23,56 +21,40 @@ class CloudflareDohResolver:
+     """仅可信部署配置可选；固定公共解析器、验证CA、wireformat且不使用系统代理。"""
+ 
+     def __call__(self, hostname: str, deadline: RequestDeadline) -> list[str]:
+-        deadline = RequestDeadline(min(deadline.expires_at, time.monotonic() + 5))
+-        resolver = create_network_gateway(
+-            NetworkPolicy(
+-                allowed_domains=("1.1.1.1",),
+-                allowed_content_types=("application/dns-message",),
+-                max_response_bytes=65535,
+-                total_timeout_seconds=min(5, deadline.remaining_seconds()),
+-                dns_resolver="system",
+-            )
+-        )
+-        addresses: list[str] = []
+         for record_type in (dns.rdatatype.A, dns.rdatatype.AAAA):
+             query = dns.message.make_query(hostname, record_type)
+             encoded = urlsafe_b64encode(query.to_wire()).rstrip(b"=").decode("ascii")
+-            deadline.remaining_seconds()
+-            result = resolver.fetch("https://1.1.1.1/dns-query?dns=" + encoded, deadline=deadline)
++            resolver = create_network_gateway(
++                NetworkPolicy(
++                    allowed_domains=("1.1.1.1",),
++                    allowed_content_types=("application/dns-message",),
++                    max_response_bytes=65535,
++                    total_timeout_seconds=min(5, deadline.remaining_seconds()),
++                    dns_resolver="system",
++                )
++            )
++            result = resolver.fetch("https://1.1.1.1/dns-query?dns=" + encoded)
+             if result.status_code != 200:
+                 raise NetworkResolutionError("configured DNS resolver request failed")
+             try:
+-                response = dns.message.from_wire(result.body, raise_on_truncation=True)
+-                if (
+-                    not isinstance(response, dns.message.QueryMessage)
+-                    or response.flags & dns.flags.TC
+-                    or not query.is_response(response)
+-                    or response.rcode() != dns.rcode.NOERROR
+-                ):
+-                    raise dns.exception.FormError
+-                chain = response.resolve_chaining()
+-                if chain.answer is None and any(
+-                    rrset.rdtype in (dns.rdatatype.A, dns.rdatatype.AAAA)
+-                    for rrset in response.answer
+-                ):
+-                    raise dns.exception.FormError
+-                for rrset in response.answer:
+-                    if rrset.rdtype == dns.rdatatype.CNAME and len(rrset) != 1:
+-                        raise dns.exception.FormError
+-                    if rrset.rdtype in (dns.rdatatype.A, dns.rdatatype.AAAA):
+-                        if rrset.name != chain.canonical_name:
+-                            raise dns.exception.FormError
+-                        if any(is_private_or_local(record.to_text()) for record in rrset):
+-                            raise NetworkPolicyViolation(
+-                                "configured DNS answer is not a public set"
+-                            )
+-                if chain.answer is not None:
+-                    addresses.extend(record.to_text() for record in chain.answer)
++                response = dns.message.from_wire(result.body)
+             except dns.exception.DNSException:
+                 raise NetworkResolutionError("configured DNS resolver response invalid") from None
+-            if len(addresses) > 16:
+-                raise NetworkPolicyViolation("configured DNS answer exceeds address limit")
+-        deadline.remaining_seconds()
+-        if not addresses:
+-            raise NetworkResolutionError("configured DNS resolver returned no address")
+-        return list(dict.fromkeys(addresses))
++            if not query.is_response(response) or response.rcode() != dns.rcode.NOERROR:
++                raise NetworkResolutionError("configured DNS resolver returned no valid answer")
++            addresses = [
++                record.to_text()
++                for rrset in response.answer
++                if rrset.rdtype == record_type
++                for record in rrset
++            ]
++            if addresses:
++                if len(addresses) > 16 or any(
++                    is_private_or_local(address) for address in addresses
++                ):
++                    raise NetworkPolicyViolation(
++                        "configured DNS answer is not a bounded public set"
++                    )
++                deadline.remaining_seconds()
++                return list(dict.fromkeys(addresses))
++        raise NetworkResolutionError("configured DNS resolver returned no address")
+diff --git a/backend/src/ai_intel/infrastructure/http_transport.py b/backend/src/ai_intel/infrastructure/http_transport.py
+index 5e4499b..2d48a1d 100644
+--- a/backend/src/ai_intel/infrastructure/http_transport.py
++++ b/backend/src/ai_intel/infrastructure/http_transport.py
+@@ -151,13 +151,6 @@ class PinnedHttpTransport:
+         self._tls_context = ssl.create_default_context()
+ 
+     def resolve_addresses(self, hostname: str, deadline: RequestDeadline) -> list[str]:
+-        deadline.remaining_seconds()
+-        try:
+-            numeric_address = ipaddress.ip_address(hostname)
+-        except ValueError:
+-            pass
+-        else:
+-            return [str(numeric_address)]
+         if not self._dns_slots.acquire(timeout=deadline.remaining_seconds()):
+             raise NetworkTimeoutError("DNS concurrency wait exceeded total time limit")
+         resolved: queue.Queue[list[str] | OSError] = queue.Queue(maxsize=1)
+diff --git a/backend/src/ai_intel/infrastructure/network.py b/backend/src/ai_intel/infrastructure/network.py
+index 9c19a85..1b667dc 100644
+--- a/backend/src/ai_intel/infrastructure/network.py
++++ b/backend/src/ai_intel/infrastructure/network.py
+@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable, Mapping
+ from dataclasses import dataclass, field
+ from types import MappingProxyType
+ from typing import Literal, Protocol
+-from urllib.parse import parse_qsl, unquote, urlencode, urljoin, urlsplit, urlunsplit
++from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
+ 
+ from pydantic import SecretStr
+ 
+@@ -143,9 +143,7 @@ def redact_url(url: str) -> tuple[str, str]:
+     return redacted, hashlib.sha256(url.encode("utf-8")).hexdigest()
+ 
+ 
+-def redact_headers(
+-    headers: dict[str, str], sensitive_values: tuple[str, ...] = ()
+-) -> dict[str, str]:
++def redact_headers(headers: dict[str, str]) -> dict[str, str]:
+     redacted: dict[str, str] = {}
+     for key, value in headers.items():
+         if key.lower() in SENSITIVE_HEADERS:
+@@ -157,8 +155,6 @@ def redact_headers(
+                 redacted[key] = "REDACTED"
+         else:
+             redacted[key] = value
+-        for secret in sensitive_values:
+-            redacted[key] = redacted[key].replace(secret, "REDACTED")
+     return redacted
+ 
+ 
+@@ -276,21 +272,6 @@ def _origin(url: str) -> tuple[str, str, int]:
+     )
+ 
+ 
+-def _strip_redirect_secrets(url: str, sensitive_values: tuple[str, ...]) -> str:
+-    """跨origin不携带敏感query；路径反射凭据时拒绝而非向另一主机发送。"""
+-    parts = urlsplit(url)
+-    pairs = [
+-        (key, value)
+-        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+-        if key.lower() not in SENSITIVE_QUERY_KEYS
+-        and not any(secret in value or secret in key for secret in sensitive_values)
+-    ]
+-    target = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(pairs), ""))
+-    if any(secret in unquote(target) for secret in sensitive_values):
+-        raise NetworkPolicyViolation("cross-origin redirect reflects a credential")
+-    return target
+-
+-
+ @dataclass(frozen=True)
+ class OriginCredentials:
+     """Trusted configuration injects secrets only into one exact HTTPS origin."""
+@@ -365,20 +346,6 @@ def _fetch(
+     ):
+         raise ValueError("max_redirect_hops must be between 0 and 5")
+     current_url = url
+-    secret_values = {
+-        value
+-        for key, value in parse_qsl(urlsplit(url).query, keep_blank_values=True)
+-        if key.lower() in SENSITIVE_QUERY_KEYS and value
+-    }
+-    if credentials:
+-        secret_values.update(
+-            value.get_secret_value() for value in credentials.query_parameters.values()
+-        )
+-        for value in credentials.headers.values():
+-            secret_values.add(value.get_secret_value())
+-            if value.get_secret_value().startswith("Bearer "):
+-                secret_values.add(value.get_secret_value().removeprefix("Bearer "))
+-    sensitive_values = tuple(value for value in secret_values if value)
+     for hop in range(max_redirect_hops + 1):
+         deadline.remaining_seconds()
+         policy.ensure_url_allowed(current_url)
+@@ -403,23 +370,12 @@ def _fetch(
+                 except ValueError:
+                     raise NetworkPolicyViolation("redirect URL is malformed") from None
+                 if _origin(current_url) != _origin(next_url):
+-                    next_url = _strip_redirect_secrets(next_url, sensitive_values)
+                     credentials = None
+                 if _origin(current_url)[0] == "https" and _origin(next_url)[0] == "http":
+                     raise NetworkPolicyViolation("HTTPS downgrade is forbidden")
+                 current_url = next_url
+                 continue
+             content_type = response_headers.get("content-type", "").split(";", 1)[0].strip().lower()
+-            if not 200 <= response.status_code < 300:
+-                redacted_url, fingerprint = redact_url(request_url)
+-                return FetchResult(
+-                    final_url=redacted_url,
+-                    status_code=response.status_code,
+-                    content_type=content_type,
+-                    body=b"",
+-                    redacted_headers=redact_headers(response.headers, sensitive_values),
+-                    request_fingerprint_sha256=fingerprint,
+-                )
+             if content_type not in policy.allowed_content_types:
+                 raise UnsupportedContentTypeError("unsupported or missing response content type")
+             if response_headers.get("content-encoding", "identity").lower() not in ("", "identity"):
+@@ -451,7 +407,7 @@ def _fetch(
+                 status_code=response.status_code,
+                 content_type=content_type,
+                 body=bytes(body),
+-                redacted_headers=redact_headers(response.headers, sensitive_values),
++                redacted_headers=redact_headers(response.headers),
+                 request_fingerprint_sha256=fingerprint,
+             )
+         finally:
+@@ -488,15 +444,8 @@ class NetworkGateway:
+ 
+             self._resolve_addresses = CloudflareDohResolver()
+ 
+-    def fetch(
+-        self,
+-        url: str,
+-        max_redirect_hops: int = MAX_REDIRECT_HOPS,
+-        *,
+-        deadline: RequestDeadline | None = None,
+-    ) -> FetchResult:
+-        expires_at = time.monotonic() + self._policy.total_timeout_seconds
+-        deadline = RequestDeadline(min(expires_at, deadline.expires_at) if deadline else expires_at)
++    def fetch(self, url: str, max_redirect_hops: int = MAX_REDIRECT_HOPS) -> FetchResult:
++        deadline = RequestDeadline(time.monotonic() + self._policy.total_timeout_seconds)
+         if not self._request_slots.acquire(timeout=deadline.remaining_seconds()):
+             raise NetworkTimeoutError("request concurrency wait exceeded total time limit")
+         try:
+diff --git a/backend/src/ai_intel/ingestion/parsing/parsers.py b/backend/src/ai_intel/ingestion/parsing/parsers.py
+index 47fec98..c2b3409 100644
+--- a/backend/src/ai_intel/ingestion/parsing/parsers.py
++++ b/backend/src/ai_intel/ingestion/parsing/parsers.py
+@@ -85,9 +85,6 @@ def parse_html_document(content: bytes) -> ParseOutcome:
+ def _unique_json_fields(pairs: list[tuple[str, object]]) -> dict[str, object]:
+     result: dict[str, object] = {}
+     for key, value in pairs:
+-        key.encode("utf-8")
+-        if "\x00" in key:
+-            raise ValueError("JSON key contains unsupported NUL")
+         if key in result:
+             raise ValueError("duplicate JSON field")
+         result[key] = value
+@@ -116,14 +113,9 @@ def _json_segments(
+     else:
+         if isinstance(value, float) and not math.isfinite(value):
+             raise ValueError("nonfinite JSON number")
+-        if isinstance(value, str):
+-            value.encode("utf-8")
+-            if "\x00" in value:
+-                raise ValueError("JSON string contains unsupported NUL")
+-            text = value
+-        else:
+-            text = json.dumps(value, ensure_ascii=False, allow_nan=False)
+-        segments.append(("field:" + pointer, pointer + ": " + text, None))
++        segments.append(
++            ("field:" + pointer, pointer + ": " + json.dumps(value, ensure_ascii=False), None)
++        )
+ 
+ 
+ def parse_json_document(content: bytes) -> ParseOutcome:
+@@ -142,7 +134,7 @@ def parse_json_document(content: bytes) -> ParseOutcome:
+         )
+         segments: list[tuple[str, str, int | None]] = []
+         _json_segments(payload, "", 0, segments)
+-    except (ValueError, UnicodeError, RecursionError):
++    except (ValueError, UnicodeDecodeError, RecursionError):
+         return ParseOutcome(
+             status="unparseable", notes=("invalid json",), parser_version=JSON_PARSER_VERSION
+         )
+diff --git a/backend/src/ai_intel/knowledge/models.py b/backend/src/ai_intel/knowledge/models.py
+index 6a2e5f0..8b0d6fd 100644
+--- a/backend/src/ai_intel/knowledge/models.py
++++ b/backend/src/ai_intel/knowledge/models.py
+@@ -224,7 +224,6 @@ source_page_receipts = Table(
+     Column("revision_ids", JSONB(), nullable=False),
+     Column("failed_job_ids", JSONB(), nullable=False),
+     Column("entry_count", Integer(), nullable=False),
+-    Column("request_sha256", Text(), nullable=True),
+     Column("committed_at", DateTime(timezone=True), nullable=False),
+     ForeignKeyConstraint(
+         ["source_id", "stream_kind"], ["source_cursors.source_id", "source_cursors.stream_kind"]
+diff --git a/backend/tests/integration/test_r02_schema_migration.py b/backend/tests/integration/test_r02_schema_migration.py
+index 52c4bd4..cc78645 100644
+--- a/backend/tests/integration/test_r02_schema_migration.py
++++ b/backend/tests/integration/test_r02_schema_migration.py
+@@ -83,7 +83,7 @@ def test_empty_and_legacy_upgrade_keep_columns_and_old_claims(
+         assert actual_columns == set(mapped_table.c.keys()), table_name
+     with empty_schema_engine.connect() as connection:
+         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+-        assert revision == "0012_source_page_fingerprint"
++        assert revision == "0011_job_delivery_and_cursors"
+         assert {column["name"] for column in inspector.get_columns("enrichment_results")} == set(
+             enrichment_results.c.keys()
+         )
+@@ -102,47 +102,3 @@ def test_empty_and_legacy_upgrade_keep_columns_and_old_claims(
+             assert old_claim["schema_version"] == 1
+             assert old_claim["provenance_status"] == "legacy_unverified"
+             assert old_claim["object_json"] is None
+-
+-
+-def test_0011_page_receipt_history_migrates_without_inventing_request_fingerprint(
+-    empty_schema_engine: Engine,
+-) -> None:
+-    migration_url = empty_schema_engine.url.render_as_string(hide_password=False)
+-    run_migrations(migration_url, "0011_job_delivery_and_cursors")
+-    with empty_schema_engine.begin() as connection:
+-        connection.execute(
+-            text(
+-                "INSERT INTO sources(source_id,name,category,base_origin,visibility,created_at) "
+-                "VALUES ('legacy-source','legacy-source','vendor_advisory',"
+-                "'https://example.invalid','public',CURRENT_TIMESTAMP)"
+-            )
+-        )
+-        connection.execute(
+-            text(
+-                "INSERT INTO source_cursors(source_id,stream_kind,updated_at) "
+-                "VALUES ('legacy-source','live',CURRENT_TIMESTAMP)"
+-            )
+-        )
+-        connection.execute(
+-            text(
+-                "INSERT INTO source_page_receipts(source_id,stream_kind,page_key,input_cursor,"
+-                "output_cursor,revision_ids,failed_job_ids,entry_count,committed_at) "
+-                "VALUES ('legacy-source','live',:key,'{}','{}','[]','[]',0,CURRENT_TIMESTAMP)"
+-            ),
+-            {"key": "a" * 64},
+-        )
+-    run_migrations(migration_url)
+-    with empty_schema_engine.connect() as connection:
+-        old = connection.execute(
+-            text(
+-                "SELECT page_key,entry_count,request_sha256 FROM source_page_receipts "
+-                "WHERE source_id='legacy-source'"
+-            )
+-        ).one()
+-        assert old == ("a" * 64, 0, None)
+-    column = next(
+-        column
+-        for column in inspect(empty_schema_engine).get_columns("source_page_receipts")
+-        if column["name"] == "request_sha256"
+-    )
+-    assert column["nullable"] is True
+diff --git a/backend/tests/security/test_r03_network_transport.py b/backend/tests/security/test_r03_network_transport.py
+index bc7554c..6734527 100644
+--- a/backend/tests/security/test_r03_network_transport.py
++++ b/backend/tests/security/test_r03_network_transport.py
+@@ -482,48 +482,3 @@ def test_real_redirect_rejects_private_dns_and_closes_prior_response(
+     assert queries == ["source.example", "source.example"]
+     assert len(sockets) == 1
+     assert sockets[0].closed
+-
+-
+-@pytest.mark.parametrize("status", [401, 403, 429, 503])
+-def test_untyped_empty_http_error_retains_status_and_retry_metadata(
+-    monkeypatch: pytest.MonkeyPatch, status: int
+-) -> None:
+-    sockets, _ = _install_socket_fixtures(
+-        monkeypatch,
+-        [f"HTTP/1.1 {status} Error\r\nRetry-After: 8\r\nContent-Length: 0\r\n\r\n".encode()],
+-    )
+-    result = create_network_gateway(NetworkPolicy(("source.example",))).fetch(
+-        "https://source.example/"
+-    )
+-    assert result.status_code == status
+-    assert result.body == b""
+-    assert result.redacted_headers["Retry-After"] == "8"
+-    assert len(sockets) == 1 and sockets[0].closed
+-
+-
+-@pytest.mark.parametrize("query", ["api-key=fixture-key", "renamed=wrapped-fixture-key"])
+-def test_cross_origin_location_cannot_forward_reflected_query_credentials(
+-    monkeypatch: pytest.MonkeyPatch, query: str
+-) -> None:
+-    sockets, _ = _install_socket_fixtures(
+-        monkeypatch,
+-        [
+-            _response(
+-                302, f"Location: https://other.example/next?{query}&visible=1\r\n".encode(), b""
+-            ),
+-            _response(),
+-        ],
+-    )
+-    credentials = OriginCredentials(
+-        "https://source.example",
+-        {"Authorization": SecretStr("Bearer fixture-key")},
+-        {"api-key": SecretStr("fixture-key")},
+-    )
+-    result = create_network_gateway(
+-        NetworkPolicy(("source.example", "other.example")), credentials
+-    ).fetch("https://source.example/start")
+-    sent = b"".join(sockets[1].sent)
+-    assert result.status_code == 200
+-    assert b"GET /next?visible=1 HTTP/1.1" in sent
+-    assert b"fixture-key" not in sent and b"Authorization:" not in sent
+-    assert all(connection.closed for connection in sockets)
+diff --git a/backend/tests/unit/test_r03_doh_resolver.py b/backend/tests/unit/test_r03_doh_resolver.py
+index e29eadf..801e6de 100644
+--- a/backend/tests/unit/test_r03_doh_resolver.py
++++ b/backend/tests/unit/test_r03_doh_resolver.py
+@@ -27,7 +27,7 @@ def test_explicit_doh_keeps_wire_response_and_address_boundaries(monkeypatch, mo
+     calls = []
+ 
+     class FixtureResolverGateway:
+-        def fetch(self, url, *, deadline):
++        def fetch(self, url):
+             encoded = parse_qs(urlsplit(url).query)["dns"][0]
+             question = dns.message.from_wire(urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+             response = dns.message.make_response(question)
+@@ -35,10 +35,7 @@ def test_explicit_doh_keeps_wire_response_and_address_boundaries(monkeypatch, mo
+                 response.set_rcode(dns.rcode.NXDOMAIN)
+             elif mode == "mismatch":
+                 response.id ^= 1
+-            elif mode != "empty" and (
+-                (mode == "ipv6" and question.question[0].rdtype == 28)
+-                or (mode != "ipv6" and question.question[0].rdtype == 1)
+-            ):
++            elif mode != "empty" and (mode != "ipv6" or question.question[0].rdtype == 28):
+                 address = "10.0.0.1" if mode == "private" else "1.1.1.2"
+                 record_type = "AAAA" if mode == "ipv6" else "A"
+                 if record_type == "AAAA":
+diff --git a/backend/tests/unit/test_r03_network_gateway.py b/backend/tests/unit/test_r03_network_gateway.py
+index 060f640..2c9070c 100644
+--- a/backend/tests/unit/test_r03_network_gateway.py
++++ b/backend/tests/unit/test_r03_network_gateway.py
+@@ -78,8 +78,7 @@ def test_error_status_is_returned_once_and_response_is_closed(status: int) -> No
+         POLICY, "https://source.example/", lambda url: response, lambda host: ["93.184.216.34"]
+     )
+     assert result.status_code == status
+-    assert response.reads == 0
+-    assert result.body == b""
++    assert response.reads == 1
+     assert response.closed
+ 
+ 
+diff --git a/backend/tests/unit/test_r03_network_review_regressions.py b/backend/tests/unit/test_r03_network_review_regressions.py
+deleted file mode 100644
+index bb5d9d4..0000000
+--- a/backend/tests/unit/test_r03_network_review_regressions.py
++++ /dev/null
+@@ -1,111 +0,0 @@
+-"""独立审查发现的DNS/跨源秘密/状态和共享截止时间回归，fixture不计live。"""
+-
+-from __future__ import annotations
+-
+-import time
+-from base64 import urlsafe_b64decode
+-from urllib.parse import parse_qs, urlsplit
+-
+-import dns.flags
+-import dns.message
+-import dns.rdatatype
+-import dns.rrset
+-import pytest
+-
+-from ai_intel.infrastructure import dns_resolver
+-from ai_intel.infrastructure.network import (
+-    FetchResult,
+-    NetworkPolicy,
+-    NetworkPolicyViolation,
+-    NetworkResolutionError,
+-    NetworkTimeoutError,
+-    RequestDeadline,
+-    create_network_gateway,
+-)
+-
+-
+-@pytest.mark.parametrize(
+-    "mode", ["cname", "mixed_private_aaaa", "unrelated_owner", "cname_loop", "truncated"]
+-)
+-def test_both_address_families_and_only_valid_answer_chains(
+-    monkeypatch: pytest.MonkeyPatch, mode: str
+-) -> None:
+-    questions: list[int] = []
+-
+-    class ResolverFixture:
+-        def fetch(self, url: str, *, deadline: RequestDeadline) -> FetchResult:
+-            deadline.remaining_seconds()
+-            encoded = parse_qs(urlsplit(url).query)["dns"][0]
+-            query = dns.message.from_wire(urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+-            record_type = query.question[0].rdtype
+-            questions.append(record_type)
+-            response = dns.message.make_response(query)
+-            if mode == "cname":
+-                response.answer.append(
+-                    dns.rrset.from_text("source.example.", 60, "IN", "CNAME", "alias.example.")
+-                )
+-                if record_type == dns.rdatatype.A:
+-                    response.answer.append(
+-                        dns.rrset.from_text("alias.example.", 60, "IN", "A", "93.184.216.34")
+-                    )
+-            elif mode == "mixed_private_aaaa":
+-                response.answer.append(
+-                    dns.rrset.from_text("source.example.", 60, "IN", "A", "93.184.216.34")
+-                    if record_type == dns.rdatatype.A
+-                    else dns.rrset.from_text("source.example.", 60, "IN", "AAAA", "::1")
+-                )
+-            elif mode == "unrelated_owner":
+-                response.answer.append(
+-                    dns.rrset.from_text("unrelated.example.", 60, "IN", "A", "93.184.216.34")
+-                )
+-            elif mode == "cname_loop":
+-                response.answer.extend(
+-                    [
+-                        dns.rrset.from_text("source.example.", 60, "IN", "CNAME", "alias.example."),
+-                        dns.rrset.from_text("alias.example.", 60, "IN", "CNAME", "source.example."),
+-                    ]
+-                )
+-            else:
+-                response.flags |= dns.flags.TC
+-                response.answer.append(
+-                    dns.rrset.from_text("source.example.", 60, "IN", "A", "93.184.216.34")
+-                )
+-            return FetchResult(url, 200, "application/dns-message", response.to_wire())
+-
+-    monkeypatch.setattr(dns_resolver, "create_network_gateway", lambda policy: ResolverFixture())
+-    if mode == "cname":
+-        assert dns_resolver.CloudflareDohResolver()(
+-            "source.example", RequestDeadline(time.monotonic() + 1)
+-        ) == ["93.184.216.34"]
+-        assert questions == [dns.rdatatype.A, dns.rdatatype.AAAA]
+-    else:
+-        with pytest.raises(
+-            NetworkPolicyViolation if mode == "mixed_private_aaaa" else NetworkResolutionError
+-        ):
+-            dns_resolver.CloudflareDohResolver()(
+-                "source.example", RequestDeadline(time.monotonic() + 1)
+-            )
+-        if mode == "mixed_private_aaaa":
+-            assert questions == [dns.rdatatype.A, dns.rdatatype.AAAA]
+-
+-
+-def test_doh_never_refreshes_an_expired_parent_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+-    requests: list[str] = []
+-
+-    def delayed_factory(policy: NetworkPolicy):
+-        time.sleep(0.06)
+-        gateway = create_network_gateway(policy)
+-
+-        def request(url, addresses, deadline, headers):
+-            requests.append(url)
+-            raise AssertionError("network must not start after the outer deadline")
+-
+-        monkeypatch.setattr(gateway._transport, "request", request)
+-        return gateway
+-
+-    monkeypatch.setattr(dns_resolver, "create_network_gateway", delayed_factory)
+-    with pytest.raises(NetworkTimeoutError):
+-        dns_resolver.CloudflareDohResolver()(
+-            "source.example", RequestDeadline(time.monotonic() + 0.03)
+-        )
+-    assert requests == []
+diff --git a/backend/tests/unit/test_r04_real_parsing.py b/backend/tests/unit/test_r04_real_parsing.py
+index 0f5d9e6..fb49423 100644
+--- a/backend/tests/unit/test_r04_real_parsing.py
++++ b/backend/tests/unit/test_r04_real_parsing.py
+@@ -182,96 +182,3 @@ def test_pdf_parser_capacity_and_input_limits_are_explicit() -> None:
+     finally:
+         pdf_text._PDF_CAPACITY.release()
+         pdf_text._PDF_CAPACITY.release()
+-
+-
+-def test_json_string_evidence_keeps_newlines_quotes_backslashes_and_non_bmp() -> None:
+-    import json
+-
+-    quote = '中文\n版本 "1.2" 路径 C:\\app 😀'
+-    outcome = parse_json_document(json.dumps({"description": quote}).encode())
+-    assert outcome.status == "parsed"
+-    span = locate_evidence_span(outcome.blocks, quote, block_id=outcome.blocks[0].block_id)
+-    assert outcome.normalized_text[span.start_offset : span.end_offset] == quote
+-    assert outcome.normalized_text.encode("utf-8").decode() == outcome.normalized_text
+-
+-
+-@pytest.mark.parametrize(
+-    "content",
+-    [
+-        b'{"description":"\\ud800"}',
+-        b'{"description":"\\udfff"}',
+-        b'{"\\ud800":"value"}',
+-        b'{"description":"\\u0000"}',
+-        b'{"\\u0000":"value"}',
+-    ],
+-)
+-def test_json_rejects_text_that_cannot_be_saved_losslessly_in_pg_utf8(content: bytes) -> None:
+-    outcome = parse_json_document(content)
+-    assert outcome.status == "unparseable"
+-    assert not outcome.blocks
+-
+-
+-@pytest.mark.parametrize(
+-    "output",
+-    [
+-        b"broken-json",
+-        b"[]",
+-        b"{}",
+-        b'{"pages":[],"notes":[1]}',
+-        b'{"pages":[{"page_number":true,"text":"body"}],"notes":[]}',
+-        b'{"pages":[{"page_number":-1,"text":"body"}],"notes":[]}',
+-        b'{"pages":[{"page_number":1,"text":""}],"notes":[]}',
+-    ],
+-)
+-def test_corrupt_child_protocol_cannot_publish_text(
+-    monkeypatch: pytest.MonkeyPatch,
+-    output: bytes,
+-) -> None:
+-    from ai_intel.ingestion.parsing import pdf_text
+-
+-    class ChildFixture:
+-        returncode = 0
+-
+-        def communicate(self, content: bytes, timeout: int) -> tuple[bytes, None]:
+-            assert content.startswith(b"%PDF-") and timeout == 20
+-            return output, None
+-
+-    monkeypatch.setattr(pdf_text.subprocess, "Popen", lambda *args, **kwargs: ChildFixture())
+-    outcome = parse_pdf_text_layer(b"%PDF-1.4")
+-    assert outcome.status == "unparseable"
+-    assert not outcome.blocks
+-
+-
+-def test_timeout_kills_child_and_releases_capacity_without_passing_secrets(
+-    monkeypatch: pytest.MonkeyPatch,
+-) -> None:
+-    import subprocess
+-
+-    from ai_intel.ingestion.parsing import pdf_text
+-
+-    calls: list[str] = []
+-
+-    class ChildFixture:
+-        def communicate(self, content: bytes | None = None, timeout: int | None = None):
+-            if content is not None:
+-                calls.append("initial")
+-                raise subprocess.TimeoutExpired("isolated-pdf-worker", 20)
+-            calls.append("drained")
+-            return b"", None
+-
+-        def kill(self) -> None:
+-            calls.append("killed")
+-
+-    def spawn(arguments, **options):
+-        assert arguments[-1] == "ai_intel.ingestion.parsing._pdf_worker"
+-        assert "R04_TEST_SECRET" not in options["env"]
+-        return ChildFixture()
+-
+-    monkeypatch.setenv("R04_TEST_SECRET", "isolated-synthetic-provider-secret")
+-    monkeypatch.setattr(pdf_text.subprocess, "Popen", spawn)
+-    assert parse_pdf_text_layer(b"%PDF-1.4").notes == ("pdf extraction timed out",)
+-    assert calls == ["initial", "killed", "drained"]
+-    assert pdf_text._PDF_CAPACITY.acquire(blocking=False)
+-    assert pdf_text._PDF_CAPACITY.acquire(blocking=False)
+-    pdf_text._PDF_CAPACITY.release()
+-    pdf_text._PDF_CAPACITY.release()
+diff --git a/scripts/prepare_search_tls_test.py b/scripts/prepare_search_tls_test.py
+index 7b29667..29d2b47 100644
+--- a/scripts/prepare_search_tls_test.py
++++ b/scripts/prepare_search_tls_test.py
+@@ -321,7 +321,6 @@ def create_fixture(arguments: argparse.Namespace) -> None:
+     directory.mkdir(mode=0o700, exist_ok=False)
+     password = secrets.token_urlsafe(48) + "aA1!"
+     values = {
+-        "DIANZI_DOCKER_COMMAND_JSON": json.dumps(command),
+         "TEST_SEARCH_TLS_URL": f"https://localhost:{arguments.port}",
+         "TEST_SEARCH_TLS_USERNAME": "ai_intel_search",
+         "TEST_SEARCH_TLS_PASSWORD": password,

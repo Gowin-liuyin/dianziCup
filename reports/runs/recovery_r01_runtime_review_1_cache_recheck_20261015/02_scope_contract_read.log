@@ -1,0 +1,248 @@
+
+# T03 · 开发依赖容器与配置分层
+
+阶段：G1｜前置：T02｜评分/要求：E1、P1、R2
+
+## 1. 开始前必须读取
+
+`AGENTS.md`、`progress/task_state.json`、`progress/context_handoff.md`以及：
+
+- `docs/plan/02_architecture.md`
+- `docs/plan/09_operations_delivery.md`
+
+确认前置已有所需实现和实际测试证据；同阶段仅代码验收通过的前置可继续内部开发，live阻塞保持可见。跨阶段必须经阶段检查。不得因为任务编号较大就猜测前置已做。
+
+## 2. 本任务资源
+
+需要本地Docker或明确授权的等价容器环境。
+
+未具备资源：先做不依赖它的本任务步骤，验证状态标blocked/not_run；无法继续时写阻塞与最小所需输入，不编造测试通过。
+
+## 3. 修改边界与目标产物
+
+允许修改：`infra/compose/`；`config/`；`backend/src/ai_intel/infrastructure/`；`backend/tests/integration/`；`scripts/dev.py`；`reports/tasks/`。
+
+另允许本任务指定测试、相关最小迁移、报告与进度文件。任何跨模块公共合同改动先说明；改变语义或栈/阈值要变更审批。不创建与本任务无关的未来模块。
+
+目标产物：`infra/compose/compose.yaml`；`backend/src/ai_intel/infrastructure/settings.py`；`reports/tasks/T03.md`。
+
+测试/检查位置：`backend/tests/integration/test_t03_development_services.py`。这是需要本任务创建并实际执行的位置，不是现有测试证明。
+
+## 4. 按顺序实施
+
+1. 创建core与search/observability可区分的Compose服务，锁定经验证的PostgreSQL、Redis、OpenSearch镜像。
+
+2. 配置私网、持久卷、健康检查、资源限制和本地端口；不把数据库/搜索直接暴露公网。
+
+3. 实现Settings：APP_ENV与DATA_MODE分开，秘密引用与非秘密配置分开；缺必需项给出明确错误。
+
+4. 提供本地开发启动/关闭与依赖检查，关闭不删除数据卷；销毁数据需要显式确认。
+
+5. 在真实容器上建立连接、写入/读取最小数据并重启确认持久性；不能只mock数据库。
+
+6. 更新CI集成服务配置及README，记录实际内存/磁盘需求与未验证的平台。
+
+## 5. 最低验收案例
+
+每项都要有实际输入与可观察断言；允许参数化，但case ID保留。负例不能只测“没有报错”。不能把被测实现输出再作为期望值。
+
+| ID | 输入/场景 | 必须检查的结果 |
+|---|---|---|
+| T03-C01 | 首次启动依赖 | 健康检查可用且从应用访问成功 |
+| T03-C02 | 重启容器 | 已写持久数据保留 |
+| T03-C03 | 搜索profile未启动 | 可识别降级，不谎报全依赖ready |
+| T03-C04 | production配fixture或默认秘密 | 配置验证拒绝 |
+| T03-C05 | 无容器权限 | integration标blocked，不用SQLite冒充 |
+| T03-C06 | 关闭开发服务 | 不删除卷和用户文件 |
+
+## 6. 执行与回归
+
+主检查：
+
+```text
+cd backend && uv run pytest tests/integration/test_t03_development_services.py -v
+```
+
+命令是待实现的工程合同。若文件/工具不存在，应在本任务或前置中补齐，不得声称运行过。涉及后端的改动另跑Ruff、格式、类型与相关已有回归；前端跑lint/typecheck/build；纯文档任务检查链接、字段和引用，不凑假unit测试。
+
+单元/合同测试可以使用fixture；live、性能、持续运行与人工标注不得以fixture代替。结果记录命令、工作目录、开始/结束、退出码、测试数、失败/skip、日志路径和输入版本。
+
+## 7. 完成与停止
+
+更新 `reports/tasks/T03.md`、`progress/task_state.json`、交接与阻塞。每个相关评分项只登记本任务确有证据的能力，不能由代码存在推断优秀档已达到。
+
+自检通过进入awaiting_review；没有独立验收不自行写accepted。存在安全、合同或数据问题标needs_changes/blocked。默认本轮到此停止；有界批处理按同阶段顺序继续，遇阶段检查点或风险变更停止。
+
+## 恢复合并验收附录（R00 / CR-R07已独立核验生效）
+
+最终需要：R01:T03、R20:T03。原C01–C06、实施范围、引用合同和原前置保留。恢复执行前置按manifest.recovery.work_packages.requires_slices；最终前置仍为原depends_on。单R完成不得自动验收整卡；独立review须核对当前冻结版本/真实证据。记录时间：2026-10-14T21:05:58+08:00。
+
+# T40 · 前端骨架、认证与统一状态组件
+
+阶段：G3｜前置：T02、T06｜评分/要求：F1、F2、F3、D2、E1
+
+## 1. 开始前必须读取
+
+`AGENTS.md`、`progress/task_state.json`、`progress/context_handoff.md`以及：
+
+- `docs/plan/05_api_and_tool_contracts.md`
+- `docs/plan/08_code_style.md`
+- `docs/plan/09_operations_delivery.md`
+
+确认前置已有所需实现和实际测试证据；同阶段仅代码验收通过的前置可继续内部开发，live阻塞保持可见。跨阶段必须经阶段检查。不得因为任务编号较大就猜测前置已做。
+
+## 2. 本任务资源
+
+无额外外部资源；按当前环境执行。
+
+未具备资源：先做不依赖它的本任务步骤，验证状态标blocked/not_run；无法继续时写阻塞与最小所需输入，不编造测试通过。
+
+## 3. 修改边界与目标产物
+
+允许修改：`frontend/src/`；`frontend/tests/`；`frontend/e2e/`；`reports/tasks/`。
+
+另允许本任务指定测试、相关最小迁移、报告与进度文件。任何跨模块公共合同改动先说明；改变语义或栈/阈值要变更审批。不创建与本任务无关的未来模块。
+
+目标产物：`frontend/src/app/`；`frontend/src/components/`；`reports/tasks/T40.md`。
+
+测试/检查位置：`frontend/tests/t40_frontend_shell.test.tsx`。这是需要本任务创建并实际执行的位置，不是现有测试证明。
+
+## 4. 按顺序实施
+
+1. 建立登录、工作台布局、路由和当前用户上下文，使用后端session/CSRF，不把token持久化到公开脚本。
+
+2. 按features分模块，API客户端从合同生成或严格匹配类型；禁止Any掩盖错误。
+
+3. 实现可复用EvidenceLink、FreshnessBadge、TaskStatus、EmptyState和ErrorPanel，只抽取实际共性。
+
+4. 处理加载、空、失败、无权限、partial、stale和fixture/live标识；无数据不展示随机图表。
+
+5. 保证键盘操作、可读字号、稳定表格和长文本展开，页面文案用清楚中文。
+
+6. 接通真实health/auth接口，测试掉线、退出和刷新后的状态恢复。
+
+## 5. 最低验收案例
+
+每项都要有实际输入与可观察断言；允许参数化，但case ID保留。负例不能只测“没有报错”。不能把被测实现输出再作为期望值。
+
+| ID | 输入/场景 | 必须检查的结果 |
+|---|---|---|
+| T40-C01 | 登录后加载工作台 | 显示真实用户/权限与数据模式 |
+| T40-C02 | 未认证访问私有路由 | 转登录且不泄露缓存内容 |
+| T40-C03 | API断线 | 清晰错误和重试入口，不显示假成功 |
+| T40-C04 | stale/partial/unknown | 视觉与文案区别于正常结果 |
+| T40-C05 | 刷新/退出 | 会话正确恢复或清除私有前端缓存 |
+| T40-C06 | 键盘访问按钮与表格 | 可操作、状态标签非仅靠颜色 |
+
+## 6. 执行与回归
+
+主检查：
+
+```text
+cd frontend && npm run test -- --run tests/t40_frontend_shell.test.tsx
+```
+
+命令是待实现的工程合同。若文件/工具不存在，应在本任务或前置中补齐，不得声称运行过。涉及后端的改动另跑Ruff、格式、类型与相关已有回归；前端跑lint/typecheck/build；纯文档任务检查链接、字段和引用，不凑假unit测试。
+
+单元/合同测试可以使用fixture；live、性能、持续运行与人工标注不得以fixture代替。结果记录命令、工作目录、开始/结束、退出码、测试数、失败/skip、日志路径和输入版本。
+
+## 7. 完成与停止
+
+更新 `reports/tasks/T40.md`、`progress/task_state.json`、交接与阻塞。每个相关评分项只登记本任务确有证据的能力，不能由代码存在推断优秀档已达到。
+
+自检通过进入awaiting_review；没有独立验收不自行写accepted。存在安全、合同或数据问题标needs_changes/blocked。默认本轮到此停止；有界批处理按同阶段顺序继续，遇阶段检查点或风险变更停止。
+
+## 恢复合并验收附录（R00 / CR-R07已独立核验生效）
+
+最终需要：R01:T40、R04:T40、R17:T40。原C01–C06、实施范围、引用合同和原前置保留。恢复执行前置按manifest.recovery.work_packages.requires_slices；最终前置仍为原depends_on。单R完成不得自动验收整卡；独立review须核对当前冻结版本/真实证据。记录时间：2026-10-14T21:05:58+08:00。
+
+# 09 · 工程运维、文档与比赛交付
+
+## 1. CI从骨架期建立
+
+每次改动运行格式、lint、类型、unit；涉及schema/连接器运行contract；涉及持久化、权限、任务或索引运行integration。前端运行lint、typecheck、组件测试和build；关键流程运行浏览器E2E。
+
+CI隔离测试环境，读取锁文件，不使用生产秘密。pipeline必须检查测试数、skip和失败，禁止用 `|| true`掩盖失败。依赖审计/秘密扫描采用明确白名单与审查记录，不用全局忽略。
+
+任务所新增的检查要进入CI，不能只在Agent一次会话里手动执行后再失去覆盖。
+
+## 2. CD与部署
+
+容器从锁定依赖构建，非root运行，提供healthcheck。数据库/Redis/OpenSearch在私网；对外入口有TLS和认证；开发模式只能本地或明确隔离。
+
+流水线顺序：测试→构建→扫描→生成制品清单→部署staging→smoke→记录结果→人工批准→正式部署。不能未经授权向公网发布或推送用户仓库。
+
+迁移先备份，兼容读写窗口明确。失败回滚到前版应用；数据库破坏性回滚须人工计划，不让Agent自动drop表。
+
+## 3. 自动运维与监控
+
+必须观测：源采集成功/失败/新鲜度、漏页/失败条目、队列积压、重试/死信、worker心跳、模型与工具用量、索引滞后、stale研判、重验证失败、问答错误/延迟、推荐队列和存储容量。
+
+日志结构：timestamp、level、service、trace_id、job_id、event_code、耗时、错误类型；tenant可用内部ID，不写原始私有正文和密钥。用户可见任务轨迹与管理员日志分开。
+
+告警包括来源持续失败、队列持续积压、索引落后超过门限、stale结果积压、恢复失败和费用接近预算。门限在开发实测后冻结；不是任意“5分钟”就称有理论依据。
+
+自动恢复限于有限重试、重连、隔离坏记录、受控重放和索引重建；不自动放宽权限、删除数据、修改生产代码或购买资源。
+
+## 4. 恢复演练
+
+在隔离环境分别停止worker、Redis、OpenSearch；模拟数据库短暂不可用、来源超时和模型拒绝。检查原文/游标不丢失、outbox可重放、结果不重复、旧任务不覆盖新任务、前端正确显示降级。
+
+备份PostgreSQL、原文对象、规则/提示词配置和版本清单。另起干净环境恢复，验证对象hash、记录计数、核心API与一条完整研判。只有“备份命令返回成功”不算恢复通过。
+
+## 5. 持续运行
+
+建议至少一次连续7天的真实运行观察，自设检查而非官方时长。采集与统计脚本由Agent实现，实际运行等待真实时间，不能改时间戳伪造7天。
+
+开始/结束时间、配置hash、异常中断和缺失区间如实记录。人工查看每日异常摘要；需要未来自动提醒由用户另行安排，不把本计划当已创建定时服务。
+
+## 6. 技术报告
+
+以Markdown维护内容源，最终按比赛要求输出Word与PDF。报告需有：核心亮点预览、评分覆盖、架构、Agent、三模块、数据合同、关键实现、实验设置、实测结果、错误分析、复用边界、部署与局限。
+
+图表从实际模型/接口和运行结果生成，架构不画不存在的组件。数值引用具体run_id与数据版本。没有实验的结果留空并写未验证，不填预期百分比。
+
+T55可实现文档构建脚本；实际Word/PDF要检查渲染、目录、表格、图编号、字体与分页。代码Agent缺文档渲染工具时报告阻塞，不仅因文件存在就算生成成功。
+
+## 7. 演示与答辩
+{
+  "title": "运行入口、部署与质量检查可用",
+  "status": "in_progress",
+  "implementation": "not_started",
+  "verification": {
+    "unit": "not_run",
+    "contract": "not_run",
+    "integration": "not_run",
+    "security": "not_run",
+    "frontend": "not_run",
+    "e2e": "not_run",
+    "live": "not_run",
+    "manual": "not_run"
+  },
+  "evidence": [],
+  "review_ref": null,
+  "report": "reports/tasks/R01.md"
+}
+Get-Content: Cannot find path 'C:\Users\yinha\.codex\worktrees\recovery-r01-infra-fix\dianzi\reports\tasks\R01-infra-fix.md' because it does not exist.
+backend/tests/contract/test_r01_compose_configuration.py:85:    """使用真实 Compose 解析 include/override 和 profile，无 shell/eval。"""
+backend/tests/contract/test_r01_compose_configuration.py:221:def test_frontend_cache_mounts_are_owned_by_the_frozen_nonroot_node_user(filename: str) -> None:
+backend/tests/contract/test_r01_compose_configuration.py:226:    for mount in frontend["tmpfs"]:
+backend/tests/contract/test_r01_compose_configuration.py:236:    assert frontend["read_only"] is True
+backend/tests/contract/test_r01_compose_configuration.py:248:    assert "USER node" in frontend
+infra/docker/frontend.Dockerfile:8:USER node
+infra/compose\compose.yaml:19:  read_only: true
+infra/compose\compose.yaml:20:  tmpfs: [/tmp]
+infra/compose\compose.yaml:150:    read_only: true
+infra/compose\compose.yaml:151:    tmpfs:
+infra/compose\compose.yaml:153:      - /app/node_modules/.vite:uid=1000,gid=1000,mode=0700
+infra/compose\compose.yaml:154:      - /app/node_modules/.vite-temp:uid=1000,gid=1000,mode=0700
+infra/compose\compose.test.host.yaml:1:include:
+infra/compose\compose.test.host.yaml:3:    env_file: []
+infra/compose\compose.test.yaml:1:include:
+infra/compose\compose.test.yaml:3:    env_file: []
+infra/compose\README.md:3:Compose 2.24.4 or later is required for `include`, `!override` and `!reset`.
+infra/compose\README.md:8:into a shared log: its output includes interpolated credentials.
+infra/compose\README.md:47:`compose.test.yaml` includes the base and replaces the development database and
+base_ancestor_exit=0
+source_to_evidence_diff_exit=0
+other_source_diff_exit=0

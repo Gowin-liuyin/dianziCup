@@ -1,0 +1,16 @@
+{
+  "label": "old_schema_verified",
+  "argv": [
+    "C:\\Users\\yinha\\.codex\\worktrees\\recovery-r01-infra\\dianzi\\backend\\.venv\\Scripts\\python.exe",
+    "-c",
+    "import json,os,uuid\nfrom sqlalchemy import create_engine,text\nfrom sqlalchemy.engine import make_url\nfrom fastapi import FastAPI\nfrom fastapi.testclient import TestClient\nfrom redis import Redis\nfrom ai_intel.api.app import build_health_router\nfrom ai_intel.infrastructure.settings import ApplicationSettings\nengine=create_engine(os.environ['TEST_DATABASE_URL'],connect_args={'connect_timeout':3})\nschema='review_r01_old_'+uuid.uuid4().hex\nwith engine.begin() as connection:\n assert connection.execute(text('SELECT current_database(),current_user')).one()==('test_dianzi_r01_infra_20261015','test_dianzi_r01_infra')\n connection.execute(text('CREATE SCHEMA '+schema))\n connection.execute(text('CREATE TABLE '+schema+'.alembic_version(version_num varchar(32) PRIMARY KEY)'))\n connection.execute(text('INSERT INTO '+schema+\".alembic_version VALUES ('0004_jobs_outbox')\"))\nurl=make_url(os.environ['TEST_DATABASE_URL']).update_query_dict({'options':'-csearch_path='+schema}).render_as_string(hide_password=False)\nconfiguration=ApplicationSettings(app_env='test',data_mode='live',database_url=url,redis_url=os.environ['TEST_REDIS_URL'],opensearch_url=os.environ['TEST_OPENSEARCH_URL'],allowed_origins=('http://127.0.0.1:25201',))\nschema_engine=create_engine(url,connect_args={'connect_timeout':3})\ncache=Redis.from_url(os.environ['TEST_REDIS_URL'],socket_connect_timeout=3,socket_timeout=3)\napplication=FastAPI();application.include_router(build_health_router(configuration,schema_engine,cache),prefix='/v1')\nwith TestClient(application) as client:\n response=client.get('/v1/health/ready');payload=response.json()\n assert response.status_code==503 and payload['dependencies']['database']['state']=='migration_required'\nwith engine.connect() as connection:\n assert connection.execute(text('SELECT version_num FROM alembic_version')).scalar_one()=='0005_runtime_observations'\n assert connection.execute(text('SELECT version_num FROM '+schema+'.alembic_version')).scalar_one()=='0004_jobs_outbox'\nprint(json.dumps({'isolated_schema':schema,'actual_pg':True,'readiness_route_engine_injected':True,'ready_http':response.status_code,'ready_database_state':payload['dependencies']['database']['state'],'main_revision_preserved':'0005_runtime_observations','old_revision_preserved':'0004_jobs_outbox','automatic_migration':False,'assertions':3,'pass':3,'fail':0,'skip':0}))\nengine.dispose();schema_engine.dispose();cache.close()\n"
+  ],
+  "cwd": "C:\\Users\\yinha\\.codex\\worktrees\\recovery-r01-infra\\dianzi",
+  "start": "2026-10-15T01:09:16+08:00",
+  "end": "2026-10-15T01:09:18+08:00",
+  "exit": 0,
+  "wall_seconds": 1.25,
+  "source_sha": "d7290cf4240929aa98bfbcc381d9e35c32a534a4",
+  "evidence_head": "0b6a7ad5e984439855cd97124d70095c608adb58",
+  "counts": null
+}
