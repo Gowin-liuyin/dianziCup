@@ -75,9 +75,11 @@ F2/F3/P2只有受控授权清单输入、PG版本可追溯和租户权限的切�
 
 CBM首先实际cli help，独立XDG `/tmp/dianzi-r11-inventory-cbm`，初始backend/src索引1501节点/7622边；assets单独108/396，避免默认assets排除误读。完成后的assets独立154/605，not_indexed/parse_partial/parse_unusable均0，仅__pycache__排除。schema/parser入向/import_manifest入向已追踪；源码/测试全rg交叉核验。生产API/app当前没有build_inventory_router caller；新router和新tests是实际caller，不把静态图当主app接线通过。CBM各命令时间未逐条捕获，明确不编造。
 
-[artifact_manifest.json](../runs/recovery_r11_asset_inventory_20261016/artifact_manifest.json)记录每个新artifact bytes/SHA256、原logs/XML/txt原bytes/hash与对应gzip bytes/hash、源码冻结Git blob证明、各轮JUnit真实fail/error/skip/耗时。gzip逐字节还原原文件，raw本地原件保持；材料commit包含归档gzip，避免Git文本换行改写日志。脚本捕获允许连接配置在内存逐项扫描新证据，发现配置秘密0。未导出实际私有上传清单。
+[artifact_manifest.json](../runs/recovery_r11_asset_inventory_20261016/artifact_manifest.json)记录每个新artifact bytes/SHA256、原logs/XML/txt/JSON/材料脚本原bytes/hash与对应gzip bytes/hash、源码冻结Git blob证明、各轮JUnit真实fail/error/skip/耗时。gzip逐字节还原原文件，raw本地原件保持；材料commit的权威原bytes全部在gzip，不将未过滤JSON视图的Git换行表示误算原运行证据。脚本捕获允许连接配置在内存逐项扫描新证据，发现配置秘密0。未导出实际私有上传清单。
 
-本次manifest本体原bytes SHA256为`20133131988398d83d114a923f254bae9c0d49cd2347efc6eb0b4bd91c1411e1`，89 artifact与69原证据gzip条目；源码按冻结Git blob并校验工作树Git过滤对象相同，不将源码LF/CRLF表示差异当原运行证据改变。
+本次manifest本体显式LF，原bytes SHA256为`d453b93dde90abe18d4241bf4a55d778d689110b20625d36d10bf1c13a171c0e`，94 gzip artifact与93原证据条目；源码按冻结Git blob并校验工作树Git过滤对象相同，不将源码LF/CRLF表示差异当原运行证据改变。
+
+首次材料`429f432`在Git逐blob核验时发现12份commands/database JSON的Windows CRLF被清洁过滤为LF，因此该旧材料raw artifact校验未通过；首次材料diff检查为exit2（3份CBM原输出的额外EOF空行）。新材料将全部原JSON/脚本也gzip归档，manifest本体显式LF，6份CBM未过滤视图只从Git索引移除，原本地文件与原bytes gzip完整保留；不改.gitattributes或原证据字节。旧manifest原bytes SHA256 `20133131988398d83d114a923f254bae9c0d49cd2347efc6eb0b4bd91c1411e1`保存在artifact_manifest_before_raw_fix.json.gz，旧Git材料及实际诊断日志保留，不能把旧材料称已通过。最终新材料各gzip逐Git blob与解压原bytes匹配，diff检查通过。
 
 ## 八层状态与交接
 

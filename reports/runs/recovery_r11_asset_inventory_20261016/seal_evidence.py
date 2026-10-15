@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 RUN = Path(__file__).resolve().parent
 ROOT = RUN.parents[2]
+CODE_COMMIT = "6f82c68075dde808da9c92e3a49ad2e605e6b5a8"
 
 
 def digest(raw):
@@ -18,9 +19,7 @@ def digest(raw):
 
 
 def main():
-    code = subprocess.check_output(
-        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
-    ).strip()
+    code = CODE_COMMIT
     config = json.loads(
         subprocess.check_output(
             [
@@ -77,7 +76,11 @@ def main():
         )
     archives = []
     for path in sorted(RUN.rglob("*")):
-        if path.is_file() and path.suffix in {".log", ".xml", ".txt"}:
+        if (
+            path.is_file()
+            and path.name != "artifact_manifest.json"
+            and path.suffix in {".log", ".xml", ".txt", ".json", ".py"}
+        ):
             raw = path.read_bytes()
             if any(secret in raw for secret in secrets):
                 raise RuntimeError("evidence contains a configured test credential")
@@ -109,11 +112,7 @@ def main():
             }
     artifacts = []
     for path in sorted(RUN.rglob("*")):
-        if (
-            path.is_file()
-            and path.name != "artifact_manifest.json"
-            and path.suffix not in {".log", ".xml", ".txt"}
-        ):
+        if path.is_file() and path.suffix == ".gz":
             raw = path.read_bytes()
             if any(secret in raw for secret in secrets):
                 raise RuntimeError("artifact contains a configured test credential")
@@ -142,7 +141,9 @@ def main():
         "raw_note": "synthetic fixture logs only; real uploaded private bytes remain in PG and are not exported",
     }
     (RUN / "artifact_manifest.json").write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps(manifest, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+        newline="\n",
     )
     print(
         json.dumps(
