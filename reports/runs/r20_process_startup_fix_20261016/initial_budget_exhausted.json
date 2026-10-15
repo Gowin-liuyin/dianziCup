@@ -1,0 +1,35 @@
+{
+  "fixture": true,
+  "name": "initial_budget_exhausted",
+  "coverage": false,
+  "worker_code": "import os,time,json\ndef mark(stage): print('OBS',json.dumps([stage,os.getpid(),time.monotonic(),time.process_time()]),flush=True)\nmark('entry_after_site')\nfrom ai_intel.infrastructure import process_limits as limits\nwith open(os.devnull,'wb',buffering=0) as sink:\n    while time.process_time()<1.1: sink.write(b'bounded kernel operation')\nmark('before_bound')\noriginal=limits.subprocess.Popen\ndef launch(*args,**kwargs):\n    guard=original(*args,**kwargs)\n    print('GUARD',guard.pid,flush=True)\n    return guard\nlimits.subprocess.Popen=launch\nhandle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nprint('READY',limits._WINDOWS_CPU_GUARDS[0].pid,flush=True)\nprint('RESULT_AFTER_EXHAUSTION',flush=True)\n",
+  "started_at": "2026-10-16T00:32:05.265975+08:00",
+  "ready_deadline_seconds": 8,
+  "outer_wall_deadline_seconds": 20,
+  "worker_pid": 21484,
+  "guardian_pid": 44072,
+  "exited_before_readiness": true,
+  "exit_code": 3221225540,
+  "stdout": "OBS [\"entry_after_site\", 21484, 78005.046, 0.078125]\r\nOBS [\"before_bound\", 21484, 78006.125, 1.109375]\r\nGUARD 44072\r\n",
+  "stderr": "",
+  "final_cpu": [
+    {
+      "created": 134365555252856321,
+      "exited": 134365555265639505,
+      "kernel": 5781250,
+      "user": 5468750
+    },
+    {
+      "created": 134365555264757133,
+      "exited": 134365555265664217,
+      "kernel": 156250,
+      "user": 312500
+    }
+  ],
+  "tree_signaled": [
+    true,
+    true
+  ],
+  "wall_seconds": 1.312999999994645,
+  "ended_at": "2026-10-16T00:32:06.571470+08:00"
+}

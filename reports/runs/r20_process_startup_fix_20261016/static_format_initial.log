@@ -1,0 +1,239 @@
+unformatted: File would be reformatted
+   --> tests\unit\test_r20_process_startup.py:121:22
+    |
+120 |     assert set(observed["env"]) <= {
+    -         "SYSTEMROOT", "WINDIR", "PATH", "PYTHONPATH", "TEMP", "TMP",
+    -         "PYTHONUTF8", "PYTHONIOENCODING",
+121 +         "SYSTEMROOT",
+122 +         "WINDIR",
+123 +         "PATH",
+124 +         "PYTHONPATH",
+125 +         "TEMP",
+126 +         "TMP",
+127 +         "PYTHONUTF8",
+128 +         "PYTHONIOENCODING",
+129 |     }
+    |
+
+unformatted: File would be reformatted
+   --> D:\wt\r20-process-startup-fix\reports\runs\r20_process_startup_fix_20261016\measure_startup.py:29:40
+    |
+28  |         environment.update(
+    -             COV_CORE_SOURCE="ai_intel", COV_CORE_CONFIG=";",
+29  +             COV_CORE_SOURCE="ai_intel",
+30  +             COV_CORE_CONFIG=";",
+31  |             COV_CORE_DATAFILE=str(RUN / f".{name}.coverage"),
+32  |         )
+33  |     record: dict[str, object] = {
+    -         "fixture": True, "name": name, "coverage": coverage, "worker_code": code,
+34  +         "fixture": True,
+35  +         "name": name,
+36  +         "coverage": coverage,
+37  +         "worker_code": code,
+38  |         "started_at": datetime.datetime.now().astimezone().isoformat(),
+    -         "ready_deadline_seconds": 8, "outer_wall_deadline_seconds": 20,
+39  +         "ready_deadline_seconds": 8,
+40  +         "outer_wall_deadline_seconds": 20,
+41  |     }
+--------------------------------------------------------------------------------
+46  |     with subprocess.Popen(
+    -         [sys.executable, "-B", "-c", code], env=environment, cwd=ROOT / "backend",
+    -         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+47  +         [sys.executable, "-B", "-c", code],
+48  +         env=environment,
+49  +         cwd=ROOT / "backend",
+50  +         stdin=subprocess.PIPE,
+51  +         stdout=subprocess.PIPE,
+52  +         stderr=subprocess.PIPE,
+53  |     ) as worker:
+--------------------------------------------------------------------------------
+108 |             record.update(
+    -                 stdout="".join(lines), stderr=worker.stderr.read().decode("utf-8", errors="replace"),
+109 +                 stdout="".join(lines),
+110 +                 stderr=worker.stderr.read().decode("utf-8", errors="replace"),
+111 |                 final_cpu=[cpu_snapshot(handle) for handle in handles],
+--------------------------------------------------------------------------------
+127 |     semantic._bound_worker_memory()
+    -     (RUN / "semantic_control_worker.json").write_text(json.dumps({
+    -         "fixture": True, "pid": os.getpid(), "guardian_pid": process_limits._WINDOWS_CPU_GUARDS[0].pid,
+    -         "start_method": "spawn", "cpu_seconds_limit": 30, "memory_bytes": 2 * 1024**3,
+    -         "coverage_active": "coverage" in sys.modules, "runtime_imported": "onnxruntime" in sys.modules,
+    -         "cpu_seconds_before_send": time.process_time(), "synthetic_output": True,
+    -     }, indent=2), encoding="utf-8")
+128 +     (RUN / "semantic_control_worker.json").write_text(
+129 +         json.dumps(
+130 +             {
+131 +                 "fixture": True,
+132 +                 "pid": os.getpid(),
+133 +                 "guardian_pid": process_limits._WINDOWS_CPU_GUARDS[0].pid,
+134 +                 "start_method": "spawn",
+135 +                 "cpu_seconds_limit": 30,
+136 +                 "memory_bytes": 2 * 1024**3,
+137 +                 "coverage_active": "coverage" in sys.modules,
+138 +                 "runtime_imported": "onnxruntime" in sys.modules,
+139 +                 "cpu_seconds_before_send": time.process_time(),
+140 +                 "synthetic_output": True,
+141 +             },
+142 +             indent=2,
+143 +         ),
+144 +         encoding="utf-8",
+145 +     )
+146 |     connection.send(("ok", [[1.0] + [0.0] * 383]))
+--------------------------------------------------------------------------------
+156 |     )
+    -     exhausted = observe("initial_budget_exhausted", mark + (
+    -         "from ai_intel.infrastructure import process_limits as limits\n"
+    -         "with open(os.devnull,'wb',buffering=0) as sink:\n"
+    -         "    while time.process_time()<1.1: sink.write(b'bounded kernel operation')\n"
+    -         "mark('before_bound')\n"
+    -         "original=limits.subprocess.Popen\n"
+    -         "def launch(*args,**kwargs):\n"
+    -         "    guard=original(*args,**kwargs)\n"
+    -         "    print('GUARD',guard.pid,flush=True)\n"
+    -         "    return guard\n"
+    -         "limits.subprocess.Popen=launch\n"
+    -         "handle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\n"
+    -         "print('READY',limits._WINDOWS_CPU_GUARDS[0].pid,flush=True)\n"
+    -         "print('RESULT_AFTER_EXHAUSTION',flush=True)\n"
+    -     ), coverage=False)
+157 +     exhausted = observe(
+158 +         "initial_budget_exhausted",
+159 +         mark
+160 +         + (
+161 +             "from ai_intel.infrastructure import process_limits as limits\n"
+162 +             "with open(os.devnull,'wb',buffering=0) as sink:\n"
+163 +             "    while time.process_time()<1.1: sink.write(b'bounded kernel operation')\n"
+164 +             "mark('before_bound')\n"
+165 +             "original=limits.subprocess.Popen\n"
+166 +             "def launch(*args,**kwargs):\n"
+167 +             "    guard=original(*args,**kwargs)\n"
+168 +             "    print('GUARD',guard.pid,flush=True)\n"
+169 +             "    return guard\n"
+170 +             "limits.subprocess.Popen=launch\n"
+171 +             "handle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\n"
+172 +             "print('READY',limits._WINDOWS_CPU_GUARDS[0].pid,flush=True)\n"
+173 +             "print('RESULT_AFTER_EXHAUSTION',flush=True)\n"
+174 +         ),
+175 +         coverage=False,
+176 +     )
+177 |     assert exhausted.get("exited_before_readiness") is True
+178 |     assert "RESULT_AFTER_EXHAUSTION" not in exhausted["stdout"]
+179 |     assert "observation_error" not in exhausted
+180 |     assert all(exhausted["tree_signaled"])
+    -     pdf = observe("pdf_coverage_after_fix", mark + (
+    -         "import builtins\nfrom ai_intel.infrastructure import process_limits\n"
+    -         "from ai_intel.ingestion.parsing import _pdf_worker as worker\n"
+    -         "mark('after_pdf_module_import')\n"
+    -         "original_bound=worker._bound_memory\n"
+    -         "def observed_bound():\n"
+    -         "    mark('before_bound')\n"
+    -         "    handle=original_bound()\n"
+    -         "    mark('after_bound')\n"
+    -         "    print('READY',process_limits._WINDOWS_CPU_GUARDS[0].pid,flush=True)\n"
+    -         "    return handle\n"
+    -         "worker._bound_memory=observed_bound\n"
+    -         "original_import=builtins.__import__\n"
+    -         "first=True\n"
+    -         "def observed_import(name,*args,**kwargs):\n"
+    -         "    global first\n"
+    -         "    if first and name.startswith('pypdf'):\n"
+    -         "        first=False\n"
+    -         "        mark('before_heavy_import')\n"
+    -         "        result=original_import(name,*args,**kwargs)\n"
+    -         "        mark('after_heavy_import')\n"
+    -         "        return result\n"
+    -         "    return original_import(name,*args,**kwargs)\n"
+    -         "builtins.__import__=observed_import\nworker.main()\n"
+    -     ), coverage=True, content=(ROOT / "docs/references/competition_brief.pdf").read_bytes())
+181 +     pdf = observe(
+182 +         "pdf_coverage_after_fix",
+183 +         mark
+184 +         + (
+185 +             "import builtins\nfrom ai_intel.infrastructure import process_limits\n"
+186 +             "from ai_intel.ingestion.parsing import _pdf_worker as worker\n"
+187 +             "mark('after_pdf_module_import')\n"
+188 +             "original_bound=worker._bound_memory\n"
+189 +             "def observed_bound():\n"
+190 +             "    mark('before_bound')\n"
+191 +             "    handle=original_bound()\n"
+192 +             "    mark('after_bound')\n"
+193 +             "    print('READY',process_limits._WINDOWS_CPU_GUARDS[0].pid,flush=True)\n"
+194 +             "    return handle\n"
+195 +             "worker._bound_memory=observed_bound\n"
+196 +             "original_import=builtins.__import__\n"
+197 +             "first=True\n"
+198 +             "def observed_import(name,*args,**kwargs):\n"
+199 +             "    global first\n"
+200 +             "    if first and name.startswith('pypdf'):\n"
+201 +             "        first=False\n"
+202 +             "        mark('before_heavy_import')\n"
+203 +             "        result=original_import(name,*args,**kwargs)\n"
+204 +             "        mark('after_heavy_import')\n"
+205 +             "        return result\n"
+206 +             "    return original_import(name,*args,**kwargs)\n"
+207 +             "builtins.__import__=observed_import\nworker.main()\n"
+208 +         ),
+209 +         coverage=True,
+210 +         content=(ROOT / "docs/references/competition_brief.pdf").read_bytes(),
+211 +     )
+212 |     assert pdf["exit_code"] == 0 and pdf["ready_wall_seconds"] < 8
+--------------------------------------------------------------------------------
+226 |     assert result.vectors == ((1.0,) + (0.0,) * 383,)
+    -     summary = {"fixture": True, "real_spawn_pipe": True, "synthetic_model_output": True,
+    -                "wall_seconds": time.monotonic() - began, "dimensions": len(result.vectors[0])}
+    -     (RUN / "semantic_positive_control.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+227 +     summary = {
+228 +         "fixture": True,
+229 +         "real_spawn_pipe": True,
+230 +         "synthetic_model_output": True,
+231 +         "wall_seconds": time.monotonic() - began,
+232 +         "dimensions": len(result.vectors[0]),
+233 +     }
+234 +     (RUN / "semantic_positive_control.json").write_text(
+235 +         json.dumps(summary, indent=2), encoding="utf-8"
+236 +     )
+237 |     print(json.dumps(summary), flush=True)
+    |
+
+unformatted: File would be reformatted
+  --> D:\wt\r20-process-startup-fix\reports\runs\r20_process_startup_fix_20261016\run_checks.py:19:11
+   |
+18 | CBM = [
+   -     "wsl", "-d", "Ubuntu-22.04", "-u", "root", "--exec", "/usr/bin/env",
+19 +     "wsl",
+20 +     "-d",
+21 +     "Ubuntu-22.04",
+22 +     "-u",
+23 +     "root",
+24 +     "--exec",
+25 +     "/usr/bin/env",
+26 |     "CBM_CACHE_DIR=/tmp/r20-process-startup-fix-20261016",
+   -     "/tmp/dianzi-cbm-audit-20261014/portable/codebase-memory-mcp", "cli", "--json",
+27 +     "/tmp/dianzi-cbm-audit-20261014/portable/codebase-memory-mcp",
+28 +     "cli",
+29 +     "--json",
+30 | ]
+--------------------------------------------------------------------------------
+50 |         result = subprocess.run(
+   -             command, cwd=ROOT / "backend", env=environment,
+   -             stdout=output, stderr=subprocess.STDOUT, check=False, timeout=240,
+51 +             command,
+52 +             cwd=ROOT / "backend",
+53 +             env=environment,
+54 +             stdout=output,
+55 +             stderr=subprocess.STDOUT,
+56 +             check=False,
+57 +             timeout=240,
+58 |         )
+59 |     receipt = {
+   -         "argv": command, "cwd": str(ROOT / "backend"), "started_utc": began,
+   -         "ended_utc": datetime.now(UTC).isoformat(), "exit_code": result.returncode,
+60 +         "argv": command,
+61 +         "cwd": str(ROOT / "backend"),
+62 +         "started_utc": began,
+63 +         "ended_utc": datetime.now(UTC).isoformat(),
+64 +         "exit_code": result.returncode,
+65 |         "wall_seconds": time.monotonic() - started,
+   |
+
+3 files would be reformatted, 4 files already formatted

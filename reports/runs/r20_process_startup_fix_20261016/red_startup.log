@@ -1,0 +1,225 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0 -- D:\dianzi\backend\.venv\Scripts\python.exe
+cachedir: D:\tmp\r20-process-startup-fix-cache
+rootdir: D:\wt\r20-process-startup-fix\backend
+configfile: pyproject.toml
+plugins: anyio-4.15.1, cov-6.3.0
+collecting ... collected 4 items
+
+tests/unit/test_r20_process_startup.py::test_pdf_imports_dependency_only_after_resource_limit[True] FAILED [ 25%]
+tests/unit/test_r20_process_startup.py::test_pdf_imports_dependency_only_after_resource_limit[False] FAILED [ 50%]
+tests/unit/test_r20_process_startup.py::test_guard_refuses_readiness_when_initial_total_cpu_is_exhausted[10000000] FAILED [ 75%]
+tests/unit/test_r20_process_startup.py::test_guard_refuses_readiness_when_initial_total_cpu_is_exhausted[10156250] FAILED [100%]
+
+================================== FAILURES ===================================
+_________ test_pdf_imports_dependency_only_after_resource_limit[True] _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001FC45A31040>
+limit_available = True
+
+    @pytest.mark.parametrize("limit_available", [True, False])
+    def test_pdf_imports_dependency_only_after_resource_limit(
+        monkeypatch: pytest.MonkeyPatch, limit_available: bool
+    ) -> None:
+        """Observe actual imports; a denied limit must never reach pypdf initialization."""
+        limit_applied = False
+        imports: list[str] = []
+        original_import = builtins.__import__
+        original_logging_level = logging.root.manager.disable
+    
+        def apply_limit(*, memory_bytes: int, cpu_seconds: int) -> int:
+            nonlocal limit_applied
+            assert (memory_bytes, cpu_seconds) == (512 * 1024**2, 15)
+            if not limit_available:
+                raise OSError("synthetic resource refusal")
+            limit_applied = True
+            return 42
+    
+        def observe_import(name: str, *args: object, **kwargs: object) -> object:
+            if name == "pypdf" or name.startswith("pypdf."):
+                assert limit_applied, "pypdf initialized before resource limit"
+                imports.append(name)
+            return original_import(name, *args, **kwargs)
+    
+        output = BytesIO()
+        monkeypatch.setattr(process_limits, "bound_process_resources", apply_limit)
+        monkeypatch.setattr(builtins, "__import__", observe_import)
+        monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=BytesIO(b"%PDF-1.4\n%%EOF")))
+        monkeypatch.setattr(sys, "stdout", SimpleNamespace(buffer=output))
+        try:
+>           runpy.run_module("ai_intel.ingestion.parsing._pdf_worker", run_name="__main__")
+
+tests\unit\test_r20_process_startup.py:49: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+<frozen runpy>:229: in run_module
+    ???
+<frozen runpy>:88: in _run_code
+    ???
+src\ai_intel\ingestion\parsing\_pdf_worker.py:10: in <module>
+    from pypdf import PdfReader, overwrite_configuration
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+name = 'pypdf'
+args = ({'BytesIO': <class '_io.BytesIO'>, '__builtins__': {'ArithmeticError': <class 'ArithmeticError'>, 'AssertionError': <...python-312.pyc', '__doc__': '只从stdin读取PDF，在独立限额进程中抽取文本，不执行附件或外部程序。', ...}, ('PdfReader', 'overwrite_configuration'), 0)
+kwargs = {}
+@py_format1 = 'pypdf initialized before resource limit\n>assert False'
+
+    def observe_import(name: str, *args: object, **kwargs: object) -> object:
+        if name == "pypdf" or name.startswith("pypdf."):
+>           assert limit_applied, "pypdf initialized before resource limit"
+E           AssertionError: pypdf initialized before resource limit
+E           assert False
+
+tests\unit\test_r20_process_startup.py:39: AssertionError
+________ test_pdf_imports_dependency_only_after_resource_limit[False] _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001FC45A32900>
+limit_available = False
+
+    @pytest.mark.parametrize("limit_available", [True, False])
+    def test_pdf_imports_dependency_only_after_resource_limit(
+        monkeypatch: pytest.MonkeyPatch, limit_available: bool
+    ) -> None:
+        """Observe actual imports; a denied limit must never reach pypdf initialization."""
+        limit_applied = False
+        imports: list[str] = []
+        original_import = builtins.__import__
+        original_logging_level = logging.root.manager.disable
+    
+        def apply_limit(*, memory_bytes: int, cpu_seconds: int) -> int:
+            nonlocal limit_applied
+            assert (memory_bytes, cpu_seconds) == (512 * 1024**2, 15)
+            if not limit_available:
+                raise OSError("synthetic resource refusal")
+            limit_applied = True
+            return 42
+    
+        def observe_import(name: str, *args: object, **kwargs: object) -> object:
+            if name == "pypdf" or name.startswith("pypdf."):
+                assert limit_applied, "pypdf initialized before resource limit"
+                imports.append(name)
+            return original_import(name, *args, **kwargs)
+    
+        output = BytesIO()
+        monkeypatch.setattr(process_limits, "bound_process_resources", apply_limit)
+        monkeypatch.setattr(builtins, "__import__", observe_import)
+        monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=BytesIO(b"%PDF-1.4\n%%EOF")))
+        monkeypatch.setattr(sys, "stdout", SimpleNamespace(buffer=output))
+        try:
+>           runpy.run_module("ai_intel.ingestion.parsing._pdf_worker", run_name="__main__")
+
+tests\unit\test_r20_process_startup.py:49: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+<frozen runpy>:229: in run_module
+    ???
+<frozen runpy>:88: in _run_code
+    ???
+src\ai_intel\ingestion\parsing\_pdf_worker.py:10: in <module>
+    from pypdf import PdfReader, overwrite_configuration
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+name = 'pypdf'
+args = ({'BytesIO': <class '_io.BytesIO'>, '__builtins__': {'ArithmeticError': <class 'ArithmeticError'>, 'AssertionError': <...python-312.pyc', '__doc__': '只从stdin读取PDF，在独立限额进程中抽取文本，不执行附件或外部程序。', ...}, ('PdfReader', 'overwrite_configuration'), 0)
+kwargs = {}
+@py_format1 = 'pypdf initialized before resource limit\n>assert False'
+
+    def observe_import(name: str, *args: object, **kwargs: object) -> object:
+        if name == "pypdf" or name.startswith("pypdf."):
+>           assert limit_applied, "pypdf initialized before resource limit"
+E           AssertionError: pypdf initialized before resource limit
+E           assert False
+
+tests\unit\test_r20_process_startup.py:39: AssertionError
+_ test_guard_refuses_readiness_when_initial_total_cpu_is_exhausted[10000000] __
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001FC45A337D0>
+initial_cpu_ticks = 10000000
+
+    @pytest.mark.parametrize("initial_cpu_ticks", [10_000_000, 10_156_250])
+    def test_guard_refuses_readiness_when_initial_total_cpu_is_exhausted(
+        monkeypatch: pytest.MonkeyPatch, initial_cpu_ticks: int
+    ) -> None:
+        """GetProcessTimes' cumulative kernel plus user must be checked before SetEvent."""
+        events: list[str] = []
+    
+        def successful_call(*arguments: object) -> int:
+            return 1
+    
+        def get_process_times(handle: object, *arguments: object) -> int:
+            arguments[2]._obj.value = initial_cpu_ticks // 2
+            arguments[3]._obj.value = initial_cpu_ticks - initial_cpu_ticks // 2
+            return 1
+    
+        def set_event(handle: object) -> int:
+            events.append("ready")
+            return 1
+    
+        def terminate_process(handle: object, exit_code: object) -> int:
+            events.append("terminated")
+            return 1
+    
+        kernel = SimpleNamespace(
+            WaitForSingleObject=lambda *arguments: 0,
+            GetProcessTimes=get_process_times,
+            TerminateProcess=terminate_process,
+            SetEvent=set_event,
+            CloseHandle=successful_call,
+            GetHandleInformation=successful_call,
+        )
+        monkeypatch.setattr(ctypes, "WinDLL", lambda *args, **kwargs: kernel, raising=False)
+        monkeypatch.setattr(sys, "argv", ["guard", "1", "2", "3", "10000000"])
+>       with pytest.raises(OSError, match="exhausted"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'OSError'>
+
+tests\unit\test_r20_process_startup.py:95: Failed
+_ test_guard_refuses_readiness_when_initial_total_cpu_is_exhausted[10156250] __
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001FC45A55610>
+initial_cpu_ticks = 10156250
+
+    @pytest.mark.parametrize("initial_cpu_ticks", [10_000_000, 10_156_250])
+    def test_guard_refuses_readiness_when_initial_total_cpu_is_exhausted(
+        monkeypatch: pytest.MonkeyPatch, initial_cpu_ticks: int
+    ) -> None:
+        """GetProcessTimes' cumulative kernel plus user must be checked before SetEvent."""
+        events: list[str] = []
+    
+        def successful_call(*arguments: object) -> int:
+            return 1
+    
+        def get_process_times(handle: object, *arguments: object) -> int:
+            arguments[2]._obj.value = initial_cpu_ticks // 2
+            arguments[3]._obj.value = initial_cpu_ticks - initial_cpu_ticks // 2
+            return 1
+    
+        def set_event(handle: object) -> int:
+            events.append("ready")
+            return 1
+    
+        def terminate_process(handle: object, exit_code: object) -> int:
+            events.append("terminated")
+            return 1
+    
+        kernel = SimpleNamespace(
+            WaitForSingleObject=lambda *arguments: 0,
+            GetProcessTimes=get_process_times,
+            TerminateProcess=terminate_process,
+            SetEvent=set_event,
+            CloseHandle=successful_call,
+            GetHandleInformation=successful_call,
+        )
+        monkeypatch.setattr(ctypes, "WinDLL", lambda *args, **kwargs: kernel, raising=False)
+        monkeypatch.setattr(sys, "argv", ["guard", "1", "2", "3", "10000000"])
+>       with pytest.raises(OSError, match="exhausted"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'OSError'>
+
+tests\unit\test_r20_process_startup.py:95: Failed
+- generated xml file: D:\wt\r20-process-startup-fix\reports\runs\r20_process_startup_fix_20261016\red_startup.xml -
+=========================== short test summary info ===========================
+FAILED tests/unit/test_r20_process_startup.py::test_pdf_imports_dependency_only_after_resource_limit[True]
+FAILED tests/unit/test_r20_process_startup.py::test_pdf_imports_dependency_only_after_resource_limit[False]
+FAILED tests/unit/test_r20_process_startup.py::test_guard_refuses_readiness_when_initial_total_cpu_is_exhausted[10000000]
+FAILED tests/unit/test_r20_process_startup.py::test_guard_refuses_readiness_when_initial_total_cpu_is_exhausted[10156250]
+============================== 4 failed in 0.21s ==============================
