@@ -22,6 +22,7 @@ MECHANISM = "Untrusted instructions enter a model input."
 PREREQUISITE = "Attacker can write retrieved documents."
 LITERATURE_LINE = "Fixture Paper https://example.invalid/paper Background about prompt injection."
 POC_LINE = "Fixture PoC https://example.invalid/poc proof of concept; not executed."
+TAXONOMY_COMMIT = "a" * 40
 
 
 def identity(number):
@@ -72,10 +73,10 @@ def fixture_documents():
     taxonomy = document(
         2,
         "AML.T0051: Fixture prompt injection technique.",
-        "https://atlas.mitre.org/techniques/AML.T0051",
+        f"https://raw.githubusercontent.com/mitre/atlas-data/{TAXONOMY_COMMIT}/dist/ATLAS.yaml",
         "standard",
         "technical_standard",
-        source_version="fixture-taxonomy-1",
+        source_version=TAXONOMY_COMMIT,
     )
     paper = document(3, LITERATURE_LINE, "https://example.invalid/paper", "paper", "academic_paper")
     return (event, taxonomy, paper)
@@ -110,7 +111,7 @@ def fixture_outputs(documents):
                 {
                     "value": {
                         "technique_id": "AML.T0051",
-                        "taxonomy_version": "fixture-taxonomy-1",
+                        "taxonomy_version": TAXONOMY_COMMIT,
                         "mechanism": MECHANISM,
                         "prerequisites": [PREREQUISITE],
                     },

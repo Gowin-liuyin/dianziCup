@@ -91,14 +91,23 @@ def validate_evidence(
 
 
 def is_atlas_taxonomy(document: EnrichmentDocument) -> bool:
+    """The trusted loader must bind the official artifact URI to its full commit identity."""
     parsed = urlsplit(str(document.canonical_uri))
-    official = parsed.hostname == "atlas.mitre.org" or (
-        parsed.hostname in {"github.com", "raw.githubusercontent.com"}
-        and parsed.path.lower().startswith("/mitre/atlas-data/")
-    )
+    paths = {
+        "raw.githubusercontent.com": r"/mitre/atlas-data/([0-9a-f]{40})/dist/ATLAS\.yaml",
+        "github.com": r"/mitre/atlas-data/blob/([0-9a-f]{40})/dist/ATLAS\.yaml",
+    }
+    path_pattern = paths.get(parsed.hostname or "")
+    pinned = re.fullmatch(path_pattern, parsed.path) if path_pattern else None
     return bool(
-        official
-        and document.source_version
+        parsed.scheme == "https"
+        and parsed.username is None
+        and parsed.password is None
+        and parsed.port in (None, 443)
+        and not parsed.query
+        and not parsed.fragment
+        and pinned
+        and document.source_version == pinned[1]
         and document.content_coverage == "full_text"
         and document.blocks_complete
     )
@@ -165,16 +174,54 @@ def _validate_atlas(
     return value
 
 
+def _require_version_qualifiers(
+    raw_expression: str, evidence: tuple[CandidateEvidence, ...], document: EnrichmentDocument
+) -> None:
+    """Retain explicit qualifiers and wrapped continuations in the quoted source paragraph."""
+    for quote in evidence:
+        if quote.quote_text != raw_expression:
+            continue
+        block = next(block for block in document.blocks if block.block_id == quote.block_id)
+        separators = tuple(re.finditer(r"\r?\n[ \t]*\r?\n", block.text))
+        start = max(
+            (item.end() for item in separators if item.end() <= quote.start_offset), default=0
+        )
+        end = next(
+            (item.start() for item in separators if item.start() >= quote.end_offset),
+            len(block.text),
+        )
+        paragraph = block.text[start:end]
+        for marker in re.finditer(
+            r"\b(?:only\s+(?:when|if|with)|requires?|required|prerequisites?|"
+            r"provided\s+that|unless|conditional\s+on)\b|^[ \t]*(?:if|when)\b|"
+            r"只有|仅当|前提|前置条件|必须|需要|除非",
+            paragraph,
+            re.IGNORECASE | re.MULTILINE,
+        ):
+            line_start = paragraph.rfind("\n", 0, marker.start()) + 1
+            lines = paragraph[line_start:].splitlines(keepends=True)
+            last = 0
+            while last + 1 < len(lines) and not re.search(r"[.!?。！？]\s*$", lines[last]):
+                last += 1
+            qualifier = "".join(lines[: last + 1]).rstrip("\r\n")
+            if qualifier not in raw_expression:
+                raise FieldEvidenceError("version_expression_context_missing")
+
+
 def _validate_versions(
-    value: VersionAssertionValue, quotes: tuple[str, ...], documents: tuple[EnrichmentDocument, ...]
+    value: VersionAssertionValue,
+    evidence: tuple[CandidateEvidence, ...],
+    documents: tuple[EnrichmentDocument, ...],
 ) -> VersionAssertionValue:
     value = VersionAssertionValue.model_validate(value.model_dump())
+    quotes = tuple(quote.quote_text for quote in evidence)
     if len(documents) != 1:
         raise FieldEvidenceError("version_cross_document_fields")
     _require_identifier(value.package_key, (value.raw_expression,))
     _require_identifier(value.ecosystem, quotes)
     if value.raw_expression not in quotes:
         raise FieldEvidenceError("version_expression_context_missing")
+    _require_version_qualifiers(value.raw_expression, evidence, documents[0])
     if value.intervals or value.explicit_versions:
         if re.search(
             r"not affected|not vulnerable|unaffected|unknown|uncertain|no evidence|"
@@ -352,7 +399,7 @@ def validate_field_candidate(
     if isinstance(value, AtlasMappingValue):
         value = _validate_atlas(value, candidate.evidence, selected)
     elif isinstance(value, VersionAssertionValue):
-        value = _validate_versions(value, quotes, selected)
+        value = _validate_versions(value, candidate.evidence, selected)
     elif isinstance(value, LiteratureReferenceValue):
         value = _validate_literature(value, quotes, selected, documents)
     elif isinstance(value, ArtifactReferenceValue):
