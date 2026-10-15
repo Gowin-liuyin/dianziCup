@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -19,12 +20,12 @@ from ai_intel.infrastructure.content_store import ContentStorage
 from ai_intel.infrastructure.network import SENSITIVE_QUERY_KEYS
 from ai_intel.ingestion.parsing.text_blocks import ParseOutcome
 from ai_intel.ingestion.source_catalog import CATALOG_SOURCES, SourceCatalogError, SourceKind
-from ai_intel.knowledge.models import document_revisions, documents, scope_epochs, text_blocks
+from ai_intel.knowledge.models import document_revisions, documents, scope_epochs
 from ai_intel.knowledge.persistence_models import claims
 from ai_intel.knowledge.revisions import (
-    add_text_block,
-    attach_evidence_span,
+    SourceRevisionBlock,
     register_response_content,
+    register_source_revision_blocks,
     save_document_revision,
 )
 
@@ -258,45 +259,29 @@ def persist_catalog_documents(
                     source_metadata=_revision_metadata(member),
                 )
             )
-            for block in member.parsed.blocks:
-                block_id = add_text_block(
-                    session,
-                    saved.revision_id,
-                    block.ordinal,
-                    block.start_offset,
-                    block.end_offset,
-                    block.text,
-                )
-                pointer = (
-                    block.block_type.removeprefix("field:")
-                    if block.block_type.startswith("field:")
-                    else None
-                )
-                session.execute(
-                    update(text_blocks)
-                    .where(text_blocks.c.block_id == block_id)
-                    .values(
-                        block_type="json_field" if pointer is not None else block.block_type,
-                        page_number=block.page_number,
-                        json_pointer=pointer,
+            register_source_revision_blocks(
+                session,
+                saved.revision_id,
+                tuple(
+                    SourceRevisionBlock(
+                        block.ordinal,
+                        block.start_offset,
+                        block.end_offset,
+                        block.text,
+                        hashlib.sha256(block.text.encode("utf-8")).hexdigest(),
+                        "json_field" if block.block_type.startswith("field:") else block.block_type,
+                        block.page_number,
+                        block.block_type.removeprefix("field:")
+                        if block.block_type.startswith("field:")
+                        else None,
                     )
-                )
-                attach_evidence_span(
-                    session,
-                    saved.revision_id,
-                    block.start_offset,
-                    block.end_offset,
-                    f"page:{block.page_number}"
-                    if block.page_number is not None
-                    else (pointer or f"block:{block.ordinal}"),
-                    block.text,
-                    False,
-                    "public",
-                    None,
-                    ingested_at,
-                    block_id=block_id,
-                    verified_at=ingested_at,
-                )
+                    for block in member.parsed.blocks
+                ),
+                "public",
+                None,
+                ingested_at,
+                attach_full_block_evidence=True,
+            )
         if new_count:
             session.execute(
                 insert(scope_epochs)

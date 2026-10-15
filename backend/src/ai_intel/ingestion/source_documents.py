@@ -42,15 +42,15 @@ from ai_intel.knowledge.models import (
     document_revisions,
     documents,
     fetch_attempts,
-    text_blocks,
 )
 from ai_intel.knowledge.persistence import ClaimSubmission, EvidenceLink, KnowledgeRepository
 from ai_intel.knowledge.persistence_models import claims, event_documents, events
 from ai_intel.knowledge.revisions import (
-    add_text_block,
+    SourceRevisionBlock,
     attach_evidence_span,
     record_fetch_attempt,
     register_response_content,
+    register_source_revision_blocks,
     save_document_revision,
 )
 
@@ -555,23 +555,29 @@ def _persist_member(
     event_id = str(resolved_ids[0])
     if not saved.reused:
         blocks: dict[str, tuple[str, TextBlock]] = {}
-        for block in member.parsed.blocks:
-            pointer = block.block_type.removeprefix("field:")
-            block_id = add_text_block(
-                session,
-                saved.revision_id,
-                block.ordinal,
-                block.start_offset,
-                block.end_offset,
-                block.text,
-            )
-            session.execute(
-                update(text_blocks)
-                .where(text_blocks.c.block_id == block_id)
-                .values(
-                    block_type="json_field", page_number=block.page_number, json_pointer=pointer
+        block_ids = register_source_revision_blocks(
+            session,
+            saved.revision_id,
+            tuple(
+                SourceRevisionBlock(
+                    block.ordinal,
+                    block.start_offset,
+                    block.end_offset,
+                    block.text,
+                    hashlib.sha256(block.text.encode("utf-8")).hexdigest(),
+                    "json_field",
+                    block.page_number,
+                    block.block_type.removeprefix("field:"),
                 )
-            )
+                for block in member.parsed.blocks
+            ),
+            "public",
+            None,
+            ingested_at,
+            attach_full_block_evidence=False,
+        )
+        for block_id, block in zip(block_ids, member.parsed.blocks, strict=True):
+            pointer = block.block_type.removeprefix("field:")
             blocks[pointer] = (block_id, block)
         submissions = _fact_submissions(
             session,
