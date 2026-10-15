@@ -4,7 +4,12 @@ import json
 import math
 
 
-def strict_json_object(raw: str | bytes, maximum_bytes: int = 262144) -> dict[str, object]:
+def strict_json_object(
+    raw: str | bytes, maximum_bytes: int = 262144, *, maximum_nodes: int = 10000
+) -> dict[str, object]:
+    if type(maximum_nodes) is not int or not 1 <= maximum_nodes <= 50000:
+        raise ValueError("JSON node budget outside limit")
+
     def pairs(entries: list[tuple[str, object]]) -> dict[str, object]:
         result: dict[str, object] = {}
         for key, value in entries:
@@ -27,7 +32,7 @@ def strict_json_object(raw: str | bytes, maximum_bytes: int = 262144) -> dict[st
     while pending:
         value, depth = pending.pop()
         count += 1
-        if depth > 32 or count > 10000:
+        if depth > 32 or count > maximum_nodes:
             raise ValueError("JSON structure outside limit")
         if isinstance(value, str):
             value.encode("utf-8")

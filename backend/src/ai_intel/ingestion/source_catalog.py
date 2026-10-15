@@ -184,6 +184,21 @@ def build_catalog_request(source_kind: SourceKind, cursor: Mapping[str, object])
             return CatalogRequest(
                 "GET", "https://api.github.com/repos/avidml/avid-db/git/trees/main?recursive=1"
             )
+        if set(cursor) == {"tree_sha", "record_offset"}:
+            tree_sha, offset = cursor["tree_sha"], cursor["record_offset"]
+            if (
+                not isinstance(tree_sha, str)
+                or HEX_SHA.fullmatch(tree_sha) is None
+                or type(offset) is not int
+                or not 0 <= offset <= 2000
+            ):
+                raise SourceCatalogError("invalid AVID pinned tree position")
+            return CatalogRequest(
+                "GET",
+                "https://api.github.com/repos/avidml/avid-db/git/trees/"
+                + tree_sha
+                + "?recursive=1",
+            )
         sha = cursor.get("blob_sha")
         if (
             set(cursor) != {"blob_sha"}
@@ -193,14 +208,19 @@ def build_catalog_request(source_kind: SourceKind, cursor: Mapping[str, object])
             raise SourceCatalogError("invalid AVID immutable blob")
         return CatalogRequest("GET", "https://api.github.com/repos/avidml/avid-db/git/blobs/" + sha)
     if source_kind == "arxiv_security":
-        page = _page(cursor, maximum=100)
+        if set(cursor) == {"start"}:
+            start = cursor["start"]
+            if type(start) is not int or not 0 <= start <= 20000:
+                raise SourceCatalogError("invalid arXiv source position")
+        else:
+            start = (_page(cursor, maximum=100) - 1) * 20
         return CatalogRequest(
             "GET",
             "https://export.arxiv.org/api/query?"
             + urlencode(
                 {
                     "search_query": 'all:"AI security"',
-                    "start": (page - 1) * 20,
+                    "start": start,
                     "max_results": 20,
                     "sortBy": "lastUpdatedDate",
                     "sortOrder": "descending",
