@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from tests.r06_source_worker_fixtures import source_response
+from tests.r06_source_worker_fixtures import policy_without_article_body, source_response
 
 from ai_intel.ingestion.catalog_pages import normalize_catalog_page
 from ai_intel.ingestion.source_catalog import SourceCatalogError, parse_source_timestamp
@@ -33,6 +33,12 @@ def test_real_policy_without_final_effective_sentence_cannot_claim_full_text():
     assert "第二十四条".encode() in incomplete and "施行".encode() in incomplete
     with pytest.raises(SourceCatalogError):
         normalize_catalog_page("cac_generative_ai", incomplete, {})
+
+
+@pytest.mark.parametrize("ordinal", ["四", "八", "十五", "二十一"])
+def test_following_chapter_cannot_supply_a_missing_article_body(ordinal):
+    with pytest.raises(SourceCatalogError):
+        normalize_catalog_page("cac_generative_ai", policy_without_article_body(ordinal), {})
 
 
 @pytest.mark.parametrize("timestamp", INVALID_TIMESTAMPS)

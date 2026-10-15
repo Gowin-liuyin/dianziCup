@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from test_r06_catalog_documents_pg import ADMIN
 from test_r06_source_worker_pg import NOW, queue, run
 from test_r06_source_worker_pg import catalog_worker_engine as catalog_worker_engine
-from tests.r06_source_worker_fixtures import source_response
+from tests.r06_source_worker_fixtures import policy_without_article_body, source_response
 
 from ai_intel.api.document_read_service import DocumentReadService
 from ai_intel.infrastructure.content_store import ContentStore
@@ -27,9 +27,12 @@ pytestmark = pytest.mark.real_pg
 ROOT = Path(__file__).resolve().parents[3]
 
 
-@pytest.mark.parametrize("kind", ["cac_generative_ai", "osv_ollama"])
+@pytest.mark.parametrize("kind", ["cac_generative_ai", "cac_missing_article", "osv_ollama"])
 def test_bad_source_content_cannot_commit_document_or_cursor(catalog_worker_engine, tmp_path, kind):
-    if kind == "cac_generative_ai":
+    if kind == "cac_missing_article":
+        kind = "cac_generative_ai"
+        body, media = policy_without_article_body("八"), "text/html"
+    elif kind == "cac_generative_ai":
         original = (ROOT / "fixtures/recorded/cac_generative_ai_20261015_public.html").read_bytes()
         body = original.replace("本办法自2023年8月15日起施行。".encode(), b"")
         media = "text/html"

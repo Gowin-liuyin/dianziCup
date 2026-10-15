@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import json
+import re
 from io import BytesIO
 from pathlib import Path
 
@@ -12,6 +13,23 @@ from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 ROOT = Path(__file__).resolve().parents[2]
 FEEDS = ROOT / "reports/runs/recovery_r06_feed_parsers_20261015"
 REPOSITORY = ROOT / "reports/runs/recovery_r06_repository_community_20261015"
+
+
+def policy_without_article_body(ordinal: str) -> bytes:
+    """Keep a real article heading and its following chapter, but remove its body."""
+    original = (ROOT / "fixtures/recorded/cac_generative_ai_20261015_public.html").read_text(
+        encoding="utf-8"
+    )
+    article = re.search(r"<strong>第" + ordinal + r"条</strong>", original)
+    assert article is not None
+    following = original[article.end() :]
+    chapter = re.search(r"<p\b[^>]*>\s*<strong>第[一二三四五六七八九十]+章", following)
+    assert chapter is not None
+    assert (
+        re.search(r"<strong>第[一二三四五六七八九十]+条</strong>", following[: chapter.start()])
+        is None
+    )
+    return (original[: article.end()] + "</p>" + following[chapter.start() :]).encode()
 
 
 def nist_pdf() -> bytes:

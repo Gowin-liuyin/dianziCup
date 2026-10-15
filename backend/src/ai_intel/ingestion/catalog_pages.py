@@ -515,6 +515,10 @@ def _policy_document(body: bytes) -> NormalizedSourceDocument:
     article_text = ""
     for position, (_, start) in enumerate(headings):
         end = headings[position + 1][1] if position + 1 < len(headings) else len(parsed.blocks)
+        for block_index in range(start + 1, end):
+            if re.match(r"^第[一二三四五六七八九十]+章", parsed.blocks[block_index].text):
+                end = block_index
+                break
         section = "".join(block.text for block in parsed.blocks[start:end])
         article_text = re.sub(r"^第[一二三四五六七八九十]+条\s*", "", section)
         if not article_text.strip():
@@ -542,7 +546,7 @@ def _policy_document(body: bytes) -> NormalizedSourceDocument:
         None,
         None,
         {
-            "source_adapter_version": "catalog-pages-2",
+            "source_adapter_version": "catalog-pages-3",
             "content_coverage": "full_text",
             "published_at_raw": published,
             "published_precision": precision,
