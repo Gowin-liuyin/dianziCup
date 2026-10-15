@@ -16,7 +16,7 @@ const evidenceFixture = { schema_version: 2, span_id: evidenceId, revision_id: r
 function response(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } }); }
 function navigate(hash: string) { window.history.replaceState(null, "", `/${hash}`); fireEvent(window, new HashChangeEvent("hashchange")); }
 
-function fixtureApi(options: { listStatus?: number; empty?: boolean; unsupported?: boolean; pagination?: boolean; mismatchedRevision?: boolean } = {}) {
+function fixtureApi(options: { listStatus?: number; rawError?: boolean; empty?: boolean; unsupported?: boolean; pagination?: boolean; mismatchedRevision?: boolean } = {}) {
   const requests: string[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const path = String(input);
@@ -25,7 +25,7 @@ function fixtureApi(options: { listStatus?: number; empty?: boolean; unsupported
     if (path === "/v1/health/live") return response({ status: "live" });
     if (path === "/v1/health/ready") return response({ status: "ready", reason: "isolated fixture", dependencies: {} });
     if (path.startsWith("/v1/events?")) {
-      if (options.listStatus) return response({ error: { code: "fixture_failure", retryable: false } }, options.listStatus);
+      if (options.listStatus) return options.rawError ? new Response("isolated non-JSON upstream failure", { status: options.listStatus }) : response({ error: { code: "fixture_failure", retryable: false } }, options.listStatus);
       if (options.unsupported && path.includes("product=")) return response({ error: { code: "unsupported_filter", retryable: false } }, 422);
       const secondPage = path.includes("cursor=opaque-fixture");
       return response({ schema_version: 2, items: options.empty ? [] : secondPage ? [{ ...eventFixture, event_id: secondEventId, title: "隔离测试：下一页事件" }] : [eventFixture], next_cursor: options.pagination && !secondPage ? "opaque-fixture" : null, data_mode: "fixture" });
@@ -163,4 +163,44 @@ describe("R04 event/detail/evidence — isolated fixture mode only", () => {
     expect(screen.queryByText("会话已失效，请重新登录。")).toBeNull();
     expect(listRequests).toBe(2);
   });
+});
+
+
+describe("R04 review regressions — explicit isolated fixtures", () => {
+  it("rejects a wrong revision after clicking a claim reference", async () => {
+    fixtureApi({ mismatchedRevision: true });
+    render(<App />);
+    await screen.findByRole("link", { name: eventFixture.title });
+    navigate(`#events/${eventId}`);
+    const citation = await screen.findByRole("link", { name: "原文片段 [1]" });
+    fireEvent.click(citation);
+    await screen.findByText("服务返回的数据格式不符合接口约定，请重新检查。");
+    expect(screen.queryByText("历史原文片段", { selector: "blockquote" })).toBeNull();
+  });
+
+  it.each([403, 503])("clears selected detail and evidence before a new filter returns %s", async (status) => {
+    const options: { listStatus?: number } = {};
+    fixtureApi(options);
+    render(<App />);
+    await screen.findByRole("link", { name: eventFixture.title });
+    navigate(`#events/${eventId}/evidence/${evidenceId}/revision/${revisionId}`);
+    await screen.findByText("历史原文片段", { selector: "blockquote" });
+    await screen.findByText("模型假设");
+    options.listStatus = status;
+    fireEvent.change(screen.getByLabelText("检索关键词"), { target: { value: "changed scope" } });
+    fireEvent.click(screen.getByRole("button", { name: "检索情报" }));
+    await screen.findByText(status === 403 ? "没有查看权限" : "依赖暂不可用");
+    expect(screen.queryByText("模型假设")).toBeNull();
+    expect(screen.queryByText("历史原文片段", { selector: "blockquote" })).toBeNull();
+    expect(window.location.hash).toBe("#events");
+  });
+});
+
+
+it("expires the identity after an upstream empty/HTML 401 without restoring the session", async () => {
+  const requests = fixtureApi({ listStatus: 401, rawError: true });
+  render(<App />);
+  await screen.findByText("会话已失效，请重新登录。");
+  expect(screen.queryByRole("link", { name: eventFixture.title })).toBeNull();
+  expect(requests.filter((path) => path === "/v1/auth/me")).toHaveLength(1);
 });

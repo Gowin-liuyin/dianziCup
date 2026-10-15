@@ -87,7 +87,10 @@ export async function fetchJson(path: string, options: RequestInit = {}, signal?
     headers.set("Accept", "application/json, application/problem+json");
     const response = await fetch(path, { ...options, headers, credentials: "include", cache: "no-store", signal: controller.signal });
     let body: unknown;
-    try { body = await response.json(); } catch { return invalidResponse(); }
+    try { body = await response.json(); } catch {
+      if (!response.ok && !acceptedStatuses.includes(response.status)) throw parseProblem(null, response.status);
+      return invalidResponse();
+    }
     if (!response.ok && !acceptedStatuses.includes(response.status)) throw parseProblem(body, response.status);
     return body;
   } catch (error: unknown) {

@@ -81,7 +81,7 @@ function EventDetail({ id, onSessionExpired, isCurrent }: { id: string; onSessio
       })}
       <h3 className="detail-section-title">事实与来源断言</h3>
       {resource.value.claims.length === 0 && <EmptyState title="尚未取得事实记录" description="没有事实记录不代表不存在相关风险。" />}
-      {resource.value.claims.map((claim) => <article className="claim-row" key={claim.claim_id}><div><code>{claim.predicate}</code><span className="claim-status">{claimStatusLabels[claim.status]}</span><span className="small-note">{originLabels[claim.origin]}</span></div><p>{claim.display_value}</p><div className="citation-links">{claim.evidence_ids.map((evidenceId, index) => <a key={evidenceId} href={`#events/${id}/evidence/${evidenceId}`}>原文片段 [{index + 1}]</a>)}</div></article>)}
+      {resource.value.claims.map((claim) => <article className="claim-row" key={claim.claim_id}><div><code>{claim.predicate}</code><span className="claim-status">{claimStatusLabels[claim.status]}</span><span className="small-note">{originLabels[claim.origin]}</span></div><p>{claim.display_value}</p><div className="citation-links">{claim.evidence_ids.map((evidenceId, index) => <a key={evidenceId} href={`#events/${id}/evidence/${evidenceId}${claim.source_revision_id === null ? "" : `/revision/${claim.source_revision_id}`}`}>原文片段 [{index + 1}]</a>)}</div></article>)}
       <h3 className="detail-section-title">原文修订时间线</h3>
       {resource.value.revisions.length === 0 && <EmptyState title="尚未取得修订记录" description="历史版本需要保存的原文与修订记录，不能由当前来源信息推测。" />}
       {resource.value.revisions.map((revision) => <article className="revision-entry" key={revision.revision_id}><div className="revision-entry-title"><strong>修订 {revision.revision_number}</strong><span className="small-note">解析：{revision.parse_status}</span></div><code className="record-id">{revision.revision_id}</code><dl className="evidence-metadata"><dt>源发布时间</dt><dd><SavedTime value={revision.source_published_at} /></dd><dt>源修订时间</dt><dd><SavedTime value={revision.source_modified_at} /></dd><dt>首次观察</dt><dd><SavedTime value={revision.first_observed_at} /></dd><dt>入库完成</dt><dd><SavedTime value={revision.ingested_at} /></dd></dl>{revision.canonical_uri ? <a className="text-link" href={revision.canonical_uri} target="_blank" rel="noopener noreferrer">打开该版本来源地址 ↗</a> : <p className="small-note">该历史版本原文地址未留存</p>}</article>)}
@@ -159,6 +159,8 @@ export function EventWorkspace() {
   const disconnected = resource.kind === "failed" && (resource.error.status === 404 || resource.error.status === 403);
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setSelection(null);
+    window.history.replaceState(null, "", "#events");
     setFilters({ q: query.trim(), product: product.trim(), risk_type: riskType.trim(), updated_after: updatedAfter || undefined, limit: 20 });
   }
 

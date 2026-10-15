@@ -90,3 +90,11 @@ describe("strict R01 HTTP boundary — synthetic response fixtures", () => {
     await assertion;
   });
 });
+
+
+describe("HTTP errors with non-JSON upstream bodies", () => {
+  it.each([401, 403, 503])("preserves status %s and never exposes upstream text", async (status) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("fixture upstream private body", { status })));
+    await expect(getCurrentUser()).rejects.toMatchObject({ status });
+  });
+});
