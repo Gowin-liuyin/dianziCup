@@ -1,0 +1,124 @@
+unformatted: File would be reformatted
+   --> tests\contract\test_r07_public_signals_fix1_cwe.py:18:21
+    |
+17  |     selected = select_cwe_catalog_document(raw, ids)
+    -     return document(json.loads(selected.payload), selected.canonical_uri, "standard",
+    -                     "technical_standard", version)
+18  +     return document(
+19  +         json.loads(selected.payload),
+20  +         selected.canonical_uri,
+21  +         "standard",
+22  +         "technical_standard",
+23  +         version,
+24  +     )
+25  |
+--------------------------------------------------------------------------------
+53  |         directory = command if candidate.value.cwe_id == "CWE-78" else script
+    -         assert {e.revision_id for e in candidate.evidence} == {source.revision_id, directory.revision_id}
+54  +         assert {e.revision_id for e in candidate.evidence} == {
+55  +             source.revision_id,
+56  +             directory.revision_id,
+57  +         }
+58  |
+59  |
+60  | def test_missing_real_id_is_not_verified_by_an_unrelated_selected_id():
+    -     result = attempts(source_weaknesses("CWE-78", "CWE-80"), catalog_selection(("CWE-78",)),
+    -                       catalog_selection(("CWE-79",)))["cwe"]
+61  +     result = attempts(
+62  +         source_weaknesses("CWE-78", "CWE-80"),
+63  +         catalog_selection(("CWE-78",)),
+64  +         catalog_selection(("CWE-79",)),
+65  +     )["cwe"]
+66  |     assert result.status.value == "blocked" and not result.candidates
+--------------------------------------------------------------------------------
+70  | def test_explicit_catalog_missing_id_stays_blocked_after_merging():
+    -     result = attempts(source_weaknesses("CWE-80"), catalog_selection(("CWE-78", "CWE-80")),
+    -                       catalog_selection(("CWE-79",)))["cwe"]
+71  +     result = attempts(
+72  +         source_weaknesses("CWE-80"),
+73  +         catalog_selection(("CWE-78", "CWE-80")),
+74  +         catalog_selection(("CWE-79",)),
+75  +     )["cwe"]
+76  |     assert result.status.value == "blocked" and not result.candidates
+77  |
+78  |
+79  | def test_catalog_name_conflict_remains_visible_with_other_selections():
+    -     result = attempts(source_weaknesses("CWE-78"), catalog_selection(("CWE-78",)),
+    -                       catalog_selection(("CWE-78",), name="Different name"),
+    -                       catalog_selection(("CWE-79",)))["cwe"]
+80  +     result = attempts(
+81  +         source_weaknesses("CWE-78"),
+82  +         catalog_selection(("CWE-78",)),
+83  +         catalog_selection(("CWE-78",), name="Different name"),
+84  +         catalog_selection(("CWE-79",)),
+85  +     )["cwe"]
+86  |     assert result.status.value == "conflict" and len(result.candidates) == 2
+    -     assert {candidate.value.name for candidate in result.candidates} == {"Command Injection", "Different name"}
+87  +     assert {candidate.value.name for candidate in result.candidates} == {
+88  +         "Command Injection",
+89  +         "Different name",
+90  +     }
+91  |
+92  |
+93  | def test_overlapping_selections_keep_evidence_without_inventing_conflict():
+    -     result = attempts(source_weaknesses("CWE-78", "CWE-79"), catalog_selection(("CWE-78",)),
+    -                       catalog_selection(("CWE-78", "CWE-79")))["cwe"]
+94  +     result = attempts(
+95  +         source_weaknesses("CWE-78", "CWE-79"),
+96  +         catalog_selection(("CWE-78",)),
+97  +         catalog_selection(("CWE-78", "CWE-79")),
+98  +     )["cwe"]
+99  |     assert result.status.value == "available" and len(result.candidates) == 3
+--------------------------------------------------------------------------------
+103 | def test_disjoint_ids_cannot_be_stitched_across_versions_or_catalog_bytes(version, name):
+    -     result = attempts(source_weaknesses("CWE-78", "CWE-79"), catalog_selection(("CWE-78",)),
+    -                       catalog_selection(("CWE-79",), version=version, name=name))["cwe"]
+104 +     result = attempts(
+105 +         source_weaknesses("CWE-78", "CWE-79"),
+106 +         catalog_selection(("CWE-78",)),
+107 +         catalog_selection(("CWE-79",), version=version, name=name),
+108 +     )["cwe"]
+109 |     assert result.status.value == "blocked" and not result.candidates
+110 |
+111 |
+112 | def test_complete_catalog_versions_are_parallel_with_explicit_versioned_values():
+    -     result = attempts(source_weaknesses("CWE-78"), catalog_selection(("CWE-78",)),
+    -                       catalog_selection(("CWE-78",), version="0.2", name="Updated name"))["cwe"]
+113 +     result = attempts(
+114 +         source_weaknesses("CWE-78"),
+115 +         catalog_selection(("CWE-78",)),
+116 +         catalog_selection(("CWE-78",), version="0.2", name="Updated name"),
+117 +     )["cwe"]
+118 |     assert result.status.value == "available" and len(result.candidates) == 2
+119 |     assert {(c.value.taxonomy_version, c.value.name) for c in result.candidates} == {
+    -         ("0.1", "Command Injection"), ("0.2", "Updated name")
+120 +         ("0.1", "Command Injection"),
+121 +         ("0.2", "Updated name"),
+122 |     }
+    |
+
+unformatted: File would be reformatted
+  --> tests\unit\test_r07_public_signals_fix1.py:38:24
+   |
+37 |     assert {candidate.value.authority for candidate in result.candidates} == {
+   -         "nvd@nist.gov", "maintainer"
+38 +         "nvd@nist.gov",
+39 +         "maintainer",
+40 |     }
+41 |     assert {candidate.value.base_score for candidate in result.candidates} == {9.8, score}
+42 |     assert {e.revision_id for c in result.candidates for e in c.evidence} == {
+   -         nvd.revision_id, vendor.revision_id
+43 +         nvd.revision_id,
+44 +         vendor.revision_id,
+45 |     }
+--------------------------------------------------------------------------------
+67 | def test_ghsa_only_advisories_use_their_own_verified_identity(ghsa, status):
+   -     result = attempts(vendor_document(cve=None), vendor_document(cve=None, ghsa=ghsa, score=4.0),
+   -                       cves=())["cvss"]
+68 +     result = attempts(
+69 +         vendor_document(cve=None), vendor_document(cve=None, ghsa=ghsa, score=4.0), cves=()
+70 +     )["cvss"]
+71 |     assert result.status.value == status and len(result.candidates) == 2
+   |
+
+2 files would be reformatted, 4 files already formatted

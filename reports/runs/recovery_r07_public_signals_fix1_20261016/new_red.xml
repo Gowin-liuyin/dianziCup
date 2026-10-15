@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="11" skipped="0" tests="24" time="0.422" timestamp="2026-10-16T00:44:48.167077+08:00" hostname="yin"><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both[False-8.1-conflict]" time="0.003"><failure message="AssertionError: assert 'available' == 'conflict'&#10;  &#10;  - conflict&#10;  + available">score = 8.1, status = 'conflict', vendor_first = False
+
+    @pytest.mark.parametrize("score,status", [(8.1, "conflict"), (9.8, "available")])
+    @pytest.mark.parametrize("vendor_first", [False, True])
+    def test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both(score, status, vendor_first):
+        nvd, vendor = document(nvd_payload()), vendor_document(score=score)
+        sources = (vendor, nvd) if vendor_first else (nvd, vendor)
+        result = attempts(*sources)["cvss"]
+&gt;       assert result.status.value == status
+E       AssertionError: assert 'available' == 'conflict'
+E         
+E         - conflict
+E         + available
+
+tests\unit\test_r07_public_signals_fix1.py:38: AssertionError</failure></testcase><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both[False-9.8-available]" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both[True-8.1-conflict]" time="0.001"><failure message="AssertionError: assert 'available' == 'conflict'&#10;  &#10;  - conflict&#10;  + available">score = 8.1, status = 'conflict', vendor_first = True
+
+    @pytest.mark.parametrize("score,status", [(8.1, "conflict"), (9.8, "available")])
+    @pytest.mark.parametrize("vendor_first", [False, True])
+    def test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both(score, status, vendor_first):
+        nvd, vendor = document(nvd_payload()), vendor_document(score=score)
+        sources = (vendor, nvd) if vendor_first else (nvd, vendor)
+        result = attempts(*sources)["cvss"]
+&gt;       assert result.status.value == status
+E       AssertionError: assert 'available' == 'conflict'
+E         
+E         - conflict
+E         + available
+
+tests\unit\test_r07_public_signals_fix1.py:38: AssertionError</failure></testcase><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both[True-9.8-available]" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_same_cve_different_vector_conflicts_even_when_score_matches" time="0.001"><failure message="AssertionError: assert 'available' == 'conflict'&#10;  &#10;  - conflict&#10;  + available">def test_same_cve_different_vector_conflicts_even_when_score_matches():
+        vector = VECTOR.replace("AC:L", "AC:H")
+        result = attempts(document(nvd_payload()), vendor_document(score=9.8, vector=vector))["cvss"]
+&gt;       assert result.status.value == "conflict"
+E       AssertionError: assert 'available' == 'conflict'
+E         
+E         - conflict
+E         + available
+
+tests\unit\test_r07_public_signals_fix1.py:52: AssertionError</failure></testcase><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_two_supported_cves_are_not_collapsed_by_shared_ghsa" time="0.001"><failure message="AssertionError: assert ('conflict' == 'available'&#10;  &#10;  - available&#10;  + conflict)">def test_two_supported_cves_are_not_collapsed_by_shared_ghsa():
+        one, two = vendor_document(), vendor_document(cve=OTHER_CVE, score=4.0)
+        result = attempts(one, two, cves=(CVE, OTHER_CVE))["cvss"]
+&gt;       assert result.status.value == "available" and len(result.candidates) == 2
+E       AssertionError: assert ('conflict' == 'available'
+E         
+E         - available
+E         + conflict)
+
+tests\unit\test_r07_public_signals_fix1.py:59: AssertionError</failure></testcase><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_different_ghsa_aliases_of_same_supported_cve_still_conflict" time="0.001"><failure message="AssertionError: assert ('available' == 'conflict'&#10;  &#10;  - conflict&#10;  + available)">def test_different_ghsa_aliases_of_same_supported_cve_still_conflict():
+        result = attempts(vendor_document(), vendor_document(ghsa=OTHER_GHSA, score=4.0))["cvss"]
+&gt;       assert result.status.value == "conflict" and len(result.candidates) == 2
+E       AssertionError: assert ('available' == 'conflict'
+E         
+E         - conflict
+E         + available)
+
+tests\unit\test_r07_public_signals_fix1.py:64: AssertionError</failure></testcase><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_ghsa_only_advisories_use_their_own_verified_identity[GHSA-2345-6789-cfgh-conflict]" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_ghsa_only_advisories_use_their_own_verified_identity[GHSA-3456-789c-fghj-available]" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_ghsa_only_advisory_is_not_assumed_to_match_only_context_cve" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_identifier_shaped_publisher_is_not_an_event_identity" time="0.001"><failure message="AssertionError: assert 'available' == 'conflict'&#10;  &#10;  - conflict&#10;  + available">def test_identifier_shaped_publisher_is_not_an_event_identity():
+        result = attempts(document(nvd_payload()), vendor_document(authority=OTHER_CVE))["cvss"]
+&gt;       assert result.status.value == "conflict"
+E       AssertionError: assert 'available' == 'conflict'
+E         
+E         - conflict
+E         + available
+
+tests\unit\test_r07_public_signals_fix1.py:81: AssertionError</failure></testcase><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_cvss_comparison_is_independent_of_evidence_order" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_unsupported_vendor_cve_is_rejected_without_changing_supported_scope" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_adding_unrelated_selection_preserves_verified_cwe_candidate[False]" time="0.002"><failure message="AssertionError: assert 'blocked' == 'available'&#10;  &#10;  - available&#10;  + blocked">unrelated_first = False
+
+    @pytest.mark.parametrize("unrelated_first", [False, True])
+    def test_adding_unrelated_selection_preserves_verified_cwe_candidate(unrelated_first):
+        source = source_weaknesses("CWE-78")
+        relevant, unrelated = catalog_selection(("CWE-78",)), catalog_selection(("CWE-79",))
+        baseline = attempts(source, relevant)["cwe"]
+        directories = (unrelated, relevant) if unrelated_first else (relevant, unrelated)
+        result = attempts(source, *directories)["cwe"]
+&gt;       assert result.status.value == "available"
+E       AssertionError: assert 'blocked' == 'available'
+E         
+E         - available
+E         + blocked
+
+tests\unit\test_r07_public_signals_fix1.py:128: AssertionError</failure></testcase><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_adding_unrelated_selection_preserves_verified_cwe_candidate[True]" time="0.002"><failure message="AssertionError: assert 'blocked' == 'available'&#10;  &#10;  - available&#10;  + blocked">unrelated_first = True
+
+    @pytest.mark.parametrize("unrelated_first", [False, True])
+    def test_adding_unrelated_selection_preserves_verified_cwe_candidate(unrelated_first):
+        source = source_weaknesses("CWE-78")
+        relevant, unrelated = catalog_selection(("CWE-78",)), catalog_selection(("CWE-79",))
+        baseline = attempts(source, relevant)["cwe"]
+        directories = (unrelated, relevant) if unrelated_first else (relevant, unrelated)
+        result = attempts(source, *directories)["cwe"]
+&gt;       assert result.status.value == "available"
+E       AssertionError: assert 'blocked' == 'available'
+E         
+E         - available
+E         + blocked
+
+tests\unit\test_r07_public_signals_fix1.py:128: AssertionError</failure></testcase><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_two_source_ids_can_be_verified_by_disjoint_selections_of_same_catalog" time="0.002"><failure message="AssertionError: assert ('blocked' == 'available'&#10;  &#10;  - available&#10;  + blocked)">def test_two_source_ids_can_be_verified_by_disjoint_selections_of_same_catalog():
+        source = source_weaknesses("CWE-78", "CWE-79")
+        command, script = catalog_selection(("CWE-78",)), catalog_selection(("CWE-79",))
+        result = attempts(source, command, script)["cwe"]
+&gt;       assert result.status.value == "available" and len(result.candidates) == 2
+E       AssertionError: assert ('blocked' == 'available'
+E         
+E         - available
+E         + blocked)
+
+tests\unit\test_r07_public_signals_fix1.py:136: AssertionError</failure></testcase><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_missing_real_id_is_not_verified_by_an_unrelated_selected_id" time="0.002" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_explicit_catalog_missing_id_stays_blocked_after_merging" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_catalog_name_conflict_remains_visible_with_other_selections" time="0.002"><failure message="AssertionError: assert ('blocked' == 'conflict'&#10;  &#10;  - conflict&#10;  + blocked)">def test_catalog_name_conflict_remains_visible_with_other_selections():
+        result = attempts(source_weaknesses("CWE-78"), catalog_selection(("CWE-78",)),
+                          catalog_selection(("CWE-78",), name="Different name"),
+                          catalog_selection(("CWE-79",)))["cwe"]
+&gt;       assert result.status.value == "conflict" and len(result.candidates) == 2
+E       AssertionError: assert ('blocked' == 'conflict'
+E         
+E         - conflict
+E         + blocked)
+
+tests\unit\test_r07_public_signals_fix1.py:160: AssertionError</failure></testcase><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_overlapping_selections_keep_evidence_without_inventing_conflict" time="0.002"><failure message="AssertionError: assert ('blocked' == 'available'&#10;  &#10;  - available&#10;  + blocked)">def test_overlapping_selections_keep_evidence_without_inventing_conflict():
+        result = attempts(source_weaknesses("CWE-78", "CWE-79"), catalog_selection(("CWE-78",)),
+                          catalog_selection(("CWE-78", "CWE-79")))["cwe"]
+&gt;       assert result.status.value == "available" and len(result.candidates) == 3
+E       AssertionError: assert ('blocked' == 'available'
+E         
+E         - available
+E         + blocked)
+
+tests\unit\test_r07_public_signals_fix1.py:167: AssertionError</failure></testcase><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_disjoint_ids_cannot_be_stitched_across_versions_or_catalog_bytes[0.2-Command Injection]" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_disjoint_ids_cannot_be_stitched_across_versions_or_catalog_bytes[0.1-Different name]" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_complete_catalog_versions_are_parallel_with_explicit_versioned_values" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_invalid_additional_catalog_does_not_silently_validate_any_cwe" time="0.001" /></testsuite></testsuites>
