@@ -7,6 +7,8 @@ import subprocess
 import sys
 import threading
 import time
+from multiprocessing.connection import _ConnectionBase
+from pathlib import Path
 
 import pytest
 
@@ -15,6 +17,21 @@ RESOURCE_SETUP = (
     "handle=bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\n"
     "print('LIMIT_APPLIED',flush=True)\n"
 )
+
+
+def _hard_exit_guard_semantic_worker(connection: _ConnectionBase, *arguments: object) -> None:
+    import ctypes
+
+    from ai_intel.infrastructure import process_limits
+
+    process_limits._WINDOWS_CPU_GUARD_CODE = process_limits._WINDOWS_CPU_GUARD_CODE.replace(
+        "    while True:\n",
+        "    import time,os\n    time.sleep(0.4)\n    os._exit(99)\n    while True:\n",
+    )
+    handle = process_limits.bound_process_resources(memory_bytes=100 * 1024**2, cpu_seconds=1)
+    ctypes.PyDLL("kernel32").Sleep(2000)
+    connection.send(("ok", "UNSUPERVISED_RESULT"))
+    assert handle is not None
 
 
 @pytest.mark.parametrize(
@@ -70,6 +87,79 @@ def test_short_cpu_task_keeps_its_result() -> None:
     assert b"RESULT 4999950000" in result.stdout
 
 
+@pytest.mark.parametrize(
+    "workload",
+    [
+        "sys.setswitchinterval(60)\nwhile time.process_time()<2.25:\n    pass\n",
+        "ctypes.PyDLL('kernel32').Sleep(2000)\n",
+        "import hashlib\nhashlib.pbkdf2_hmac('sha256',b'a',b'b',100_000_000)\n",
+    ],
+    ids=["python-gil-held", "native-gil-held-idle", "native-cpu"],
+)
+def test_guard_hard_exit_after_readiness_terminates_worker_tree(workload: str) -> None:
+    if sys.platform != "win32":
+        from ai_intel.infrastructure import process_limits
+
+        with pytest.raises(OSError):
+            process_limits._start_windows_cpu_guard(1, 0)
+        return
+
+    import ctypes
+    from ctypes import wintypes
+
+    code = (
+        "import ctypes,os,sys,time,subprocess\n"
+        "from ai_intel.infrastructure import process_limits as limits\n"
+        "limits._WINDOWS_CPU_GUARD_CODE=limits._WINDOWS_CPU_GUARD_CODE.replace("
+        "'    while True:\\n','    import time,os\\n    time.sleep(0.4)\\n"
+        "    os._exit(99)\\n    while True:\\n')\n"
+        "handle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\n"
+        "leaf=subprocess.Popen([os.path.join(sys.base_prefix,'python.exe'),'-I','-S','-c',"
+        "'import time;time.sleep(10)'],creationflags=0x08000000)\n"
+        "print('TREE',os.getpid(),limits._WINDOWS_CPU_GUARDS[0].pid,leaf.pid,flush=True)\n"
+        + workload
+        + "print('UNSUPERVISED_RESULT',flush=True)\n"
+    )
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel.WaitForSingleObject.restype = wintypes.DWORD
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.c_void_p] * 4
+    handles: list[int] = []
+    with subprocess.Popen(
+        [sys.executable, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    ) as worker:
+        ready: queue.Queue[bytes] = queue.Queue()
+
+        def read_tree() -> None:
+            assert worker.stdout is not None
+            ready.put(worker.stdout.readline())
+
+        threading.Thread(target=read_tree, daemon=True).start()
+        try:
+            first_line = ready.get(timeout=8)
+            assert first_line.startswith(b"TREE "), first_line
+            for pid in first_line.split()[1:]:
+                handle = kernel.OpenProcess(0x100000 | 0x1000, False, int(pid))
+                assert handle is not None
+                handles.append(handle)
+            stdout, stderr = worker.communicate(timeout=8)
+            assert b"UNSUPERVISED_RESULT" not in stdout
+            assert b"Traceback" not in stderr
+            assert all(kernel.WaitForSingleObject(handle, 1000) == 0 for handle in handles)
+            times = [ctypes.c_ulonglong() for _ in range(4)]
+            assert kernel.GetProcessTimes(handles[0], *(ctypes.byref(value) for value in times))
+            assert times[2].value + times[3].value < 10_000_000
+        finally:
+            if worker.poll() is None:
+                worker.kill()
+                worker.communicate(timeout=1)
+            for handle in handles:
+                kernel.CloseHandle(handle)
+
+
 def test_guard_initialization_failure_never_allows_worker_code() -> None:
     code = (
         "import os\n"
@@ -89,6 +179,64 @@ def test_guard_initialization_failure_never_allows_worker_code() -> None:
     assert result.returncode == 0, result.stderr
     assert b"LIMIT_UNAVAILABLE" in result.stdout
     assert b"UNBOUNDED_WORKER" not in result.stdout
+
+
+def test_pdf_parent_rejects_result_missing_after_guard_hard_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if sys.platform != "win32":
+        return
+
+    from ai_intel.ingestion.parsing import pdf_text
+
+    code = (
+        "import ctypes\nfrom ai_intel.infrastructure import process_limits as limits\n"
+        "limits._WINDOWS_CPU_GUARD_CODE=limits._WINDOWS_CPU_GUARD_CODE.replace("
+        "'    while True:\\n','    import time,os\\n    time.sleep(0.4)\\n"
+        "    os._exit(99)\\n    while True:\\n')\n"
+        "handle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\n"
+        "ctypes.PyDLL('kernel32').Sleep(2000)\n"
+        'print(\'{"pages":[],"notes":[]}\',flush=True)\n'
+    )
+    original_popen = subprocess.Popen
+
+    def launch_fault_worker(
+        command: list[str],
+        *,
+        stdin: int,
+        stdout: int,
+        stderr: int,
+        env: dict[str, str],
+        creationflags: int,
+    ) -> subprocess.Popen[bytes]:
+        return original_popen(
+            [sys.executable, "-c", code],
+            stdin=stdin,
+            stdout=stdout,
+            stderr=stderr,
+            env=env,
+            creationflags=creationflags,
+        )
+
+    monkeypatch.setattr(pdf_text.subprocess, "Popen", launch_fault_worker)
+    result = pdf_text.parse_pdf_text_layer(b"%PDF-1.7\n")
+    assert result.status == "unparseable"
+    assert result.notes == ("invalid pdf parser output",)
+
+
+def test_semantic_parent_rejects_eof_after_guard_hard_exit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    if sys.platform != "win32":
+        return
+
+    from ai_intel.infrastructure.models import semantic
+
+    monkeypatch.setattr(semantic, "_semantic_worker", _hard_exit_guard_semantic_worker)
+    with pytest.raises(semantic.SemanticRuntimeError, match="exited without a result"):
+        semantic._run_worker(
+            semantic.LocalSemanticModels(tmp_path), semantic.E5_MODEL, "query", ("bounded",), None
+        )
 
 
 @pytest.mark.parametrize("caller", ["pdf", "semantic"])
@@ -189,7 +337,7 @@ def test_failed_guard_readiness_reaps_child_and_closes_setup_handles() -> None:
         "    after=count_handles()\n"
         "    assert after==before, f'setup handle count {before} -> {after}'\n"
         "else:\n"
-        "    try: process_limits._start_windows_cpu_guard(5)\n"
+        "    try: process_limits._start_windows_cpu_guard(5,0)\n"
         "    except OSError: pass\n"
         "    else: raise AssertionError('Windows guard started on another platform')\n"
         "print('FAILURE_CLEANED',flush=True)\n"

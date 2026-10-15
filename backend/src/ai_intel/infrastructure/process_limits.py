@@ -13,7 +13,7 @@ import ctypes
 import sys
 from ctypes import wintypes
 
-target_handle, ready_handle, cpu_ticks = map(int, sys.argv[1:])
+target_handle, ready_handle, lifetime_handle, cpu_ticks = map(int, sys.argv[1:])
 kernel = ctypes.WinDLL('kernel32', use_last_error=True)
 kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
 kernel.WaitForSingleObject.restype = wintypes.DWORD
@@ -21,8 +21,12 @@ kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.c_void_p] * 4
 kernel.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
 kernel.SetEvent.argtypes = [wintypes.HANDLE]
 kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+kernel.GetHandleInformation.argtypes = [wintypes.HANDLE, ctypes.c_void_p]
 times = [ctypes.c_ulonglong() for _ in range(4)]
 try:
+    handle_flags = wintypes.DWORD()
+    if not kernel.GetHandleInformation(lifetime_handle, ctypes.byref(handle_flags)):
+        raise OSError('CPU guard lifetime unavailable')
     if not kernel.GetProcessTimes(target_handle, *(ctypes.byref(value) for value in times)):
         raise OSError('CPU accounting unavailable')
     if not kernel.SetEvent(ready_handle):
@@ -49,10 +53,11 @@ finally:
     if ready_handle:
         kernel.CloseHandle(ready_handle)
     kernel.CloseHandle(target_handle)
+    kernel.CloseHandle(lifetime_handle)
 """
 
 
-def _start_windows_cpu_guard(cpu_seconds: int) -> subprocess.Popen[bytes]:
+def _start_windows_cpu_guard(cpu_seconds: int, lifetime_handle: int) -> subprocess.Popen[bytes]:
     """A separate stdlib process counts all worker threads even while its GIL is held."""
     if sys.platform != "win32":
         raise OSError("process resource limit unavailable")
@@ -78,6 +83,7 @@ def _start_windows_cpu_guard(cpu_seconds: int) -> subprocess.Popen[bytes]:
     if ready_handle is None:
         raise OSError("process resource limit unavailable")
     target_handle = wintypes.HANDLE()
+    guard_lifetime_handle = wintypes.HANDLE()
     guard: subprocess.Popen[bytes] | None = None
     try:
         current_process = kernel.GetCurrentProcess()
@@ -91,9 +97,21 @@ def _start_windows_cpu_guard(cpu_seconds: int) -> subprocess.Popen[bytes]:
             0,
         ):
             raise OSError("process resource limit unavailable")
+        if not kernel.DuplicateHandle(
+            current_process,
+            lifetime_handle,
+            current_process,
+            ctypes.byref(guard_lifetime_handle),
+            0x4,
+            True,
+            0,
+        ):
+            raise OSError("process resource limit unavailable")
         os.set_handle_inheritable(ready_handle, True)
         startup = subprocess.STARTUPINFO(
-            lpAttributeList={"handle_list": [ready_handle, target_handle.value]}
+            lpAttributeList={
+                "handle_list": [ready_handle, target_handle.value, guard_lifetime_handle.value]
+            }
         )
         environment = {
             name: os.environ[name] for name in ("SYSTEMROOT", "WINDIR") if name in os.environ
@@ -107,6 +125,7 @@ def _start_windows_cpu_guard(cpu_seconds: int) -> subprocess.Popen[bytes]:
                 _WINDOWS_CPU_GUARD_CODE,
                 str(target_handle.value),
                 str(ready_handle),
+                str(guard_lifetime_handle.value),
                 str(cpu_seconds * 10_000_000),
             ],
             stdin=subprocess.DEVNULL,
@@ -129,12 +148,16 @@ def _start_windows_cpu_guard(cpu_seconds: int) -> subprocess.Popen[bytes]:
         kernel.CloseHandle(ready_handle)
         if target_handle.value is not None:
             kernel.CloseHandle(target_handle)
+        if guard_lifetime_handle.value is not None:
+            kernel.CloseHandle(guard_lifetime_handle)
 
 
 def bound_process_resources(*, memory_bytes: int, cpu_seconds: int) -> int | None:
     """Keep the Job handle until worker exit; CPU includes user and kernel across its threads.
 
     Windows polls CPU every 50ms in a separate process; scheduling can delay termination.
+    Its exclusive kill-on-close Job ends the worker tree if the guardian dies, outside the GIL.
+    The guardian starts outside that nested Job and owns its last handle after setup returns.
     Job memory and native CPU limits remain as a fallback. Parent wall deadlines still apply.
     """
     if type(memory_bytes) is not int or not 1 <= memory_bytes <= 2 * 1024**3:
@@ -215,12 +238,24 @@ def bound_process_resources(*, memory_bytes: int, cpu_seconds: int) -> int | Non
         kernel.CloseHandle(handle)
         raise OSError("process resource limit unavailable")
     guard: subprocess.Popen[bytes] | None = None
+    lifetime_handle = kernel.CreateJobObjectW(None, None)
+    if lifetime_handle is None:
+        kernel.CloseHandle(handle)
+        raise OSError("process resource limit unavailable")
     try:
-        guard = _start_windows_cpu_guard(cpu_seconds)
+        lifetime_limits = ExtendedLimits()
+        lifetime_limits.basic.flags = 0x2000
+        if not kernel.SetInformationJobObject(
+            lifetime_handle, 9, ctypes.byref(lifetime_limits), ctypes.sizeof(lifetime_limits)
+        ):
+            raise OSError("process resource limit unavailable")
+        guard = _start_windows_cpu_guard(cpu_seconds, lifetime_handle)
         limits.basic.flags |= 0x2000
         if not kernel.SetInformationJobObject(
             handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)
         ):
+            raise OSError("process resource limit unavailable")
+        if not kernel.AssignProcessToJobObject(lifetime_handle, kernel.GetCurrentProcess()):
             raise OSError("process resource limit unavailable")
     except OSError:
         if guard is not None:
@@ -228,5 +263,7 @@ def bound_process_resources(*, memory_bytes: int, cpu_seconds: int) -> int | Non
             guard.wait(timeout=1)
         kernel.CloseHandle(handle)
         raise
+    finally:
+        kernel.CloseHandle(lifetime_handle)
     _WINDOWS_CPU_GUARDS.append(guard)
     return int(handle)
