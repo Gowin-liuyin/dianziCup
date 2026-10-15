@@ -1,8 +1,11 @@
 """本地fixture网关合同；不调用FOFA、不搜索资产、不计live。"""
 
+from unittest.mock import Mock
+
 import pytest
 from pydantic import SecretStr
 
+import ai_intel.assets.fofa_relay as relay
 from ai_intel.assets.fofa_relay import FofaRelayClient, FofaRelayConfig, FofaRelayError
 from ai_intel.infrastructure.network import (
     FetchResult,
@@ -45,6 +48,30 @@ def test_account_probe_uses_fixed_path_without_query_or_email_and_is_synthetic()
     assert account.is_synthetic
     assert account.retrieved_at.utcoffset() is not None
     assert not hasattr(client, "search")
+
+
+def test_falsey_fixture_gateway_never_constructs_real_gateway(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FalseyFixtureGateway(FixtureGateway):
+        def __bool__(self) -> bool:
+            return False
+
+    gateway = FalseyFixtureGateway(
+        fixture_response(body=b'{"valid":true,"todayRemaining":2,"totalRemaining":10}')
+    )
+    real_factory = Mock(side_effect=AssertionError("fixture mode attempted real gateway creation"))
+    monkeypatch.setattr(relay, "create_network_gateway", real_factory)
+    client = FofaRelayClient(fixture_config(), fixture_gateway=gateway, fixture_mode=True)
+    account = client.probe_account()
+    real_factory.assert_not_called()
+    assert gateway.calls == [("https://fafaapi.info/fofaapi/v1/validate-key", 0)]
+    assert (account.status, account.today_remaining, account.total_remaining) == (
+        "available",
+        2,
+        10,
+    )
+    assert account.is_synthetic
 
 
 @pytest.mark.parametrize(

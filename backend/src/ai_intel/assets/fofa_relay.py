@@ -175,17 +175,20 @@ class FofaRelayClient:
         if fixture_mode != (fixture_gateway is not None):
             raise FofaRelayError("invalid_configuration")
         self._fixture_mode = fixture_mode
-        self._gateway: RelayGateway = fixture_gateway or create_network_gateway(
-            NetworkPolicy(
-                allowed_domains=("fafaapi.info",),
-                max_response_bytes=65536,
-                allowed_content_types=("application/json",),
-                total_timeout_seconds=10,
-                dns_resolver="cloudflare_doh",
-            ),
-            OriginCredentials(config.base_url, query_parameters={"key": config.api_key}),
-            max_concurrent_requests=1,
-        )
+        if fixture_gateway is not None:
+            self._gateway: RelayGateway = fixture_gateway
+        else:
+            self._gateway = create_network_gateway(
+                NetworkPolicy(
+                    allowed_domains=("fafaapi.info",),
+                    max_response_bytes=65536,
+                    allowed_content_types=("application/json",),
+                    total_timeout_seconds=10,
+                    dns_resolver="cloudflare_doh",
+                ),
+                OriginCredentials(config.base_url, query_parameters={"key": config.api_key}),
+                max_concurrent_requests=1,
+            )
 
     def probe_account(self) -> RelayAccountStatus:
         try:
