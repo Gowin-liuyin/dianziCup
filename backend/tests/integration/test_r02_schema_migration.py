@@ -5,12 +5,13 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.schema import CreateSchema, DropSchema
 
 from ai_intel.enrichment.persistence_models import enrichment_results
-from ai_intel.infrastructure.database import run_migrations
+from ai_intel.infrastructure.database import MIGRATIONS_DIR, run_migrations
 from ai_intel.knowledge import persistence_models
 from ai_intel.knowledge.models import document_revisions, fetch_attempts, text_blocks
 
@@ -84,7 +85,7 @@ def test_empty_and_legacy_upgrade_keep_columns_and_old_claims(
         assert actual_columns == set(mapped_table.c.keys()), table_name
     with empty_schema_engine.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert revision == "0013_revision_source_metadata"
+        assert revision == ScriptDirectory(str(MIGRATIONS_DIR)).get_current_head()
         assert {column["name"] for column in inspector.get_columns("enrichment_results")} == set(
             enrichment_results.c.keys()
         )

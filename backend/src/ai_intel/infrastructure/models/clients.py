@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+from array import array
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -114,7 +115,7 @@ def validate_embedding_batch(
             for coordinate in vector
         ):
             raise ModelContractError("embedding coordinates must be finite float32 values")
-        if not any(coordinate != 0.0 for coordinate in vector):
+        if not any(coordinate != 0.0 for coordinate in array("f", vector)):
             raise ModelContractError("zero embedding has no cosine distance")
     frozen = tuple(tuple(vector) for vector in vectors)
     return EmbeddingResult(vectors=frozen, model_version=model_version, dimension=dimension)

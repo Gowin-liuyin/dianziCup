@@ -41,3 +41,15 @@ def test_vectors_are_frozen_without_normalizing_or_reordering() -> None:
     result = validate_embedding_batch(original, 2, 2, "intfloat/e5@revision;space=fingerprint")
     original[0][1] = 7.0
     assert result.vectors == ((0.0, 2.0), (-3.0, 4.0))
+
+
+@pytest.mark.parametrize("coordinate", [1e-50, -(1e-50), 2.0 ** -150])
+def test_underflow_to_float32_zero_cannot_enter_cosine_index(coordinate: float) -> None:
+    with pytest.raises(ModelContractError, match="zero embedding"):
+        validate_embedding_batch([[coordinate] * 384], 1, 384, "float32-underflow-v1")
+
+
+def test_smallest_representable_float32_subnormal_remains_valid() -> None:
+    coordinate = 2.0 ** -149
+    result = validate_embedding_batch([[coordinate] * 384], 1, 384, "float32-subnormal-v1")
+    assert result.vectors == ((coordinate,) * 384,)
