@@ -12,6 +12,10 @@ from urllib.parse import urlsplit
 NVD_CONNECTOR_NAME = "nvd-cve-api"
 NVD_CONNECTOR_VERSION = "nvd-2.0.0"
 NVD_SOURCE_SCHEMA_VERSION = "NVD_CVE:2.0"
+SOURCE_TIMESTAMP_PATTERN = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-5][0-9]:[0-5][0-9]"
+    r"(?:\.[0-9]{1,6})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])?"
+)
 
 
 class NvdUnavailableError(RuntimeError):
@@ -65,7 +69,10 @@ def _optional_text(value: object, field_name: str) -> str | None:
         return None
     if not isinstance(value, str):
         raise ValueError(f"invalid NVD {field_name}")
-    value.encode("utf-8")
+    try:
+        value.encode("utf-8")
+    except UnicodeError:
+        raise ValueError(f"invalid NVD {field_name}") from None
     if "\x00" in value:
         raise ValueError(f"invalid NVD {field_name}")
     return value if value.strip() else None
@@ -77,7 +84,7 @@ def _source_timestamp(value: object, field_name: str) -> str | None:
     if text is None:
         return None
     try:
-        if "T" not in text:
+        if SOURCE_TIMESTAMP_PATTERN.fullmatch(text) is None or text.endswith("-00:00"):
             raise ValueError
         parsed = datetime.fromisoformat(text)
     except ValueError:
@@ -146,7 +153,9 @@ def normalize_nvd_record(payload: dict[str, object], *, json_pointer: str = "") 
             raise ValueError("invalid NVD weakness description")
         for text in entry.get("description", []):
             if isinstance(text, dict) and isinstance(text.get("value"), str):
-                weaknesses.append(text["value"])
+                weakness = _optional_text(text["value"], "weakness")
+                if weakness is not None:
+                    weaknesses.append(weakness)
     references: list[str] = []
     reference_entries = item.get("references", [])
     if not isinstance(reference_entries, list):
@@ -154,7 +163,9 @@ def normalize_nvd_record(payload: dict[str, object], *, json_pointer: str = "") 
     for entry in reference_entries:
         if not isinstance(entry, dict) or not isinstance(entry.get("url"), str):
             raise ValueError("invalid NVD reference")
-        link = entry["url"]
+        link = _optional_text(entry["url"], "reference URL")
+        if link is None or any(ord(character) <= 32 for character in link):
+            raise ValueError("invalid NVD reference URL")
         try:
             parts = urlsplit(link)
             if (
@@ -170,7 +181,7 @@ def normalize_nvd_record(payload: dict[str, object], *, json_pointer: str = "") 
         cve_id=cve_id,
         published_at=_source_timestamp(item.get("published"), "published"),
         last_modified_at=_source_timestamp(item.get("lastModified"), "lastModified"),
-        description=description,
+        description=_optional_text(description, "description"),
         metrics=metrics,
         scores=tuple((metric.metric_name, metric.score) for metric in metrics),
         weaknesses=tuple(dict.fromkeys(weaknesses)),

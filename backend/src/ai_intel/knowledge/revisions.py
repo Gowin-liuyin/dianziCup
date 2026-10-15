@@ -9,9 +9,10 @@ from datetime import datetime
 
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from ai_intel.infrastructure.content_store import ContentStorage
+from ai_intel.infrastructure.content_store import ContentStorage, StoredContent
 from ai_intel.knowledge.models import (
     content_objects,
     document_revisions,
@@ -77,6 +78,23 @@ def _load_document_row(session: Session, document_id: str) -> dict[str, object]:
     if row is None:
         raise MissingDocumentError(document_id)
     return dict(row)
+
+
+def register_response_content(
+    session: Session, store: ContentStorage, payload: bytes, created_at: datetime
+) -> StoredContent:
+    """来源响应与GC共享hash锁；调用方保持同事务直到所有PG引用完成。"""
+    if type(payload) is not bytes or created_at.tzinfo is None:
+        raise ValueError("response requires bytes and an aware timestamp")
+    content_hash = hashlib.sha256(payload).hexdigest()
+    _lock_content_hash(session, content_hash)
+    stored = store.store_bytes(payload)
+    if stored.content_hash != content_hash or stored.size_bytes != len(payload):
+        raise ValueError("stored response does not match its payload")
+    if store.read_verified(content_hash) != payload:
+        raise ValueError("stored response bytes failed verification")
+    _insert_content_object(session, stored.content_hash, stored.size_bytes, created_at)
+    return stored
 
 
 def save_document_revision(
@@ -329,6 +347,14 @@ def cleanup_unreferenced_object(session: Session, store: ContentStorage, content
         for count in (revision_refs, document_refs, response_revision_refs, response_fetch_refs)
     ):
         return False
-    store.delete_object(content_hash)
-    session.execute(content_objects.delete().where(content_objects.c.content_hash == content_hash))
+    try:
+        with session.begin_nested():
+            session.execute(
+                content_objects.delete().where(content_objects.c.content_hash == content_hash)
+            )
+            store.delete_object(content_hash)
+    except IntegrityError as error:
+        if getattr(error.orig, "sqlstate", None) == "23503":
+            return False
+        raise
     return True

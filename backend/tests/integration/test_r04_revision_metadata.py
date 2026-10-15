@@ -17,9 +17,30 @@ from ai_intel.knowledge.models import (
     fetch_attempts,
     text_blocks,
 )
-from ai_intel.knowledge.revisions import cleanup_unreferenced_object, save_document_revision
+from ai_intel.knowledge.revisions import (
+    cleanup_unreferenced_object,
+    register_response_content,
+    save_document_revision,
+)
 
 pytestmark = pytest.mark.real_pg
+
+
+def test_response_registration_verifies_bytes_and_reuses_one_pg_object(
+    empty_schema_engine, tmp_path
+):
+    run_migrations(empty_schema_engine.url.render_as_string(hide_password=False))
+    store = ContentStore(tmp_path / "objects")
+    payload = b'{"original":true}'
+    now = datetime.now(UTC)
+    with Session(empty_schema_engine) as session, session.begin():
+        first = register_response_content(session, store, payload, now)
+        second = register_response_content(session, store, payload, now)
+        assert first.content_hash == second.content_hash
+        assert store.read_verified(first.content_hash) == payload
+        rows = session.execute(select(content_objects)).mappings().all()
+        assert len(rows) == 1 and rows[0]["size_bytes"] == len(payload)
+        assert rows[0]["created_at"] == now
 
 
 def test_0012_revision_times_and_blocks_are_not_fabricated_by_upgrade(empty_schema_engine):
