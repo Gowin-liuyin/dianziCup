@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
 from uuid import UUID, uuid4
 
 from pydantic import Field, model_validator
@@ -20,6 +19,7 @@ from ai_intel.domain.access import (
     AccessScope,
     CrossTenantAccessError,
 )
+from ai_intel.domain.enrichment_values import DimensionName
 from ai_intel.domain.enums import DimensionStatus, FreshnessStatus
 from ai_intel.domain.records import StrictRecord
 from ai_intel.domain.values import UtcTimestamp, VisibilityScope
@@ -43,9 +43,7 @@ class DimensionSubmission(StrictRecord):
     """内部持久化输入只引用已验证事实，不能直接接收模型的任意值。"""
 
     event_id: UUID
-    dimension: Literal[
-        "cvss", "epss", "kev", "cwe", "atlas", "versions", "literature", "poc", "exposure"
-    ]
+    dimension: DimensionName
     status: DimensionStatus
     expected_event_version: int = Field(strict=True, ge=1)
     input_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
