@@ -5,7 +5,7 @@ import { graphNodeKinds, graphRelationKinds, type GraphSnapshot } from "../src/f
 
 const fixtureUrl = "/e2e/graph-fixture/index.html";
 async function isolateApi(page: Page, snapshot = graphFixture()) {
-  const state = { graphStatus: 200, authStatus: 200, requests: [] as string[] };
+  const state: { graphStatus: number; authStatus: number; requests: string[] } = { graphStatus: 200, authStatus: 200, requests: [] };
   await page.route("**/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname; state.requests.push(path);
     let body: unknown; let status = 200;
@@ -82,6 +82,7 @@ test("R17 Edge fixture 200 nodes / 400 edges remains operable; synthetic timing 
   });
   await isolateApi(page, snapshot); const start = performance.now(); await page.goto(fixtureUrl); await expect(page.getByText("200 节点 / 400 支持关系")).toBeVisible(); const renderMilliseconds = performance.now() - start;
   await expect(page.locator(".graph-node")).toHaveCount(200); await expect(page.locator(".graph-edge")).toHaveCount(400);
+  expect(await page.locator(".graph-node-relations").evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(330);
   const interactionStart = performance.now(); await page.getByRole("button", { name: "放大图", exact: true }).click(); await expect(page.getByLabel("图缩放比例")).toHaveText("120%");
   await page.getByRole("checkbox", { name: "论文", exact: true }).click(); await expect(page.locator(".graph-node")).toHaveCount(160);
   const interactionMilliseconds = performance.now() - interactionStart;
