@@ -112,7 +112,8 @@ def test_long67_omitted_but_real_quote_is_rejected(monkeypatch):
     client, calls = prepared_transport(monkeypatch, outputs=outputs)
     result = extract(source, client)
     assert result.attempts[0].candidates == ()
-    assert result.attempts[0].error_code == "field_evidence_outside_selection"
+    assert result.attempts[0].status == DimensionStatus.FAILED
+    assert result.attempts[0].error_code == "field_identifier_not_in_evidence"
     assert len(calls) == 1
 
 
@@ -134,4 +135,67 @@ def test_omitted_long_block_condition_still_blocks_candidate_from_full_source(mo
     assert len(calls) == 1
     assert result.input_selections[0].incomplete
     assert result.attempts[0].candidates == ()
+    assert result.attempts[0].error_code == "version_expression_context_missing"
+    assert result.attempts[0].status == DimensionStatus.BLOCKED
+
+
+def test_legal_unseen_version_quote_is_blocked_with_exact_selection_code(monkeypatch):
+    source = long_document()
+    line = source.blocks[-1].text
+    blocks = tuple(
+        block.model_copy(
+            update={
+                "text": line,
+                "text_sha256": hashlib.sha256(line.encode()).hexdigest(),
+            }
+        )
+        for block in source.blocks
+    )
+    source = source.model_copy(update={"blocks": blocks})
+    client, calls = prepared_transport(monkeypatch, outputs=output_for(source, line))
+    result = extract(source, client)
+    assert len(calls) == 1
+    assert result.attempts[0].status == DimensionStatus.BLOCKED
+    assert result.attempts[0].error_code == "field_evidence_outside_selection"
+    assert result.attempts[0].candidates == ()
+
+
+@pytest.mark.parametrize("mutation", ["identifier", "content", "format"])
+def test_partial_selection_does_not_reclassify_bad_model_output_as_blocked(monkeypatch, mutation):
+    source = long_document()
+    outputs = output_for(source, source.blocks[-1].text)
+    if mutation == "identifier":
+        outputs["versions"]["candidates"][0]["evidence"][0]["block_id"] = (
+            "00000000-0000-0000-0000-000000000999"
+        )
+    elif mutation == "content":
+        outputs["versions"]["candidates"][0]["value"]["intervals"] = [{"fixed": "3.0"}]
+    else:
+        outputs["versions"]["status"] = "available"
+    client, calls = prepared_transport(monkeypatch, outputs=outputs)
+    result = extract(source, client)
+    assert len(calls) == 1
+    assert result.input_selections[0].incomplete
+    assert result.attempts[0].status == DimensionStatus.FAILED
+    assert result.attempts[0].candidates == ()
+
+
+def test_seen_required_context_is_a_bad_proposal_even_if_other_text_was_omitted(monkeypatch):
+    line = "PyPI widget affected versions: >=1.0,<2.0;"
+    source = document(
+        31,
+        "Unrelated" * 1900 + "\n" + line + "\nOnly when affected package tools enabled.",
+        "https://example.invalid/seen-qualifier",
+    )
+    outputs = output_for(source, line, quoted_block=source.blocks[0])
+    start = source.blocks[0].text.index(line)
+    outputs["versions"]["candidates"][0]["evidence"][0].update(
+        start_offset=start,
+        end_offset=start + len(line),
+    )
+    client, calls = prepared_transport(monkeypatch, outputs=outputs)
+    result = extract(source, client)
+    assert len(calls) == 1
+    assert result.input_selections[0].incomplete
+    assert result.attempts[0].status == DimensionStatus.FAILED
     assert result.attempts[0].error_code == "version_expression_context_missing"
