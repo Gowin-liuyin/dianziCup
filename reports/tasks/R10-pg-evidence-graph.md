@@ -54,6 +54,8 @@ REST 在同一 Session 使用 REPEATABLE READ。直接调用服务的上层也�
 
 保留开发阶段证据：`initial_unit.log` 为模块尚未实现时的 collection error，exit 2（非环境缺失、非业务测试失败）；此前纯测试 9 passed、PG 27 passed、相关回归 103 passed 的日志与旧命令收据保留。初次定向 mypy 的 3 个类型错误已修正；冻结复跑不再出现。
 
+业务冻结 diff 的 `git diff --check <baseline> <code_commit> -- backend` 为 exit 0；全归档版本的同项检查为 exit 2，只因 `cbm_schema.json` 原始 CLI stdout 在 EOF 带一个额外空行。该原始材料保留，没有裁剪原始输出或添加忽略规则；实际命令/输出见 `diff_checks.json`。这不计作 Python 检查或测试失败，也不宣称全归档空白检查通过。
+
 ## 验收与评分项证据
 
 | 要求 | 可观察证据 |

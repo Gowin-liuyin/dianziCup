@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 RUN = Path(__file__).resolve().parent
 BASE = "cc1b1d302e22048f567475b7084bcd5490761ed2"
+CODE_COMMIT = "b0b7a5b856cc38862f64c01565309564d67c34c0"
 
 
 def git(*arguments):
@@ -16,7 +17,7 @@ def git(*arguments):
 
 
 def seal():
-    head = git("rev-parse", "HEAD").decode().strip()
+    head = CODE_COMMIT
     code_paths = git("diff", "--name-only", BASE, head, "--", "backend").decode().splitlines()
     code = []
     for path in code_paths:

@@ -32,6 +32,14 @@ def main():
     credentials = [private[key].encode() for key in ("postgres_password", "redis_password", "TEST_DATABASE_URL")]
     assert all(len(value) >= 8 for value in credentials)
     code = json.loads((RUN / "frozen_code_manifest.json").read_text(encoding="utf-8"))
+    diff_checks = []
+    for name, arguments in (
+        ("frozen_backend", ["git", "diff", "--check", code["baseline"], code["code_commit"], "--", "backend"]),
+        ("committed_artifacts", ["git", "diff", "--check", code["baseline"], "HEAD"]),
+    ):
+        result = subprocess.run(arguments, cwd=ROOT, capture_output=True, text=True)
+        diff_checks.append({"scope": name, "command": arguments, "exit_code": result.returncode, "stdout": result.stdout, "stderr": result.stderr})
+    (RUN / "diff_checks.json").write_text(json.dumps(diff_checks, ensure_ascii=False, indent=2), encoding="utf-8")
     scan_paths = [*(ROOT / item["path"] for item in code["files"]), *RUN.iterdir(), ROOT / "reports/tasks/R10-pg-evidence-graph.md"]
     matches = []
     checked = 0
@@ -51,6 +59,7 @@ def main():
         "exit_codes": {value["name"]: value["exit_code"] for value in receipts},
         "verification": {"unit": "passed", "contract": "passed", "security": "passed", "integration": "passed", "frontend": "not_run", "e2e": "not_run", "live": "not_run", "manual": "not_run"},
         "private_credential_scan": {"files_checked": checked, "matching_paths": matches, "passed": not matches},
+        "diff_checks": diff_checks,
     }
     (RUN / "verification_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({"total_tests": summary["total_test_executions"], "exit_codes": summary["exit_codes"], "credential_scan_passed": not matches}))
