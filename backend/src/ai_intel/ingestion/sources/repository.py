@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 REPO_CONNECTOR_VERSION = "repo-1.0.0"
@@ -50,7 +51,7 @@ def normalize_repository_record(payload: dict[str, object]) -> RepositoryRecord:
         raise RepositoryFetchError("unknown repository record type")
     if not isinstance(fixed_identifier, str) or not fixed_identifier:
         raise RepositoryFetchError("record missing fixed identifier")
-    if record_type == "commit" and len(fixed_identifier) != 40:
+    if record_type == "commit" and not re.fullmatch(r"[0-9a-fA-F]{40}", fixed_identifier):
         raise RepositoryFetchError("commit records must pin a full 40-char SHA, not a floating ref")
     if not isinstance(title, str) or not isinstance(related_product, str):
         raise RepositoryFetchError("record missing title or related product")

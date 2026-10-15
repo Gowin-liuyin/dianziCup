@@ -11,7 +11,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import Field, HttpUrl, ValidationError, field_validator
-from sqlalchemy import Text, and_, column, exists, or_, select, table
+from sqlalchemy import Text, and_, column, exists, func, or_, select, table
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
@@ -394,7 +394,13 @@ class KnowledgeReadService:
         )
 
     def _evidence_rows(
-        self, *, revision_ids: tuple[str, ...] | None = None, evidence_id: UUID | None = None
+        self,
+        *,
+        revision_ids: tuple[str, ...] | None = None,
+        evidence_id: UUID | None = None,
+        public_only: bool = False,
+        offset: int = 0,
+        limit: int | None = None,
     ) -> list[RowMapping]:
         query = (
             select(
@@ -428,7 +434,55 @@ class KnowledgeReadService:
             query = query.where(evidence.c.revision_id.in_(revision_ids))
         if evidence_id is not None:
             query = query.where(evidence.c.evidence_id == str(evidence_id))
+        if public_only:
+            query = query.where(self._public_evidence())
+        if limit is not None:
+            query = (
+                query.order_by(
+                    evidence.c.start_offset, evidence.c.end_offset, evidence.c.evidence_id
+                )
+                .offset(offset)
+                .limit(limit)
+            )
         return list(self.session.execute(query).mappings())
+
+    @staticmethod
+    def _public_evidence() -> ColumnElement[bool]:
+        return and_(
+            evidence.c.visibility == "public",
+            evidence.c.tenant_id.is_(None),
+            document_revisions.c.visibility == "public",
+            document_revisions.c.tenant_id.is_(None),
+            documents.c.visibility == "public",
+            documents.c.tenant_id.is_(None),
+            sources.c.visibility == "public",
+            sources.c.tenant_id.is_(None),
+        )
+
+    def read_public_revision_evidence(
+        self, revision_id: UUID, offset: int, limit: int
+    ) -> tuple[tuple[EvidenceResponse, ...], int]:
+        """资料正文按固定修订稳定分页；即便调用者可读私有资产也只返回公开证据。"""
+        if not 0 <= offset <= 2000 or not 1 <= limit <= 100:
+            raise ValueError("evidence page outside bounds")
+        total = self.session.scalar(
+            select(func.count())
+            .select_from(
+                evidence.join(
+                    self._revision_join(),
+                    evidence.c.revision_id == document_revisions.c.revision_id,
+                )
+            )
+            .where(
+                evidence.c.revision_id == str(revision_id),
+                self._public_evidence(),
+                documents.c.kind != "asset_inventory",
+            )
+        )
+        rows = self._evidence_rows(
+            revision_ids=(str(revision_id),), public_only=True, offset=offset, limit=limit
+        )
+        return tuple(self._evidence_projection(row) for row in rows), int(total or 0)
 
     def read_evidence(self, evidence_id: UUID) -> EvidenceResponse:
         rows = self._evidence_rows(evidence_id=evidence_id)

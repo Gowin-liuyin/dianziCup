@@ -1,0 +1,211 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0
+rootdir: D:\wt\r06-feeds\backend
+configfile: pyproject.toml
+plugins: anyio-4.15.1, cov-6.3.0
+collected 1086 items
+
+tests\unit\test_r01_runtime_settings.py ..............                   [  1%]
+tests\unit\test_r01_worker_configuration.py ..                           [  1%]
+tests\unit\test_r02_auth_state_inputs.py .........                       [  2%]
+tests\unit\test_r02_content_storage_configuration.py ..........          [  3%]
+tests\unit\test_r02_dimension_publication_contract.py .................. [  4%]
+.......                                                                  [  5%]
+tests\unit\test_r02_knowledge_boundaries.py ...........                  [  6%]
+tests\unit\test_r02_knowledge_publication_contract.py .................. [  8%]
+..........                                                               [  9%]
+tests\unit\test_r02_minio_store.py .......                               [  9%]
+tests\unit\test_r03_cursor_boundaries.py ............................... [ 12%]
+......                                                                   [ 13%]
+tests\unit\test_r03_doh_resolver.py .........                            [ 13%]
+tests\unit\test_r03_executor_control.py .........                        [ 14%]
+tests\unit\test_r03_jobs_contract.py ..............                      [ 16%]
+tests\unit\test_r03_network_gateway.py ..............                    [ 17%]
+tests\unit\test_r03_network_review_regressions.py ......                 [ 17%]
+tests\unit\test_r04_knowledge_api_cursor.py ............................ [ 20%]
+..                                                                       [ 20%]
+tests\unit\test_r04_nvd_actual_schema.py ......................          [ 22%]
+tests\unit\test_r04_projection_boundaries.py ........                    [ 23%]
+tests\unit\test_r04_real_parsing.py .................................    [ 26%]
+tests\unit\test_r04_source_documents.py ................................ [ 29%]
+..................                                                       [ 31%]
+tests\unit\test_r04_source_jobs.py ..................................... [ 34%]
+.....................................................                    [ 39%]
+tests\unit\test_r04_source_rate_limits.py .............................. [ 42%]
+........................................................................ [ 48%]
+...................                                                      [ 50%]
+tests\unit\test_r04_vendor_advisories.py ............................... [ 53%]
+............................................................             [ 58%]
+tests\unit\test_r04_vendor_missing_package.py .........                  [ 59%]
+tests\unit\test_r05_embedding_boundaries.py ..........................   [ 62%]
+tests\unit\test_r05_evidence_chunks.py ....                              [ 62%]
+tests\unit\test_r05_generation.py ...................................... [ 66%]
+......................                                                   [ 68%]
+tests\unit\test_r05_generation_review_fixes.py ......................... [ 70%]
+..........................                                               [ 72%]
+tests\unit\test_r05_grounded_answer.py ................................. [ 75%]
+..........................................................               [ 81%]
+tests\unit\test_r05_process_limits.py .............F..                   [ 82%]
+tests\unit\test_r05_question_routes.py ......                            [ 83%]
+tests\unit\test_r05_semantic.py ........................................ [ 86%]
+.................                                                        [ 88%]
+tests\unit\test_r06_feed_parsers.py .................................... [ 91%]
+...........................................                              [ 95%]
+tests\unit\test_t02_project_skeleton.py ...........                      [ 96%]
+tests\unit\test_t04_domain_contracts.py .............                    [ 97%]
+tests\unit\test_t05_content_store_boundaries.py ......                   [ 98%]
+tests\unit\test_t06_access_scope_boundaries.py ....                      [ 98%]
+tests\unit\test_t17_relevance_and_event_linking.py .......               [ 99%]
+tests\unit\test_t19_structured_enrichment.py ......                      [100%]
+
+================================== FAILURES ===================================
+______________ test_real_native_cpu_limit_terminates_busy_child _______________
+
+    def test_real_native_cpu_limit_terminates_busy_child() -> None:
+        code = (
+            "from ai_intel.infrastructure.process_limits import bound_process_resources\n"
+            "handle = bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\n"
+            "print('LIMIT_APPLIED',flush=True)\n"
+            "while True:\n    pass\n"
+        )
+>       result = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, timeout=8, check=False
+        )
+
+tests\unit\test_r05_process_limits.py:51: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\subprocess.py:550: in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\subprocess.py:1209: in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Popen: returncode: 1 args: ['D:\\wt\\r06-feeds\\backend\\.venv\\Scripts\\py...>
+input = None, endtime = 55704.39, orig_timeout = 8
+
+    def _communicate(self, input, endtime, orig_timeout):
+        # Start reader threads feeding into a list hanging off of this
+        # object, unless they've already been started.
+        if self.stdout and not hasattr(self, "_stdout_buff"):
+            self._stdout_buff = []
+            self.stdout_thread = \
+                    threading.Thread(target=self._readerthread,
+                                     args=(self.stdout, self._stdout_buff))
+            self.stdout_thread.daemon = True
+            self.stdout_thread.start()
+        if self.stderr and not hasattr(self, "_stderr_buff"):
+            self._stderr_buff = []
+            self.stderr_thread = \
+                    threading.Thread(target=self._readerthread,
+                                     args=(self.stderr, self._stderr_buff))
+            self.stderr_thread.daemon = True
+            self.stderr_thread.start()
+    
+        if self.stdin:
+            self._stdin_write(input)
+    
+        # Wait for the reader threads, or time out.  If we time out, the
+        # threads remain reading and the fds left open in case the user
+        # calls communicate again.
+        if self.stdout is not None:
+            self.stdout_thread.join(self._remaining_time(endtime))
+            if self.stdout_thread.is_alive():
+>               raise TimeoutExpired(self.args, orig_timeout)
+E               subprocess.TimeoutExpired: Command '['D:\\wt\\r06-feeds\\backend\\.venv\\Scripts\\python.exe', '-c', "from ai_intel.infrastructure.process_limits import bound_process_resources\nhandle = bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nprint('LIMIT_APPLIED',flush=True)\nwhile True:\n    pass\n"]' timed out after 8 seconds
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\subprocess.py:1630: TimeoutExpired
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\wt\r06-feeds\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\r06-feeds\reports\runs\recovery_r06_feed_parsers_20261015\unit_final.xml -
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.12.13-final-0 _______________
+
+Name                                                     Stmts   Miss  Cover   Missing
+--------------------------------------------------------------------------------------
+src\ai_intel\__init__.py                                     0      0   100%
+src\ai_intel\answering\__init__.py                           0      0   100%
+src\ai_intel\answering\contracts.py                         64      5    92%   24, 27-28, 45, 47
+src\ai_intel\answering\grounding.py                        144      4    97%   106-107, 263-264
+src\ai_intel\answering\service.py                          169    128    24%   70-74, 81-106, 127-133, 139-175, 189-195, 205-416
+src\ai_intel\api\__init__.py                                 0      0   100%
+src\ai_intel\api\app.py                                    135     30    78%   47, 54, 68, 70, 95-96, 108-115, 152-163, 169-172, 216-220, 226, 228
+src\ai_intel\api\auth_routes.py                             86     50    42%   45, 54, 60-69, 96-123, 139-160, 166-205
+src\ai_intel\api\auth_state.py                             106     66    38%   80-97, 104, 108-140, 146-163, 169-192, 201-214, 218-219, 225-242, 259-285
+src\ai_intel\api\authentication.py                         214     49    77%   83, 95, 107, 124, 128-146, 150-160, 164-174, 179-183, 278, 282-285, 288-297, 306, 321-322, 338, 350, 358-359, 386-388, 396, 413, 422, 431, 435, 437
+src\ai_intel\api\knowledge_contracts.py                     96      0   100%
+src\ai_intel\api\knowledge_read_service.py                 231    147    36%   86-92, 105, 107, 133-134, 141-144, 147-155, 158, 163, 173-243, 250-288, 311-373, 382, 399-431, 434-437, 440-469, 495-620
+src\ai_intel\api\knowledge_routes.py                        59     32    46%   51-83, 97-103, 107, 111
+src\ai_intel\api\problems.py                                 6      0   100%
+src\ai_intel\api\question_contracts.py                      56     14    75%   28, 31-32, 43-45, 63-70
+src\ai_intel\api\question_routes.py                         68     12    82%   46-54, 80, 92, 99, 109-111, 133-135
+src\ai_intel\api\source_routes.py                          105     40    62%   50, 52, 77-89, 94-104, 109-122, 132, 135, 138-156, 173-179
+src\ai_intel\domain\__init__.py                              0      0   100%
+src\ai_intel\domain\access.py                               42      1    98%   86
+src\ai_intel\domain\enums.py                                79      0   100%
+src\ai_intel\domain\records.py                              94      3    97%   158, 161, 172
+src\ai_intel\domain\schema_export.py                        15      5    67%   45-49
+src\ai_intel\domain\values.py                               47      3    94%   31-33
+src\ai_intel\enrichment\dimensions.py                       18      0   100%
+src\ai_intel\enrichment\persistence.py                     128     56    56%   99, 105, 109-113, 116-189, 197-272, 279-282
+src\ai_intel\enrichment\persistence_models.py                4      0   100%
+src\ai_intel\enrichment\relevance.py                        37      2    95%   47, 56
+src\ai_intel\enrichment\structured.py                       44      0   100%
+src\ai_intel\infrastructure\__init__.py                      0      0   100%
+src\ai_intel\infrastructure\content_storage_factory.py      10      1    90%   20
+src\ai_intel\infrastructure\content_store.py                58      5    91%   66, 79-82
+src\ai_intel\infrastructure\database.py                     48     30    38%   30-35, 52-61, 66-69, 74-77, 82-91
+src\ai_intel\infrastructure\dns_resolver.py                 45      3    93%   61, 64, 74
+src\ai_intel\infrastructure\http_transport.py              176    146    17%   36-41, 44-65, 68-72, 76-81, 84-85, 88-90, 102-126, 129-142, 145-149, 161-190, 202-264
+src\ai_intel\infrastructure\minio_store.py                  71      4    94%   45, 89-90, 116
+src\ai_intel\infrastructure\models\__init__.py               0      0   100%
+src\ai_intel\infrastructure\models\clients.py               82     25    70%   63, 69-80, 107, 110, 133-134, 147-151, 162-164
+src\ai_intel\infrastructure\models\generation.py           296     15    95%   150, 157, 173, 185, 211, 270, 286, 291, 295, 301, 318, 322, 383, 398, 542
+src\ai_intel\infrastructure\models\json_output.py           37      0   100%
+src\ai_intel\infrastructure\models\semantic.py             241     37    85%   269, 290-291, 294, 297-298, 318-328, 330, 332, 358-386, 391-393
+src\ai_intel\infrastructure\network.py                     286     74    74%   129-130, 154, 156-159, 163, 174, 177, 207, 213, 220, 226, 238, 242, 244, 246, 251-252, 254, 256, 258, 260, 265, 292, 318-319, 321, 329, 334, 339-351, 368, 376-384, 401, 403, 407-408, 413, 430, 433, 440, 450, 463, 482, 491-493, 502, 513-523, 546-561, 582
+src\ai_intel\infrastructure\outbox.py                       59     32    46%   47-103, 114-168
+src\ai_intel\infrastructure\process_limits.py               44      9    80%   17-21, 78, 84-85, 87-88
+src\ai_intel\infrastructure\runtime_observations.py         18     10    44%   16-22, 32-38
+src\ai_intel\infrastructure\settings.py                    115     20    83%   112, 139, 154, 162-175, 189-190, 192-193, 198-203
+src\ai_intel\ingestion\cursor_repository.py                337    198    41%   60, 96, 98, 163, 185-226, 231, 236-239, 243, 247-250, 282-301, 304, 310-313, 337, 345-403, 412-426, 429-438, 443, 452-469, 473-484, 489-497, 502-575, 590-723, 727-730
+src\ai_intel\ingestion\parsing\__init__.py                   0      0   100%
+src\ai_intel\ingestion\parsing\_pdf_worker.py               54     16    70%   52-54, 68-87, 91
+src\ai_intel\ingestion\parsing\parsers.py                   99     42    58%   27-32, 35-53, 56-59, 62-64, 67-70, 73-74, 79-82, 132
+src\ai_intel\ingestion\parsing\pdf_text.py                  57      3    95%   62, 90-91
+src\ai_intel\ingestion\parsing\text_blocks.py               30      0   100%
+src\ai_intel\ingestion\scheduler.py                         90     17    81%   59, 61, 65, 84, 105, 121-131, 137
+src\ai_intel\ingestion\source_documents.py                 334    121    64%   142, 153-154, 222, 241, 244, 261, 268, 286, 332-335, 347, 378-401, 416, 418-448, 467-612, 625-733, 746-764
+src\ai_intel\ingestion\source_jobs.py                      226     39    83%   74, 141-142, 166-169, 171, 197, 265-284, 306, 315, 326, 334, 346-399, 401, 403, 405
+src\ai_intel\ingestion\sources\__init__.py                   0      0   100%
+src\ai_intel\ingestion\sources\academic.py                  41      6    85%   40, 82-85, 90
+src\ai_intel\ingestion\sources\arxiv_atom.py               175     13    93%   87, 90, 104, 140, 161, 163, 172, 179, 212, 217-220
+src\ai_intel\ingestion\sources\feed.py                      52      8    85%   56, 92-102, 107-110
+src\ai_intel\ingestion\sources\nvd.py                      156     23    85%   71, 74-75, 77, 97, 103, 134, 150, 153, 162, 165, 168, 176-178, 206, 208, 212, 216, 220, 228, 231, 234
+src\ai_intel\ingestion\sources\trailofbits_rss.py          114      8    93%   69, 72, 78, 84, 112-115
+src\ai_intel\ingestion\sources\vendor_advisories.py        110      0   100%
+src\ai_intel\knowledge\claims.py                            75     35    53%   25-26, 61-72, 78-81, 85-87, 91-93, 99-115, 119
+src\ai_intel\knowledge\entities.py                          31     13    58%   23, 37, 42-48, 53-56
+src\ai_intel\knowledge\event_linking.py                    198     97    51%   102, 136-283, 307-394, 409-494, 507-516, 559
+src\ai_intel\knowledge\evidence.py                          51     12    76%   35, 49, 56, 59-64, 85, 89-90
+src\ai_intel\knowledge\models.py                            21      0   100%
+src\ai_intel\knowledge\persistence.py                      313    134    57%   226-279, 323, 357, 376, 388, 404-443, 456-541, 544, 557-651, 654-680, 689-804
+src\ai_intel\knowledge\persistence_models.py                16      0   100%
+src\ai_intel\knowledge\revisions.py                        129     98    24%   57, 66, 71-80, 87-97, 110-171, 188-209, 228-289, 300-311, 316-321, 326-360
+src\ai_intel\retrieval\persistence_models.py                 6      0   100%
+src\ai_intel\retrieval\service.py                          155     84    46%   104, 108-137, 166-170, 177-178, 181-299, 311-313, 319-327, 339-368
+src\ai_intel\workers\executor.py                            96     15    84%   51, 69, 99, 130, 146-147, 165-189
+src\ai_intel\workers\jobs.py                               147    108    27%   30-31, 47, 58, 77-148, 158, 168, 179-197, 208-209, 231-251, 267-313, 318-353, 358-411, 420-438, 442-448
+src\ai_intel\workers\runtime.py                             67     30    55%   67-76, 83-85, 106-115, 120-128, 133
+--------------------------------------------------------------------------------------
+TOTAL                                                     6813   2178    68%
+Coverage JSON written to file ../reports/runs/recovery_r06_feed_parsers_20261015/unit_final_coverage.json
+Required test coverage of 60% reached. Total coverage: 68.03%
+=========================== short test summary info ===========================
+FAILED tests/unit/test_r05_process_limits.py::test_real_native_cpu_limit_terminates_busy_child
+================= 1 failed, 1085 passed, 1 warning in 34.75s ==================
