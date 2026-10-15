@@ -55,7 +55,7 @@ def main() -> int:
                        PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
     command = ["uv", "run", "--locked", "pytest", "tests/unit",
         "tests/contract/test_t10_cve_nvd_connectors.py", "tests/integration/test_r04_revision_metadata.py", "tests/integration/test_t05_persistence_and_raw_store.py",
-        
+
         "tests/integration/test_r02_schema_migration.py", f"--junitxml={RUN / (label + '.xml')}", "-q"]
     started = now()
     completed = subprocess.run(command, cwd=ROOT / "backend", env=environment,

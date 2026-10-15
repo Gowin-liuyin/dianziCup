@@ -1,6 +1,6 @@
 # CR-R10 · Vitest安全升级候选
 
-状态：awaiting_review；现有用户授权覆盖普通兼容安全修复，正式技术生效待新的集成独立核对。
+状态：accepted（仅本固定依赖安全修复，按新集成独立意见登记生效；非R01/阶段验收）。
 首次创建/本次写作开始时间：2026-10-15T00:23:38+08:00；本次写作结束时间：2026-10-15T00:24:55+08:00。
 记录者：主控 /root。授权边界：AGENTS.md §2.5的依赖主版本变动必须记录；本批用户批准CR-R01–09，新重大变更须新授权。
 
@@ -38,3 +38,7 @@ runner仍forks/isolate=true/maxWorkers1/fileParallelism=false，不改任何原�
 原Agent把“依赖主版本须走变更单”扩大成“任何semver major必须新问用户”，这是Agent解释，未生效的人为等待条件。新非作者/root/r02_minio_integrated_review只读核对prompts/12、AGENTS与候选边界，报告[授权核对](../../reports/reviews/recovery/G-A-CR-R10-scope-check.md)确认：本固定测试工具安全修复属于既有完整批次/R01/T02普通工程范围，不是新增产品架构/评分决策。现有明确授权是依据，用户未回复不是依据。保留旧判断/请求/原技术报告，不删历史；本次只取消额外等待，正式生效仍需当前新集成回归与新非作者技术审查。
 
 已将497740a的必要两份frontend依赖文件与471c547前端/已审skip组合为新候选；未引入该旧提交的全部报告或无关attrs。11:47:10–11:47:36当前npm ci/audit/lint/typecheck/完整test/build全exit0，新原始证据recovery_r04_frontend_integrated_20261015；这不是旧30例结论，审计只对这次实际锁文件时点负责。整个阶段尚未验收/push。实际新源码SHA在冻结提交后记录，不虚构本文自身SHA。
+
+## 2026-10-15T13:02:41+08:00 · 当前生效登记
+
+主控依据非作者scope-check与G-B-R04-frontend-review-1-recheck.md登记：既有批次授权覆盖；固定0b983/7f9集成npm ci、115unit、lint/typecheck/build/audit0及浏览器/HTTP专项由独立reviewer复跑。Vitest4.1.11本固定修复生效，旧授权等待判断仅保留历史，不再阻断。此登记不签整R01/G-A或云CI通过。
