@@ -1,0 +1,39 @@
+.....................FF                                                  [100%]
+================================== FAILURES ===================================
+___________ test_same_cve_nvd_vendor_different_scores_must_conflict ___________
+
+    def test_same_cve_nvd_vendor_different_scores_must_conflict():
+        nvd = document(nvd_payload(score=9.8))
+        payload = vendor_payload(score=8.1)
+        vendor = document(payload, payload["html_url"], category="vendor_advisory")
+        result = attempts(nvd, vendor)["cvss"]
+        assert len(result.candidates) == 2
+        assert {candidate.value.base_score for candidate in result.candidates} == {9.8, 8.1}
+>       assert result.status.value == "conflict"
+E       AssertionError: assert 'available' == 'conflict'
+E         
+E         - conflict
+E         + available
+
+..\reports\runs\recovery_r07_public_signals_review_1_20261016\test_independent_boundaries.py:198: AssertionError
+____ test_unrelated_valid_cwe_selection_does_not_remove_verified_candidate ____
+
+    def test_unrelated_valid_cwe_selection_does_not_remove_verified_candidate():
+        source = document(nvd_payload(cwes=("CWE-78",)))
+        relevant = catalog(("CWE-78",))
+        unrelated = catalog(("CWE-79",))
+        baseline = attempts(source, relevant)["cwe"]
+        assert baseline.status.value == "available" and len(baseline.candidates) == 1
+        result = attempts(source, relevant, unrelated)["cwe"]
+>       assert result.status.value == "available"
+E       AssertionError: assert 'blocked' == 'available'
+E         
+E         - available
+E         + blocked
+
+..\reports\runs\recovery_r07_public_signals_review_1_20261016\test_independent_boundaries.py:208: AssertionError
+- generated xml file: D:\wt\r07-public-signals-review-1\reports\runs\recovery_r07_public_signals_review_1_20261016\independent_boundaries_v2.xml -
+=========================== short test summary info ===========================
+FAILED ..\reports\runs\recovery_r07_public_signals_review_1_20261016\test_independent_boundaries.py::test_same_cve_nvd_vendor_different_scores_must_conflict
+FAILED ..\reports\runs\recovery_r07_public_signals_review_1_20261016\test_independent_boundaries.py::test_unrelated_valid_cwe_selection_does_not_remove_verified_candidate
+2 failed, 21 passed in 0.90s

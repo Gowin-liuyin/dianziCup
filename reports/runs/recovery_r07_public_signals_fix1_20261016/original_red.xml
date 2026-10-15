@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="2" time="1.492" timestamp="2026-10-16T00:42:06.860678+08:00" hostname="yin"><testcase classname="reports.runs.recovery_r07_public_signals_fix1_20261016.test_independent_boundaries_original" name="test_same_cve_nvd_vendor_different_scores_must_conflict" time="0.002"><failure message="AssertionError: assert 'available' == 'conflict'&#10;  &#10;  - conflict&#10;  + available">def test_same_cve_nvd_vendor_different_scores_must_conflict():
+        nvd = document(nvd_payload(score=9.8))
+        payload = vendor_payload(score=8.1)
+        vendor = document(payload, payload["html_url"], category="vendor_advisory")
+        result = attempts(nvd, vendor)["cvss"]
+        assert len(result.candidates) == 2
+        assert {candidate.value.base_score for candidate in result.candidates} == {9.8, 8.1}
+&gt;       assert result.status.value == "conflict"
+E       AssertionError: assert 'available' == 'conflict'
+E         
+E         - conflict
+E         + available
+
+..\reports\runs\recovery_r07_public_signals_fix1_20261016\test_independent_boundaries_original.py:198: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r07_public_signals_fix1_20261016.test_independent_boundaries_original" name="test_unrelated_valid_cwe_selection_does_not_remove_verified_candidate" time="0.003"><failure message="AssertionError: assert 'blocked' == 'available'&#10;  &#10;  - available&#10;  + blocked">def test_unrelated_valid_cwe_selection_does_not_remove_verified_candidate():
+        source = document(nvd_payload(cwes=("CWE-78",)))
+        relevant = catalog(("CWE-78",))
+        unrelated = catalog(("CWE-79",))
+        baseline = attempts(source, relevant)["cwe"]
+        assert baseline.status.value == "available" and len(baseline.candidates) == 1
+        result = attempts(source, relevant, unrelated)["cwe"]
+&gt;       assert result.status.value == "available"
+E       AssertionError: assert 'blocked' == 'available'
+E         
+E         - available
+E         + blocked
+
+..\reports\runs\recovery_r07_public_signals_fix1_20261016\test_independent_boundaries_original.py:208: AssertionError</failure></testcase></testsuite></testsuites>
