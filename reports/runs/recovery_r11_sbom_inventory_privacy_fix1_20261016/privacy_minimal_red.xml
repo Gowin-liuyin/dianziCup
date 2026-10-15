@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="3" time="0.315" timestamp="2026-10-16T06:38:30.146525+08:00" hostname="yin"><testcase classname="tests.unit.test_r11_sbom_inventory_uri_privacy" name="test_original_privacy_must_external_document_uri_is_not_returned[connection_uri]" time="0.005"><failure message="assert 'postgresql:...5432/private' not in '{&quot;schema_ve...dLocation&quot;]}'&#10;  &#10;  'postgresql://synth...ternal:5432/private' is contained here:&#10;    ent_uri&quot;:&quot;postgresql://synthetic_user:synthetic_password@db.internal:5432/private&quot;,&quot;checksum&quot;:{&quot;algorithm&quot;:&quot;SHA256&quot;,&quot;checksum_value&quot;:&quot;cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&quot;,&quot;source_field_locator&quot;:&quot;/externalDocumentRefs/0/checksum&quot;},&quot;source_field_locator&quot;:&quot;/externalDocumentRefs/0&quot;}],&quot;unmapped_field_locators&quot;:[&quot;/SPDXID&quot;,&quot;/creationInfo&quot;,&quot;/dataLicense&quot;,&quot;/documentNamespace&quot;,&quot;/name&quot;,&quot;/packages/0/downloadLocation&quot;]}&#10;  ?           +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++">uri = 'postgresql://synthetic_user:synthetic_password@db.internal:5432/private'
+
+    @pytest.mark.parametrize("uri", [
+        "postgresql://synthetic_user:synthetic_password@db.internal:5432/private",
+        "file:///C:/private/synthetic-parent",
+        "https://synthetic_user:synthetic_password@example.test/sbom",
+    ], ids=["connection_uri", "file_uri", "userinfo_uri"])
+    def test_original_privacy_must_external_document_uri_is_not_returned(uri):
+        raw = json.dumps({
+            "spdxVersion": "SPDX-2.3", "SPDXID": "SPDXRef-DOCUMENT", "name": "synthetic",
+            "documentNamespace": "https://example.test/sbom", "dataLicense": "CC0-1.0",
+            "creationInfo": {"created": "2026-10-16T00:00:00Z", "creators": ["Tool: synthetic"]},
+            "packages": [{"SPDXID": "SPDXRef-A", "name": "a", "versionInfo": "1",
+                          "downloadLocation": "NOASSERTION"}],
+            "externalDocumentRefs": [{"externalDocumentId": "DocumentRef-external",
+                                      "spdxDocument": uri,
+                                      "checksum": {"algorithm": "SHA256", "checksumValue": "c" * 64}}],
+        }, separators=(",", ":")).encode()
+        now = datetime(2026, 10, 16, 0, tzinfo=UTC)
+        result = parse_inventory_input(
+            raw, manifest_format="spdx_json",
+            scope=AccessScope.for_authenticated_user("actor", "tenant", Role.TENANT_ADMIN),
+            authorized_asset_tenant_id="tenant", asset_id="b7e76085-9ebe-4f8d-bd1c-356ee8e6d5d1",
+            snapshot_number=1, source_version="synthetic-privacy", observed_at=now, recorded_at=now,
+        )
+        assert result.sbom is not None
+        public = freeze_sbom_sidecar(result.sbom)
+&gt;       assert uri not in public.model_dump_json()
+E       assert 'postgresql:...5432/private' not in '{"schema_ve...dLocation"]}'
+E         
+E         'postgresql://synth...ternal:5432/private' is contained here:
+E           ent_uri":"postgresql://synthetic_user:synthetic_password@db.internal:5432/private","checksum":{"algorithm":"SHA256","checksum_value":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","source_field_locator":"/externalDocumentRefs/0/checksum"},"source_field_locator":"/externalDocumentRefs/0"}],"unmapped_field_locators":["/SPDXID","/creationInfo","/dataLicense","/documentNamespace","/name","/packages/0/downloadLocation"]}
+E         ?           +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+tests\unit\test_r11_sbom_inventory_uri_privacy.py:38: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_sbom_inventory_uri_privacy" name="test_original_privacy_must_external_document_uri_is_not_returned[file_uri]" time="0.002"><failure message="assert 'file:///C:/...hetic-parent' not in '{&quot;schema_ve...dLocation&quot;]}'&#10;  &#10;  'file:///C:/private/synthetic-parent' is contained here:&#10;    ent_uri&quot;:&quot;file:///C:/private/synthetic-parent&quot;,&quot;checksum&quot;:{&quot;algorithm&quot;:&quot;SHA256&quot;,&quot;checksum_value&quot;:&quot;cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&quot;,&quot;source_field_locator&quot;:&quot;/externalDocumentRefs/0/checksum&quot;},&quot;source_field_locator&quot;:&quot;/externalDocumentRefs/0&quot;}],&quot;unmapped_field_locators&quot;:[&quot;/SPDXID&quot;,&quot;/creationInfo&quot;,&quot;/dataLicense&quot;,&quot;/documentNamespace&quot;,&quot;/name&quot;,&quot;/packages/0/downloadLocation&quot;]}&#10;  ?           +++++++++++++++++++++++++++++++++++">uri = 'file:///C:/private/synthetic-parent'
+
+    @pytest.mark.parametrize("uri", [
+        "postgresql://synthetic_user:synthetic_password@db.internal:5432/private",
+        "file:///C:/private/synthetic-parent",
+        "https://synthetic_user:synthetic_password@example.test/sbom",
+    ], ids=["connection_uri", "file_uri", "userinfo_uri"])
+    def test_original_privacy_must_external_document_uri_is_not_returned(uri):
+        raw = json.dumps({
+            "spdxVersion": "SPDX-2.3", "SPDXID": "SPDXRef-DOCUMENT", "name": "synthetic",
+            "documentNamespace": "https://example.test/sbom", "dataLicense": "CC0-1.0",
+            "creationInfo": {"created": "2026-10-16T00:00:00Z", "creators": ["Tool: synthetic"]},
+            "packages": [{"SPDXID": "SPDXRef-A", "name": "a", "versionInfo": "1",
+                          "downloadLocation": "NOASSERTION"}],
+            "externalDocumentRefs": [{"externalDocumentId": "DocumentRef-external",
+                                      "spdxDocument": uri,
+                                      "checksum": {"algorithm": "SHA256", "checksumValue": "c" * 64}}],
+        }, separators=(",", ":")).encode()
+        now = datetime(2026, 10, 16, 0, tzinfo=UTC)
+        result = parse_inventory_input(
+            raw, manifest_format="spdx_json",
+            scope=AccessScope.for_authenticated_user("actor", "tenant", Role.TENANT_ADMIN),
+            authorized_asset_tenant_id="tenant", asset_id="b7e76085-9ebe-4f8d-bd1c-356ee8e6d5d1",
+            snapshot_number=1, source_version="synthetic-privacy", observed_at=now, recorded_at=now,
+        )
+        assert result.sbom is not None
+        public = freeze_sbom_sidecar(result.sbom)
+&gt;       assert uri not in public.model_dump_json()
+E       assert 'file:///C:/...hetic-parent' not in '{"schema_ve...dLocation"]}'
+E         
+E         'file:///C:/private/synthetic-parent' is contained here:
+E           ent_uri":"file:///C:/private/synthetic-parent","checksum":{"algorithm":"SHA256","checksum_value":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","source_field_locator":"/externalDocumentRefs/0/checksum"},"source_field_locator":"/externalDocumentRefs/0"}],"unmapped_field_locators":["/SPDXID","/creationInfo","/dataLicense","/documentNamespace","/name","/packages/0/downloadLocation"]}
+E         ?           +++++++++++++++++++++++++++++++++++
+
+tests\unit\test_r11_sbom_inventory_uri_privacy.py:38: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_sbom_inventory_uri_privacy" name="test_original_privacy_must_external_document_uri_is_not_returned[userinfo_uri]" time="0.001"><failure message="assert 'https://syn...le.test/sbom' not in '{&quot;schema_ve...dLocation&quot;]}'&#10;  &#10;  'https://synthetic_...d@example.test/sbom' is contained here:&#10;    ent_uri&quot;:&quot;https://synthetic_user:synthetic_password@example.test/sbom&quot;,&quot;checksum&quot;:{&quot;algorithm&quot;:&quot;SHA256&quot;,&quot;checksum_value&quot;:&quot;cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&quot;,&quot;source_field_locator&quot;:&quot;/externalDocumentRefs/0/checksum&quot;},&quot;source_field_locator&quot;:&quot;/externalDocumentRefs/0&quot;}],&quot;unmapped_field_locators&quot;:[&quot;/SPDXID&quot;,&quot;/creationInfo&quot;,&quot;/dataLicense&quot;,&quot;/documentNamespace&quot;,&quot;/name&quot;,&quot;/packages/0/downloadLocation&quot;]}&#10;  ?           +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++">uri = 'https://synthetic_user:synthetic_password@example.test/sbom'
+
+    @pytest.mark.parametrize("uri", [
+        "postgresql://synthetic_user:synthetic_password@db.internal:5432/private",
+        "file:///C:/private/synthetic-parent",
+        "https://synthetic_user:synthetic_password@example.test/sbom",
+    ], ids=["connection_uri", "file_uri", "userinfo_uri"])
+    def test_original_privacy_must_external_document_uri_is_not_returned(uri):
+        raw = json.dumps({
+            "spdxVersion": "SPDX-2.3", "SPDXID": "SPDXRef-DOCUMENT", "name": "synthetic",
+            "documentNamespace": "https://example.test/sbom", "dataLicense": "CC0-1.0",
+            "creationInfo": {"created": "2026-10-16T00:00:00Z", "creators": ["Tool: synthetic"]},
+            "packages": [{"SPDXID": "SPDXRef-A", "name": "a", "versionInfo": "1",
+                          "downloadLocation": "NOASSERTION"}],
+            "externalDocumentRefs": [{"externalDocumentId": "DocumentRef-external",
+                                      "spdxDocument": uri,
+                                      "checksum": {"algorithm": "SHA256", "checksumValue": "c" * 64}}],
+        }, separators=(",", ":")).encode()
+        now = datetime(2026, 10, 16, 0, tzinfo=UTC)
+        result = parse_inventory_input(
+            raw, manifest_format="spdx_json",
+            scope=AccessScope.for_authenticated_user("actor", "tenant", Role.TENANT_ADMIN),
+            authorized_asset_tenant_id="tenant", asset_id="b7e76085-9ebe-4f8d-bd1c-356ee8e6d5d1",
+            snapshot_number=1, source_version="synthetic-privacy", observed_at=now, recorded_at=now,
+        )
+        assert result.sbom is not None
+        public = freeze_sbom_sidecar(result.sbom)
+&gt;       assert uri not in public.model_dump_json()
+E       assert 'https://syn...le.test/sbom' not in '{"schema_ve...dLocation"]}'
+E         
+E         'https://synthetic_...d@example.test/sbom' is contained here:
+E           ent_uri":"https://synthetic_user:synthetic_password@example.test/sbom","checksum":{"algorithm":"SHA256","checksum_value":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","source_field_locator":"/externalDocumentRefs/0/checksum"},"source_field_locator":"/externalDocumentRefs/0"}],"unmapped_field_locators":["/SPDXID","/creationInfo","/dataLicense","/documentNamespace","/name","/packages/0/downloadLocation"]}
+E         ?           +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+tests\unit\test_r11_sbom_inventory_uri_privacy.py:38: AssertionError</failure></testcase></testsuite></testsuites>

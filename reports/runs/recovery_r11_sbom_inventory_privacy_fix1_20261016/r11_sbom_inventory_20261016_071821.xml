@@ -1,0 +1,374 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="7" skipped="0" tests="9" time="2.231" timestamp="2026-10-16T07:18:23.758488+08:00" hostname="yin"><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy_followup" name="test_deep_or_malformed_key_is_never_returned_from_immutable_history[5-fresh2]" time="0.273"><failure message="assert ('https%25252...2525252Fsbom' not in '{&quot;schema_ve...actions&quot;:[]}'&#10;  &#10;  'https%252525253A%2...test%252525252Fsbom' is contained here:&#10;    espace&quot;,&quot;/https%252525253A%252525252F%252525252Fsynthetic_user%252525253Asynthetic_password%2525252540example.test%252525252Fsbom&quot;,&quot;/name&quot;,&quot;/packages/0/downloadLocation&quot;],&quot;redactions&quot;:[]})">sbom_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_sbom_inventory_20261016_071821)
+sbom_api = (&lt;function sbom_api.&lt;locals&gt;.login at 0x000002419C6689A0&gt;, &lt;ai_intel.api.authentication.AuthenticationSessionService object at 0x000002419C1C8D10&gt;)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002419C1C9AC0&gt;
+caplog = &lt;_pytest.logging.LogCaptureFixture object at 0x000002419C660530&gt;
+legacy = False, encoding = '5'
+
+    @pytest.mark.parametrize("legacy", [False, True], ids=["fresh2", "historic1"])
+    @pytest.mark.parametrize("encoding", ["5", "8", "invalid_utf8"])
+    def test_deep_or_malformed_key_is_never_returned_from_immutable_history(
+        sbom_engine, sbom_api, monkeypatch, caplog, legacy, encoding
+    ):
+        caplog.set_level("DEBUG")
+        if legacy:
+            monkeypatch.setattr("ai_intel.assets.inventory.freeze_sbom_sidecar", legacy_freeze)
+        key = "https://synthetic_user:synthetic_password@example.test/sbom"
+        if encoding == "invalid_utf8":
+            key = "%FFsynthetic_password"
+        else:
+            for _ in range(int(encoding)):
+                key = quote(key, safe="")
+        login, _ = sbom_api
+        client, headers, account = login()
+        value = spdx_document()
+        value[key] = "opaque"
+        raw = raw_document(value)
+        created = upload(client, headers, raw, manifest_format="spdx_json")
+        assert created.status_code == 201
+        identity, snapshot_id = created.json()["asset_id"], created.json()["snapshot"]["snapshot_id"]
+        path = f"/api/assets/{identity}/snapshots/{snapshot_id}/sbom"
+        with sbom_engine.connect() as connection:
+            before = dict(
+                connection.execute(
+                    select(asset_snapshot_sbom_sidecars).where(
+                        asset_snapshot_sbom_sidecars.c.snapshot_id == snapshot_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            stored_raw = connection.scalar(
+                select(asset_snapshots.c.raw_input).where(asset_snapshots.c.snapshot_id == snapshot_id)
+            )
+        response = client.get(path)
+        assert response.status_code == 200
+        body = response.json()
+&gt;       assert key not in response.text and "synthetic_password" not in response.text
+E       assert ('https%25252...2525252Fsbom' not in '{"schema_ve...actions":[]}'
+E         
+E         'https%252525253A%2...test%252525252Fsbom' is contained here:
+E           espace","/https%252525253A%252525252F%252525252Fsynthetic_user%252525253Asynthetic_password%2525252540example.test%252525252Fsbom","/name","/packages/0/downloadLocation"],"redactions":[]})
+
+tests\integration\test_r11_sbom_inventory_uri_privacy_followup.py:58: AssertionError</failure></testcase><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy_followup" name="test_deep_or_malformed_key_is_never_returned_from_immutable_history[5-historic1]" time="0.158"><failure message="assert ('https%25252...2525252Fsbom' not in '{&quot;schema_ve...actions&quot;:[]}'&#10;  &#10;  'https%252525253A%2...test%252525252Fsbom' is contained here:&#10;    espace&quot;,&quot;/https%252525253A%252525252F%252525252Fsynthetic_user%252525253Asynthetic_password%2525252540example.test%252525252Fsbom&quot;,&quot;/name&quot;,&quot;/packages/0/downloadLocation&quot;],&quot;redactions&quot;:[]})">sbom_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_sbom_inventory_20261016_071821)
+sbom_api = (&lt;function sbom_api.&lt;locals&gt;.login at 0x000002419C7E1DA0&gt;, &lt;ai_intel.api.authentication.AuthenticationSessionService object at 0x000002419C6F7B60&gt;)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002419C78A2A0&gt;
+caplog = &lt;_pytest.logging.LogCaptureFixture object at 0x000002419C78A270&gt;
+legacy = True, encoding = '5'
+
+    @pytest.mark.parametrize("legacy", [False, True], ids=["fresh2", "historic1"])
+    @pytest.mark.parametrize("encoding", ["5", "8", "invalid_utf8"])
+    def test_deep_or_malformed_key_is_never_returned_from_immutable_history(
+        sbom_engine, sbom_api, monkeypatch, caplog, legacy, encoding
+    ):
+        caplog.set_level("DEBUG")
+        if legacy:
+            monkeypatch.setattr("ai_intel.assets.inventory.freeze_sbom_sidecar", legacy_freeze)
+        key = "https://synthetic_user:synthetic_password@example.test/sbom"
+        if encoding == "invalid_utf8":
+            key = "%FFsynthetic_password"
+        else:
+            for _ in range(int(encoding)):
+                key = quote(key, safe="")
+        login, _ = sbom_api
+        client, headers, account = login()
+        value = spdx_document()
+        value[key] = "opaque"
+        raw = raw_document(value)
+        created = upload(client, headers, raw, manifest_format="spdx_json")
+        assert created.status_code == 201
+        identity, snapshot_id = created.json()["asset_id"], created.json()["snapshot"]["snapshot_id"]
+        path = f"/api/assets/{identity}/snapshots/{snapshot_id}/sbom"
+        with sbom_engine.connect() as connection:
+            before = dict(
+                connection.execute(
+                    select(asset_snapshot_sbom_sidecars).where(
+                        asset_snapshot_sbom_sidecars.c.snapshot_id == snapshot_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            stored_raw = connection.scalar(
+                select(asset_snapshots.c.raw_input).where(asset_snapshots.c.snapshot_id == snapshot_id)
+            )
+        response = client.get(path)
+        assert response.status_code == 200
+        body = response.json()
+&gt;       assert key not in response.text and "synthetic_password" not in response.text
+E       assert ('https%25252...2525252Fsbom' not in '{"schema_ve...actions":[]}'
+E         
+E         'https%252525253A%2...test%252525252Fsbom' is contained here:
+E           espace","/https%252525253A%252525252F%252525252Fsynthetic_user%252525253Asynthetic_password%2525252540example.test%252525252Fsbom","/name","/packages/0/downloadLocation"],"redactions":[]})
+
+tests\integration\test_r11_sbom_inventory_uri_privacy_followup.py:58: AssertionError</failure></testcase><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy_followup" name="test_deep_or_malformed_key_is_never_returned_from_immutable_history[8-fresh2]" time="0.158"><failure message="assert ('https%25252...2525252Fsbom' not in '{&quot;schema_ve...actions&quot;:[]}'&#10;  &#10;  'https%252525252525...52525252525252Fsbom' is contained here:&#10;    espace&quot;,&quot;/https%252525252525253A%252525252525252F%252525252525252Fsynthetic_user%252525252525253Asynthetic_password%2525252525252540example.test%252525252525252Fsbom&quot;,&quot;/name&quot;,&quot;/packages/0/downloadLocation&quot;],&quot;redactions&quot;:[]})">sbom_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_sbom_inventory_20261016_071821)
+sbom_api = (&lt;function sbom_api.&lt;locals&gt;.login at 0x000002419C8016C0&gt;, &lt;ai_intel.api.authentication.AuthenticationSessionService object at 0x000002419C7EB350&gt;)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002419C825100&gt;
+caplog = &lt;_pytest.logging.LogCaptureFixture object at 0x000002419C825190&gt;
+legacy = False, encoding = '8'
+
+    @pytest.mark.parametrize("legacy", [False, True], ids=["fresh2", "historic1"])
+    @pytest.mark.parametrize("encoding", ["5", "8", "invalid_utf8"])
+    def test_deep_or_malformed_key_is_never_returned_from_immutable_history(
+        sbom_engine, sbom_api, monkeypatch, caplog, legacy, encoding
+    ):
+        caplog.set_level("DEBUG")
+        if legacy:
+            monkeypatch.setattr("ai_intel.assets.inventory.freeze_sbom_sidecar", legacy_freeze)
+        key = "https://synthetic_user:synthetic_password@example.test/sbom"
+        if encoding == "invalid_utf8":
+            key = "%FFsynthetic_password"
+        else:
+            for _ in range(int(encoding)):
+                key = quote(key, safe="")
+        login, _ = sbom_api
+        client, headers, account = login()
+        value = spdx_document()
+        value[key] = "opaque"
+        raw = raw_document(value)
+        created = upload(client, headers, raw, manifest_format="spdx_json")
+        assert created.status_code == 201
+        identity, snapshot_id = created.json()["asset_id"], created.json()["snapshot"]["snapshot_id"]
+        path = f"/api/assets/{identity}/snapshots/{snapshot_id}/sbom"
+        with sbom_engine.connect() as connection:
+            before = dict(
+                connection.execute(
+                    select(asset_snapshot_sbom_sidecars).where(
+                        asset_snapshot_sbom_sidecars.c.snapshot_id == snapshot_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            stored_raw = connection.scalar(
+                select(asset_snapshots.c.raw_input).where(asset_snapshots.c.snapshot_id == snapshot_id)
+            )
+        response = client.get(path)
+        assert response.status_code == 200
+        body = response.json()
+&gt;       assert key not in response.text and "synthetic_password" not in response.text
+E       assert ('https%25252...2525252Fsbom' not in '{"schema_ve...actions":[]}'
+E         
+E         'https%252525252525...52525252525252Fsbom' is contained here:
+E           espace","/https%252525252525253A%252525252525252F%252525252525252Fsynthetic_user%252525252525253Asynthetic_password%2525252525252540example.test%252525252525252Fsbom","/name","/packages/0/downloadLocation"],"redactions":[]})
+
+tests\integration\test_r11_sbom_inventory_uri_privacy_followup.py:58: AssertionError</failure></testcase><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy_followup" name="test_deep_or_malformed_key_is_never_returned_from_immutable_history[8-historic1]" time="0.174"><failure message="assert ('https%25252...2525252Fsbom' not in '{&quot;schema_ve...actions&quot;:[]}'&#10;  &#10;  'https%252525252525...52525252525252Fsbom' is contained here:&#10;    espace&quot;,&quot;/https%252525252525253A%252525252525252F%252525252525252Fsynthetic_user%252525252525253Asynthetic_password%2525252525252540example.test%252525252525252Fsbom&quot;,&quot;/name&quot;,&quot;/packages/0/downloadLocation&quot;],&quot;redactions&quot;:[]})">sbom_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_sbom_inventory_20261016_071821)
+sbom_api = (&lt;function sbom_api.&lt;locals&gt;.login at 0x000002419C840FE0&gt;, &lt;ai_intel.api.authentication.AuthenticationSessionService object at 0x000002419C83F3E0&gt;)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002419C835CA0&gt;
+caplog = &lt;_pytest.logging.LogCaptureFixture object at 0x000002419C86C200&gt;
+legacy = True, encoding = '8'
+
+    @pytest.mark.parametrize("legacy", [False, True], ids=["fresh2", "historic1"])
+    @pytest.mark.parametrize("encoding", ["5", "8", "invalid_utf8"])
+    def test_deep_or_malformed_key_is_never_returned_from_immutable_history(
+        sbom_engine, sbom_api, monkeypatch, caplog, legacy, encoding
+    ):
+        caplog.set_level("DEBUG")
+        if legacy:
+            monkeypatch.setattr("ai_intel.assets.inventory.freeze_sbom_sidecar", legacy_freeze)
+        key = "https://synthetic_user:synthetic_password@example.test/sbom"
+        if encoding == "invalid_utf8":
+            key = "%FFsynthetic_password"
+        else:
+            for _ in range(int(encoding)):
+                key = quote(key, safe="")
+        login, _ = sbom_api
+        client, headers, account = login()
+        value = spdx_document()
+        value[key] = "opaque"
+        raw = raw_document(value)
+        created = upload(client, headers, raw, manifest_format="spdx_json")
+        assert created.status_code == 201
+        identity, snapshot_id = created.json()["asset_id"], created.json()["snapshot"]["snapshot_id"]
+        path = f"/api/assets/{identity}/snapshots/{snapshot_id}/sbom"
+        with sbom_engine.connect() as connection:
+            before = dict(
+                connection.execute(
+                    select(asset_snapshot_sbom_sidecars).where(
+                        asset_snapshot_sbom_sidecars.c.snapshot_id == snapshot_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            stored_raw = connection.scalar(
+                select(asset_snapshots.c.raw_input).where(asset_snapshots.c.snapshot_id == snapshot_id)
+            )
+        response = client.get(path)
+        assert response.status_code == 200
+        body = response.json()
+&gt;       assert key not in response.text and "synthetic_password" not in response.text
+E       assert ('https%25252...2525252Fsbom' not in '{"schema_ve...actions":[]}'
+E         
+E         'https%252525252525...52525252525252Fsbom' is contained here:
+E           espace","/https%252525252525253A%252525252525252F%252525252525252Fsynthetic_user%252525252525253Asynthetic_password%2525252525252540example.test%252525252525252Fsbom","/name","/packages/0/downloadLocation"],"redactions":[]})
+
+tests\integration\test_r11_sbom_inventory_uri_privacy_followup.py:58: AssertionError</failure></testcase><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy_followup" name="test_deep_or_malformed_key_is_never_returned_from_immutable_history[invalid_utf8-fresh2]" time="0.172"><failure message="assert ('%FFsynthetic_password' not in '{&quot;schema_ve...actions&quot;:[]}'&#10;  &#10;  '%FFsynthetic_password' is contained here:&#10;    ators&quot;:[&quot;/%FFsynthetic_password&quot;,&quot;/SPDXID&quot;,&quot;/creationInfo&quot;,&quot;/dataLicense&quot;,&quot;/documentNamespace&quot;,&quot;/name&quot;,&quot;/packages/0/downloadLocation&quot;],&quot;redactions&quot;:[]}&#10;  ?           +++++++++++++++++++++)">sbom_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_sbom_inventory_20261016_071821)
+sbom_api = (&lt;function sbom_api.&lt;locals&gt;.login at 0x000002419C7E36A0&gt;, &lt;ai_intel.api.authentication.AuthenticationSessionService object at 0x000002419C834C50&gt;)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002419C834FE0&gt;
+caplog = &lt;_pytest.logging.LogCaptureFixture object at 0x000002419C824B90&gt;
+legacy = False, encoding = 'invalid_utf8'
+
+    @pytest.mark.parametrize("legacy", [False, True], ids=["fresh2", "historic1"])
+    @pytest.mark.parametrize("encoding", ["5", "8", "invalid_utf8"])
+    def test_deep_or_malformed_key_is_never_returned_from_immutable_history(
+        sbom_engine, sbom_api, monkeypatch, caplog, legacy, encoding
+    ):
+        caplog.set_level("DEBUG")
+        if legacy:
+            monkeypatch.setattr("ai_intel.assets.inventory.freeze_sbom_sidecar", legacy_freeze)
+        key = "https://synthetic_user:synthetic_password@example.test/sbom"
+        if encoding == "invalid_utf8":
+            key = "%FFsynthetic_password"
+        else:
+            for _ in range(int(encoding)):
+                key = quote(key, safe="")
+        login, _ = sbom_api
+        client, headers, account = login()
+        value = spdx_document()
+        value[key] = "opaque"
+        raw = raw_document(value)
+        created = upload(client, headers, raw, manifest_format="spdx_json")
+        assert created.status_code == 201
+        identity, snapshot_id = created.json()["asset_id"], created.json()["snapshot"]["snapshot_id"]
+        path = f"/api/assets/{identity}/snapshots/{snapshot_id}/sbom"
+        with sbom_engine.connect() as connection:
+            before = dict(
+                connection.execute(
+                    select(asset_snapshot_sbom_sidecars).where(
+                        asset_snapshot_sbom_sidecars.c.snapshot_id == snapshot_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            stored_raw = connection.scalar(
+                select(asset_snapshots.c.raw_input).where(asset_snapshots.c.snapshot_id == snapshot_id)
+            )
+        response = client.get(path)
+        assert response.status_code == 200
+        body = response.json()
+&gt;       assert key not in response.text and "synthetic_password" not in response.text
+E       assert ('%FFsynthetic_password' not in '{"schema_ve...actions":[]}'
+E         
+E         '%FFsynthetic_password' is contained here:
+E           ators":["/%FFsynthetic_password","/SPDXID","/creationInfo","/dataLicense","/documentNamespace","/name","/packages/0/downloadLocation"],"redactions":[]}
+E         ?           +++++++++++++++++++++)
+
+tests\integration\test_r11_sbom_inventory_uri_privacy_followup.py:58: AssertionError</failure></testcase><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy_followup" name="test_deep_or_malformed_key_is_never_returned_from_immutable_history[invalid_utf8-historic1]" time="0.167"><failure message="assert ('%FFsynthetic_password' not in '{&quot;schema_ve...actions&quot;:[]}'&#10;  &#10;  '%FFsynthetic_password' is contained here:&#10;    ators&quot;:[&quot;/%FFsynthetic_password&quot;,&quot;/SPDXID&quot;,&quot;/creationInfo&quot;,&quot;/dataLicense&quot;,&quot;/documentNamespace&quot;,&quot;/name&quot;,&quot;/packages/0/downloadLocation&quot;],&quot;redactions&quot;:[]}&#10;  ?           +++++++++++++++++++++)">sbom_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_sbom_inventory_20261016_071821)
+sbom_api = (&lt;function sbom_api.&lt;locals&gt;.login at 0x000002419C899440&gt;, &lt;ai_intel.api.authentication.AuthenticationSessionService object at 0x000002419C83E2D0&gt;)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002419C881FA0&gt;
+caplog = &lt;_pytest.logging.LogCaptureFixture object at 0x000002419C883BC0&gt;
+legacy = True, encoding = 'invalid_utf8'
+
+    @pytest.mark.parametrize("legacy", [False, True], ids=["fresh2", "historic1"])
+    @pytest.mark.parametrize("encoding", ["5", "8", "invalid_utf8"])
+    def test_deep_or_malformed_key_is_never_returned_from_immutable_history(
+        sbom_engine, sbom_api, monkeypatch, caplog, legacy, encoding
+    ):
+        caplog.set_level("DEBUG")
+        if legacy:
+            monkeypatch.setattr("ai_intel.assets.inventory.freeze_sbom_sidecar", legacy_freeze)
+        key = "https://synthetic_user:synthetic_password@example.test/sbom"
+        if encoding == "invalid_utf8":
+            key = "%FFsynthetic_password"
+        else:
+            for _ in range(int(encoding)):
+                key = quote(key, safe="")
+        login, _ = sbom_api
+        client, headers, account = login()
+        value = spdx_document()
+        value[key] = "opaque"
+        raw = raw_document(value)
+        created = upload(client, headers, raw, manifest_format="spdx_json")
+        assert created.status_code == 201
+        identity, snapshot_id = created.json()["asset_id"], created.json()["snapshot"]["snapshot_id"]
+        path = f"/api/assets/{identity}/snapshots/{snapshot_id}/sbom"
+        with sbom_engine.connect() as connection:
+            before = dict(
+                connection.execute(
+                    select(asset_snapshot_sbom_sidecars).where(
+                        asset_snapshot_sbom_sidecars.c.snapshot_id == snapshot_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            stored_raw = connection.scalar(
+                select(asset_snapshots.c.raw_input).where(asset_snapshots.c.snapshot_id == snapshot_id)
+            )
+        response = client.get(path)
+        assert response.status_code == 200
+        body = response.json()
+&gt;       assert key not in response.text and "synthetic_password" not in response.text
+E       assert ('%FFsynthetic_password' not in '{"schema_ve...actions":[]}'
+E         
+E         '%FFsynthetic_password' is contained here:
+E           ators":["/%FFsynthetic_password","/SPDXID","/creationInfo","/dataLicense","/documentNamespace","/name","/packages/0/downloadLocation"],"redactions":[]}
+E         ?           +++++++++++++++++++++)
+
+tests\integration\test_r11_sbom_inventory_uri_privacy_followup.py:58: AssertionError</failure></testcase><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy_followup" name="test_every_stored_repeated_ref_must_match_its_typed_replacement[safe-public-ref]" time="0.173"><failure message="assert 200 == 503&#10; +  where 200 = &lt;Response [200 OK]&gt;.status_code">sbom_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_sbom_inventory_20261016_071821)
+sbom_api = (&lt;function sbom_api.&lt;locals&gt;.login at 0x000002419C8F0E00&gt;, &lt;ai_intel.api.authentication.AuthenticationSessionService object at 0x000002419C8A52B0&gt;)
+replacement = 'safe-public-ref'
+
+    @pytest.mark.parametrize("replacement", ["safe-public-ref", "wrong_alias", "same_alias"])
+    def test_every_stored_repeated_ref_must_match_its_typed_replacement(
+        sbom_engine, sbom_api, replacement
+    ):
+        """仅新建合成历史坏行；合法重复引用仍200，错值固定503且不回显私有值。"""
+        login, _ = sbom_api
+        client, headers, _ = login()
+        private = "https://synthetic_user:synthetic_password@example.test/sbom"
+        raw = raw_document(
+            {
+                "bomFormat": "CycloneDX",
+                "specVersion": "1.7",
+                "components": [
+                    {"type": "library", "name": "a", "bom-ref": private},
+                    {"type": "library", "name": "b", "bom-ref": "public-b"},
+                    {"type": "library", "name": "c", "bom-ref": "public-c"},
+                ],
+                "dependencies": [{"ref": private, "dependsOn": ["public-b", "public-c"]}],
+            }
+        )
+        created = upload(client, headers, raw)
+        assert created.status_code == 201
+        table = asset_snapshot_sbom_sidecars
+        with sbom_engine.connect() as connection:
+            snapshot = dict(
+                connection.execute(
+                    select(asset_snapshots).where(
+                        asset_snapshots.c.snapshot_id == created.json()["snapshot"]["snapshot_id"]
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            sidecar = dict(
+                connection.execute(select(table).where(table.c.snapshot_id == snapshot["snapshot_id"]))
+                .mappings()
+                .one()
+            )
+        snapshot.update(
+            snapshot_id=str(uuid4()), snapshot_number=2, previous_snapshot_id=snapshot["snapshot_id"]
+        )
+        snapshot["canonical_payload"].update(snapshot_id=snapshot["snapshot_id"], snapshot_number=2)
+        sidecar["snapshot_id"] = snapshot["snapshot_id"]
+        body = sidecar["canonical_payload"]
+        body["snapshot_id"] = sidecar["snapshot_id"]
+        alias = body["dependency_edges"][0]["source_ref"]
+        body["dependency_edges"][1]["source_ref"] = {
+            "same_alias": alias,
+            "wrong_alias": "redacted-ref:" + "f" * 64,
+            "safe-public-ref": "safe-public-ref",
+        }[replacement]
+        with sbom_engine.begin() as connection:
+            connection.execute(insert(asset_snapshots).values(snapshot))
+            connection.execute(insert(table).values(sidecar))
+        response = client.get(
+            f"/api/assets/{sidecar['asset_id']}/snapshots/{sidecar['snapshot_id']}/sbom"
+        )
+&gt;       assert response.status_code == (200 if replacement == "same_alias" else 503)
+E       assert 200 == 503
+E        +  where 200 = &lt;Response [200 OK]&gt;.status_code
+
+tests\integration\test_r11_sbom_inventory_uri_privacy_followup.py:139: AssertionError</failure></testcase><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy_followup" name="test_every_stored_repeated_ref_must_match_its_typed_replacement[wrong_alias]" time="0.150" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy_followup" name="test_every_stored_repeated_ref_must_match_its_typed_replacement[same_alias]" time="0.166" /></testsuite></testsuites>
