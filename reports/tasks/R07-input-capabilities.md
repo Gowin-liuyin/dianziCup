@@ -34,6 +34,8 @@ Taxonomy 窄接口：`parse_cwe_catalogue(raw, CatalogueProvenance)` / `parse_at
 
 CBM：第一次业务编辑前自己WT backend/src独立r07_inputs_backend index/schema/architecture/extract_model_dimension调用链+rg；冻结后刷新index/trace。initial CLI起止没有写盘，记not_recorded，不依mtime补造；exit0/output保留，frozen source trace明确新selector→original field_sources→real GenerationClient链。原权威PG和对象服务复用，没有第二套业务真相。
 
+材料检查补充：首次材料eb6daced新增原始pytest失败log的trailing whitespace、CBM输出末尾空行；材料diff-check失败，源代码冻结diff-check仍exit0。最外PowerShell继续commit并返回0不代表内层检查通过。专用check_material_diff.py保存真实独立命令、退出码和原输出。没有删改raw日志，已报告主控决定是否为此run的*.log按现有规范做局部attributes；本实现不擅改公共attrs。
+
 评分证据：R07/F2/P2提供有界真词法检索、可回溯引用、严格hypothesis/unknown和taxonomy真实成员性基础；E1提供输入范围/权限/CAS/并发读锁/注入边界。没有准确率、性能、多跳或稳定时长评分结果。frontend/e2e/live模型/manual、全默认App/worker、taxonomy自动collector为not_run或blocked_live；官方全schema探针failed。
 
 主控后续建议：复核本冻结SHA；把PROMPT_VERSION/SELECTION_VERSION纳入credential-free policy/幂等fingerprint，旧任务不自动重算；持久保存input_selections的无全文覆盖摘要和原依赖。受控登记两个官方固定来源、保存原bytes/版本/ACL后接catalogue loader；现代URI、完整taxonomy成员性投影、context容量和正式field support规则先走单独CR。无法安全支持时明确unknown/blocked。禁止伪造旧官方URI、full-text coverage或付费live成功。此处不继续下一任务。

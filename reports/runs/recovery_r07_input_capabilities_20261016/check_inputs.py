@@ -28,42 +28,64 @@ def main():
     environment = os.environ.copy()
     private = {}
     test_name = None
-    if mode == "integration":
+    if mode in {"integration", "shared_pg", "independent_pg"}:
         private = json.loads(subprocess.check_output([
             "wsl.exe", "-u", "root", "--exec", "cat",
             "/tmp/dianzi-docker-static-r01-20261014/runtime/test-services/connection.json",
         ], stderr=subprocess.PIPE))
         original = make_url(private["TEST_DATABASE_URL"])
         assert original.username.startswith("test_") and original.database.startswith("test_dianzi_")
-        run_id = "r07_inputs_" + datetime.now(ZONE).strftime("%m%d_%H%M%S") + "_" + uuid4().hex[:5]
+        run_id = (
+            "r06_catalog_r10_graph_20261016" if mode == "shared_pg" else
+            "r06_catalog_r07_inputs_" + datetime.now(ZONE).strftime("%m%d_%H%M%S") + "_" + uuid4().hex[:5]
+        )
         test_name = "test_dianzi_" + run_id
         admin = create_engine(original.set(database="postgres"), isolation_level="AUTOCOMMIT")
         with admin.connect() as connection:
-            connection.execute(text('CREATE DATABASE "' + test_name + '"'))
+            owner = connection.scalar(text(
+                "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=:name"
+            ), {"name": test_name})
+            if owner is None:
+                connection.execute(text('CREATE DATABASE "' + test_name + '"'))
+            else:
+                assert mode == "shared_pg" and owner == original.username
         admin.dispose()
         environment["TEST_DATABASE_URL"] = original.set(database=test_name).render_as_string(hide_password=False)
         environment["DIANZI_TEST_RUN_ID"] = run_id
+    if mode == "independent_pg":
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        environment["PYTHONPATH"] = os.pathsep.join((
+            str(ROOT / "backend"), str(ROOT / "backend/tests/integration"), str(ROOT),
+        ))
     paths = {
         "unit": ["tests/unit/test_r07_input_capabilities.py"],
         "contract": ["tests/contract/test_r07_input_selection_codec.py"],
         "security": ["tests/security/test_r07_input_capabilities_boundary.py"],
         "integration": ["tests/integration/test_r07_input_capabilities_pg.py"],
+        "independent_pg": ["D:/wt/r07-input-review1/reports/runs/recovery_r07_input_review1_20261016/test_review_probe_pg.py"],
+        "shared_pg": ["tests/integration/test_r10_graph_fix2_pg.py",
+                      "tests/integration/test_r10_graph_source_coverage_pg.py",
+                      "tests/integration/test_r07_enrichment_publication_pg.py",
+                      "tests/integration/test_r07_publication_acl_lock_fix_pg.py",
+                      "tests/integration/test_r07_publication_rule_provenance_pg.py"],
         "regression": ["tests/unit/test_r07_model_fields.py", "tests/unit/test_r07_single_model_dimension.py",
                        "tests/unit/test_r07_model_field_root_causes.py"],
         "fieldset": ["tests/unit/test_r07_enrichment_contracts.py", "tests/unit/test_r07_public_signals.py",
                      "tests/unit/test_r10_relation_polarity.py"],
+        "graph": ["tests/unit/test_r10_evidence_graph.py", "tests/contract/test_r10_graph_contract.py",
+                  "tests/security/test_r10_graph_boundary.py"],
     }
     commands = [[sys.executable, "-m", "pytest", "-q", *paths[mode], "--no-cov",
                  "--junitxml", str(RUN / (mode + "_" + datetime.now(ZONE).strftime("%H%M%S") + ".xml"))]] if mode != "static" else [
-        [sys.executable, "-m", "ruff", "check", "src/ai_intel/enrichment/evidence_selection.py",
+        [sys.executable, "-m", "ruff", "check", "src/ai_intel/enrichment/field_sources.py", "src/ai_intel/enrichment/evidence_selection.py",
          "src/ai_intel/enrichment/taxonomy_inputs.py", "src/ai_intel/enrichment/model_fields.py",
          "tests/unit/test_r07_input_capabilities.py", "tests/contract/test_r07_input_selection_codec.py",
          "tests/security/test_r07_input_capabilities_boundary.py", "tests/integration/test_r07_input_capabilities_pg.py"],
-        [sys.executable, "-m", "ruff", "format", "--check", "src/ai_intel/enrichment/evidence_selection.py",
+        [sys.executable, "-m", "ruff", "format", "--check", "src/ai_intel/enrichment/field_sources.py", "src/ai_intel/enrichment/evidence_selection.py",
          "src/ai_intel/enrichment/taxonomy_inputs.py", "src/ai_intel/enrichment/model_fields.py",
          "tests/unit/test_r07_input_capabilities.py", "tests/contract/test_r07_input_selection_codec.py",
          "tests/security/test_r07_input_capabilities_boundary.py", "tests/integration/test_r07_input_capabilities_pg.py"],
-        [sys.executable, "-m", "mypy", "src/ai_intel/enrichment/evidence_selection.py",
+        [sys.executable, "-m", "mypy", "src/ai_intel/enrichment/field_sources.py", "src/ai_intel/enrichment/evidence_selection.py",
          "src/ai_intel/enrichment/taxonomy_inputs.py", "src/ai_intel/enrichment/model_fields.py"],
         ["git", "diff", "--check"],
     ]
