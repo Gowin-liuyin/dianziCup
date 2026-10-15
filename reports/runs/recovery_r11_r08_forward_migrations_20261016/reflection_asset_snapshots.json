@@ -1,0 +1,510 @@
+{
+  "production": {
+    "columns": [
+      {
+        "name": "snapshot_id",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "asset_id",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "tenant_id",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "snapshot_number",
+        "type": "INTEGER",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "previous_snapshot_id",
+        "type": "TEXT",
+        "nullable": true,
+        "default": null
+      },
+      {
+        "name": "manifest_sha256",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "raw_input_sha256",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "schema_version",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "parser_version",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "source_kind",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "source_version",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "canonical_payload",
+        "type": "JSONB",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "raw_input",
+        "type": "BYTEA",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "observed_at",
+        "type": "TIMESTAMP",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "recorded_at",
+        "type": "TIMESTAMP",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "actor_user_id",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      }
+    ],
+    "primary_key": {
+      "constrained_columns": [
+        "snapshot_id"
+      ],
+      "name": "asset_snapshots_pkey",
+      "comment": null,
+      "dialect_options": {
+        "postgresql_include": []
+      }
+    },
+    "unique": [
+      {
+        "column_names": [
+          "asset_id",
+          "tenant_id",
+          "snapshot_number"
+        ],
+        "name": "uq_asset_snapshot_number",
+        "comment": null,
+        "dialect_options": {
+          "postgresql_include": [],
+          "postgresql_nulls_not_distinct": false
+        }
+      },
+      {
+        "column_names": [
+          "asset_id",
+          "tenant_id",
+          "snapshot_id"
+        ],
+        "name": "uq_snapshot_tenant_identity",
+        "comment": null,
+        "dialect_options": {
+          "postgresql_include": [],
+          "postgresql_nulls_not_distinct": false
+        }
+      }
+    ],
+    "foreign_keys": [
+      {
+        "name": "asset_snapshots_actor_user_id_fkey",
+        "constrained_columns": [
+          "actor_user_id"
+        ],
+        "referred_table": "users",
+        "referred_columns": [
+          "user_id"
+        ],
+        "options": {},
+        "comment": null
+      },
+      {
+        "name": "fk_previous_snapshot_asset_tenant",
+        "constrained_columns": [
+          "asset_id",
+          "tenant_id",
+          "previous_snapshot_id"
+        ],
+        "referred_table": "asset_snapshots",
+        "referred_columns": [
+          "asset_id",
+          "tenant_id",
+          "snapshot_id"
+        ],
+        "options": {},
+        "comment": null
+      },
+      {
+        "name": "fk_snapshot_asset_tenant",
+        "constrained_columns": [
+          "asset_id",
+          "tenant_id"
+        ],
+        "referred_table": "assets",
+        "referred_columns": [
+          "asset_id",
+          "tenant_id"
+        ],
+        "options": {},
+        "comment": null
+      }
+    ],
+    "checks": [
+      {
+        "name": "ck_asset_manifest_sha256",
+        "sqltext": "manifest_sha256 ~ '^[0-9a-f]{64}$'::text",
+        "comment": null
+      },
+      {
+        "name": "ck_asset_raw_sha256",
+        "sqltext": "raw_input_sha256 ~ '^[0-9a-f]{64}$'::text",
+        "comment": null
+      },
+      {
+        "name": "ck_asset_snapshot_number",
+        "sqltext": "snapshot_number > 0",
+        "comment": null
+      },
+      {
+        "name": "ck_snapshot_payload",
+        "sqltext": "jsonb_typeof(canonical_payload) = 'object'::text",
+        "comment": null
+      },
+      {
+        "name": "ck_snapshot_raw_size",
+        "sqltext": "octet_length(raw_input) >= 1 AND octet_length(raw_input) <= 1048576",
+        "comment": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_snapshots_tenant_asset_number",
+        "unique": false,
+        "column_names": [
+          "tenant_id",
+          "asset_id",
+          "snapshot_number"
+        ],
+        "column_sorting": {
+          "snapshot_number": [
+            "desc"
+          ]
+        },
+        "dialect_options": {
+          "postgresql_include": []
+        }
+      },
+      {
+        "name": "uq_asset_snapshot_number",
+        "unique": true,
+        "column_names": [
+          "asset_id",
+          "tenant_id",
+          "snapshot_number"
+        ],
+        "duplicates_constraint": "uq_asset_snapshot_number",
+        "dialect_options": {
+          "postgresql_include": []
+        }
+      },
+      {
+        "name": "uq_snapshot_tenant_identity",
+        "unique": true,
+        "column_names": [
+          "asset_id",
+          "tenant_id",
+          "snapshot_id"
+        ],
+        "duplicates_constraint": "uq_snapshot_tenant_identity",
+        "dialect_options": {
+          "postgresql_include": []
+        }
+      }
+    ]
+  },
+  "metadata_reference": {
+    "columns": [
+      {
+        "name": "snapshot_id",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "asset_id",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "tenant_id",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "snapshot_number",
+        "type": "INTEGER",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "previous_snapshot_id",
+        "type": "TEXT",
+        "nullable": true,
+        "default": null
+      },
+      {
+        "name": "manifest_sha256",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "raw_input_sha256",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "schema_version",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "parser_version",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "source_kind",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "source_version",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "canonical_payload",
+        "type": "JSONB",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "raw_input",
+        "type": "BYTEA",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "observed_at",
+        "type": "TIMESTAMP",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "recorded_at",
+        "type": "TIMESTAMP",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "actor_user_id",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      }
+    ],
+    "primary_key": {
+      "constrained_columns": [
+        "snapshot_id"
+      ],
+      "name": "asset_snapshots_pkey",
+      "comment": null,
+      "dialect_options": {
+        "postgresql_include": []
+      }
+    },
+    "unique": [
+      {
+        "column_names": [
+          "asset_id",
+          "tenant_id",
+          "snapshot_number"
+        ],
+        "name": "uq_asset_snapshot_number",
+        "comment": null,
+        "dialect_options": {
+          "postgresql_include": [],
+          "postgresql_nulls_not_distinct": false
+        }
+      },
+      {
+        "column_names": [
+          "asset_id",
+          "tenant_id",
+          "snapshot_id"
+        ],
+        "name": "uq_snapshot_tenant_identity",
+        "comment": null,
+        "dialect_options": {
+          "postgresql_include": [],
+          "postgresql_nulls_not_distinct": false
+        }
+      }
+    ],
+    "foreign_keys": [
+      {
+        "name": "asset_snapshots_actor_user_id_fkey",
+        "constrained_columns": [
+          "actor_user_id"
+        ],
+        "referred_table": "users",
+        "referred_columns": [
+          "user_id"
+        ],
+        "options": {},
+        "comment": null
+      },
+      {
+        "name": "fk_previous_snapshot_asset_tenant",
+        "constrained_columns": [
+          "asset_id",
+          "tenant_id",
+          "previous_snapshot_id"
+        ],
+        "referred_table": "asset_snapshots",
+        "referred_columns": [
+          "asset_id",
+          "tenant_id",
+          "snapshot_id"
+        ],
+        "options": {},
+        "comment": null
+      },
+      {
+        "name": "fk_snapshot_asset_tenant",
+        "constrained_columns": [
+          "asset_id",
+          "tenant_id"
+        ],
+        "referred_table": "assets",
+        "referred_columns": [
+          "asset_id",
+          "tenant_id"
+        ],
+        "options": {},
+        "comment": null
+      }
+    ],
+    "checks": [
+      {
+        "name": "ck_asset_manifest_sha256",
+        "sqltext": "manifest_sha256 ~ '^[0-9a-f]{64}$'::text",
+        "comment": null
+      },
+      {
+        "name": "ck_asset_raw_sha256",
+        "sqltext": "raw_input_sha256 ~ '^[0-9a-f]{64}$'::text",
+        "comment": null
+      },
+      {
+        "name": "ck_asset_snapshot_number",
+        "sqltext": "snapshot_number > 0",
+        "comment": null
+      },
+      {
+        "name": "ck_snapshot_payload",
+        "sqltext": "jsonb_typeof(canonical_payload) = 'object'::text",
+        "comment": null
+      },
+      {
+        "name": "ck_snapshot_raw_size",
+        "sqltext": "octet_length(raw_input) >= 1 AND octet_length(raw_input) <= 1048576",
+        "comment": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_snapshots_tenant_asset_number",
+        "unique": false,
+        "column_names": [
+          "tenant_id",
+          "asset_id",
+          "snapshot_number"
+        ],
+        "column_sorting": {
+          "snapshot_number": [
+            "desc"
+          ]
+        },
+        "dialect_options": {
+          "postgresql_include": []
+        }
+      },
+      {
+        "name": "uq_asset_snapshot_number",
+        "unique": true,
+        "column_names": [
+          "asset_id",
+          "tenant_id",
+          "snapshot_number"
+        ],
+        "duplicates_constraint": "uq_asset_snapshot_number",
+        "dialect_options": {
+          "postgresql_include": []
+        }
+      },
+      {
+        "name": "uq_snapshot_tenant_identity",
+        "unique": true,
+        "column_names": [
+          "asset_id",
+          "tenant_id",
+          "snapshot_id"
+        ],
+        "duplicates_constraint": "uq_snapshot_tenant_identity",
+        "dialect_options": {
+          "postgresql_include": []
+        }
+      }
+    ]
+  }
+}
