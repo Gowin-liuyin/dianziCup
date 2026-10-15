@@ -159,11 +159,20 @@ def _vulnerabilities(value: object) -> tuple[VendorVulnerability, ...]:
             function_names.append(name)
         vulnerabilities.append(
             VendorVulnerability(
-                package_ecosystem=_text(package.get("ecosystem"), "package ecosystem"),
-                package_name=_text(package.get("name"), "package name"),
+                package_ecosystem=_optional_package_text(
+                    package.get("ecosystem"), "package ecosystem"
+                ),
+                package_name=_optional_package_text(package.get("name"), "package name"),
                 affected_range=_text(item.get("vulnerable_version_range"), "affected range"),
                 patched_version=_text(item.get("patched_versions"), "patched versions"),
                 vulnerable_functions=tuple(function_names),
             )
         )
     return tuple(vulnerabilities)
+
+
+def _optional_package_text(value: object, field: str) -> str | None:
+    """GitHub 允许未知 package 字段为空；保留原文，不从仓库名称补造归属。"""
+    if isinstance(value, str) and len(value) <= 10_000 and not value.strip():
+        return None
+    return _text(value, field)

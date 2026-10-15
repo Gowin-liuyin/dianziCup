@@ -26,6 +26,12 @@ from ai_intel.knowledge.models import (
     source_cursors,
     source_page_receipts,
 )
+from ai_intel.knowledge.persistence_models import (
+    claims,
+    event_documents,
+    event_external_ids,
+    events,
+)
 from ai_intel.workers.executor import execute_job
 
 pytestmark = pytest.mark.real_pg
@@ -56,6 +62,51 @@ def nvd_response(*, next_page=False):
     payload["totalResults"] = 2 if next_page else 1
     body = json.dumps(payload).encode()
     return FetchResult("https://services.nvd.nist.gov", 200, "application/json", body)
+
+
+def test_actual_vendor_page_with_unknown_package_persists_all_ten_records(job_engine, tmp_path):
+    body = (FIXTURES / "vllm_api_page_20261015_public.json").read_bytes()
+    store = ContentStore(tmp_path)
+    handler = build_source_page_handler(
+        store,
+        fetcher=lambda url: FetchResult(url, 200, "application/json", body),
+        clock=lambda: NOW,
+    )
+    job_id = queue(job_engine, kind="vllm_vendor")
+    assert (
+        execute_job(
+            job_engine, job_id, "fixture-worker", {SOURCE_JOB_TYPE: handler}, clock=lambda: NOW
+        )
+        == "succeeded"
+    )
+    with Session(job_engine) as session:
+        assert session.scalar(select(func.count()).select_from(events)) == 10
+        revision_id = session.scalar(
+            select(event_documents.c.revision_id)
+            .join(event_external_ids, event_external_ids.c.event_id == event_documents.c.event_id)
+            .where(event_external_ids.c.id_value == "GHSA-5FJ9-PFHR-6J48")
+        )
+        assert revision_id is not None
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(claims)
+                .where(
+                    claims.c.source_revision_id == revision_id,
+                    claims.c.predicate == "affected_product",
+                )
+            )
+            == 0
+        )
+        digest = session.scalar(
+            select(document_revisions.c.content_hash).where(
+                document_revisions.c.revision_id == revision_id
+            )
+        )
+        raw = json.loads(store.read_verified(digest))
+        assert raw["vulnerabilities"][0]["package"] == {"ecosystem": "", "name": ""}
+        assert raw["vulnerabilities"][0]["vulnerable_version_range"] == "< v0.30.0"
+        assert session.scalar(select(source_cursors.c.cursor_json))["position"] == {"page": 2}
 
 
 def test_real_job_commits_revision_receipt_cursor_and_terminal_state_together(job_engine, tmp_path):

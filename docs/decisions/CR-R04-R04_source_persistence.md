@@ -26,3 +26,5 @@
 另一真实兼容问题：API实现Agent在Linux全unit发现既有pdf_text.py读取subprocess.CREATE_NO_WINDOW的类型检查失败。根因是该stdlib属性仅Windows导出；root将其改为已核对[Win32官方常量0x08000000](https://learn.microsoft.com/en-us/windows/win32/procthread/process-creation-flags)，仍只在os.name=nt传入，Linux仍0，不削弱Windows后台子进程行为。Linux33组件补测和新的完整unit日志在recovery_r04_parsing_linux_20261015；首次全unit与Windows覆盖数据相撞的结果不作覆盖率门，新full_unit_2使用独立缓存。该一行兼容修复将单独冻结，不能用旧48ad审查给新代码背书。
 
 本候选仍awaiting_review，三个Must只有原reviewer在新固定SHA定向复跑后才能关闭；API/worker/页面live链路、持续采集、正式指标仍未证明。
+
+2026-10-15T14:16:47+08:00 · 真实多公告页兼容修复：GitHub于14:11:16–19实际200公开页115956字节，第6项GHSA-5fj9-pfhr-6j48的package生态/名称明示空字符串。现有类型本已允许None；仅此两个optional字段将原有10000字符范围内的空/全空白归一为None，原始成员和范围仍完整保存，不从vLLM仓库名补造产品/生态/版本适用结论。NUL、surrogate、非字符串、超限空白仍拒绝。原10公告页normalizer与PG任务回归新增；首PG失败是新测试用小写GHSA查询已规范大写的id_value，实际10事件已提交，修查询后522mixed通过(512unit+10PG)，最终额外两长空白边界后9target通过。原失败日志留档，未改金标/阈值/分母；整页live与原非作者定向复核待新SHA，不把fixture算live。
