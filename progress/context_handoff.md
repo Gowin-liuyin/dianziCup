@@ -1,4 +1,42 @@
-## 当前权威快照 · 2026-10-15T13:02:41+08:00
+## 当前阶段候选 · 2026-10-15T15:15:03+08:00
+
+G-A候选b27已新非作者独立1200组合、686纯unit、98同库两遍、Linux双worker强杀/重投2与API重启4、MinIO7实测；代码与三个组合测试Must关闭，最终阶段文档固定差异仍待复核。阶段awaiting_review，无阶段push。当前报告历史以下保留，旧等待新授权/未提交/未接线句子不能覆盖本段。
+
+原T卡验收仍依赖所有R切片；R01/R02/R03只按当前任务卡G-A范围候选complete/awaiting_review，不替代R20增强或最终所有评分。证据与准确版本、命令/退出数见reports/stages/recovery/G-A.md和reports/reviews/recovery/G-A-checkpoint-review-1.md。
+
+## 当前权威快照 · 2026-10-15T14:44:29+08:00
+
+集成分支codex/full-delivery-recovery，HEAD d391f89c65fb892b27b6a3b45cf0a06fea6032b0；2026-10-15T14:38:43+08:00重新核对origin为授权地址。G-A/G-B仍in_progress/partial，无阶段accepted或阶段push。旧段落均为历史，不覆盖本快照；原T卡完整切片与验收条件不变。
+
+真实来源链已在Windows受控运行段证明：7184后端于14:18:16启动，NVD实际45事件/3页完成；厂商10条已入库，来源合计55事件，证据334条为14:22附近观测。GitHub数字page实际重复同10条，达到页上限的partial不算全采完。14:24:49–52两页原始响应哈希一致，Link明确after游标；厂商分页Must未关闭，作者在独立WT修复，旧backfill游标/原始响应不删除，下一轮从未用live流验收。NVD源时间无时区保持未知，不能拿观察时间补源发布时间。
+
+API三Must已由独立reviewer固定7af91b3定向关闭：43真实PG/探针、505纯unit(raw3075/5026)；来源空package两负例固定7184也已独立关闭。pipeline新发现翻页Must，整体仍needs_changes。真实浏览器7184链41项交互通过，含实际PG列表/详情/固定修订证据、刷新、移动端、分页和错误恢复；NVD外网页内容仍blocked_external_content，GitHub外网页200/内容可核验。来源监控页仍待接线，完整R17未完成。
+
+UI已实现暗色青绿黑客工作台与低亮动态拓扑。真实浏览器验证transform变化、减少动画后停止、pointer-events:none及焦点可用。新Must为SavedTime直接显示UTC/微秒；root d391f89统一北京时间秒级+08:00且保留原datetime，120前端unit/类型/lint通过，独立定向复验待槽位。首次root测试子命令exit0，打印输出GBK异常使外层exit1，原始日志保留并修报告脚本；不能算业务测试失败或抹去外层失败。
+
+生成接口436455d已接两种DeepSeek wire及原生OpenAI/Anthropic接口，尚未产品接线。新独立review固定该SHA：574unit(raw3442/5356=64.26437640029873%)、共享HTTP/安全112、真实本机socket3通过，但新增probe确证两Must：prompt/schema版本可将synthetic credential写metadata；TypedDict/dataclass显式extra=ignore可吞字段。作者只修generation和直接测试，初审报告G-B-R05-generation-review-1.md保留失败，产品模型调用仍0、费用unknown，embedding/rerank未选/未探测。
+
+当前四槽滚动：root统一合同/状态/集成及UI时间；r04_vendor_source独立source_jobs/source_documents及直接测试；r04_knowledge_api独立generation及直接测试；新独立r05 reviewer初审完成后释放，下一槽短时给原liveUI reviewer定向复验，再给pipeline reviewer复验。各自不得扩文件权属、不push、不accepted。公共schema/锁无本轮变更。
+
+真实运行分段：Linux95段13:59:50–14:04:54因WSL出网失败两源0事实/0游标；Windows95段14:08:14–14:17:26证明NVD45，厂商空package失败；Windows7184段14:18:16开始、14:48:16硬截止，API28000/worker/beat，RedisDB14、独立PG0013。WindowsSolo由独立PG期限看守及JobObject内存限制，不能冒称Linux生产hard-limit验证。前端7184服务25300自14:19:19开始、14:49:19截止。MinIO新段13:17:25至15:17:25截止，中断与版本不得拼连续运行；Docker总资源17日21:49:15截止。所有启动/停止以raw收据为准，快照不是新的运行时长证据。
+
+双人独立标注/裁决与FOFA授权资产范围仍缺；PPT按用户后置。不阻断当前接口/来源/工作台实施。凭据只在仓外DPAPI与子进程环境；不进入前端/索引/报告。下一步：翻页与生成Must修复→原独立reviewer复验；UI时间真实浏览器复验；新版本真实来源流；生成限定通过后有限模型live，再接embedding/rerank与引用回答。G-A仍需新的整阶段审查，未具备阶段push条件。
+
+## 历史快照 · 2026-10-15T13:48:37+08:00
+
+分支 codex/full-delivery-recovery，HEAD df214c664847f8a2c721579955108da47a55c9a6；G-A/G-B 均 in_progress/partial，无阶段 accepted 或 push。R00 的限定激活不扩为原 T 卡验收。旧快照仅为历史，以下以当前字段和证据为准。
+
+来源修复6c7fd7a的三 Must 已由原非作者定向关闭，报告 reports/reviews/recovery/G-B-R04-sources-review-1-recheck.md：16原探针、131合同、22实际PG、396纯unit（raw62.73471352912855%）及11helper补测通过。root来源writer df214c6刚集成，尚无新独立审查；其作者41项混合命令实际27PG+14纯计算，不能写41PG。API4934de3初审又发现三Must：NUL过滤变503、损坏维度引用变空、stale支持claim仍current；root正在共享read service修复，不能把原24PG通过当API验收。
+
+并行四槽：root拥有 source_jobs.py/source_routes.py、app/runtime接线、公共合同、状态与集成；r04_vendor_source封存sourcewriter证据后释放；r04_api_independent_review只读固定4934de3并封存初审；r04_knowledge_api在独立R05 worktree实施两种wire生成客户端，拥有infrastructure/models与直接测试，不读真实keys、不push。下一个新槽用于新sourcewriter reviewer，初审固定df214c6或新的明确候选；不能自审。
+
+真实服务：旧API0b段已13:01:56停止，当前没有API/worker长期段；MinIO新段13:17:25启动，7200秒上限，截止15:17:25，日志 recovery_r04_minio_20261015；与旧段13:15:28存在间断，不能拼连续运行。Docker/PG/Redis为已隔离资源，不升级旧审查库。root本轮将建单独source_jobs测试库；所有coverage单run仓外隔离。
+
+前端黑客暗色、低亮缓慢拓扑与reduced-motion已实现并有独立交互结果；当前截图明确fixture。真实GET→MinIO/PG→Celery→API→浏览器仍未闭环。产品模型调用0、费用unknown；DeepSeek两wire正在实现，embedding/rerank未选择/探测。双人金标和FOFA授权资产范围仍缺，PPT按用户后置；它们不阻断当前采集和模型接口。秘密保持仓外DPAPI/环境，不进日志、索引、前端或提交。
+
+下一步：修API三Must并冻结供原reviewer定向复验；sourcewriter新初审；root完成分页任务负例/PG原子性与真实队列采集段；R05客户端冻结后新独立审查，再由主控有限live调用。G-A还需综合集成候选与新的阶段reviewer，所有阶段push尚未发生。
+
+## 历史快照 · 2026-10-15T13:02:41+08:00
 
 分支codex/full-delivery-recovery，HEAD 0e622ced2f345cb6dbccab21707119f4e6836f74，origin授权URL已核对；G-A仍in_progress/partial，无阶段push。旧历史保持，以下旧等待或旧状态不覆盖本快照。R00仅既有限定accepted；原T全部映射切片要求不变。
 

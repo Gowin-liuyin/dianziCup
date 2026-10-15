@@ -6,6 +6,16 @@ $providerSecrets = (Get-Content -LiteralPath "$env:USERPROFILE/.codex/secrets/di
 $runtimeSecrets = (Get-Content -LiteralPath "$env:USERPROFILE/.codex/secrets/dianzi/r01_runtime_20261015.dpapi" -Raw).Trim() | ConvertTo-SecureString | ConvertFrom-SecureString -AsPlainText | ConvertFrom-Json
 $scanNames = @('DEEPSEEK_API_KEY', 'HUNTER_API_KEY', 'FOFA_API_KEY', 'QUAKE_API_KEY', 'ZOOMEYE_API_KEY')
 try {
+    $testConnectionText = & wsl.exe -d Ubuntu-22.04 -u root --exec cat /tmp/dianzi-docker-static-r01-20261014/runtime/test-services/connection.json
+    if ($LASTEXITCODE -ne 0) { throw 'isolated database credential reference unavailable' }
+    $testConnection = $testConnectionText | ConvertFrom-Json
+    $testDatabaseUri = [uri]::new($testConnection.TEST_DATABASE_URL)
+    $env:DIANZI_SCAN_PG_PASSWORD = [uri]::UnescapeDataString($testDatabaseUri.UserInfo.Split(':', 2)[1])
+    $objectConnectionText = & wsl.exe -d Ubuntu-22.04 -u root --exec cat /tmp/dianzi-minio-r02-20261015/private/connection.json
+    if ($LASTEXITCODE -ne 0) { throw 'isolated object credential reference unavailable' }
+    $objectConnection = $objectConnectionText | ConvertFrom-Json
+    $env:DIANZI_SCAN_MINIO_ACCESS_KEY = $objectConnection.access_key
+    $env:DIANZI_SCAN_MINIO_SECRET_KEY = $objectConnection.secret_key
     foreach ($scanName in $scanNames) {
         [Environment]::SetEnvironmentVariable("DIANZI_SCAN_$scanName", $providerSecrets.$scanName, 'Process')
     }
@@ -20,6 +30,7 @@ try {
         [Environment]::SetEnvironmentVariable("DIANZI_SCAN_$scanName", $null, 'Process')
     }
     Remove-Item Env:DIANZI_SCAN_TEST_PASSWORD -ErrorAction SilentlyContinue
+    Remove-Item Env:DIANZI_SCAN_PG_PASSWORD, Env:DIANZI_SCAN_MINIO_ACCESS_KEY, Env:DIANZI_SCAN_MINIO_SECRET_KEY -ErrorAction SilentlyContinue
     $providerSecrets = $null
     $runtimeSecrets = $null
 }

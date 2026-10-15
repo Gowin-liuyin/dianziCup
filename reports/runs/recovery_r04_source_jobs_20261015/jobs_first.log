@@ -1,0 +1,232 @@
+........................................................................ [ 14%]
+........................................................................ [ 28%]
+........................................................................ [ 42%]
+........................................................................ [ 56%]
+........................................................................ [ 70%]
+........................................................................ [ 85%]
+.............................F.....................................F.... [ 99%]
+.FF.                                                                     [100%]
+================================== FAILURES ===================================
+_____________ test_mypy_rejects_injected_type_error_and_recovers ______________
+
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-359/test_mypy_rejects_injected_typ0')
+
+    def test_mypy_rejects_injected_type_error_and_recovers(tmp_path) -> None:
+        """T02-C03：临时目录类型错误被拒绝，不向业务源码写文件或干扰其它 Agent。"""
+        probe_path = tmp_path / "type_probe.py"
+        probe_source = (
+            '"""临时类型错误探针, 验证后删除."""\n'
+            "\n"
+            "def _accepts_count(count: int) -> int:\n"
+            "    return count\n"
+            "\n"
+            'PROBE_RESULT: int = _accepts_count("not-a-count")\n'
+        )
+        probe_path.write_text(probe_source, encoding="utf-8")
+        try:
+            blocked = subprocess.run(
+                [sys.executable, "-m", "mypy", str(probe_path)],
+                cwd=str(REPO_ROOT / "backend"),
+                capture_output=True,
+                text=True,
+            )
+            assert blocked.returncode != 0
+            assert "arg-type" in blocked.stdout
+        finally:
+            probe_path.unlink()
+        recovered = subprocess.run(
+            [sys.executable, "-m", "mypy", "src"],
+            cwd=str(REPO_ROOT / "backend"),
+            capture_output=True,
+            text=True,
+        )
+>       assert recovered.returncode == 0
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['D:\\dianzi\\backend\\.venv\\Scripts\\python.exe', '-m', 'mypy', 'src'], returncode=1, stdout='...hint: "existing: set[<type>] = ...")  [var-annotated]\nFound 1 error in 1 file (checked 70 source files)\n', stderr='').returncode
+
+tests\unit\test_t02_project_skeleton.py:151: AssertionError
+__ test_real_job_commits_revision_receipt_cursor_and_terminal_state_together __
+
+job_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r04_source_jobs_20261015?options=-c+search_path%3Dtest_r02_schema_18bfd0ae636c4e7092170b410428ded4+-c+statement_timeout%3D10000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-359/test_real_job_commits_revision0')
+
+    def test_real_job_commits_revision_receipt_cursor_and_terminal_state_together(job_engine, tmp_path):
+        job_id = queue(job_engine)
+        handler = build_source_page_handler(
+            ContentStore(tmp_path), fetcher=lambda url: nvd_response(), clock=lambda: NOW
+        )
+        assert (
+            execute_job(
+                job_engine, job_id, "fixture-worker", {SOURCE_JOB_TYPE: handler}, clock=lambda: NOW
+            )
+            == "succeeded"
+        )
+        assert (
+            execute_job(
+                job_engine, job_id, "duplicate-worker", {SOURCE_JOB_TYPE: handler}, clock=lambda: NOW
+            )
+            == "not_claimed"
+        )
+        with Session(job_engine) as session:
+            assert session.scalar(select(func.count()).select_from(document_revisions)) == 1
+            assert session.scalar(select(func.count()).select_from(source_page_receipts)) == 1
+            cursor = session.execute(select(source_cursors)).mappings().one()
+>           assert cursor["cursor_json"]["position"] == {}
+E           AssertionError: assert {'offset': 1} == {}
+E             
+E             Left contains 1 more item:
+E             {'offset': 1}
+E             Use -v to get more diff
+
+tests\integration\test_r04_source_jobs_pg.py:83: AssertionError
+_________ test_next_page_is_durable_delayed_or_explicitly_partial[1] __________
+
+job_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r04_source_jobs_20261015?options=-c+search_path%3Dtest_r02_schema_d2c4c351f00848408ec34f119388c13f+-c+statement_timeout%3D10000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-359/test_next_page_is_durable_dela0')
+pages = 1
+
+    @pytest.mark.parametrize("pages", [1, 2])
+    def test_next_page_is_durable_delayed_or_explicitly_partial(job_engine, tmp_path, pages):
+        job_id = queue(job_engine, pages=pages)
+        handler = build_source_page_handler(
+            ContentStore(tmp_path), fetcher=lambda url: nvd_response(next_page=True), clock=lambda: NOW
+        )
+        assert execute_job(
+            job_engine, job_id, "fixture-worker", {SOURCE_JOB_TYPE: handler}, clock=lambda: NOW
+        ) == ("partial" if pages == 1 else "succeeded")
+        with Session(job_engine) as session:
+            cursor = session.execute(select(source_cursors)).mappings().one()
+            assert cursor["cursor_json"]["position"] == {"offset": 1}
+            assert cursor["cursor_json"]["window_complete"] is False
+            assert cursor["watermark_published_at"] is None
+            if pages == 1:
+>               assert session.scalar(select(job_runs.c.error_code)) == "source_page_limit_reached"
+E               AssertionError: assert None == 'source_page_limit_reached'
+E                +  where None = scalar(<sqlalchemy.sql.selectable.Select object at 0x000002187C118A10>)
+E                +    where scalar = <sqlalchemy.orm.session.Session object at 0x000002187C032840>.scalar
+E                +    and   <sqlalchemy.sql.selectable.Select object at 0x000002187C118A10> = select(Column('error_code', Text(), table=<job_runs>))
+E                +      where Column('error_code', Text(), table=<job_runs>) = <sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x0000021878991CB0>.error_code
+E                +        where <sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x0000021878991CB0> = Table('job_runs', MetaData(), Column('job_id', Text(), table=<job_runs>, primary_key=True, nullable=False), Column('te...ob_runs>), Column('error_code', Text(), table=<job_runs>), Column('result_ref', Text(), table=<job_runs>), schema=None).c
+
+tests\integration\test_r04_source_jobs_pg.py:144: AssertionError
+_________ test_next_page_is_durable_delayed_or_explicitly_partial[2] __________
+
+job_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r04_source_jobs_20261015?options=-c+search_path%3Dtest_r02_schema_2abfc7e9ca07408eb2ea213774ba7b00+-c+statement_timeout%3D10000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-359/test_next_page_is_durable_dela1')
+pages = 2
+
+    @pytest.mark.parametrize("pages", [1, 2])
+    def test_next_page_is_durable_delayed_or_explicitly_partial(job_engine, tmp_path, pages):
+        job_id = queue(job_engine, pages=pages)
+        handler = build_source_page_handler(
+            ContentStore(tmp_path), fetcher=lambda url: nvd_response(next_page=True), clock=lambda: NOW
+        )
+        assert execute_job(
+            job_engine, job_id, "fixture-worker", {SOURCE_JOB_TYPE: handler}, clock=lambda: NOW
+        ) == ("partial" if pages == 1 else "succeeded")
+        with Session(job_engine) as session:
+            cursor = session.execute(select(source_cursors)).mappings().one()
+            assert cursor["cursor_json"]["position"] == {"offset": 1}
+            assert cursor["cursor_json"]["window_complete"] is False
+            assert cursor["watermark_published_at"] is None
+            if pages == 1:
+                assert session.scalar(select(job_runs.c.error_code)) == "source_page_limit_reached"
+                assert session.scalar(select(func.count()).select_from(job_runs)) == 1
+            else:
+                next_job = (
+                    session.execute(select(job_runs).where(job_runs.c.job_id != job_id))
+                    .mappings()
+>                   .one()
+                     ^^^^^
+                )
+
+tests\integration\test_r04_source_jobs_pg.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\sqlalchemy\engine\result.py:1726: in one
+    return self._only_one_row(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+>   ???
+E   sqlalchemy.exc.MultipleResultsFound: Multiple rows were found when exactly one was required
+
+lib/sqlalchemy/engine/_result_cy.py:597: MultipleResultsFound
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\dianzi\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\dianzi\reports\runs\recovery_r04_source_jobs_20261015\jobs_first.xml -
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.12.13-final-0 _______________
+
+Name                                                     Stmts   Miss  Cover   Missing
+--------------------------------------------------------------------------------------
+src\ai_intel\__init__.py                                     0      0   100%
+src\ai_intel\api\__init__.py                                 0      0   100%
+src\ai_intel\api\app.py                                    131     32    76%   46, 53, 67, 69, 92-95, 107-114, 148-159, 165-168, 212-216, 222, 224
+src\ai_intel\api\auth_routes.py                             86     60    30%   43-92, 96-123, 139-160, 166-205
+src\ai_intel\api\auth_state.py                             100     61    39%   80, 84-116, 122-139, 145-168, 177-190, 194-195, 201-218, 235-261
+src\ai_intel\api\authentication.py                         214     58    73%   83, 95, 107, 124, 128-146, 150-160, 164-174, 179-183, 278, 282-285, 288-297, 306, 321-322, 338, 350, 358-359, 363-364, 372-378, 382, 386-388, 396, 400, 413, 422, 431, 435, 437
+src\ai_intel\api\knowledge_contracts.py                     96      0   100%
+src\ai_intel\api\knowledge_read_service.py                 218    133    39%   71-72, 74, 90-96, 109, 111, 137-138, 145-148, 151-159, 162, 167, 177-247, 254-292, 315-377, 386, 403-435, 438-441, 444-473, 499-579
+src\ai_intel\api\knowledge_routes.py                        59     32    46%   51-83, 97-103, 107, 111
+src\ai_intel\api\problems.py                                 6      0   100%
+src\ai_intel\api\source_routes.py                          105     40    62%   50, 52, 77-89, 94-104, 109-122, 132, 135, 138-156, 173-179
+src\ai_intel\domain\__init__.py                              0      0   100%
+src\ai_intel\domain\access.py                               42      1    98%   86
+src\ai_intel\domain\enums.py                                79      0   100%
+src\ai_intel\domain\records.py                              94      3    97%   158, 161, 172
+src\ai_intel\domain\schema_export.py                        15      5    67%   45-49
+src\ai_intel\domain\values.py                               47      3    94%   31-33
+src\ai_intel\enrichment\dimensions.py                       18      0   100%
+src\ai_intel\enrichment\persistence.py                     128     19    85%   99, 125, 138, 147, 158, 165, 182, 184-189, 211-220, 226, 279-282
+src\ai_intel\enrichment\persistence_models.py                4      0   100%
+src\ai_intel\enrichment\relevance.py                        37      2    95%   47, 56
+src\ai_intel\enrichment\structured.py                       44      0   100%
+src\ai_intel\infrastructure\__init__.py                      0      0   100%
+src\ai_intel\infrastructure\content_storage_factory.py      10      1    90%   20
+src\ai_intel\infrastructure\content_store.py                58      5    91%   66, 79-82
+src\ai_intel\infrastructure\database.py                     48     26    46%   30-35, 52-61, 74-77, 82-91
+src\ai_intel\infrastructure\dns_resolver.py                 45      3    93%   61, 64, 74
+src\ai_intel\infrastructure\http_transport.py              158    128    19%   36-41, 44-65, 68-72, 76-81, 84-85, 88-90, 102-122, 125-136, 139-143, 155-182, 194-245
+src\ai_intel\infrastructure\minio_store.py                  71      4    94%   45, 89-90, 116
+src\ai_intel\infrastructure\models\__init__.py               0      0   100%
+src\ai_intel\infrastructure\models\clients.py               69     69     0%   3-135
+src\ai_intel\infrastructure\network.py                     286     91    68%   129-130, 154, 156-159, 163, 169-177, 207, 213, 220, 226, 238, 242, 244, 246, 251-252, 254, 256, 258, 260, 265, 292, 305-336, 339-351, 368, 376-384, 401, 403, 407-408, 413, 430, 433, 440, 450, 463, 482, 484, 491-493, 502, 513-523, 546-561, 582
+src\ai_intel\infrastructure\outbox.py                       59     20    66%   67-69, 114-168
+src\ai_intel\infrastructure\runtime_observations.py         18     10    44%   16-22, 32-38
+src\ai_intel\infrastructure\settings.py                    110     20    82%   105, 132, 147, 155-168, 182-183, 185-186, 191-196
+src\ai_intel\ingestion\cursor_repository.py                337     83    75%   60, 96, 98, 163, 201, 204, 212, 215, 218-220, 231, 238, 249, 291, 298, 312, 337, 371, 413, 424, 438, 452-469, 484, 496, 505, 525, 527-575, 592, 594, 596-598, 623-627, 632, 634, 636, 646-652, 658-659, 668, 689-690, 692, 702, 729
+src\ai_intel\ingestion\parsing\__init__.py                   0      0   100%
+src\ai_intel\ingestion\parsing\_pdf_worker.py               88     50    43%   23-95, 124-126, 140-159, 163
+src\ai_intel\ingestion\parsing\parsers.py                   99     42    58%   27-32, 35-53, 56-59, 62-64, 67-70, 73-74, 79-82, 132
+src\ai_intel\ingestion\parsing\pdf_text.py                  57      3    95%   62, 90-91
+src\ai_intel\ingestion\parsing\text_blocks.py               30      0   100%
+src\ai_intel\ingestion\scheduler.py                         90     17    81%   59, 61, 65, 84, 105, 121-131, 137
+src\ai_intel\ingestion\source_documents.py                 325     28    91%   128, 139-140, 201, 220, 223, 240, 247, 265, 311-314, 326, 358, 379, 395, 479, 542, 607, 611, 615, 622, 653, 655, 659, 726, 742
+src\ai_intel\ingestion\source_jobs.py                      126     16    87%   64, 87, 90-95, 133, 135, 173, 182, 193, 201, 231, 266
+src\ai_intel\ingestion\sources\__init__.py                   0      0   100%
+src\ai_intel\ingestion\sources\nvd.py                      156     22    86%   71, 74-75, 77, 97, 103, 134, 150, 153, 162, 165, 168, 176-178, 206, 208, 212, 216, 228, 231, 234
+src\ai_intel\ingestion\sources\vendor_advisories.py        106      0   100%
+src\ai_intel\knowledge\claims.py                            75     35    53%   25-26, 61-72, 78-81, 85-87, 91-93, 99-115, 119
+src\ai_intel\knowledge\entities.py                          31     13    58%   23, 37, 42-48, 53-56
+src\ai_intel\knowledge\event_linking.py                    198     72    64%   102, 148, 152, 164, 171, 194, 219-242, 307-394, 409-494, 507-516, 559
+src\ai_intel\knowledge\evidence.py                          51     12    76%   35, 49, 56, 59-64, 85, 89-90
+src\ai_intel\knowledge\models.py                            21      0   100%
+src\ai_intel\knowledge\persistence.py                      313     85    73%   323, 357, 376, 412, 416, 430, 438, 488, 557-651, 654-680, 689-804
+src\ai_intel\knowledge\persistence_models.py                16      0   100%
+src\ai_intel\knowledge\revisions.py                        129     37    71%   79, 88, 93, 95, 112, 114, 132, 148, 189, 196, 229, 236, 239, 241, 244, 256, 258, 263, 265-267, 326-360
+src\ai_intel\workers\executor.py                            96     15    84%   51, 69, 99, 130, 146-147, 165-189
+src\ai_intel\workers\jobs.py                               147     56    62%   31, 47, 79, 94, 111-125, 158, 196, 208-209, 232, 274, 320, 324, 329, 331-350, 352, 358-411, 420-438, 442-448
+src\ai_intel\workers\runtime.py                             67     30    55%   67-76, 83-85, 106-115, 120-128, 133
+--------------------------------------------------------------------------------------
+TOTAL                                                     5013   1442    71%
+Coverage JSON written to file D:\dianzi\reports\runs\recovery_r04_source_jobs_20261015\jobs_first.coverage.json
+Required test coverage of 60% reached. Total coverage: 71.23%
+=========================== short test summary info ===========================
+FAILED tests/unit/test_t02_project_skeleton.py::test_mypy_rejects_injected_type_error_and_recovers
+FAILED tests/integration/test_r04_source_jobs_pg.py::test_real_job_commits_revision_receipt_cursor_and_terminal_state_together
+FAILED tests/integration/test_r04_source_jobs_pg.py::test_next_page_is_durable_delayed_or_explicitly_partial[1]
+FAILED tests/integration/test_r04_source_jobs_pg.py::test_next_page_is_durable_delayed_or_explicitly_partial[2]
+4 failed, 504 passed, 1 warning in 28.34s

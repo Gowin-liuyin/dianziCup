@@ -1,0 +1,24 @@
+{
+  "observed_at": "2026-10-15T14:51:16+08:00",
+  "status": 200,
+  "body": {
+    "schema_version": 2,
+    "span_id": "13a9dbee-7933-49b7-99f8-11be0ee65088",
+    "revision_id": "266e4626-fe50-4c33-a6f7-4c7a7192408e",
+    "block_id": "a4cfddfb-4cef-475a-b4fe-53302260a742",
+    "start_offset": 323,
+    "end_offset": 2323,
+    "quote_text": "### Summary\r\n\r\n  When vLLM serves a MOSS-Audio model, a client that can access the /tokenize endpoint can provide request-controlled\r\n  mm_processor_kwargs.\r\n\r\n  MOSS-Audio uses these values to construct MossAudioProcessor instances and stores every distinct instance in an\r\n  unbounded private dictionary. Each processor contains a WhisperFeatureExtractor with an allocated mel-filter array.\r\n\r\n  An attacker can therefore:\r\n\r\n  1. Repeatedly submit distinct processor configurations to cause persistent linear memory growth.\r\n  2. Supply oversized mel_config values to amplify the allocation made by a single request.\r\n\r\n  This can exhaust host memory and terminate or severely degrade the API process. /tokenize is intentionally outside\r\n  vLLM’s API-key-protected route prefixes, so --api-key alone does not restrict access to this endpoint.\r\n\r\n  ### Details\r\n\r\n  TokenizeChatRequest accepts arbitrary mm_processor_kwargs\r\n  (https://github.com/vllm-project/vllm/blob/bf7eee9d7b2788bafe69f0c21fde6af22a2d3319/vllm/entrypoints/serve/tokenize/protocol.py#L107-L110).\r\n\r\n  The request reaches multimodal processing through:\r\n\r\n  1. ServingTokenization.create_tokenize()\r\n\r\n     (https://github.com/vllm-project/vllm/blob/bf7eee9d7b2788bafe69f0c21fde6af22a2d3319/vllm/entrypoints/serve/tokenize/serving.py#L84-L92)\r\n\r\n  2. OnlineRenderer.preprocess_chat()\r\n\r\n     (https://github.com/vllm-project/vllm/blob/bf7eee9d7b2788bafe69f0c21fde6af22a2d3319/vllm/renderers/online_renderer.py#L675-L704)\r\n\r\n  3. BaseRenderer._process_multimodal()\r\n\r\n     (https://github.com/vllm-project/vllm/blob/bf7eee9d7b2788bafe69f0c21fde6af22a2d3319/vllm/renderers/base.py#L846-L880)\r\n\r\n  4. MossAudioMultiModalProcessor._apply_hf_processor_main()\r\n\r\n     (https://github.com/vllm-project/vllm/blob/bf7eee9d7b2788bafe69f0c21fde6af22a2d3319/vllm/model_executor/models/moss_audio.py#L1358-L1400)\r\n\r\n  Although /tokenize sets skip_mm_cache=True, this only selects the read-only multimodal processor. Its\r\n  MossAudioProcessin",
+    "quote_sha256": "ce0bfd766bf75477ef8a90c58eee53406ceda3da8f4ad033b7ed4872292eb9cd",
+    "locator_kind": "json_pointer",
+    "page_number": null,
+    "json_pointer": "/description",
+    "verified_at": "2026-10-15T06:19:29.380687Z",
+    "source_uri": "https://github.com/vllm-project/vllm/security/advisories/GHSA-823j-m4cj-hmjf",
+    "source_published_at": "2026-10-06T06:59:51Z",
+    "source_modified_at": "2026-10-06T06:59:51Z",
+    "first_observed_at": "2026-10-15T06:19:29.380687Z",
+    "ingested_at": "2026-10-15T06:19:29.380687Z",
+    "data_mode": "live"
+  }
+}

@@ -1,0 +1,1772 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0
+rootdir: D:\dianzi-ga-checkpoint-review-1\backend
+configfile: pyproject.toml
+plugins: anyio-4.15.1, cov-6.3.0
+collected 507 items
+
+tests\contract\test_r01_compose_configuration.py ...................     [  3%]
+tests\contract\test_r01_migration_configuration.py ..                    [  4%]
+tests\contract\test_r01_quality_checks.py .............................. [ 10%]
+.F..                                                                     [ 10%]
+tests\contract\test_r01_search_tls_deployment.py .....                   [ 11%]
+tests\contract\test_r01_tls_fixture_ci.py ........                       [ 13%]
+tests\contract\test_r02_value_contract.py ................               [ 16%]
+tests\contract\test_r04_workbench_projection.py ...........              [ 18%]
+tests\contract\test_r05_generation_wire.py ..................            [ 22%]
+tests\contract\test_t07_jobs_outbox.py .                                 [ 22%]
+tests\contract\test_t08_network_redirects.py .                           [ 22%]
+tests\contract\test_t09_document_parsing.py .......                      [ 24%]
+tests\contract\test_t10_cve_nvd_connectors.py ......                     [ 25%]
+tests\contract\test_t11_osv_connector.py ......                          [ 26%]
+tests\contract\test_t12_vendor_blog_connectors.py ......                 [ 27%]
+tests\contract\test_t13_community_repository_connectors.py ......        [ 28%]
+tests\contract\test_t14_academic_connector.py ......                     [ 29%]
+tests\contract\test_t15_standards_policy_connectors.py .......           [ 31%]
+tests\contract\test_t18_model_clients.py ......                          [ 32%]
+tests\contract\test_t20_claim_extraction.py ......                       [ 33%]
+tests\contract\test_t22_research_and_document_links.py ......            [ 34%]
+tests\contract\test_t23_poc_scores_impact.py ......                      [ 36%]
+tests\contract\test_t40_auth_routes.py ..F                               [ 36%]
+tests\security\test_r01_admin_error_redaction.py ..                      [ 37%]
+tests\security\test_r01_dynamic_failure_privacy.py ....                  [ 37%]
+tests\security\test_r01_http_authentication.py F..........               [ 40%]
+tests\security\test_r01_secret_classification.py ....................... [ 44%]
+....                                                                     [ 45%]
+tests\security\test_r01_tls_failure_privacy.py ..                        [ 45%]
+tests\security\test_r02_auth_state_boundaries.py ......                  [ 46%]
+tests\security\test_r02_default_auth_failure.py .                        [ 47%]
+tests\security\test_r03_executor_authorization.py ...                    [ 47%]
+tests\security\test_r03_network_transport.py ........................... [ 53%]
+...............................................................          [ 65%]
+tests\security\test_r05_http_post.py ....................                [ 69%]
+tests\security\test_r05_transport_timeouts.py ....                       [ 70%]
+tests\security\test_t06_authentication_and_scope.py ...............      [ 73%]
+tests\security\test_t08_network_and_sources.py ........                  [ 74%]
+tests\integration\test_r01_runtime_observations.py ........              [ 76%]
+tests\integration\test_r02_auth_state.py ...........                     [ 78%]
+tests\integration\test_r02_default_application.py .                      [ 78%]
+tests\integration\test_r02_knowledge_revisions.py ...................... [ 83%]
+...                                                                      [ 83%]
+tests\integration\test_r02_relation_identity_regressions.py .....        [ 84%]
+tests\integration\test_r02_dimension_persistence.py .........            [ 86%]
+tests\integration\test_r02_schema_migration.py ...                       [ 86%]
+tests\integration\test_r02_dimension_migration.py .                      [ 87%]
+tests\integration\test_r03_jobs_pg.py .......F.......                    [ 90%]
+tests\integration\test_r03_schema_migration.py .                         [ 90%]
+tests\integration\test_r03_cursor_persistence.py EEEEEEEEEEEEEEEEEEEEEEE [ 94%]
+EEEE                                                                     [ 95%]
+tests\integration\test_r03_cursor_review_fixes.py EEEEEEEEEEEEEEEEEEEEEE [100%]
+
+=================================== ERRORS ====================================
+_ ERROR at setup of test_revision_cursor_receipt_survive_session_restart_and_resume_frozen_window _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_failed_second_entry_rolls_back_revision_cursor_and_receipt_even_when_caught[false] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_failed_second_entry_rolls_back_revision_cursor_and_receipt_even_when_caught[exception] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_failed_second_entry_rolls_back_revision_cursor_and_receipt_even_when_caught[missing_reference] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_missing_entry_identity_prevents_any_callback_and_cursor_advance _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_durable_same_source_scope_recovery_job_allows_page_advance _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_unrecoverable_or_foreign_job_rolls_back_page_and_job[wrong_source] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_unrecoverable_or_foreign_job_rolls_back_page_and_job[wrong_entry] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_unrecoverable_or_foreign_job_rolls_back_page_and_job[wrong_tenant] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_unrecoverable_or_foreign_job_rolls_back_page_and_job[missing_payload] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_unrecoverable_or_foreign_job_rolls_back_page_and_job[wrong_digest] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_unrecoverable_or_foreign_job_rolls_back_page_and_job[cancelled] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_duplicate_final_page_reuses_receipt_then_new_window_changes_generation _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_stale_input_and_same_owner_old_generation_cannot_commit_or_renew _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_lease_expiring_during_callback_rolls_back_saved_revision _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_____ ERROR at setup of test_two_workers_cannot_claim_same_source_stream ______
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_backfill_has_independent_cursor_and_never_changes_live_watermark _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_configured_source_scope_controls_claim_not_request_scope[scope0] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_configured_source_scope_controls_claim_not_request_scope[scope1] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+____ ERROR at setup of test_payload_cannot_reassign_source_or_tenant_scope ____
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_malformed_persisted_cursor_envelope_is_rejected[envelope0] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_malformed_persisted_cursor_envelope_is_rejected[envelope1] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_malformed_persisted_cursor_envelope_is_rejected[envelope2] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_malformed_persisted_cursor_envelope_is_rejected[envelope3] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_malformed_persisted_cursor_envelope_is_rejected[envelope4] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_existing_raw_cursor_keeps_unfinished_window_during_takeover _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_completed_window_replay_and_overlap_revision_keep_history_without_duplicates _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_changed_replay_conflicts_without_callback_or_state_change[entry_id] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_changed_replay_conflicts_without_callback_or_state_change[unknown_field] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_changed_replay_conflicts_without_callback_or_state_change[entry_order] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_changed_replay_conflicts_without_callback_or_state_change[watermark] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_changed_replay_conflicts_without_callback_or_state_change[completion] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_changed_replay_conflicts_without_callback_or_state_change[output] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_equivalent_key_order_and_utc_replay_is_callback_free_across_sessions _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_null_legacy_receipt_fails_closed_without_callback_and_checks_lease_first _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_unfinished_legacy_window_without_tracking_does_not_guess_empty_recovery[legacy0] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_unfinished_legacy_window_without_tracking_does_not_guess_empty_recovery[legacy1] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_only_scheduled_recoverable_states_with_remaining_attempts_can_advance[queued] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_only_scheduled_recoverable_states_with_remaining_attempts_can_advance[retry_wait] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_only_scheduled_recoverable_states_with_remaining_attempts_can_advance[running] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_unrecoverable_or_exhausted_nonterminal_references_roll_back_page[exhausted_queued] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_unrecoverable_or_exhausted_nonterminal_references_roll_back_page[exhausted_running] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_unrecoverable_or_exhausted_nonterminal_references_roll_back_page[missing_schedule] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_unrecoverable_or_exhausted_nonterminal_references_roll_back_page[missing_lease] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_unrecoverable_or_exhausted_nonterminal_references_roll_back_page[missing_delivery] _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_final_page_rechecks_prior_job_after_actual_permanent_failure_and_takeover _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_same_transaction_later_callback_cannot_make_earlier_reference_terminal _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_reference_limit_rejects_entire_page_and_keeps_prior_tracking _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+_ ERROR at setup of test_completed_window_tracking_does_not_recheck_terminal_jobs_from_old_history _
+isolated_test_database_url = '[redacted test connection]'
+
+    @pytest.fixture()
+    def cursor_engine(isolated_test_database_url: str):
+        """仅消费主控已经迁移的 R03 隔离库；本文件不迁移、不删除历史记录。"""
+        engine = create_engine(
+            isolated_test_database_url,
+            connect_args={
+                "connect_timeout": 5,
+                "options": "-c statement_timeout=20000 -c lock_timeout=5000",
+            },
+        )
+        with engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT current_database()")).scalar_one()
+                == engine.url.database
+            )
+>           assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+                "0012_source_page_fingerprint"
+            )
+E           AssertionError: assert '0013_revisio...urce_metadata' == '0012_source_page_fingerprint'
+E             
+E             - 0012_source_page_fingerprint
+E             + 0013_revision_source_metadata
+
+tests\integration\test_r03_cursor_persistence.py:70: AssertionError
+================================== FAILURES ===================================
+______ test_failed_pytest_case_redacts_connection_in_terminal_and_junit _______
+
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-382/test_failed_pytest_case_redact0')
+
+    def test_failed_pytest_case_redacts_connection_in_terminal_and_junit(tmp_path) -> None:
+        """真实失败 outcome 保留，终端/JUnit 均不含 test 连接秘密。"""
+        probe = tmp_path / "failure_probe.py"
+        probe.write_text(
+            "import os\ndef test_deliberate_failure():\n"
+            "    assert False, os.environ['TEST_DATABASE_URL']\n",
+            encoding="utf-8",
+        )
+        report = tmp_path / "failure.xml"
+        environment = dict(os.environ)
+        environment["TEST_DATABASE_URL"] = (
+            "postgresql://test_quality:quality-secret-marker@[redacted connection credential]:25434/test_dianzi_quality"
+        )
+        environment["PYTHONPATH"] = str(Path(__file__).parents[1])
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "--noconftest",
+                "-p",
+                "conftest",
+                str(probe),
+                "-o",
+                "addopts=",
+                "-q",
+                f"--junitxml={report}",
+            ],
+            cwd=Path(__file__).parents[2],
+            env=environment,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+        )
+>       assert completed.returncode == 1
+E       assert 2 == 1
+E        +  where 2 = CompletedProcess(args=['D:\\dianzi-ga-checkpoint-review-1\\backend\\.venv\\Scripts\\python.exe', '-m', 'pytest', '--no...: ...\n!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n1 error in 0.92s\n", stderr='').returncode
+
+tests\contract\test_r01_quality_checks.py:201: AssertionError
+__ test_default_auth_routes_are_registered_with_honest_missing_dependencies ___
+
+    def test_default_auth_routes_are_registered_with_honest_missing_dependencies() -> None:
+        client = TestClient(create_application())
+        assert client.get("/auth/me").status_code == 401
+        response = client.post(
+            "/auth/login",
+            json={"username": "analyst", "password": "synthetic"},
+            headers={"origin": "http://localhost:5173"},
+        )
+>       assert response.status_code == 503
+E       assert 401 == 503
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests\contract\test_t40_auth_routes.py:76: AssertionError
+__ test_default_application_registers_authentication_without_false_readiness __
+
+    def test_default_application_registers_authentication_without_false_readiness() -> None:
+        client = TestClient(create_application(settings=ApplicationSettings(app_env="test")))
+        assert client.get("/v1/auth/me").status_code == 401
+        response = client.get("/v1/health/ready")
+        assert response.status_code == 503
+>       assert response.json()["status"] == "not_ready"
+E       AssertionError: assert 'degraded' == 'not_ready'
+E         
+E         - not_ready
+E         + degraded
+
+tests\security\test_r01_http_authentication.py:38: AssertionError
+______ test_payload_scope_digest_legacy_and_change_reference_are_checked ______
+self = <sqlalchemy.engine.base.Connection object at 0x000001D9E9D68500>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x000001D9EA206CF0>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x000001D9E9D53B60>
+statement = <sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x000001D9E9D51D30>
+parameters = [{'change_id': '[redacted test credential]', 'change_type': '[redacted test credential]', 'created_at': datetime.datetime(2026, 10, 15, 4, 0, tzinfo=datetime.timezone.utc), 'entity_ids': Jsonb([]), ...}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=[redacted connection credential] port=25432 user=[redacted connection credential] database=test_dianzi_ga_checkpoint_review_20261015) at 0x1d9e9b310d0>
+query = 'INSERT INTO change_events (change_id, scope_key, epoch, change_type, entity_ids, payload, created_at) VALUES (%(chang...BIGINT, %(change_type)s::VARCHAR, %(entity_ids)s::JSONB, %(payload)s::JSONB, %(created_at)s::TIMESTAMP WITH TIME ZONE)'
+params = {'change_id': '[redacted test credential]', 'change_type': '[redacted test credential]', 'created_at': datetime.datetime(2026, 10, 15, 4, 0, tzinfo=datetime.timezone.utc), 'entity_ids': Jsonb([]), ...}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.UniqueViolation: duplicate key value violates unique constraint "uq_change_scope_epoch"
+E           DETAIL:  Key (scope_key, epoch)=([redacted test credential], 1) already exists.
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: UniqueViolation
+
+The above exception was the direct cause of the following exception:
+
+migrated_engine = Engine(postgresql+psycopg://[redacted connection credential]:***@[redacted connection credential]:25432/test_dianzi_ga_checkpoint_review_20261015)
+
+    def test_payload_scope_digest_legacy_and_change_reference_are_checked(migrated_engine) -> None:
+        job_id = create_job(migrated_engine)
+        with Session(migrated_engine) as session, session.begin():
+            assert read_job_payload(session, job_id, None) == b"{}"
+            with pytest.raises(JobPayloadUnavailableError, match="scope_denied"):
+                read_job_payload(session, job_id, "other")
+            session.execute(
+                update(job_payloads).where(job_payloads.c.job_id == job_id).values(payload=b"bad")
+            )
+            with pytest.raises(JobPayloadUnavailableError, match="digest_mismatch"):
+                read_job_payload(session, job_id, None)
+            session.execute(
+                update(job_runs).where(job_runs.c.job_id == job_id).values(payload_ref="f" * 64)
+            )
+            with pytest.raises(JobPayloadUnavailableError, match="legacy_job_payload_unavailable"):
+                read_job_payload(session, job_id, None)
+            change_id = str(uuid4())
+            encoded = b'{"change":"safe"}'
+>           session.execute(
+                insert(change_events).values(
+                    change_id=change_id,
+                    scope_key="[redacted test credential]",
+                    epoch=1,
+                    change_type="[redacted test credential]",
+                    entity_ids=[],
+                    payload={"change": "safe"},
+                    created_at=NOW,
+                )
+            )
+
+tests\integration\test_r03_jobs_pg.py:226: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2473: in execute
+    return self._execute_internal(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2373: in _execute_internal
+    result = conn.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=[redacted connection credential] port=25432 user=[redacted connection credential] database=test_dianzi_ga_checkpoint_review_20261015) at 0x1d9e9b310d0>
+query = 'INSERT INTO change_events (change_id, scope_key, epoch, change_type, entity_ids, payload, created_at) VALUES (%(chang...BIGINT, %(change_type)s::VARCHAR, %(entity_ids)s::JSONB, %(payload)s::JSONB, %(created_at)s::TIMESTAMP WITH TIME ZONE)'
+params = {'change_id': '[redacted test credential]', 'change_type': '[redacted test credential]', 'created_at': datetime.datetime(2026, 10, 15, 4, 0, tzinfo=datetime.timezone.utc), 'entity_ids': Jsonb([]), ...}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.IntegrityError: (psycopg.errors.UniqueViolation) duplicate key value violates unique constraint "uq_change_scope_epoch"
+E           DETAIL:  Key (scope_key, epoch)=([redacted test credential], 1) already exists.
+E           [SQL: INSERT INTO change_events (change_id, scope_key, epoch, change_type, entity_ids, payload, created_at) VALUES (%(change_id)s::VARCHAR, %(scope_key)s::VARCHAR, %(epoch)s::BIGINT, %(change_type)s::VARCHAR, %(entity_ids)s::JSONB, %(payload)s::JSONB, %(created_at)s::TIMESTAMP WITH TIME ZONE)]
+E           [parameters: {'change_id': '[redacted test credential]', 'scope_key': '[redacted test credential]', 'epoch': 1, 'change_type': '[redacted test credential]', 'entity_ids': Jsonb([]), 'payload': Jsonb({'change': 'safe'}), 'created_at': datetime.datetime(2026, 10, 15, 4, 0, tzinfo=datetime.timezone.utc)}]
+E           (Background on this error at: https://sqlalche.me/e/21/gkpj)
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: IntegrityError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\dianzi-ga-checkpoint-review-1\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/integration/test_r02_auth_state.py::test_issue_read_revoke_across_two_independent_processes
+  tests\integration\test_r02_auth_state.py:145: PytestWarning: record_property is incompatible with junit_family 'xunit2' (use 'legacy' or 'xunit1')
+    def test_issue_read_revoke_across_two_independent_processes(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\dianzi\reports\runs\recovery_ga_checkpoint_review_1_20261015\pg_replay.xml -
+=========================== short test summary info ===========================
+FAILED tests/contract/test_r01_quality_checks.py::test_failed_pytest_case_redacts_connection_in_terminal_and_junit
+FAILED tests/contract/test_t40_auth_routes.py::test_default_auth_routes_are_registered_with_honest_missing_dependencies
+FAILED tests/security/test_r01_http_authentication.py::test_default_application_registers_authentication_without_false_readiness
+FAILED tests/integration/test_r03_jobs_pg.py::test_payload_scope_digest_legacy_and_change_reference_are_checked
+ERROR tests/integration/test_r03_cursor_persistence.py::test_revision_cursor_receipt_survive_session_restart_and_resume_frozen_window
+ERROR tests/integration/test_r03_cursor_persistence.py::test_failed_second_entry_rolls_back_revision_cursor_and_receipt_even_when_caught[false]
+ERROR tests/integration/test_r03_cursor_persistence.py::test_failed_second_entry_rolls_back_revision_cursor_and_receipt_even_when_caught[exception]
+ERROR tests/integration/test_r03_cursor_persistence.py::test_failed_second_entry_rolls_back_revision_cursor_and_receipt_even_when_caught[missing_reference]
+ERROR tests/integration/test_r03_cursor_persistence.py::test_missing_entry_identity_prevents_any_callback_and_cursor_advance
+ERROR tests/integration/test_r03_cursor_persistence.py::test_durable_same_source_scope_recovery_job_allows_page_advance
+ERROR tests/integration/test_r03_cursor_persistence.py::test_unrecoverable_or_foreign_job_rolls_back_page_and_job[wrong_source]
+ERROR tests/integration/test_r03_cursor_persistence.py::test_unrecoverable_or_foreign_job_rolls_back_page_and_job[wrong_entry]
+ERROR tests/integration/test_r03_cursor_persistence.py::test_unrecoverable_or_foreign_job_rolls_back_page_and_job[wrong_tenant]
+ERROR tests/integration/test_r03_cursor_persistence.py::test_unrecoverable_or_foreign_job_rolls_back_page_and_job[missing_payload]
+ERROR tests/integration/test_r03_cursor_persistence.py::test_unrecoverable_or_foreign_job_rolls_back_page_and_job[wrong_digest]
+ERROR tests/integration/test_r03_cursor_persistence.py::test_unrecoverable_or_foreign_job_rolls_back_page_and_job[cancelled]
+ERROR tests/integration/test_r03_cursor_persistence.py::test_duplicate_final_page_reuses_receipt_then_new_window_changes_generation
+ERROR tests/integration/test_r03_cursor_persistence.py::test_stale_input_and_same_owner_old_generation_cannot_commit_or_renew
+ERROR tests/integration/test_r03_cursor_persistence.py::test_lease_expiring_during_callback_rolls_back_saved_revision
+ERROR tests/integration/test_r03_cursor_persistence.py::test_two_workers_cannot_claim_same_source_stream
+ERROR tests/integration/test_r03_cursor_persistence.py::test_backfill_has_independent_cursor_and_never_changes_live_watermark
+ERROR tests/integration/test_r03_cursor_persistence.py::test_configured_source_scope_controls_claim_not_request_scope[scope0]
+ERROR tests/integration/test_r03_cursor_persistence.py::test_configured_source_scope_controls_claim_not_request_scope[scope1]
+ERROR tests/integration/test_r03_cursor_persistence.py::test_payload_cannot_reassign_source_or_tenant_scope
+ERROR tests/integration/test_r03_cursor_persistence.py::test_malformed_persisted_cursor_envelope_is_rejected[envelope0]
+ERROR tests/integration/test_r03_cursor_persistence.py::test_malformed_persisted_cursor_envelope_is_rejected[envelope1]
+ERROR tests/integration/test_r03_cursor_persistence.py::test_malformed_persisted_cursor_envelope_is_rejected[envelope2]
+ERROR tests/integration/test_r03_cursor_persistence.py::test_malformed_persisted_cursor_envelope_is_rejected[envelope3]
+ERROR tests/integration/test_r03_cursor_persistence.py::test_malformed_persisted_cursor_envelope_is_rejected[envelope4]
+ERROR tests/integration/test_r03_cursor_persistence.py::test_existing_raw_cursor_keeps_unfinished_window_during_takeover
+ERROR tests/integration/test_r03_cursor_persistence.py::test_completed_window_replay_and_overlap_revision_keep_history_without_duplicates
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_changed_replay_conflicts_without_callback_or_state_change[entry_id]
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_changed_replay_conflicts_without_callback_or_state_change[unknown_field]
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_changed_replay_conflicts_without_callback_or_state_change[entry_order]
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_changed_replay_conflicts_without_callback_or_state_change[watermark]
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_changed_replay_conflicts_without_callback_or_state_change[completion]
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_changed_replay_conflicts_without_callback_or_state_change[output]
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_equivalent_key_order_and_utc_replay_is_callback_free_across_sessions
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_null_legacy_receipt_fails_closed_without_callback_and_checks_lease_first
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_unfinished_legacy_window_without_tracking_does_not_guess_empty_recovery[legacy0]
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_unfinished_legacy_window_without_tracking_does_not_guess_empty_recovery[legacy1]
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_only_scheduled_recoverable_states_with_remaining_attempts_can_advance[queued]
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_only_scheduled_recoverable_states_with_remaining_attempts_can_advance[retry_wait]
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_only_scheduled_recoverable_states_with_remaining_attempts_can_advance[running]
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_unrecoverable_or_exhausted_nonterminal_references_roll_back_page[exhausted_queued]
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_unrecoverable_or_exhausted_nonterminal_references_roll_back_page[exhausted_running]
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_unrecoverable_or_exhausted_nonterminal_references_roll_back_page[missing_schedule]
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_unrecoverable_or_exhausted_nonterminal_references_roll_back_page[missing_lease]
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_unrecoverable_or_exhausted_nonterminal_references_roll_back_page[missing_delivery]
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_final_page_rechecks_prior_job_after_actual_permanent_failure_and_takeover
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_same_transaction_later_callback_cannot_make_earlier_reference_terminal
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_reference_limit_rejects_entire_page_and_keeps_prior_tracking
+ERROR tests/integration/test_r03_cursor_review_fixes.py::test_completed_window_tracking_does_not_recheck_terminal_jobs_from_old_history
+======= 4 failed, 454 passed, 2 warnings, 49 errors in 60.28s (0:01:00) =======
