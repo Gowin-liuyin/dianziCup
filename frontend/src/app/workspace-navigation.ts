@@ -32,11 +32,19 @@ export function readDocumentSelection(hash: string): { documentId: string; revis
   return documentId === undefined ? null : { documentId: documentId.toLowerCase(), revisionId: match?.[2]?.toLowerCase() ?? null };
 }
 
+/** 图谱只接受一个事件UUID；租户与可见范围仍由服务端会话确定。 */
+export function readGraphSelection(hash: string): { eventId: string } | null {
+  const match = /^#graph\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(hash);
+  const eventId = match?.[1];
+  return eventId === undefined ? null : { eventId: eventId.toLowerCase() };
+}
+
 /** Hash 导航仅表示页面，不持久化私有数据；未知页面保留可解释的返回路径。 */
 export function readWorkspacePage(hash: string): WorkspacePage | "missing" {
   const page = hash.replace(/^#/, "");
   if (!page || page === "main-content") return "runtime";
   if (readEventSelection(hash) !== null) return "events";
   if (readDocumentSelection(hash) !== null) return "documents";
+  if (readGraphSelection(hash) !== null) return "graph";
   return isWorkspacePage(page) ? page : "missing";
 }
