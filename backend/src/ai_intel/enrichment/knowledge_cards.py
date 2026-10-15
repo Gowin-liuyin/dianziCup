@@ -3,9 +3,36 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
+from uuid import UUID
 
-KNOWLEDGE_CARDS_VERSION = "knowledge-cards-1.0.0"
-VERIFICATION_LEVELS = ("author_reported", "team_reproduced", "rule_inferred_for_asset")
+from ai_intel.api.document_contracts import ContentCoverage, DocumentKindFilter
+from ai_intel.api.knowledge_contracts import DataMode
+from ai_intel.infrastructure.models.generation import AttemptMetadata
+
+KNOWLEDGE_CARDS_VERSION = "knowledge-cards-1.1.0"
+VERIFICATION_LEVELS = ("unknown", "author_reported", "team_reproduced", "rule_inferred_for_asset")
+PAPER_FIELDS = (
+    "risk_mechanism",
+    "attacker_capability",
+    "input_path",
+    "model_or_task",
+    "tool_permissions",
+    "author_validation_environment",
+    "conclusion",
+    "limitations",
+)
+PUBLICATION_FIELDS = (
+    "issuer",
+    "document_number",
+    "version_label",
+    "publication_status",
+    "published_at",
+    "effective_at",
+    "scope",
+    "clause_text",
+    "summary",
+)
 
 
 class KnowledgeCardError(RuntimeError):
@@ -73,4 +100,64 @@ def verification_label(author_claimed: bool, team_reproduced: bool) -> str:
         return "team_reproduced"
     if author_claimed:
         return "author_reported"
-    return "rule_inferred_for_asset"
+    return "unknown"
+
+
+@dataclass(frozen=True)
+class KnowledgeCardCitation:
+    """程序核验过的原文子片段；定位通过不表示语义支持已经核验。"""
+
+    document_id: UUID
+    revision_id: UUID
+    revision_number: int
+    evidence_id: UUID
+    block_id: UUID
+    start_offset: int
+    end_offset: int
+    quote_text: str
+    quote_sha256: str
+    source_span_sha256: str
+    locator_kind: str
+    page_number: int | None
+    json_pointer: str | None
+
+
+@dataclass(frozen=True)
+class KnowledgeCardValue:
+    """模型值与来源引文分开保存；值可以是改写，不能当作原文或已确认事实。"""
+
+    value: str
+    citations: tuple[KnowledgeCardCitation, ...]
+    origin: Literal["model_hypothesis"] = "model_hypothesis"
+
+
+@dataclass(frozen=True)
+class KnowledgeCardField:
+    """缺失和冲突均保留；每个字段绑定固定原文版本，未知不生成默认值。"""
+
+    field_name: str
+    document_id: UUID
+    revision_id: UUID
+    revision_number: int
+    proposed_values: tuple[KnowledgeCardValue, ...]
+    status: Literal["unknown", "candidate", "conflict"]
+    semantic_support: Literal["unverified"] = "unverified"
+
+
+@dataclass(frozen=True)
+class KnowledgeCardDraft:
+    """内部待审候选，调用方后续持久化到既有PG账本；本对象不是业务存储。"""
+
+    document_id: UUID
+    revision_id: UUID
+    revision_number: int
+    document_kind: DocumentKindFilter
+    fields: tuple[KnowledgeCardField, ...]
+    content_coverage: ContentCoverage
+    parse_status: str
+    data_mode: DataMode
+    limitations: tuple[str, ...]
+    attempts: tuple[AttemptMetadata, ...]
+    extractor_version: str = KNOWLEDGE_CARDS_VERSION
+    confirmation_status: Literal["awaiting_review"] = "awaiting_review"
+    verification_level: Literal["unknown"] = "unknown"

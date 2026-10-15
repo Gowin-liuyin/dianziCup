@@ -1,0 +1,26 @@
+reports/tasks\R07-model-fields-two-root-causes-fix.md:5:本轮是实现者修复，不是独立评审。输入为既有真实 `GenerationClient`、服务选定的修订/块与来源版本；输出仍为固定 `ModelFieldResult` 四维尝试和 `MODEL_HYPOTHESIS` / `PENDING` 候选。无公共类型、schema、迁移、配置、依赖、worker、API、公共状态、金标、阈值或分母改动，无 push。没有读取真实凭据、发出外部请求、访问资产或执行 PoC。
+reports/tasks\R07-model-fields.md:11:`generate_model_field_attempts(context, documents, client, *, budget_authorized, content_is_private, egress_granted, total_output_token_budget=4096) -> ModelFieldResult`。`context` 与 `documents` 使用冻结 `EnrichmentContext/EnrichmentDocument`，服务端负责选择认证可见、有效且固定的 revision。`ModelFieldResult.attempts` 固定按 ATLAS、versions、literature、poc 返回四个 `DimensionAttempt`；`model_attempts` 原样保存既有 `AttemptMetadata`。主控应把它们记入自己的 PG 作业轨迹，不把本地结果当业务状态权威。
+backend/tests\unit\test_r07_model_field_root_causes.py:20:from ai_intel.enrichment.model_fields import generate_model_field_attempts
+backend/tests\unit\test_r07_model_field_root_causes.py:260:    result = generate_model_field_attempts(
+backend/tests\unit\test_r07_model_fields.py:15:from ai_intel.enrichment.model_fields import generate_model_field_attempts
+backend/tests\unit\test_r07_model_fields.py:232:    result = generate_model_field_attempts(
+backend/tests\unit\test_r07_model_fields.py:248:    result = generate_model_field_attempts(
+backend/tests\unit\test_r07_model_fields.py:291:    missing = generate_model_field_attempts(
+backend/tests\unit\test_r07_model_fields.py:301:    empty = generate_model_field_attempts(
+backend/tests\unit\test_r07_model_fields.py:506:        generate_model_field_attempts(
+backend/tests\unit\test_r07_model_fields.py:567:        generate_model_field_attempts(
+backend/tests\unit\test_r07_model_fields.py:583:        generate_model_field_attempts(
+backend/tests\security\test_r07_model_field_security.py:17:from ai_intel.enrichment.model_fields import generate_model_field_attempts
+backend/tests\security\test_r07_model_field_security.py:51:    result = generate_model_field_attempts(
+backend/tests\security\test_r07_model_field_security.py:70:        generate_model_field_attempts(
+backend/tests\security\test_r07_model_field_security.py:108:        generate_model_field_attempts(
+backend/tests\security\test_r07_model_field_security.py:125:        generate_model_field_attempts(
+backend/src\ai_intel\enrichment\model_fields.py:46:FIELD_DIMENSIONS: tuple[DimensionName, ...] = ("atlas", "versions", "literature", "poc")
+backend/src\ai_intel\enrichment\model_fields.py:105:class ModelFieldResult:
+backend/src\ai_intel\enrichment\model_fields.py:140:) -> ModelFieldResult:
+backend/src\ai_intel\enrichment\model_fields.py:142:    return ModelFieldResult(
+backend/src\ai_intel\enrichment\model_fields.py:147:            for dimension in FIELD_DIMENSIONS
+backend/src\ai_intel\enrichment\model_fields.py:233:def generate_model_field_attempts(
+backend/src\ai_intel\enrichment\model_fields.py:242:) -> ModelFieldResult:
+backend/src\ai_intel\enrichment\model_fields.py:281:    for dimension in FIELD_DIMENSIONS:
+backend/src\ai_intel\enrichment\model_fields.py:348:    return ModelFieldResult(tuple(attempts), tuple(metadata))

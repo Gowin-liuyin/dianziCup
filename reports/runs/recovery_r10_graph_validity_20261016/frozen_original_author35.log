@@ -1,0 +1,448 @@
+F.................F......FFFFFFFF.F                                      [100%]
+================================== FAILURES ===================================
+_ test_six_relations_are_derived_from_published_pg_claims_and_preserve_reverse_support _
+
+graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_adf509ef0dd44c7d82743e5f3a74137b+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-695/test_six_relations_are_derived0')
+
+    def test_six_relations_are_derived_from_published_pg_claims_and_preserve_reverse_support(
+        graph_engine, tmp_path
+    ):
+        event_id = uuid4()
+        values = [VERSION, ATLAS, paper_value(graph_engine, tmp_path / "paper"), VERSION]
+        submissions = [
+            publish_fact(graph_engine, tmp_path / str(index), event_id, value)
+            for index, value in enumerate(values)
+        ]
+        publish_event(graph_engine, event_id, submissions)
+        graph = read_graph(graph_engine, event_id)
+>       assert {edge.relation_type for edge in graph.edges} == {
+            "same_event",
+            "affects_component_version",
+            "mapped_atlas",
+            "related_paper",
+            "remediated_by",
+            "component_version_vulnerability",
+        }
+E       AssertionError: assert set() == {'affects_com... 'same_event'}
+E         
+E         Extra items in the right set:
+E         'same_event'
+E         'component_version_vulnerability'
+E         'affects_component_version'
+E         'mapped_atlas'
+E         'remediated_by'
+E         'related_paper'
+E         Use -v to get more diff
+
+..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py:182: AssertionError
+______ test_same_names_in_distinct_ecosystems_and_ranges_remain_separate ______
+
+graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_0ca7af4b41594298bd2ed6a0af2594b9+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-695/test_same_names_in_distinct_ec0')
+
+    def test_same_names_in_distinct_ecosystems_and_ranges_remain_separate(graph_engine, tmp_path):
+        event_id = uuid4()
+        values = [
+            VERSION,
+            {**VERSION, "ecosystem": "npm", "scheme": "semver"},
+            {
+                **VERSION,
+                "raw_expression": ">=2,<2.4",
+                "intervals": [{"introduced": "2", "fixed": "2.4"}],
+            },
+        ]
+        submissions = [
+            publish_fact(graph_engine, tmp_path / str(index), event_id, value)
+            for index, value in enumerate(values)
+        ]
+        publish_event(graph_engine, event_id, submissions)
+        components = [
+            node
+            for node in read_graph(graph_engine, event_id).nodes
+            if node.kind == "component_version"
+        ]
+>       assert len({node.id for node in components}) == 3
+E       assert 0 == 3
+E        +  where 0 = len(set())
+
+..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py:320: AssertionError
+____________ test_unknown_version_and_absent_action_preserve_gaps _____________
+
+graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_87be89c8b9c940a0a15963e6f9b32f47+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-695/test_unknown_version_and_absen0')
+
+    def test_unknown_version_and_absent_action_preserve_gaps(graph_engine, tmp_path):
+        event_id = uuid4()
+        submission = publish_fact(
+            graph_engine,
+            tmp_path,
+            event_id,
+            {**VERSION, "comparison_support": "unknown", "vendor_fix": None, "mitigations": []},
+        )
+        publish_event(graph_engine, event_id, [submission])
+        graph = read_graph(graph_engine, event_id)
+>       assert {edge.relation_type for edge in graph.edges} == {"same_event"}
+E       AssertionError: assert set() == {'same_event'}
+E         
+E         Extra items in the right set:
+E         'same_event'
+E         Use -v to get more diff
+
+..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py:390: AssertionError
+_ test_current_version_changed_withdrawal_and_truncation_do_not_resurrect_edges _
+
+graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_716e0bcf2e8047f48f97ecd7c3b6f3a5+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-695/test_current_version_changed_w0')
+
+    def test_current_version_changed_withdrawal_and_truncation_do_not_resurrect_edges(
+        graph_engine, tmp_path
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        graph = read_graph(graph_engine, event_id)
+>       assert len(graph.edges) == 5
+E       AssertionError: assert 0 == 5
+E        +  where 0 = len(())
+E        +    where () = GraphSnapshot(schema_version=1, event_id=UUID('c43d0056-2404-4286-a120-0a3896af90b1'), business_version=1, rule_versio...n='no_current_supported_relation')), content_sha256='d9b5bfaae8718c9a04023384a3e02196df11afab7dc4b65e0965f7db1f376e52').edges
+
+..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py:401: AssertionError
+_ test_private_graph_and_nested_sources_do_not_cross_tenants_or_promote_scope _
+
+graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_e920b8365f67472e81c0aba48f84762b+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-695/test_private_graph_and_nested_0')
+
+    def test_private_graph_and_nested_sources_do_not_cross_tenants_or_promote_scope(
+        graph_engine, tmp_path
+    ):
+        event_id = uuid4()
+        private = VisibilityScope(visibility="tenant", tenant_id="owner")
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION, scope=private)
+        publish_event(graph_engine, event_id, [submission], scope=private)
+        owner = AccessScope.for_authenticated_user("owner-user", "owner", Role.ANALYST)
+        assert all(
+            node.scope == private for node in read_graph(graph_engine, event_id, scope=owner).nodes
+        )
+        for tenant, role in [("other", Role.ANALYST), ("owner", Role.VIEWER)]:
+            with pytest.raises(CrossTenantAccessError):
+                read_graph(
+                    graph_engine,
+                    event_id,
+                    scope=AccessScope.for_authenticated_user("fixture-user", tenant, role),
+                )
+        public_id = UUID(seed_event(graph_engine, [submission.revision_id.value]))
+        assert read_graph(graph_engine, public_id).edges == ()
+        with graph_engine.begin() as connection:
+            connection.execute(
+                update(claims)
+                .where(claims.c.claim_id == submission.record.claim_id.value)
+                .values(subject=str(public_id))
+            )
+        private_edges = read_graph(graph_engine, public_id, scope=owner).edges
+>       assert private_edges and all(edge.scope == private for edge in private_edges)
+E       assert (())
+
+..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py:467: AssertionError
+_ test_every_parent_acl_is_rechecked_and_private_support_stays_private[source] _
+
+graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_c48c4b45c92c409cb69ea14eb76d5708+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-695/test_every_parent_acl_is_reche0')
+private_layer = 'source'
+
+    @pytest.mark.parametrize("private_layer", ["source", "document", "revision", "evidence", "claim"])
+    def test_every_parent_acl_is_rechecked_and_private_support_stays_private(
+        graph_engine, tmp_path, private_layer
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        with graph_engine.begin() as connection:
+            if private_layer == "source":
+                connection.execute(
+                    text(
+                        "UPDATE sources SET visibility='tenant', tenant_id='owner' WHERE source_id=:id"
+                    ),
+                    {"id": submission.source_id.value},
+                )
+            else:
+                relation, predicate = {
+                    "document": (
+                        documents,
+                        documents.c.source_id == submission.source_id.value,
+                    ),
+                    "revision": (
+                        document_revisions,
+                        document_revisions.c.revision_id == submission.revision_id.value,
+                    ),
+                    "evidence": (
+                        evidence,
+                        evidence.c.evidence_id == submission.evidence_links[0].evidence_id.value,
+                    ),
+                    "claim": (claims, claims.c.claim_id == submission.record.claim_id.value),
+                }[private_layer]
+                connection.execute(
+                    update(relation).where(predicate).values(visibility="tenant", tenant_id="owner")
+                )
+        assert read_graph(graph_engine, event_id).edges == ()
+        owner = AccessScope.for_authenticated_user("owner-user", "owner", Role.ANALYST)
+        result = read_graph(graph_engine, event_id, scope=owner)
+>       assert result.edges and all(edge.scope.visibility == "tenant" for edge in result.edges)
+E       AssertionError: assert (())
+E        +  where () = GraphSnapshot(schema_version=1, event_id=UUID('13061e60-3164-495e-9508-94fd2e2a5b6a'), business_version=1, rule_versio...n='no_current_supported_relation')), content_sha256='fba599b29156c2ec1e4d13eb08b7c4838d66e014440acebef71261f67475b5bb').edges
+
+..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py:507: AssertionError
+_ test_every_parent_acl_is_rechecked_and_private_support_stays_private[document] _
+
+graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_b16d4e3ae8064791a0b765da38642249+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-695/test_every_parent_acl_is_reche1')
+private_layer = 'document'
+
+    @pytest.mark.parametrize("private_layer", ["source", "document", "revision", "evidence", "claim"])
+    def test_every_parent_acl_is_rechecked_and_private_support_stays_private(
+        graph_engine, tmp_path, private_layer
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        with graph_engine.begin() as connection:
+            if private_layer == "source":
+                connection.execute(
+                    text(
+                        "UPDATE sources SET visibility='tenant', tenant_id='owner' WHERE source_id=:id"
+                    ),
+                    {"id": submission.source_id.value},
+                )
+            else:
+                relation, predicate = {
+                    "document": (
+                        documents,
+                        documents.c.source_id == submission.source_id.value,
+                    ),
+                    "revision": (
+                        document_revisions,
+                        document_revisions.c.revision_id == submission.revision_id.value,
+                    ),
+                    "evidence": (
+                        evidence,
+                        evidence.c.evidence_id == submission.evidence_links[0].evidence_id.value,
+                    ),
+                    "claim": (claims, claims.c.claim_id == submission.record.claim_id.value),
+                }[private_layer]
+                connection.execute(
+                    update(relation).where(predicate).values(visibility="tenant", tenant_id="owner")
+                )
+        assert read_graph(graph_engine, event_id).edges == ()
+        owner = AccessScope.for_authenticated_user("owner-user", "owner", Role.ANALYST)
+        result = read_graph(graph_engine, event_id, scope=owner)
+>       assert result.edges and all(edge.scope.visibility == "tenant" for edge in result.edges)
+E       AssertionError: assert (())
+E        +  where () = GraphSnapshot(schema_version=1, event_id=UUID('478a2390-546e-4d54-8e52-43f184096397'), business_version=1, rule_versio...n='no_current_supported_relation')), content_sha256='b26764bdaa13dc28c522f1ba56646bcf08f906b4009453957f4697033b573b02').edges
+
+..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py:507: AssertionError
+_ test_every_parent_acl_is_rechecked_and_private_support_stays_private[revision] _
+
+graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_d4f72994b5b942698d2cb5ab2d70bac7+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-695/test_every_parent_acl_is_reche2')
+private_layer = 'revision'
+
+    @pytest.mark.parametrize("private_layer", ["source", "document", "revision", "evidence", "claim"])
+    def test_every_parent_acl_is_rechecked_and_private_support_stays_private(
+        graph_engine, tmp_path, private_layer
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        with graph_engine.begin() as connection:
+            if private_layer == "source":
+                connection.execute(
+                    text(
+                        "UPDATE sources SET visibility='tenant', tenant_id='owner' WHERE source_id=:id"
+                    ),
+                    {"id": submission.source_id.value},
+                )
+            else:
+                relation, predicate = {
+                    "document": (
+                        documents,
+                        documents.c.source_id == submission.source_id.value,
+                    ),
+                    "revision": (
+                        document_revisions,
+                        document_revisions.c.revision_id == submission.revision_id.value,
+                    ),
+                    "evidence": (
+                        evidence,
+                        evidence.c.evidence_id == submission.evidence_links[0].evidence_id.value,
+                    ),
+                    "claim": (claims, claims.c.claim_id == submission.record.claim_id.value),
+                }[private_layer]
+                connection.execute(
+                    update(relation).where(predicate).values(visibility="tenant", tenant_id="owner")
+                )
+        assert read_graph(graph_engine, event_id).edges == ()
+        owner = AccessScope.for_authenticated_user("owner-user", "owner", Role.ANALYST)
+        result = read_graph(graph_engine, event_id, scope=owner)
+>       assert result.edges and all(edge.scope.visibility == "tenant" for edge in result.edges)
+E       AssertionError: assert (())
+E        +  where () = GraphSnapshot(schema_version=1, event_id=UUID('0e74162e-310e-4495-aba1-1665328d426c'), business_version=1, rule_versio...n='no_current_supported_relation')), content_sha256='cbe4d810bce27d23efe525558912c735c73ae72324a37eb406973fe174989b32').edges
+
+..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py:507: AssertionError
+_ test_every_parent_acl_is_rechecked_and_private_support_stays_private[evidence] _
+
+graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_924260640ed644acba7fcedb2e026936+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-695/test_every_parent_acl_is_reche3')
+private_layer = 'evidence'
+
+    @pytest.mark.parametrize("private_layer", ["source", "document", "revision", "evidence", "claim"])
+    def test_every_parent_acl_is_rechecked_and_private_support_stays_private(
+        graph_engine, tmp_path, private_layer
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        with graph_engine.begin() as connection:
+            if private_layer == "source":
+                connection.execute(
+                    text(
+                        "UPDATE sources SET visibility='tenant', tenant_id='owner' WHERE source_id=:id"
+                    ),
+                    {"id": submission.source_id.value},
+                )
+            else:
+                relation, predicate = {
+                    "document": (
+                        documents,
+                        documents.c.source_id == submission.source_id.value,
+                    ),
+                    "revision": (
+                        document_revisions,
+                        document_revisions.c.revision_id == submission.revision_id.value,
+                    ),
+                    "evidence": (
+                        evidence,
+                        evidence.c.evidence_id == submission.evidence_links[0].evidence_id.value,
+                    ),
+                    "claim": (claims, claims.c.claim_id == submission.record.claim_id.value),
+                }[private_layer]
+                connection.execute(
+                    update(relation).where(predicate).values(visibility="tenant", tenant_id="owner")
+                )
+        assert read_graph(graph_engine, event_id).edges == ()
+        owner = AccessScope.for_authenticated_user("owner-user", "owner", Role.ANALYST)
+        result = read_graph(graph_engine, event_id, scope=owner)
+>       assert result.edges and all(edge.scope.visibility == "tenant" for edge in result.edges)
+E       AssertionError: assert (())
+E        +  where () = GraphSnapshot(schema_version=1, event_id=UUID('e8e6ab50-aaa0-49db-8ae8-0f1739b66529'), business_version=1, rule_versio...n='no_current_supported_relation')), content_sha256='f9bad827a98485c473dbd26cd81e0cb4cfed2fc25b8ce4681d462421f4416bbf').edges
+
+..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py:507: AssertionError
+_ test_every_parent_acl_is_rechecked_and_private_support_stays_private[claim] _
+
+graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_f165beb196f943e693ffd673f9de523b+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-695/test_every_parent_acl_is_reche4')
+private_layer = 'claim'
+
+    @pytest.mark.parametrize("private_layer", ["source", "document", "revision", "evidence", "claim"])
+    def test_every_parent_acl_is_rechecked_and_private_support_stays_private(
+        graph_engine, tmp_path, private_layer
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        with graph_engine.begin() as connection:
+            if private_layer == "source":
+                connection.execute(
+                    text(
+                        "UPDATE sources SET visibility='tenant', tenant_id='owner' WHERE source_id=:id"
+                    ),
+                    {"id": submission.source_id.value},
+                )
+            else:
+                relation, predicate = {
+                    "document": (
+                        documents,
+                        documents.c.source_id == submission.source_id.value,
+                    ),
+                    "revision": (
+                        document_revisions,
+                        document_revisions.c.revision_id == submission.revision_id.value,
+                    ),
+                    "evidence": (
+                        evidence,
+                        evidence.c.evidence_id == submission.evidence_links[0].evidence_id.value,
+                    ),
+                    "claim": (claims, claims.c.claim_id == submission.record.claim_id.value),
+                }[private_layer]
+                connection.execute(
+                    update(relation).where(predicate).values(visibility="tenant", tenant_id="owner")
+                )
+        assert read_graph(graph_engine, event_id).edges == ()
+        owner = AccessScope.for_authenticated_user("owner-user", "owner", Role.ANALYST)
+        result = read_graph(graph_engine, event_id, scope=owner)
+>       assert result.edges and all(edge.scope.visibility == "tenant" for edge in result.edges)
+E       AssertionError: assert (())
+E        +  where () = GraphSnapshot(schema_version=1, event_id=UUID('6b06923d-bf50-4b13-a183-48beeda0ded6'), business_version=1, rule_versio...n='no_current_supported_relation')), content_sha256='574678de33e274e15ea4befd187dc5ebea8576ad450c4af9f926696320a04f80').edges
+
+..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py:507: AssertionError
+____ test_real_session_rest_factory_bounds_acl_errors_and_database_failure ____
+
+graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_95e0f1686a4e45349c364f44f6cc0356+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-695/test_real_session_rest_factory0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001D4F70910A0>
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x000001D4F733B240>
+
+    def test_real_session_rest_factory_bounds_acl_errors_and_database_failure(
+        graph_engine, tmp_path, monkeypatch, register_sensitive_failure_value
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        auth = AuthenticationSessionService(
+            DatabaseUserDirectory(graph_engine),
+            ("http://localhost:5173",),
+            False,
+            state_store=PgAuthenticationStateStore(graph_engine),
+        )
+        username = "fixture-r10-user-" + uuid4().hex
+        password = secrets.token_urlsafe(32)
+        register_sensitive_failure_value(SecretStr(password))
+        auth.create_precreated_user(username, password, "owner", Role.VIEWER)
+        session_token, _ = auth.login(username, password, "http://localhost:5173", uuid4().hex)
+        register_sensitive_failure_value(SecretStr(session_token))
+        app = FastAPI()
+        app.include_router(build_graph_router(lambda: auth, graph_engine), prefix="/v1")
+        path = f"/v1/events/{event_id}/graph"
+        with TestClient(app) as client:
+            assert client.get(path).status_code == 401
+            client.cookies.set(SESSION_COOKIE_NAME, session_token)
+            response = client.get(path)
+            assert response.status_code == 200 and response.json()["business_version"] == 1
+>           assert response.json()["rule_version"] == "r10-graph-1.0.0"
+E           AssertionError: assert 'r10-graph-1.1.0' == 'r10-graph-1.0.0'
+E             
+E             - r10-graph-1.0.0
+E             ?             ^
+E             + r10-graph-1.1.0
+E             ?             ^
+
+..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py:570: AssertionError
+============================== warnings summary ===============================
+..\..\..\dianzi\backend\.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\dianzi\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\r10-pg-graph\reports\runs\recovery_r10_graph_validity_20261016\frozen_original_author35.xml -
+=========================== short test summary info ===========================
+FAILED ..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py::test_six_relations_are_derived_from_published_pg_claims_and_preserve_reverse_support
+FAILED ..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py::test_same_names_in_distinct_ecosystems_and_ranges_remain_separate
+FAILED ..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py::test_unknown_version_and_absent_action_preserve_gaps
+FAILED ..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py::test_current_version_changed_withdrawal_and_truncation_do_not_resurrect_edges
+FAILED ..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py::test_private_graph_and_nested_sources_do_not_cross_tenants_or_promote_scope
+FAILED ..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py::test_every_parent_acl_is_rechecked_and_private_support_stays_private[source]
+FAILED ..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py::test_every_parent_acl_is_rechecked_and_private_support_stays_private[document]
+FAILED ..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py::test_every_parent_acl_is_rechecked_and_private_support_stays_private[revision]
+FAILED ..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py::test_every_parent_acl_is_rechecked_and_private_support_stays_private[evidence]
+FAILED ..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py::test_every_parent_acl_is_rechecked_and_private_support_stays_private[claim]
+FAILED ..\reports\runs\recovery_r10_graph_validity_20261016\original_author_cases.py::test_real_session_rest_factory_bounds_acl_errors_and_database_failure
+11 failed, 24 passed, 1 warning in 53.38s

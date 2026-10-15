@@ -1,0 +1,291 @@
+diff --git a/backend/src/ai_intel/ingestion/catalog_documents.py b/backend/src/ai_intel/ingestion/catalog_documents.py
+index 3c16e1e..9862f0b 100644
+--- a/backend/src/ai_intel/ingestion/catalog_documents.py
++++ b/backend/src/ai_intel/ingestion/catalog_documents.py
+@@ -2,6 +2,7 @@
+ 
+ from __future__ import annotations
+ 
++import hashlib
+ import json
+ from dataclasses import dataclass
+ from datetime import UTC, datetime
+@@ -19,12 +20,12 @@ from ai_intel.infrastructure.content_store import ContentStorage
+ from ai_intel.infrastructure.network import SENSITIVE_QUERY_KEYS
+ from ai_intel.ingestion.parsing.text_blocks import ParseOutcome
+ from ai_intel.ingestion.source_catalog import CATALOG_SOURCES, SourceCatalogError, SourceKind
+-from ai_intel.knowledge.models import document_revisions, documents, scope_epochs, text_blocks
++from ai_intel.knowledge.models import document_revisions, documents, scope_epochs
+ from ai_intel.knowledge.persistence_models import claims
+ from ai_intel.knowledge.revisions import (
+-    add_text_block,
+-    attach_evidence_span,
++    SourceRevisionBlock,
+     register_response_content,
++    register_source_revision_blocks,
+     save_document_revision,
+ )
+ 
+@@ -258,45 +259,29 @@ def persist_catalog_documents(
+                     source_metadata=_revision_metadata(member),
+                 )
+             )
+-            for block in member.parsed.blocks:
+-                block_id = add_text_block(
+-                    session,
+-                    saved.revision_id,
+-                    block.ordinal,
+-                    block.start_offset,
+-                    block.end_offset,
+-                    block.text,
+-                )
+-                pointer = (
+-                    block.block_type.removeprefix("field:")
+-                    if block.block_type.startswith("field:")
+-                    else None
+-                )
+-                session.execute(
+-                    update(text_blocks)
+-                    .where(text_blocks.c.block_id == block_id)
+-                    .values(
+-                        block_type="json_field" if pointer is not None else block.block_type,
+-                        page_number=block.page_number,
+-                        json_pointer=pointer,
++            register_source_revision_blocks(
++                session,
++                saved.revision_id,
++                tuple(
++                    SourceRevisionBlock(
++                        block.ordinal,
++                        block.start_offset,
++                        block.end_offset,
++                        block.text,
++                        hashlib.sha256(block.text.encode("utf-8")).hexdigest(),
++                        "json_field" if block.block_type.startswith("field:") else block.block_type,
++                        block.page_number,
++                        block.block_type.removeprefix("field:")
++                        if block.block_type.startswith("field:")
++                        else None,
+                     )
+-                )
+-                attach_evidence_span(
+-                    session,
+-                    saved.revision_id,
+-                    block.start_offset,
+-                    block.end_offset,
+-                    f"page:{block.page_number}"
+-                    if block.page_number is not None
+-                    else (pointer or f"block:{block.ordinal}"),
+-                    block.text,
+-                    False,
+-                    "public",
+-                    None,
+-                    ingested_at,
+-                    block_id=block_id,
+-                    verified_at=ingested_at,
+-                )
++                    for block in member.parsed.blocks
++                ),
++                "public",
++                None,
++                ingested_at,
++                attach_full_block_evidence=True,
++            )
+         if new_count:
+             session.execute(
+                 insert(scope_epochs)
+diff --git a/backend/src/ai_intel/ingestion/source_documents.py b/backend/src/ai_intel/ingestion/source_documents.py
+index dc427cb..3583126 100644
+--- a/backend/src/ai_intel/ingestion/source_documents.py
++++ b/backend/src/ai_intel/ingestion/source_documents.py
+@@ -42,15 +42,15 @@ from ai_intel.knowledge.models import (
+     document_revisions,
+     documents,
+     fetch_attempts,
+-    text_blocks,
+ )
+ from ai_intel.knowledge.persistence import ClaimSubmission, EvidenceLink, KnowledgeRepository
+ from ai_intel.knowledge.persistence_models import claims, event_documents, events
+ from ai_intel.knowledge.revisions import (
+-    add_text_block,
++    SourceRevisionBlock,
+     attach_evidence_span,
+     record_fetch_attempt,
+     register_response_content,
++    register_source_revision_blocks,
+     save_document_revision,
+ )
+ 
+@@ -555,23 +555,29 @@ def _persist_member(
+     event_id = str(resolved_ids[0])
+     if not saved.reused:
+         blocks: dict[str, tuple[str, TextBlock]] = {}
+-        for block in member.parsed.blocks:
+-            pointer = block.block_type.removeprefix("field:")
+-            block_id = add_text_block(
+-                session,
+-                saved.revision_id,
+-                block.ordinal,
+-                block.start_offset,
+-                block.end_offset,
+-                block.text,
+-            )
+-            session.execute(
+-                update(text_blocks)
+-                .where(text_blocks.c.block_id == block_id)
+-                .values(
+-                    block_type="json_field", page_number=block.page_number, json_pointer=pointer
++        block_ids = register_source_revision_blocks(
++            session,
++            saved.revision_id,
++            tuple(
++                SourceRevisionBlock(
++                    block.ordinal,
++                    block.start_offset,
++                    block.end_offset,
++                    block.text,
++                    hashlib.sha256(block.text.encode("utf-8")).hexdigest(),
++                    "json_field",
++                    block.page_number,
++                    block.block_type.removeprefix("field:"),
+                 )
+-            )
++                for block in member.parsed.blocks
++            ),
++            "public",
++            None,
++            ingested_at,
++            attach_full_block_evidence=False,
++        )
++        for block_id, block in zip(block_ids, member.parsed.blocks, strict=True):
++            pointer = block.block_type.removeprefix("field:")
+             blocks[pointer] = (block_id, block)
+         submissions = _fact_submissions(
+             session,
+diff --git a/backend/src/ai_intel/knowledge/revisions.py b/backend/src/ai_intel/knowledge/revisions.py
+index 44d8a2a..ca4d53c 100644
+--- a/backend/src/ai_intel/knowledge/revisions.py
++++ b/backend/src/ai_intel/knowledge/revisions.py
+@@ -53,6 +53,122 @@ class SavedRevision:
+     reused: bool
+ 
+ 
++@dataclass(frozen=True)
++class SourceRevisionBlock:
++    """A source block's complete coordinates and expected digest, before any database IO."""
++
++    ordinal: int
++    start_offset: int
++    end_offset: int
++    text: str
++    text_sha256: str
++    block_type: str
++    page_number: int | None
++    json_pointer: str | None
++
++
++def register_source_revision_blocks(
++    session: Session,
++    revision_id: str,
++    blocks: tuple[SourceRevisionBlock, ...],
++    visibility: str,
++    tenant_id: str | None,
++    created_at: datetime,
++    *,
++    attach_full_block_evidence: bool,
++) -> tuple[str, ...]:
++    """Atomically register a current source revision's blocks in bounded 500-row batches.
++
++    Full-block evidence records source text only; supporting facts still require publication
++    validation. The revision lock prevents a concurrent replacement during registration.
++    """
++    if (visibility == "tenant") != (tenant_id is not None):
++        raise TenantScopeViolation("tenant source blocks require exactly one tenant_id")
++    if visibility not in {"public", "tenant"} or created_at.utcoffset() is None:
++        raise ValueError("source blocks require a valid scope and an aware timestamp")
++    if len({block.ordinal for block in blocks}) != len(blocks):
++        raise QuoteConsistencyError("source blocks repeat an ordinal")
++    for block in blocks:
++        if (
++            block.ordinal < 0
++            or block.start_offset < 0
++            or block.end_offset - block.start_offset != len(block.text)
++            or not block.text
++            or "\x00" in block.text
++            or block.text_sha256 != hashlib.sha256(block.text.encode("utf-8")).hexdigest()
++            or not block.block_type
++            or "\x00" in block.block_type
++            or (block.json_pointer is not None and "\x00" in block.json_pointer)
++            or (block.page_number is not None and block.page_number < 1)
++        ):
++            raise QuoteConsistencyError("source block coordinates, digest or metadata are invalid")
++    block_ids = tuple(str(uuid.uuid4()) for _ in blocks)
++    with session.begin_nested():
++        revision = session.execute(
++            select(
++                document_revisions.c.visibility,
++                document_revisions.c.tenant_id,
++                document_revisions.c.is_current,
++            )
++            .where(document_revisions.c.revision_id == revision_id)
++            .with_for_update()
++        ).first()
++        if revision is None:
++            raise MissingRevisionError(revision_id)
++        if (revision[0], revision[1]) != (visibility, tenant_id):
++            raise TenantScopeViolation("source blocks scope does not match revision scope")
++        if not revision[2]:
++            raise QuoteConsistencyError("source blocks require the current revision")
++        for start in range(0, len(blocks), 500):
++            batch = tuple(
++                zip(block_ids[start : start + 500], blocks[start : start + 500], strict=True)
++            )
++            session.execute(
++                text_blocks.insert(),
++                [
++                    {
++                        "block_id": block_id,
++                        "revision_id": revision_id,
++                        "ordinal": block.ordinal,
++                        "start_offset": block.start_offset,
++                        "end_offset": block.end_offset,
++                        "text_sha256": block.text_sha256,
++                        "block_text": block.text,
++                        "block_type": block.block_type,
++                        "page_number": block.page_number,
++                        "json_pointer": block.json_pointer,
++                    }
++                    for block_id, block in batch
++                ],
++            )
++            if attach_full_block_evidence:
++                session.execute(
++                    evidence.insert(),
++                    [
++                        {
++                            "evidence_id": str(uuid.uuid4()),
++                            "revision_id": revision_id,
++                            "start_offset": block.start_offset,
++                            "end_offset": block.end_offset,
++                            "locator": f"page:{block.page_number}"
++                            if block.page_number is not None
++                            else (block.json_pointer or f"block:{block.ordinal}"),
++                            "quote": block.text,
++                            "supports_claim": False,
++                            "visibility": visibility,
++                            "tenant_id": tenant_id,
++                            "created_at": created_at,
++                            "block_id": block_id,
++                            "quote_sha256": block.text_sha256,
++                            "verified_at": created_at,
++                            "coordinate_version": "fulltext_unicode_v1",
++                        }
++                        for block_id, block in batch
++                    ],
++                )
++    return block_ids
++
++
+ def _insert_content_object(
+     session: Session, content_hash: str, size_bytes: int, created_at: datetime
+ ) -> None:
