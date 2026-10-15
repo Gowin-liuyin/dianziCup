@@ -536,13 +536,46 @@ class KnowledgeReadService:
                 )
             )
         )
+        visible_references: dict[str, set[str]] = {}
+        for name, relation, identifier_column, revision_column, required in (
+            ("claim_ids", claims, claims.c.claim_id, claims.c.source_revision_id, required_claims),
+            (
+                "reference_ids",
+                evidence,
+                evidence.c.evidence_id,
+                evidence.c.revision_id,
+                required_evidence,
+            ),
+        ):
+            visible_references[name] = set(
+                self.session.scalars(
+                    select(identifier_column)
+                    .select_from(
+                        relation.join(
+                            self._revision_join(),
+                            revision_column == document_revisions.c.revision_id,
+                        )
+                    )
+                    .where(
+                        identifier_column.in_(required),
+                        self._visible(relation),
+                        self._revision_visible(),
+                    )
+                )
+            )
         for row in rows:
             if (
-                any(item not in claim_by_id for item in row["claim_ids"])
-                or any(item not in evidence_by_id for item in row["reference_ids"])
+                any(item not in visible_references["claim_ids"] for item in row["claim_ids"])
+                or any(
+                    item not in visible_references["reference_ids"] for item in row["reference_ids"]
+                )
                 or any(item not in visible_sources for item in row["source_scope"])
             ):
                 continue
+            if any(item not in claim_by_id for item in row["claim_ids"]) or any(
+                item not in evidence_by_id for item in row["reference_ids"]
+            ):
+                raise KnowledgeProjectionError("dimension reference belongs to unrelated revision")
             citations = []
             freshness = FreshnessStatus(row["freshness"] or "unknown")
             if row["event_version"] != event_row["business_version"]:
