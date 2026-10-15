@@ -9,7 +9,7 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal, get_args
+from typing import Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, field_validator
@@ -133,19 +133,38 @@ class GenerationFailure(RuntimeError):
 
 
 def require_strict_schema(response_schema: type[BaseModel]) -> None:
-    pending: list[object] = [response_schema]
-    checked: set[type[BaseModel]] = set()
+    """检查Pydantic实际验证图，包含继承配置、容器和递归引用的定义。"""
+
+    pending: list[object] = [response_schema.__pydantic_core_schema__]
+    checked: set[int] = set()
     while pending:
         candidate = pending.pop()
-        if isinstance(candidate, type) and issubclass(candidate, BaseModel):
-            if candidate in checked:
+        if isinstance(candidate, dict):
+            if id(candidate) in checked:
                 continue
-            checked.add(candidate)
-            if candidate.model_config.get("extra") != "forbid":
+            checked.add(id(candidate))
+            kind = candidate.get("type")
+            if isinstance(kind, str) and kind in {"model", "dataclass", "typed-dict"}:
+                config = candidate.get("config", {})
+                if (
+                    not isinstance(config, dict)
+                    or candidate.get("extra_behavior", config.get("extra_fields_behavior"))
+                    != "forbid"
+                ):
+                    raise GenerationFailure("model_schema_must_forbid_extra")
+            if (
+                isinstance(kind, str)
+                and kind in {"model-fields", "dataclass-args"}
+                and candidate.get("extra_behavior", "forbid") != "forbid"
+            ):
                 raise GenerationFailure("model_schema_must_forbid_extra")
-            pending.extend(field.annotation for field in candidate.model_fields.values())
-        else:
-            pending.extend(get_args(candidate))
+            pending.extend(
+                value
+                for key, value in candidate.items()
+                if not isinstance(kind, str) or key not in {"metadata", "serialization", "config"}
+            )
+        elif isinstance(candidate, (list, tuple)):
+            pending.extend(candidate)
 
 
 def _object(value: object) -> dict[str, object]:
@@ -351,6 +370,11 @@ class GenerationClient:
             raise GenerationFailure("model_egress_policy_invalid")
         enforce_egress_policy(content_is_private, egress_granted)
         request = GenerationRequest.model_validate(request.model_dump())
+        if any(
+            self._credential.get_secret_value() in value
+            for value in (request.model_version, request.prompt_version, request.schema_version)
+        ):
+            raise GenerationFailure("model_credential_in_input")
         if request.model_version != self.approved_model:
             raise GenerationFailure("model_not_approved")
         require_strict_schema(response_schema)
