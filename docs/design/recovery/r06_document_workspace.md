@@ -54,6 +54,8 @@ strict DTO 字段/枚举/日期/安全URL/版本归属；只读请求/cursor/fil
 
 ## READ_PUBLIC 目录到检视区的共同失效（第三轮）
 
+源码冻结2f5c7ef225ce2d29da2438a4d5caa51cdc6a9231；source_freeze与末版证据见任务报告第三轮和review_fix_2_source_freeze.json。
+
 独立复核确认目录403先返回时，详情/历史晚到200仍能恢复。原资料generation/AbortController范围现提升到该工作区私有scope，让目录、详情和历史共用；目录403/401取消全部资料请求并卸载Inspector，其他资料确定失效保持原清缓存行为。搜索/上下页/回首页/重试均先取消旧scope再换查询，503与入口404继续保留明确不同语义。
 
 305unit、8Edge（原4+新4）、原36/6和新增独立7/1有效单元均真实通过；独立新增Edge有矛盾可见性前置，原样结果完整保留并由主控确认由原reviewer修probe，作者未改断言。所有限定证据和仪器修正说明见任务报告第三轮。实看403清空截图，外观与动效未改，当前仍awaiting_review / live not_run。

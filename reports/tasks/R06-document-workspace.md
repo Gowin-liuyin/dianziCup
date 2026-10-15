@@ -89,6 +89,8 @@ F1/R1：资料分类与明确正文覆盖/日期精度；F2/F3：指定revision�
 
 ## 定向复核 Must 3 修复（第三轮，基线 ef3a058）
 
+第三轮源码冻结：2f5c7ef225ce2d29da2438a4d5caa51cdc6a9231，基于ef3a0583179a27ccdaca05b771afccc90429dc35；四个frontend改动的Git blob/SHA256/字节及结果在review_fix_2_source_freeze.json，源码/人工文档diff check exit0。其后仅补元数据，代码不变。
+
 原独立复核已关闭 Must 1/2，并在直接deep-link列表先403、detail/history在途200的相邻路径确认Must 3。作者读取主控原报告并复现，不改独立测试或已关闭结论。状态awaiting_review，仍待同一独立reviewer复核。
 
 最小修复把原Inspector的generation与AbortController集合提升至资料工作区单个私有READ_PUBLIC读取scope，list/detail/history共同使用；无新全局state/框架/公共合同。list403或401同步提高scope代次并取消全部资料请求、清selection且卸载旧Inspector状态；401继续清会话。详情/历史403/404仍按原修复清缓存，晚到list也被scope/目录代次挡住。503及列表404待接通保持各自查询失败语义，不统一清空或伪造零结果。搜索、下一页、回第一页、重试统一经queryDocuments取消旧scope再清检视/换过滤，补回第一页原来未清Inspector的相邻路径。
@@ -113,4 +115,4 @@ F1/R1：资料分类与明确正文覆盖/日期精度；F2/F3：指定revision�
 
 作者永久Edge首轮把StrictMode的实际4个handler硬写成2，造成4红；改为核对实际started/settled数量后保留原红日志。第二轮有403业务红、分页fixture按次数允许首页导致StrictMode误拒绝的仪器红；改为按有无cursor识别真正分页请求，0skip，最终4/4。没有降低权限取消或不可见断言，也未改独立断言；原scope_browser_red、red_valid及两套artifacts完整保留。
 
-真实时间窗（+08:00）：质量/305unit20:31:13.1192399–20:31:42.3322160；8Edge20:31:13.1892050–20:31:23.7955812；原独立6Edge时间见末条commands。来源实际PG/API/browser/live仍not_run。主控用新源码和元数据提交交原reviewer复核，本作者不accepted、结束此修复切片。
+真实时间窗（+08:00）：质量/305unit20:31:13.1192399–20:31:42.3322160；8Edge20:31:13.1892050–20:31:23.7955812；原独立6Edge20:33:53.9562902–20:34:00.1714983。来源实际PG/API/browser/live仍not_run。主控用新源码和元数据提交交原reviewer复核，本作者不accepted、结束此修复切片。
