@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -90,12 +91,31 @@ def validate_embedding_batch(
     dimension: int,
     model_version: str,
 ) -> EmbeddingResult:
-    """向量校验: 维度或条目数不符拒绝入索引。"""
+    """拒绝无效空间、非有限数与余弦距离无定义的零向量，不替换坏值。"""
+    if (
+        type(expected_count) is not int
+        or not 1 <= expected_count <= 256
+        or type(dimension) is not int
+        or not 1 <= dimension <= 4096
+        or not isinstance(model_version, str)
+        or not 1 <= len(model_version) <= 200
+        or any(not 33 <= ord(character) <= 126 for character in model_version)
+    ):
+        raise ModelContractError("embedding space or batch boundary is invalid")
     if len(vectors) != expected_count:
         raise ModelContractError("embedding count does not match input batch order")
     for vector in vectors:
         if len(vector) != dimension:
             raise ModelContractError("embedding dimension mismatch; refused for indexing")
+        if any(
+            type(coordinate) is not float
+            or not math.isfinite(coordinate)
+            or abs(coordinate) > 3.4028234663852886e38
+            for coordinate in vector
+        ):
+            raise ModelContractError("embedding coordinates must be finite float32 values")
+        if not any(coordinate != 0.0 for coordinate in vector):
+            raise ModelContractError("zero embedding has no cosine distance")
     frozen = tuple(tuple(vector) for vector in vectors)
     return EmbeddingResult(vectors=frozen, model_version=model_version, dimension=dimension)
 
