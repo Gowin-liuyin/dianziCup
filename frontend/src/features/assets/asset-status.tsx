@@ -1,6 +1,6 @@
 import type { ApiProblem } from "../../api/client";
 import { ErrorPanel } from "../../components/status";
-import type { InventoryCompleteness } from "./asset-contracts";
+import { AssetResponseScopeMismatch, type InventoryCompleteness } from "./asset-contracts";
 
 export const completenessLabels: Record<InventoryCompleteness, string> = { complete_for_declared_scope: "声明范围内完整", partial: "部分清单", unknown: "完整性未知" };
 const importErrors: Record<string, string> = {
@@ -40,5 +40,6 @@ export function AssetError({ error, onRetry, retryLabel }: { error: ApiProblem; 
   if (error.status === 404) message = "该资产或快照不可用。它可能不存在，或当前会话无权查看。";
   if (error.status === 503) message = "资产服务暂不可用，恢复后可重试。已取得的页面仅供查看，当前有效性尚未重新验证。";
   if (error.status === 502) message = "资产响应与当前合同或会话范围不一致，结果未用于展示。导入是否提交需从资产列表核对。";
+  if (error instanceof AssetResponseScopeMismatch) message = "资产响应与当前会话范围不一致，已清除私有资产工作区。请重新核对会话与权限。";
   return <ErrorPanel error={error} message={message} onRetry={onRetry} retryLabel={retryLabel} />;
 }

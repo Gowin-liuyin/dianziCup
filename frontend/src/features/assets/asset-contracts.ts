@@ -21,6 +21,14 @@ export interface AssetPage { items: Asset[]; next_cursor: string | null }
 export interface SnapshotPage { items: AssetSnapshot[]; next_cursor: string | null }
 export interface AssetImportResult { asset_id: string; snapshot: AssetSnapshot; reused: boolean }
 
+/** 已确认的租户或请求对象范围违例；不携带收到的私有标识，沿用既有公开错误码。 */
+export class AssetResponseScopeMismatch extends ApiProblem {
+  constructor() {
+    super(502, "invalid_response", false);
+    this.name = "AssetResponseScopeMismatch";
+  }
+}
+
 function invalid(): never { throw new ApiProblem(502, "invalid_response", true); }
 function record(value: unknown, keys: readonly string[]): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return invalid();
@@ -58,7 +66,8 @@ function component(value: unknown): AssetComponent {
 /** 响应必须与当前认证租户及指定资产一致；配置 null 保持未知，原文和存储路径不进入 DTO。 */
 export function parseSnapshot(value: unknown, tenant: string, assetId: string): AssetSnapshot {
   const item = record(value, ["schema_version", "snapshot_id", "asset_id", "tenant_id", "snapshot_number", "observed_at", "recorded_at", "source_kind", "inventory_completeness", "declared_scope", "components", "configuration", "tool_permissions", "input_channels", "network_exposure", "snapshot_sha256"]);
-  if (item.schema_version !== "r11-asset-candidate-1" || item.tenant_id !== tenant || identifier(item.asset_id) !== assetId.toLowerCase()) return invalid();
+  if (item.tenant_id !== tenant || identifier(item.asset_id) !== assetId.toLowerCase()) throw new AssetResponseScopeMismatch();
+  if (item.schema_version !== "r11-asset-candidate-1") return invalid();
   const completeness = item.inventory_completeness;
   if (completeness !== "complete_for_declared_scope" && completeness !== "partial" && completeness !== "unknown") return invalid();
   if (typeof item.snapshot_number !== "number" || !Number.isSafeInteger(item.snapshot_number) || item.snapshot_number < 1) return invalid();
@@ -68,9 +77,10 @@ export function parseSnapshot(value: unknown, tenant: string, assetId: string): 
 }
 export function parseAsset(value: unknown, tenant: string): Asset {
   const item = record(value, ["asset_id", "tenant_id", "display_name", "criticality", "active", "current_snapshot_id", "created_at", "updated_at", "snapshot"]);
+  if (item.tenant_id !== tenant) throw new AssetResponseScopeMismatch();
   const assetId = identifier(item.asset_id);
   const snapshot = parseSnapshot(item.snapshot, tenant, assetId);
-  if (item.tenant_id !== tenant || identifier(item.current_snapshot_id) !== snapshot.snapshot_id) return invalid();
+  if (identifier(item.current_snapshot_id) !== snapshot.snapshot_id) return invalid();
   return { asset_id: assetId, tenant_id: tenant, display_name: text(item.display_name, 200), criticality: text(item.criticality), active: boolean(item.active), current_snapshot_id: snapshot.snapshot_id, created_at: timestamp(item.created_at), updated_at: timestamp(item.updated_at), snapshot };
 }
 function cursor(value: unknown): string | null { return value === null ? null : text(value, 8192); }

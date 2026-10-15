@@ -1,5 +1,5 @@
 import { ApiProblem, fetchJson, getCsrfToken } from "../../api/client";
-import { isAssetIdentifier, parseAsset, parseAssetList, parseImportResult, parseSnapshot, parseSnapshotList, type Asset, type AssetImportResult, type AssetPage, type AssetSnapshot, type ManifestFormat, type SnapshotPage } from "./asset-contracts";
+import { AssetResponseScopeMismatch, isAssetIdentifier, parseAsset, parseAssetList, parseImportResult, parseSnapshot, parseSnapshotList, type Asset, type AssetImportResult, type AssetPage, type AssetSnapshot, type ManifestFormat, type SnapshotPage } from "./asset-contracts";
 
 export const MAX_ASSET_UPLOAD_BYTES = 1048576;
 export const csvFields = ["package_name", "ecosystem", "display_name", "purl", "version", "version_scheme", "image_digest"] as const;
@@ -21,7 +21,7 @@ export async function getAssetList(tenant: string, product = "", cursor: string 
 }
 export async function getAsset(tenant: string, assetId: string, signal?: AbortSignal): Promise<Asset> {
   const result = parseAsset(await fetchJson(assetPath(assetId), {}, signal), tenant);
-  if (result.asset_id !== assetId.toLowerCase()) throw new ApiProblem(502, "invalid_response", true);
+  if (result.asset_id !== assetId.toLowerCase()) throw new AssetResponseScopeMismatch();
   return result;
 }
 export async function getAssetHistory(tenant: string, assetId: string, cursor: string | null = null, signal?: AbortSignal): Promise<SnapshotPage> {
@@ -32,7 +32,7 @@ export async function getAssetHistory(tenant: string, assetId: string, cursor: s
 export async function getAssetSnapshot(tenant: string, assetId: string, snapshotId: string, signal?: AbortSignal): Promise<AssetSnapshot> {
   if (!isAssetIdentifier(snapshotId)) return invalidInput();
   const result = parseSnapshot(await fetchJson(`${assetPath(assetId)}/snapshots/${encodeURIComponent(snapshotId)}`, {}, signal), tenant, assetId);
-  if (result.snapshot_id !== snapshotId.toLowerCase()) throw new ApiProblem(502, "invalid_response", true);
+  if (result.snapshot_id !== snapshotId.toLowerCase()) throw new AssetResponseScopeMismatch();
   return result;
 }
 export function parseCsvMapping(value: string): Record<string, string> {
@@ -61,6 +61,6 @@ export async function importAsset(tenant: string, request: AssetImportRequest, s
   const token = await getCsrfToken(signal);
   if (signal?.aborted || !isCurrent()) throw new ApiProblem(0, "request_canceled", false);
   const result = parseImportResult(await fetchJson(`/v1/asset-imports?${query}`, { method: "POST", headers: { "Content-Type": request.manifestFormat === "json_manifest_v1" ? "application/json" : "text/csv", "X-CSRF-Token": token, "Idempotency-Key": request.idempotencyKey }, body: request.file }, signal), tenant);
-  if (request.assetId !== undefined && result.asset_id !== request.assetId.toLowerCase()) throw new ApiProblem(502, "invalid_response", true);
+  if (request.assetId !== undefined && result.asset_id !== request.assetId.toLowerCase()) throw new AssetResponseScopeMismatch();
   return result;
 }

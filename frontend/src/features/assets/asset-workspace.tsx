@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { publicProblem, type ApiProblem, type CurrentUser } from "../../api/client";
 import { useAuthSession } from "../../app/auth-session";
 import { formatShanghaiTimestamp } from "../../app/date-time";
 import { EmptyState } from "../../components/status";
 import { getAssetList } from "./asset-client";
-import type { Asset, AssetImportResult, AssetPage } from "./asset-contracts";
+import { AssetResponseScopeMismatch, type Asset, type AssetImportResult, type AssetPage } from "./asset-contracts";
 import { AssetDetail } from "./asset-detail";
 import { AssetImport } from "./asset-import";
 import { AssetError, completenessLabels } from "./asset-status";
@@ -22,11 +22,16 @@ function AuthorizedAssets({ user, assetId }: { user: CurrentUser & { tenant_id: 
   const [denied, setDenied] = useState<ApiProblem | null>(null);
   const [currentAsset, setCurrentAsset] = useState<Asset | null>(null);
   const [receipt, setReceipt] = useState<AssetImportResult | null>(null);
-  const isCurrent = useCallback(() => isSessionCurrent(sessionGeneration), [isSessionCurrent, sessionGeneration]);
+  const privateScopeInvalidated = useRef(false);
+  const isCurrent = useCallback(() => !privateScopeInvalidated.current && isSessionCurrent(sessionGeneration), [isSessionCurrent, sessionGeneration]);
   const failed = useCallback((error: ApiProblem) => {
     if (!isCurrent()) return;
     if (error.status === 401) expireSession(sessionGeneration);
-    if (error.status === 403 && error.code !== "csrf_rejected") { setList(null); setCurrentAsset(null); setReceipt(null); setDenied(error); }
+    if (error instanceof AssetResponseScopeMismatch || (error.status === 403 && error.code !== "csrf_rejected")) {
+      privateScopeInvalidated.current = true;
+      setList(null); setCurrentAsset(null); setReceipt(null); setListError(null); setProductInput(""); setProduct("");
+      setRequest({ cursor: null, retry: 0 }); setPending(false); setDenied(error);
+    }
   }, [isCurrent, expireSession, sessionGeneration]);
   useEffect(() => {
     const controller = new AbortController();
