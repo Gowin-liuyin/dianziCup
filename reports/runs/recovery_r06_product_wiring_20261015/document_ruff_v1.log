@@ -1,0 +1,27 @@
+SIM117 [*] Use a single `with` statement with multiple contexts instead of nested `with` statements
+   --> tests\integration\test_r06_document_api_pg.py:307:5
+    |
+305 |       members = (paper(), replace(paper(), source_record_id="other-paper"))
+306 |       saved = save(catalog_engine, ContentStore(tmp_path / "raw"), members)
+307 | /     with Session(catalog_engine) as session:
+308 | |         with pytest.raises(CrossTenantAccessError):
+    | |___________________________________________________^
+309 |               DocumentReadService(session, ADMIN, "fixture").document_detail(
+310 |                   document_id(catalog_engine, saved.revision_ids[0]), UUID(saved.revision_ids[1])
+    |
+help: Combine `with` statements
+    |
+306 |     saved = save(catalog_engine, ContentStore(tmp_path / "raw"), members)
+    -     with Session(catalog_engine) as session:
+    -         with pytest.raises(CrossTenantAccessError):
+    -             DocumentReadService(session, ADMIN, "fixture").document_detail(
+    -                 document_id(catalog_engine, saved.revision_ids[0]), UUID(saved.revision_ids[1])
+    -             )
+307 +     with Session(catalog_engine) as session, pytest.raises(CrossTenantAccessError):
+308 +         DocumentReadService(session, ADMIN, "fixture").document_detail(
+309 +             document_id(catalog_engine, saved.revision_ids[0]), UUID(saved.revision_ids[1])
+310 +         )
+    |
+
+Found 1 error.
+[*] 1 fixable with the `--fix` option.
