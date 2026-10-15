@@ -1,0 +1,141 @@
+"""共享客户端派发前预算耗尽的固定时钟回归；合成凭据和transport不计live。"""
+
+from itertools import count
+from unittest.mock import Mock
+
+import pytest
+from test_r05_generation import Answer, prepared, request
+from test_r05_grounded_answer import evidence
+
+from ai_intel.answering.contracts import GroundedAnswerFailure
+from ai_intel.answering.grounding import generate_grounded_answer
+from ai_intel.infrastructure.models import generation
+from ai_intel.infrastructure.models.generation import GenerationFailure, GenerationLimits
+
+PROVIDERS = ("openai", "anthropic", "deepseek_openai", "deepseek_anthropic")
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+@pytest.mark.parametrize("timeout", [1.0, 3.0])
+def test_expired_before_slot_is_typed_without_dispatch_or_release(monkeypatch, provider, timeout):
+    client, calls = prepared(
+        monkeypatch,
+        provider=provider,
+        limits=GenerationLimits(total_timeout_seconds=timeout, max_concurrent_requests=1),
+    )
+    acquire = Mock(wraps=client._slots.acquire)
+    release = Mock(wraps=client._slots.release)
+    dns = Mock(side_effect=AssertionError("DNS must not run"))
+    transport = Mock(side_effect=AssertionError("POST transport must not run"))
+    monkeypatch.setattr(client._slots, "acquire", acquire)
+    monkeypatch.setattr(client._slots, "release", release)
+    monkeypatch.setattr(client._gateway._transport, "resolve_addresses", dns)
+    monkeypatch.setattr(client._gateway._transport, "request", transport)
+    readings = count()
+    monkeypatch.setattr(
+        generation.time, "monotonic", lambda: 100.0 if next(readings) == 0 else 103.0
+    )
+
+    with pytest.raises(GenerationFailure) as caught:
+        client.generate(request(allow_format_repair=True), Answer)
+
+    assert caught.value.code == "model_network_timeout"
+    assert caught.value.attempts == ()
+    assert caught.value.finish_reason is None
+    assert caught.value.__suppress_context__
+    assert str(caught.value) == "model_network_timeout"
+    assert calls == []
+    acquire.assert_not_called()
+    release.assert_not_called()
+    dns.assert_not_called()
+    transport.assert_not_called()
+
+    monkeypatch.setattr(generation.time, "monotonic", lambda: 104.0)
+    result = client.generate(request(), Answer)
+    assert result.value.certain is False
+    assert len(calls) == len(result.attempts) == 1
+    assert result.attempts[0].fee == "unknown"
+    assert calls[0][3] == 104.0 + timeout
+    assert not result.format_repair_used
+    assert acquire.call_count == release.call_count == 1
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+def test_slot_wait_false_keeps_concurrency_timeout_without_release(monkeypatch, provider):
+    client, calls = prepared(
+        monkeypatch,
+        provider=provider,
+        limits=GenerationLimits(total_timeout_seconds=1.0, max_concurrent_requests=1),
+    )
+    acquire = Mock(return_value=False)
+    release = Mock(wraps=client._slots.release)
+    monkeypatch.setattr(client._slots, "acquire", acquire)
+    monkeypatch.setattr(client._slots, "release", release)
+    monkeypatch.setattr(generation.time, "monotonic", lambda: 100.0)
+
+    with pytest.raises(GenerationFailure) as caught:
+        client.generate(request(allow_format_repair=True), Answer)
+
+    assert caught.value.code == "model_concurrency_timeout"
+    assert caught.value.attempts == ()
+    assert calls == []
+    acquire.assert_called_once_with(timeout=1.0)
+    release.assert_not_called()
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+def test_expiry_after_slot_acquisition_releases_slot_once(monkeypatch, provider):
+    client, calls = prepared(
+        monkeypatch,
+        provider=provider,
+        limits=GenerationLimits(total_timeout_seconds=1.0, max_concurrent_requests=1),
+    )
+    slot_acquire = client._slots.acquire
+    clock = [100.0]
+
+    def acquire(*args, **kwargs):
+        acquired = slot_acquire(*args, **kwargs)
+        clock[0] = 103.0
+        return acquired
+
+    release = Mock(wraps=client._slots.release)
+    post = client._gateway.post_json
+
+    def dispatch(*args, **kwargs):
+        kwargs["deadline"].remaining_seconds()
+        return post(*args, **kwargs)
+
+    monkeypatch.setattr(client._slots, "acquire", acquire)
+    monkeypatch.setattr(client._slots, "release", release)
+    monkeypatch.setattr(client._gateway, "post_json", dispatch)
+    monkeypatch.setattr(generation.time, "monotonic", lambda: clock[0])
+
+    with pytest.raises(GenerationFailure) as caught:
+        client.generate(request(allow_format_repair=True), Answer)
+
+    assert caught.value.code == "model_network_timeout"
+    assert len(caught.value.attempts) == 1
+    assert caught.value.attempts[0].outcome == "model_network_timeout"
+    assert caught.value.attempts[0].usage.input_tokens is None
+    assert caught.value.attempts[0].usage.output_tokens is None
+    assert caught.value.attempts[0].fee == "unknown"
+    assert calls == []
+    release.assert_called_once_with()
+    assert slot_acquire(blocking=False)
+    assert not slot_acquire(blocking=False)
+    client._slots.release()
+
+
+def test_grounded_answer_wraps_shared_predispatch_timeout(monkeypatch):
+    client, calls = prepared(monkeypatch, limits=GenerationLimits(total_timeout_seconds=1.0))
+    readings = count()
+    monkeypatch.setattr(
+        generation.time, "monotonic", lambda: 100.0 if next(readings) < 3 else 103.0
+    )
+
+    with pytest.raises(GroundedAnswerFailure) as caught:
+        generate_grounded_answer(client, "公告说明了哪个修复版本？", (evidence(),))
+
+    assert caught.value.code == "model_network_timeout"
+    assert caught.value.attempts == ()
+    assert calls == []
