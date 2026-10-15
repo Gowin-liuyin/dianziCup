@@ -1,9 +1,9 @@
 # R06-A · arXiv Atom 与 Trail of Bits RSS 内部解析切片
 
 文档首次创建时间：2026-10-15T18:30:02+08:00
-本次写作开始时间：2026-10-15T18:30:02+08:00
-本次写作结束时间：2026-10-15T18:30:03+08:00
-最后更新时间：2026-10-15T18:34:06+08:00
+本次写作开始时间：2026-10-15T19:04:18+08:00
+本次写作结束时间：2026-10-15T19:04:18+08:00
+最后更新时间：2026-10-15T19:04:18+08:00
 本报告证据截止时间：2026-10-15T18:30:03+08:00
 实际工作活动开始：2026-10-15T18:04:33+08:00；纯编码起止历史未单独记录，不推算编码时长。
 负责人：`/root/r06_feed_parsers`。
@@ -118,3 +118,48 @@ targeted_green 原输出有72个collected用例，68个call通过及8个setup/te
 R06-A-07：封存核对发现 Git 默认将生成 JSON/Markdown CRLF 转为 LF，旧候选 8bb8bd56f92dff266b326aa634b425a2a617fe6b 的 manifest 与 47 个 Git blob 原字节 hash 不一致。验证非零后本调用中的后续 PowerShell native 命令仍执行，故该本地 docs commit 被保留为历史失败候选，不代表 hash 检查通过。业务代码、原 .body/XML、用例行为没有变化，也没有改写旧记录的时间/结果。
 
 修正只在本 run 的 .gitattributes 增加 *.json -text/-diff（与 log/XML/body 同样保持原证据字节），任务报告明确保存 LF；显式 owned files 重登暂存并逐 blob 核对，最终以新候选与修正收据为准。既有失败候选不推送/验收。首次创建时间不改；完整源码测试结果不拿来为改变行为的代码背书。
+
+
+## 修复轮1 · 独立初审三类 Must
+
+本轮写作开始：2026-10-15T19:04:18+08:00；结束/证据截止：2026-10-15T19:04:18+08:00；首次创建时间保持不变。
+作者状态 awaiting_review；三类问题已修复待原独立reviewer定向复核，不签accepted。
+独立初审报告：`D:/dianzi/reports/reviews/recovery/G-C-R06-feed-parsers-review-1.md`，原固定8e4候选，结论needs_changes。
+本轮代码冻结：`6b7dd7e881bb822e83b55f8302f7aefe565f4940`；src tree `15b19b26f68838fcb62c362f0b7370fc311a1b7b`。本轮4文件与冻结blob字节一致，证据 `fix1_code_snapshot.json`；旧b1ff/8e4结论与记录只对应各自历史版本。
+
+### 确认问题、共同根因与修复
+
+- R06-A-R1-01：total=100/start=0/items=10但仅1entry原来正常返回，遗漏位置1–9可能被后续caller跨过；当前没有产品caller，未声称实际漏采事故。现有范围校验后新增 `len(entries) < min(size,total-start)` 明确失败；保留正常空页、完整页与最终不足一页。新增3种不足页负例；原末页/真实2项Atom继续通过。
+- R06-A-R1-02：RSS +1260被stdlib宽松折合+13小时形成确定UTC。先识别时间字段后紧随的数字zone，检查小时≤23/分钟≤59，再复用原stdlib日历/时区换算；不另写日期框架。覆盖正负非法偏移和合法+0000/-0400/+0059/-0001/+2359/GMT；合法 `-0400 (source reference +1260)` 注释不误当时区。缺时间/naive/未来值、Atom UTC-Z检查保持既有语义。
+- R06-A-R1-03：原C0检查漏DEL U+007F，RSS输出link及许可原文可含DEL。对arXiv官方URI、许可identifier和RSS官方URI三个既有入口补DEL拒绝，覆盖feed id、entry/PDF、channel/article/GUID、普通许可文本及URI。没有把安全未知许可变成授权，也不改原文/全文状态。PDF/entry原来还受版本/path检查，补共享URI入口以统一边界。
+
+23个新增unit加上原79个作者unit；原47独立例文件未编辑，当前sha256 `65b809db3152f99fdcc16dd7b2cff4fdbaaa050cc9ab57a21166c4425976e3fd`。原红仍在reviewer初审证据中，本作者另复现17红（独立4 + 新同根因13），未改红例期望/阈值/分母/skip。
+
+### 实际执行与失败保留
+
+| 标签 | 开始 / 结束（Asia/Shanghai） | exit | 原始JUnit事件数 | 参数/日志 |
+|---|---|---|---|---|
+| fix1_red_combined | 2026-10-15T18:56:03+08:00 / 2026-10-15T18:56:34+08:00 | 1 | tests=1170, failures=17, errors=0, skipped=0 | `fix1_red_combined.json/.log` |
+| fix1_green_combined | 2026-10-15T18:57:16+08:00 / 2026-10-15T18:57:51+08:00 | 1 | tests=1170, failures=1, errors=0, skipped=0 | `fix1_green_combined.json/.log` |
+| fix1_unit | 2026-10-15T18:59:04+08:00 / 2026-10-15T18:59:36+08:00 | 0 | tests=1109, failures=0, errors=0, skipped=0 | `fix1_unit.json/.log` |
+| fix1_combined_recheck | 2026-10-15T19:00:11+08:00 / 2026-10-15T19:00:46+08:00 | 0 | tests=1170, failures=0, errors=0, skipped=0 | `fix1_combined_recheck.json/.log` |
+| fix1_private_replay | 2026-10-15T19:00:46+08:00 / 2026-10-15T19:00:46+08:00 | 0 | N/A | `fix1_private_replay.json/.log` |
+| fix1_mypy | 2026-10-15T18:57:59+08:00 / 2026-10-15T18:57:59+08:00 | 0 | N/A | `fix1_mypy.json/.log` |
+| fix1_ruff | 2026-10-15T18:58:00+08:00 / 2026-10-15T18:58:00+08:00 | 0 | N/A | `fix1_ruff.json/.log` |
+| fix1_format_check | 2026-10-15T18:58:00+08:00 / 2026-10-15T18:58:00+08:00 | 0 | N/A | `fix1_format_check.json/.log` |
+| fix1_cbm_index | 2026-10-15T18:57:59+08:00 / 2026-10-15T18:58:05+08:00 | 0 | N/A | `fix1_cbm_index.json/.log` |
+| fix1_cbm_trace_uri | 2026-10-15T19:00:22+08:00 / 2026-10-15T19:00:26+08:00 | 0 | N/A | `fix1_cbm_trace_uri.json/.log` |
+| fix1_cbm_arxiv_uri | 2026-10-15T19:01:54+08:00 / 2026-10-15T19:02:02+08:00 | 0 | N/A | `fix1_cbm_arxiv_uri.json/.log` |
+| fix1_cbm_rss_uri | 2026-10-15T19:01:54+08:00 / 2026-10-15T19:01:58+08:00 | 0 | N/A | `fix1_cbm_rss_uri.json/.log` |
+
+纯unit最新1109 passed/0fail/error/skip，6818 statements/2177 missed，coverage68.07%原60门通过；组合1170 passed/0fail/error/skip（unit1109+相关合同14+原独立47），coverage68.32%。mypy84 src、全backend Ruff/208格式通过。零新HTTP/模型调用；仓外私有991606B原RSS20项8断言再次通过，许可unknown完整正文仍未入可推送包。
+
+首次修复后组合`fix1_green_combined`有1169pass/1fail：唯一是未改的原R05 CPU_SECONDS=1忙子进程8秒墙钟TimeoutExpired，初审四红与新增边界均已通过。该失败与先前同类失败均保留；此后同参数pure unit及有限组合复跑通过，**不能说其宿主敏感根因已修复**；已向主控请求诊断，未改timeout、共享代码或skip。
+
+src-only CBM同WT缓存刷新为1125 nodes/5391 edges，not_indexed/partial/unusable=0；源码rg核对所有URI/时间/pagination调用。第一次按短名_official_uri查询返回两个匹配ambiguous（CLI exit0不等于追踪已完成），留档后按实际qualified_name分别追踪两个源成功。不索引私有原件、holdout、报告或秘密；图无产品caller经源码确认，仍不声称真实接线。
+
+### 当前边界与后续
+
+复用原normalizer、stdlib和现有异常，没有新依赖/公共DTO/配置/迁移/锁/进度更改；只有原两parser/原unit和本包证据/报告变化。原artifact hash封存方案保持，最新manifest按原字节重新生成并校验。实现只属内部解析切片：API/worker/PG/UI、真实持续采集/漏采/时效、integration/frontend/e2e/live/manual仍not_run，整R06/T12/T14/G-C不验收。
+
+2026-10-15T19:04:18+08:00：新增本修复记录，保留所有旧红、限额偶发失败和旧版本记录。修订人 `/root/r06_feed_parsers`；原独立reviewer后续定向复核冻结新版本。
