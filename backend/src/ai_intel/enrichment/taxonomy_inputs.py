@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import io
+import math
 import re
 import zipfile
 from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Literal
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -77,12 +79,16 @@ def _verify_raw(raw: bytes, provenance: CatalogueProvenance) -> None:
         or hashlib.sha256(raw).hexdigest() != provenance.content_sha256
     ):
         raise TaxonomyInputError("taxonomy_object_integrity_invalid")
-    parsed = urlsplit(provenance.canonical_uri)
+    try:
+        parsed = urlsplit(provenance.canonical_uri)
+        port = parsed.port
+    except ValueError:
+        raise TaxonomyInputError("taxonomy_source_uri_invalid") from None
     if (
         parsed.scheme != "https"
         or parsed.username is not None
         or parsed.password is not None
-        or parsed.port not in (None, 443)
+        or port not in (None, 443)
         or parsed.query
         or parsed.fragment
     ):
@@ -184,7 +190,7 @@ def parse_cwe_catalogue(raw: bytes, provenance: CatalogueProvenance) -> Taxonomy
     )
 
 
-def _check_yaml_node(node: yaml.Node, depth: int = 0) -> None:
+def _check_yaml_node(node: yaml.Node, loader: yaml.SafeLoader, depth: int = 0) -> None:
     if depth > 64:
         raise TaxonomyInputError("taxonomy_yaml_budget_exceeded")
     if node.tag not in {
@@ -193,15 +199,23 @@ def _check_yaml_node(node: yaml.Node, depth: int = 0) -> None:
     }:
         raise TaxonomyInputError("taxonomy_yaml_tag_forbidden")
     if isinstance(node, yaml.MappingNode):
-        keys: set[str] = set()
+        keys: set[object] = set()
         for key, value in node.value:
-            if not isinstance(key, yaml.ScalarNode) or key.value in keys:
+            if not isinstance(key, yaml.ScalarNode):
+                raise TaxonomyInputError("taxonomy_yaml_key_invalid")
+            _check_yaml_node(key, loader, depth + 1)
+            constructed_key: object = loader.construct_object(key)
+            if type(constructed_key) not in (str, int, bool, float, type(None), date, datetime) or (
+                isinstance(constructed_key, float) and not math.isfinite(constructed_key)
+            ):
+                raise TaxonomyInputError("taxonomy_yaml_key_invalid")
+            if constructed_key in keys:
                 raise TaxonomyInputError("taxonomy_yaml_duplicate_key")
-            keys.add(key.value)
-            _check_yaml_node(value, depth + 1)
+            keys.add(constructed_key)
+            _check_yaml_node(value, loader, depth + 1)
     elif isinstance(node, yaml.SequenceNode):
         for value in node.value:
-            _check_yaml_node(value, depth + 1)
+            _check_yaml_node(value, loader, depth + 1)
 
 
 def _atlas_identifier_quotes(node: yaml.Node, text: str) -> dict[str, tuple[str, int, int]]:
@@ -268,10 +282,16 @@ def parse_atlas_catalogue(raw: bytes, provenance: CatalogueProvenance) -> Taxono
         node = yaml.compose(raw, Loader=yaml.SafeLoader)
         if node is None:
             raise TaxonomyInputError("taxonomy_yaml_invalid")
-        _check_yaml_node(node)
+        loader = yaml.SafeLoader(raw)
+        try:
+            _check_yaml_node(node, loader)
+        finally:
+            loader.dispose()
         identifier_quotes = _atlas_identifier_quotes(node, raw.decode("utf-8"))
         decoded: object = yaml.safe_load(raw)
-    except (yaml.YAMLError, UnicodeError, RecursionError):
+    except TaxonomyInputError:
+        raise
+    except (yaml.YAMLError, UnicodeError, RecursionError, ValueError, KeyError):
         raise TaxonomyInputError("taxonomy_yaml_invalid") from None
     if not isinstance(decoded, dict) or decoded.get("id") != "ATLAS":
         raise TaxonomyInputError("taxonomy_atlas_format_unsupported")

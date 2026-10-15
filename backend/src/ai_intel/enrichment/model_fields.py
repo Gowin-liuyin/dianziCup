@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -135,76 +134,22 @@ def _empty_attempts(
     )
 
 
-def _omitted_required_context(
-    code: str,
-    candidate: EvidenceBoundCandidate,
-    documents: tuple[EnrichmentDocument, ...],
-    selection: FieldEvidenceSelection,
-) -> bool:
-    """Classify a proven omitted qualifier, never a fabricated value or a seen bad proposal."""
-    if not selection.incomplete or not selection.omitted_ranges:
-        return False
-    value = candidate.value
-    if code == "version_expression_context_missing" and isinstance(value, VersionAssertionValue):
-        statement, retained = value.raw_expression, value.raw_expression
-        if statement not in tuple(quote.quote_text for quote in candidate.evidence):
-            return False
-    elif code == "atlas_prerequisite_context_missing" and isinstance(value, AtlasMappingValue):
-        statement = value.mechanism
-        retained = "\n".join((statement, *value.prerequisites))
-        if statement not in tuple(quote.quote_text for quote in candidate.evidence):
-            return False
-    elif code == "literature_relation_context_missing" and isinstance(
-        value, LiteratureReferenceValue
-    ):
-        statement, retained = value.support_summary, value.support_summary
-        if not any(statement in quote.quote_text for quote in candidate.evidence):
-            return False
-    else:
-        return False
-    markers = re.compile(
-        r"\b(?:only\s+(?:when|if|with)|requires?|required|prerequisites?|provided\s+that|"
-        r"unless|conditional\s+on|attacker can)\b|^[ \t]*(?:if|when)\b|"
-        r"只有|仅当|前提|前置条件|必须|需要|除非",
-        re.IGNORECASE | re.MULTILINE,
-    )
-    by_revision = {document.revision_id: document for document in documents}
-    for quote in candidate.evidence:
-        if statement not in quote.quote_text:
-            continue
-        document = by_revision[quote.revision_id]
-        block = next(item for item in document.blocks if item.block_id == quote.block_id)
-        start, end = 0, len(block.text)
-        if not isinstance(value, AtlasMappingValue):
-            separators = tuple(re.finditer(r"\r?\n[ \t]*\r?\n", block.text))
-            start = max(
-                (item.end() for item in separators if item.end() <= quote.start_offset), default=0
-            )
-            end = next(
-                (item.start() for item in separators if item.start() >= quote.end_offset),
-                len(block.text),
-            )
-            if isinstance(value, LiteratureReferenceValue):
-                start = max(start, quote.start_offset)
-        paragraph = block.text[start:end]
-        for marker in markers.finditer(paragraph):
-            line_start = paragraph.rfind("\n", 0, marker.start()) + 1
-            lines = paragraph[line_start:].splitlines(keepends=True)
-            last = 0
-            while last + 1 < len(lines) and not re.search(r"[.!?。！？]\s*$", lines[last]):
-                last += 1
-            qualifier = "".join(lines[: last + 1]).rstrip("\r\n")
-            required_start = start + line_start
-            required_end = required_start + len(qualifier)
-            if qualifier not in retained and any(
-                item.revision_id == quote.revision_id
-                and item.block_id == quote.block_id
-                and item.start_offset < required_end
-                and required_start < item.end_offset
+def _omitted_required_context(error: FieldEvidenceError, selection: FieldEvidenceSelection) -> bool:
+    """Only gaps emitted after complete value validation can explain blocked selection."""
+    return (
+        selection.incomplete
+        and bool(error.context_gaps)
+        and all(
+            any(
+                item.revision_id == gap.revision_id
+                and item.block_id == gap.block_id
+                and item.start_offset < gap.end_offset
+                and gap.start_offset < item.end_offset
                 for item in selection.omitted_ranges
-            ):
-                return True
-    return False
+            )
+            for gap in error.context_gaps
+        )
+    )
 
 
 def _generate_field[T: FieldValue](
@@ -270,9 +215,7 @@ def _generate_field[T: FieldValue](
                 candidate = validate_field_candidate(proposed_candidate, documents)
             except FieldEvidenceError as error:
                 blocked_by_selection = _omitted_required_context(
-                    error.code,
-                    proposed_candidate,
-                    documents,
+                    error,
                     selection,
                 )
                 raise

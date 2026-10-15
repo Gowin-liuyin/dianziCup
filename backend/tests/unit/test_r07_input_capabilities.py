@@ -212,3 +212,47 @@ def test_duplicate_invalid_or_wrong_version_cwe_is_rejected(raw):
 def test_unsupported_atlas_formats_and_duplicate_ids_are_explicit(raw):
     with pytest.raises(TaxonomyInputError):
         parse_atlas_catalogue(raw, provenance(raw, "atlas"))
+
+
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "https://cwe.mitre.org:bad/data/xml/cwec_v4.19.xml",
+        "https://[cwe.mitre.org/data/xml/cwec_v4.19.xml",
+    ],
+)
+def test_malformed_official_uri_has_only_a_fixed_safe_error(uri):
+    with pytest.raises(TaxonomyInputError) as failure:
+        parse_cwe_catalogue(CWE_XML, provenance(CWE_XML, canonical_uri=uri))
+    assert str(failure.value) == "taxonomy_source_uri_invalid"
+    assert uri not in str(failure.value)
+
+
+@pytest.mark.parametrize(
+    "keys",
+    [
+        "true: first\n  True: second",
+        "true: first\n  1: second",
+        "1: first\n  1.0: second",
+        "null: first\n  ~: second",
+    ],
+)
+def test_yaml_semantic_key_collisions_are_not_silently_merged(keys):
+    raw = ATLAS_YAML + ("\nmetadata:\n  " + keys + "\n").encode()
+    with pytest.raises(TaxonomyInputError, match="taxonomy_yaml_duplicate_key"):
+        parse_atlas_catalogue(raw, provenance(raw, "atlas"))
+
+
+@pytest.mark.parametrize("key", [".nan", ".inf", "-.inf", "!!set fixture", "[1, 2]"])
+def test_yaml_nonfinite_custom_or_nonscalar_keys_are_rejected(key):
+    raw = ATLAS_YAML + ("\nmetadata:\n  " + key + ": fixture\n").encode()
+    with pytest.raises(TaxonomyInputError):
+        parse_atlas_catalogue(raw, provenance(raw, "atlas"))
+
+
+@pytest.mark.parametrize("scalar", ["!!int nope", "!!float nope", "!!bool nope", "2026-99-99"])
+def test_invalid_mature_yaml_scalar_constructor_has_a_fixed_safe_error(scalar):
+    raw = ATLAS_YAML + ("\nmetadata: " + scalar + "\n").encode()
+    with pytest.raises(TaxonomyInputError) as failure:
+        parse_atlas_catalogue(raw, provenance(raw, "atlas"))
+    assert str(failure.value) == "taxonomy_yaml_invalid"
