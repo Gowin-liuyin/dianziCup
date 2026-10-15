@@ -19,6 +19,7 @@ from ai_intel.infrastructure.network import FetchResult, NetworkTimeoutError
 from ai_intel.ingestion import source_jobs
 from ai_intel.ingestion.source_catalog import CATALOG_SOURCES
 from ai_intel.ingestion.source_documents import ensure_source_registration
+from ai_intel.ingestion.source_failure_models import source_response_receipts
 from ai_intel.ingestion.source_jobs import (
     SOURCE_JOB_TYPE,
     SourcePageRequest,
@@ -37,7 +38,7 @@ from ai_intel.knowledge.models import (
     source_page_receipts,
     text_blocks,
 )
-from ai_intel.knowledge.persistence_models import events
+from ai_intel.knowledge.persistence_models import claims, events
 from ai_intel.workers.executor import execute_job
 
 pytestmark = pytest.mark.real_pg
@@ -47,7 +48,7 @@ NOW = datetime(2026, 10, 15, 10, tzinfo=UTC)
 @pytest.fixture
 def catalog_worker_engine(isolated_test_database_url):
     url = make_url(isolated_test_database_url)
-    assert url.database == "test_dianzi_r06_catalog_worker_20261015"
+    assert url.database is not None and url.database.startswith("test_dianzi_r06_catalog_")
     base = create_engine(url, connect_args={"connect_timeout": 5})
     schema = "test_r06_worker_" + uuid4().hex
     with base.begin() as connection:
@@ -270,18 +271,98 @@ def test_catalog_failure_never_publishes_partial_page_or_cursor(
     )
     outcome = run(engine, job_id, handler_for(store, kind, fetcher=special))
     assert outcome == ("blocked" if failure in {"invalid_page", "blob_corrupt"} else "retry_wait")
+    expected_error = {
+        "storage": "source_response_storage_failed",
+        "second_document": "handler_failed",
+        "cursor_commit": "handler_failed",
+        "continuation": "handler_failed",
+        "invalid_page": "source_response_invalid",
+        "blob_corrupt": "source_response_invalid",
+        "blob_limit": "source_rate_limited",
+        "wrong_type": "unsupported_content_type",
+        "timeout": "network_timeout",
+    }[failure]
+    expected_bodies: tuple[bytes | None, ...]
+    if failure == "blob_corrupt":
+        expected_bodies = (tree, blob.replace(b'"sha": "', b'"sha": "f'))
+        expected_outcomes = ("normalized", "normalization_failed")
+        expected_errors = (None, "source_response_invalid")
+        expected_statuses = (200, 200)
+    elif failure == "blob_limit":
+        expected_bodies = (tree, None)
+        expected_outcomes = ("normalized", "transport_failed")
+        expected_errors = (None, "source_rate_limited")
+        expected_statuses = (200, 429)
+    elif failure == "invalid_page":
+        expected_bodies = (b"malformed source page",)
+        expected_outcomes = ("normalization_failed",)
+        expected_errors = ("source_response_invalid",)
+        expected_statuses = (200,)
+    elif failure in {"storage", "wrong_type", "timeout"}:
+        expected_bodies = (None,)
+        expected_outcomes = ("transport_failed",)
+        expected_errors = (expected_error,)
+        expected_statuses = (None if failure == "timeout" else 200,)
+    else:
+        expected_bodies = (source_response(kind)[0],)
+        expected_outcomes = ("normalized",)
+        expected_errors = (None,)
+        expected_statuses = (200,)
     with Session(engine) as session:
         for table in (
             documents,
             document_revisions,
             evidence,
-            content_objects,
+            text_blocks,
+            claims,
+            events,
             fetch_attempts,
             source_page_receipts,
             source_cursors,
         ):
             assert session.scalar(select(func.count()).select_from(table)) == 0
         assert session.scalar(select(func.count()).select_from(job_runs)) == 1
+        job = session.execute(select(job_runs).where(job_runs.c.job_id == job_id)).mappings().one()
+        assert job["status"] == outcome and job["error_code"] == expected_error
+        assert job["attempt_count"] == 1
+        outbox_job_ids = list(session.scalars(select(outbox_events.c.job_id)))
+        assert outbox_job_ids == [job_id] * (2 if outcome == "retry_wait" else 1)
+        receipts = list(
+            session.execute(
+                select(source_response_receipts).order_by(
+                    source_response_receipts.c.response_ordinal
+                )
+            ).mappings()
+        )
+        assert len(receipts) == len(expected_bodies)
+        assert [row["response_ordinal"] for row in receipts] == list(
+            range(1, len(expected_bodies) + 1)
+        )
+        assert all(row["job_id"] == job_id and row["attempt_count"] == 1 for row in receipts)
+        assert all(row["source_kind"] == kind for row in receipts)
+        assert all(row["source_id"] == CATALOG_SOURCES[kind].source_id for row in receipts)
+        assert [row["parse_outcome"] for row in receipts] == list(expected_outcomes)
+        assert [row["error_code"] for row in receipts] == list(expected_errors)
+        assert [row["http_status"] for row in receipts] == list(expected_statuses)
+        retained_hashes = {
+            row["response_content_hash"]
+            for row in receipts
+            if row["response_content_hash"] is not None
+        }
+        expected_hashes = {
+            hashlib.sha256(body).hexdigest() for body in expected_bodies if body is not None
+        }
+        assert retained_hashes == expected_hashes
+        assert set(session.scalars(select(content_objects.c.content_hash))) == retained_hashes
+        if failure in {"storage", "wrong_type", "timeout"}:
+            assert session.scalar(select(func.count()).select_from(content_objects)) == 0
+        for row, body in zip(receipts, expected_bodies, strict=True):
+            if body is None:
+                assert row["response_content_hash"] is row["response_size_bytes"] is None
+            else:
+                assert row["response_content_hash"] == hashlib.sha256(body).hexdigest()
+                assert row["response_size_bytes"] == len(body)
+                assert store.read_verified(row["response_content_hash"]) == body
 
 
 @pytest.mark.parametrize("pages", [1, 2])

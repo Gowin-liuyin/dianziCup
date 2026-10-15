@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ai_intel.infrastructure.content_store import ContentStorage, StoredContent
+from ai_intel.ingestion.source_failure_models import source_response_receipts
 from ai_intel.knowledge.models import (
     content_objects,
     document_revisions,
@@ -374,9 +375,20 @@ def cleanup_unreferenced_object(session: Session, store: ContentStorage, content
         .select_from(fetch_attempts)
         .where(fetch_attempts.c.response_content_hash == content_hash)
     ).scalar_one()
+    failed_response_refs = session.execute(
+        select(func.count())
+        .select_from(source_response_receipts)
+        .where(source_response_receipts.c.response_content_hash == content_hash)
+    ).scalar_one()
     if any(
         int(count) > 0
-        for count in (revision_refs, document_refs, response_revision_refs, response_fetch_refs)
+        for count in (
+            revision_refs,
+            document_refs,
+            response_revision_refs,
+            response_fetch_refs,
+            failed_response_refs,
+        )
     ):
         return False
     try:

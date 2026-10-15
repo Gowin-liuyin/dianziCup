@@ -1,0 +1,271 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> src\ai_intel\ingestion\source_failure_receipts.py:3:1
+   |
+ 1 |   """Commit bounded source response evidence independently of parsing and cursor effects."""
+ 2 |
+ 3 | / from __future__ import annotations
+ 4 | |
+ 5 | | import hashlib
+ 6 | | import json
+ 7 | | from dataclasses import dataclass
+ 8 | | from datetime import datetime
+ 9 | | from typing import Literal
+10 | | from uuid import NAMESPACE_URL, uuid5
+11 | |
+12 | | from pydantic import JsonValue
+13 | | from sqlalchemy import select, update
+14 | | from sqlalchemy.dialects.postgresql import insert
+15 | | from sqlalchemy.engine import Engine
+16 | | from sqlalchemy.exc import SQLAlchemyError
+17 | | from sqlalchemy.orm import Session
+18 | |
+19 | | from ai_intel.domain.access import MANAGE_PUBLIC_SOURCES, READ_PUBLIC, AccessScope, Role
+20 | | from ai_intel.infrastructure.content_store import ContentStorage
+21 | | from ai_intel.infrastructure.minio_store import ObjectStoreUnavailableError
+22 | | from ai_intel.infrastructure.network import MAX_RESPONSE_BYTES, FetchResult
+23 | | from ai_intel.ingestion.source_catalog import CATALOG_SOURCES, CatalogRequest, SourceKind
+24 | | from ai_intel.ingestion.source_failure_models import source_response_receipts
+25 | | from ai_intel.knowledge.models import job_runs
+26 | | from ai_intel.knowledge.revisions import register_response_content
+27 | | from ai_intel.workers.executor import JobExecutionContext, JobExecutionError
+28 | | from ai_intel.workers.jobs import read_job_payload
+   | |__________________________________________________^
+29 |
+30 |   RECEIPT_ERROR_CODES = frozenset({
+   |
+help: Organize imports
+   |
+11 |
+12 + from ai_intel.ingestion.source_failure_models import source_response_receipts
+13 | from pydantic import JsonValue
+--------------------------------------------------------------------------------
+24 | from ai_intel.ingestion.source_catalog import CATALOG_SOURCES, CatalogRequest, SourceKind
+   - from ai_intel.ingestion.source_failure_models import source_response_receipts
+25 | from ai_intel.knowledge.models import job_runs
+   |
+
+E501 Line too long (122 > 100)
+  --> src\ai_intel\ingestion\source_failure_receipts.py:64:101
+   |
+62 |         self.scope.requires(MANAGE_PUBLIC_SOURCES)
+63 |         self.scope.requires(READ_PUBLIC)
+64 |         if self.scope.role != Role.SYSTEM_ADMIN or self.scope.tenant_id is not None or self.context.tenant_id is not None:
+   |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^
+65 |             raise JobExecutionError("source_scope_denied", blocked=True)
+66 |         if observed_at.utcoffset() is None or self.window_end.utcoffset() is None or self.window_end > observed_at:
+   |
+
+E501 Line too long (115 > 100)
+  --> src\ai_intel\ingestion\source_failure_receipts.py:66:101
+   |
+64 |         if self.scope.role != Role.SYSTEM_ADMIN or self.scope.tenant_id is not None or self.context.tenant_id is not None:
+65 |             raise JobExecutionError("source_scope_denied", blocked=True)
+66 |         if observed_at.utcoffset() is None or self.window_end.utcoffset() is None or self.window_end > observed_at:
+   |                                                                                                     ^^^^^^^^^^^^^^^
+67 |             raise JobExecutionError("source_receipt_context_invalid", blocked=True)
+68 |         row = session.execute(select(job_runs).where(job_runs.c.job_id == self.context.job_id)).mappings().first()
+   |
+
+E501 Line too long (114 > 100)
+  --> src\ai_intel\ingestion\source_failure_receipts.py:68:101
+   |
+66 |         if observed_at.utcoffset() is None or self.window_end.utcoffset() is None or self.window_end > observed_at:
+67 |             raise JobExecutionError("source_receipt_context_invalid", blocked=True)
+68 |         row = session.execute(select(job_runs).where(job_runs.c.job_id == self.context.job_id)).mappings().first()
+   |                                                                                                     ^^^^^^^^^^^^^^
+69 |         if row is None or (
+70 |             row["tenant_id"] is not None
+   |
+
+E501 Line too long (111 > 100)
+  --> src\ai_intel\ingestion\source_failure_receipts.py:85:101
+   |
+83 |             raise JobExecutionError("source_receipt_context_invalid", blocked=True)
+84 |         requested_window = payload.get("window_end")
+85 |         if not isinstance(requested_window, str) or datetime.fromisoformat(requested_window) < self.window_end:
+   |                                                                                                     ^^^^^^^^^^^
+86 |             raise JobExecutionError("source_receipt_context_invalid", blocked=True)
+   |
+
+E501 Line too long (104 > 100)
+   --> src\ai_intel\ingestion\source_failure_receipts.py:98:101
+    |
+ 96 |     ) -> str:
+ 97 |         """Only validated HTTP200 bytes are retained; transport metadata never invents a body."""
+ 98 |         if type(ordinal) is not int or not 1 <= ordinal <= 2 or self.source_kind not in CATALOG_SOURCES:
+    |                                                                                                     ^^^^
+ 99 |             raise JobExecutionError("source_receipt_context_invalid", blocked=True)
+100 |         status, media = None, None
+    |
+
+E501 Line too long (134 > 100)
+   --> src\ai_intel\ingestion\source_failure_receipts.py:112:101
+    |
+110 |                     raise JobExecutionError("response_too_large", blocked=True)
+111 |                 body = response.body
+112 |         receipt_id = str(uuid5(NAMESPACE_URL, f"dianzi:source-response:{self.context.job_id}:{self.context.attempt_count}:{ordinal}"))
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+113 |         values: dict[str, object] = {
+114 |             "receipt_id": receipt_id, "schema_version": 1,
+    |
+
+E501 Line too long (102 > 100)
+   --> src\ai_intel\ingestion\source_failure_receipts.py:132:101
+    |
+130 |                     try:
+131 |                         with session.begin_nested():
+132 |                             stored = register_response_content(session, self.store, body, observed_at)
+    |                                                                                                     ^^
+133 |                             values.update(response_content_hash=stored.content_hash, response_size_bytes=stored.size_bytes)
+134 |                     except (OSError, ValueError, ObjectStoreUnavailableError):
+    |
+
+E501 Line too long (123 > 100)
+   --> src\ai_intel\ingestion\source_failure_receipts.py:133:101
+    |
+131 |                         with session.begin_nested():
+132 |                             stored = register_response_content(session, self.store, body, observed_at)
+133 |                             values.update(response_content_hash=stored.content_hash, response_size_bytes=stored.size_bytes)
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^
+134 |                     except (OSError, ValueError, ObjectStoreUnavailableError):
+135 |                         storage_failed = True
+    |
+
+E501 Line too long (116 > 100)
+   --> src\ai_intel\ingestion\source_failure_receipts.py:136:101
+    |
+134 | …         except (OSError, ValueError, ObjectStoreUnavailableError):
+135 | …             storage_failed = True
+136 | …             values.update(parse_outcome="transport_failed", error_code="source_response_storage_failed")
+    |                                                                                           ^^^^^^^^^^^^^^^^
+137 | …     session.execute(insert(source_response_receipts).values(**values).on_conflict_do_nothing(index_elements=[source_response_receip…
+138 | …     prior = session.execute(select(source_response_receipts).where(source_response_receipts.c.receipt_id == receipt_id)).mappings()…
+    |
+
+E501 Line too long (149 > 100)
+   --> src\ai_intel\ingestion\source_failure_receipts.py:138:101
+    |
+136 | …ort_failed", error_code="source_response_storage_failed")
+137 | …ipts).values(**values).on_conflict_do_nothing(index_elements=[source_response_receipts.c.receipt_id]))
+138 | …nse_receipts).where(source_response_receipts.c.receipt_id == receipt_id)).mappings().one()
+    |                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+139 | …_at", "parse_outcome", "error_code"}
+140 | … in immutable_fields):
+    |
+
+E501 Line too long (102 > 100)
+   --> src\ai_intel\ingestion\source_failure_receipts.py:143:101
+    |
+141 |                     raise JobExecutionError("source_receipt_replay_conflict", blocked=True)
+142 |         except SQLAlchemyError:
+143 |             raise JobExecutionError("source_receipt_database_failed", retry_after_seconds=7) from None
+    |                                                                                                     ^^
+144 |         except JobExecutionError:
+145 |             raise
+    |
+
+E501 Line too long (102 > 100)
+   --> src\ai_intel\ingestion\source_failure_receipts.py:169:101
+    |
+167 |                 ).values(parse_outcome=outcome, error_code=error_code))
+168 |         except SQLAlchemyError:
+169 |             raise JobExecutionError("source_receipt_database_failed", retry_after_seconds=7) from None
+    |                                                                                                     ^^
+
+E501 Line too long (101 > 100)
+   --> src\ai_intel\ingestion\source_jobs.py:359:101
+    |
+357 |                 if current.json_body is None:
+358 |                     raise SourceCatalogError("fixed POST body missing")
+359 |                 body = json.dumps(current.json_body, allow_nan=False, separators=(",", ":")).encode()
+    |                                                                                                     ^
+360 |                 result = (
+361 |                     poster(current.url, body)
+    |
+
+F401 [*] `tests.integration.test_r06_catalog_documents_pg.catalog_engine` imported but unused
+  --> tests\integration\test_r06_failed_response_persistence_pg.py:9:61
+   |
+ 7 | from sqlalchemy import func, select, text
+ 8 | from sqlalchemy.orm import Session
+ 9 | from tests.integration.test_r06_catalog_documents_pg import catalog_engine
+   |                                                             ^^^^^^^^^^^^^^
+10 |
+11 | from ai_intel.infrastructure.content_store import ContentStore
+   |
+help: Remove unused import: `tests.integration.test_r06_catalog_documents_pg.catalog_engine`
+  |
+8 | from sqlalchemy.orm import Session
+  - from tests.integration.test_r06_catalog_documents_pg import catalog_engine
+9 |
+  |
+
+E501 Line too long (109 > 100)
+  --> tests\integration\test_r06_failed_response_persistence_pg.py:42:101
+   |
+40 |         )
+41 |         if tenant_id is not None:
+42 |             session.execute(job_runs.update().where(job_runs.c.job_id == job_id).values(tenant_id=tenant_id))
+   |                                                                                                     ^^^^^^^^^
+43 |         return job_id
+   |
+
+E501 Line too long (110 > 100)
+  --> tests\integration\test_r06_failed_response_persistence_pg.py:47:101
+   |
+46 | def run(engine, job_id, handler, at=NOW):
+47 |     return execute_job(engine, job_id, "failure-fixture-worker", {SOURCE_JOB_TYPE: handler}, clock=lambda: at)
+   |                                                                                                     ^^^^^^^^^^
+
+E501 Line too long (121 > 100)
+  --> tests\integration\test_r06_failed_response_persistence_pg.py:52:101
+   |
+50 | def receipts(engine):
+51 |     with Session(engine) as session:
+52 |         return list(session.execute(text("SELECT * FROM source_response_receipts ORDER BY response_ordinal")).mappings())
+   |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^
+
+E501 Line too long (107 > 100)
+  --> tests\integration\test_r06_failed_response_persistence_pg.py:57:101
+   |
+55 | def assert_no_business_effects(engine):
+56 |     with Session(engine) as session:
+57 |         for table in (documents, document_revisions, source_cursors, source_page_receipts, fetch_attempts):
+   |                                                                                                     ^^^^^^^
+58 |             assert session.scalar(select(func.count()).select_from(table)) == 0
+   |
+
+F811 Redefinition of unused `catalog_engine` from line 9
+  --> tests\integration\test_r06_failed_response_persistence_pg.py:72:54
+   |
+70 |     ],
+71 | )
+72 | def test_invalid_page_body_survives_handler_rollback(catalog_engine, tmp_path, kind, media, body):
+   |                                                      ^^^^^^^^^^^^^^ `catalog_engine` redefined here
+73 |     store = ContentStore(tmp_path / "raw")
+74 |     job_id = queue(catalog_engine, kind)
+   |
+  ::: tests\integration\test_r06_failed_response_persistence_pg.py:9:61
+   |
+ 7 | from sqlalchemy import func, select, text
+ 8 | from sqlalchemy.orm import Session
+ 9 | from tests.integration.test_r06_catalog_documents_pg import catalog_engine
+   |                                                             -------------- previous definition of `catalog_engine` here
+10 |
+11 | from ai_intel.infrastructure.content_store import ContentStore
+   |
+help: Remove definition: `catalog_engine`
+
+E501 Line too long (127 > 100)
+  --> tests\integration\test_r06_failed_response_persistence_pg.py:84:101
+   |
+82 |     digest = hashlib.sha256(body).hexdigest()
+83 |     with Session(catalog_engine) as session:
+84 |         assert session.scalar(select(content_objects.c.content_hash).where(content_objects.c.content_hash == digest)) == digest
+   |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+85 |         job = session.execute(select(job_runs).where(job_runs.c.job_id == job_id)).mappings().one()
+86 |         assert job["status"] == "blocked" and job["error_code"] == "source_response_invalid"
+   |
+
+Found 21 errors.
+[*] 2 fixable with the `--fix` option.
