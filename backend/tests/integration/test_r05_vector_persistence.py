@@ -57,9 +57,11 @@ def load_legacy_0013_seed(engine: Engine, schema: str, store: ContentStore) -> t
     """Load the frozen old writer output using only the migrated 0013 column definitions."""
     assert schema.startswith("test_r05_") and schema.isidentifier()
     recorded = Path(__file__).resolve().parents[3] / "fixtures/recorded"
-    seed_bytes = (recorded / "r05_legacy_0013_vllm_public_v1.json").read_bytes()
+    seed_bytes = (
+        (recorded / "r05_legacy_0013_vllm_public_v1.json").read_bytes().replace(b"\r\n", b"\n")
+    )
     assert hashlib.sha256(seed_bytes).hexdigest() == (
-        "172738559f16571d1854f302708633f48178b38fae854d3d782fad775b267fc4"
+        "6170ce55e63a70a557f62fc79213d20b596222220e2a04d5e050e67b7e188336"
     )
     seed = json.loads(seed_bytes)
     assert seed["fixture_version"] == 1 and seed["data_mode"] == "fixture"
