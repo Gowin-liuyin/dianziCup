@@ -165,7 +165,7 @@ def test_tenant_roles_cannot_publish_public_source_documents(catalog_engine, tmp
 
 
 @pytest.mark.parametrize(
-    "mutation", ["foreign_uri", "duplicate", "coordinates", "del_uri", "kind"]
+    "mutation", ["foreign_uri", "duplicate", "coordinates", "del_uri", "kind", "long_uri"]
 )
 def test_bad_member_rejects_the_whole_page_without_partial_documents(
     catalog_engine, tmp_path, mutation
@@ -180,6 +180,8 @@ def test_bad_member_rejects_the_whole_page_without_partial_documents(
         bad = replace(bad, canonical_uri="https://arxiv.org/abs/2601.00002\x7f")
     elif mutation == "kind":
         bad = replace(bad, kind=DocumentKind.ADVISORY)
+    elif mutation == "long_uri":
+        bad = replace(bad, canonical_uri="https://arxiv.org/abs/" + "x" * 2083)
     else:
         parsed = replace(
             bad.parsed,
@@ -208,9 +210,13 @@ def test_source_metadata_identity_changes_create_new_revisions(catalog_engine, t
     assert first.new_revision_count == second.new_revision_count == 1
     assert first.revision_ids != second.revision_ids
     with catalog_engine.connect() as connection:
-        current = connection.execute(
-            select(document_revisions).where(document_revisions.c.is_current.is_(True))
-        ).mappings().one()
+        current = (
+            connection.execute(
+                select(document_revisions).where(document_revisions.c.is_current.is_(True))
+            )
+            .mappings()
+            .one()
+        )
         assert current["source_metadata"][field] == (
             changes[field].isoformat() if isinstance(changes[field], datetime) else changes[field]
         )

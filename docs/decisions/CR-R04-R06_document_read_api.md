@@ -47,3 +47,5 @@ license_identifier是原许可标识或null；license_uri只允许安全https；
 已有events/evidence/questions字段、认证与幂等合同不变；新增只读端点不改变原调用方。0015只给document_revisions加有界JSON对象source_metadata，旧记录默认{}，缺失值unknown/null，旧内容/hash/ID不改。新catalog保存时以正文与标题/URI/日期/解析版本/来源metadata共同判断复用，A→B→A必须三修订。观察时间不进入正文身份，不因每次轮询重复建版本；不自动制造CVE/Claim/关联。停止新资料采集/关闭新导航与GET后以前向修复回滚，保留0015与全部历史，不downgrade/删除数据。
 
 R06存储/API切片、R09资料输入与R17页面增量；不签完整R09/R17或原T。必要验收：类型/过滤/绑定游标、空/部分/日期精度、历史归属/权限负例、证据精确子串与原文hash、PG重复/并发/A→B→A、前端strict DTO/注入/会话撤销/分页/历史、1366/390/reduced-motion与真实API浏览器。fixture不算live；新源worker尚未接线时明确not_run。
+
+边界补充冻结 · 2026-10-15T19:27:04+08:00：source_name 1..300、license_identifier null或1..256、published_at_raw null或1..256、所有新canonical_uri/license_uri安全https最长2083、禁止userinfo/fragment/敏感query；source_notes最多20×1..1000。与既有HttpUrl上限一致。Pydantic实现以api/document_contracts.py为准；不改变上列字段或枚举。
