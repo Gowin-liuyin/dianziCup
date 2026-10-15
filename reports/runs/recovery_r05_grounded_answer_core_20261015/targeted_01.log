@@ -1,0 +1,40 @@
+...........F............................................................ [ 80%]
+.................                                                        [100%]
+================================== FAILURES ===================================
+________________ test_evidence_boundary_before_remote[\ud800] _________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002031E02B2C0>
+quote = '\ud800'
+
+    @pytest.mark.parametrize("quote", [" ", "x" * 16385, "fixture\0", "\ud800"])
+    def test_evidence_boundary_before_remote(monkeypatch, quote):
+        client, calls = prepared(monkeypatch, [])
+        with pytest.raises(GroundedAnswerFailure):
+>           generate_grounded_answer(client, "����", (evidence(quote),))
+                                                    ^^^^^^^^^^^^^^^
+
+tests\unit\test_r05_grounded_answer.py:142: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+quote = '\ud800', changes = {}
+
+    def evidence(quote=SOURCE_TEXT, **changes):
+>       return CitationProjection(
+            **{
+                "evidence_id": EVIDENCE_ID,
+                "revision_id": REVISION_ID,
+                "quote": quote,
+                "locator": "text:10:40",
+                "source_uri": "https://vendor.example/advisory",
+                **changes,
+            }
+        )
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for CitationProjection
+E       quote
+E         Input should be a valid string, unable to parse raw data as a unicode string [type=string_unicode, input_value='\ud800', input_type=str]
+E           For further information visit https://errors.pydantic.dev/2.13/v/string_unicode
+
+tests\unit\test_r05_grounded_answer.py:24: ValidationError
+=========================== short test summary info ===========================
+FAILED tests/unit/test_r05_grounded_answer.py::test_evidence_boundary_before_remote[\ud800]
+1 failed, 88 passed in 2.05s

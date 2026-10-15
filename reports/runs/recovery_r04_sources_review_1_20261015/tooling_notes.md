@@ -1,0 +1,11 @@
+本文件记录审查工具/自建测试错误，不把它们当业务失败；早期未落盘的精确时刻均未知。
+
+1. 派发中的短目标2ff2f993不能解析，主控随后更正完整2ff2f999b3824252d54b93af6d1da78ecb6f1427。实际worktree只从已更正目标建立，没有用错误目标测试。
+2. 早期未引用HEAD^{tree}的PowerShell参数处理失败，之后引用参数取得完整tree5af8185a14984d61d6c4dab5cc85932ac7ed294c；各实际测试receipt再次核对该值。
+3. WSL最初使用Ubuntu名称，系统实际distribution是Ubuntu-22.04；只在后者中读取明确授权的0600测试连接。未输出私有连接或密码。
+4. 尝试并行只读vendor子审，team线程上限拒绝，未创建子agent或沿用vendor作者身份；本Agent独立完成本批复跑和源码审查。
+5. 早期rg猜测不存在ingestion/execution.py与worker.py路径，退出输出保留于会话；后以rg --files找到workers/runtime.py/executor.py，重新在frozen_source_callers日志中核对真正入口。
+6. 13:15首次读取自己的失败日志后，同一个工具调用末尾曾误以D:/dianzi为cwd读backend入口。未把主目录当审查对象，后来在干净冻结worktree重新读相同入口并保存frozen_source_callers及CBM入口trace；所有最终源码结论只依据后者。
+7. independent_boundary_first正例误写TextBlock.json_pointer；冻结模型使用block_type='field:'+pointer。修正自身测试后新独立日志16 tests/12 fail/4 pass，首轮16 tests/13 fail/3 pass及首轮脚本snapshot保留。只把12个持续复现负例算业务失败。
+8. 竞争探针第一版要求新引用必须提交；第二版允许正确同步实现阻塞或拒绝该引用，仅对实际committed引用断言可重读。两版冻结原代码两种FK均提交后丢字节。后续复核应使用test_independent_boundaries.py最终脚本。
+9. 共享Python依赖只读使用，PYTHONPATH一直明确指向独立frozen源码，未装包/改锁。纯unit396的覆盖原始数为62.97552701720378%，不是作者374或root可变目录数据。

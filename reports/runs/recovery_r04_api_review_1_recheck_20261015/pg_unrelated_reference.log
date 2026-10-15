@@ -1,0 +1,67 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+_ test_existing_public_unrelated_reference_is_not_successful_empty_dimension[claim_ids] _
+
+api_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r04_api_review_recheck_20261015?options=-c+search_path%3Dtest_r04_api_a6a52b6f5b9246e59f3a6466fb13aa96+-c+statement_timeout%3D20000+-c+lock_timeout%3D5000)
+default_pg_client = <starlette.testclient.TestClient object at 0x771c739f0c80>
+column_name = 'claim_ids'
+
+    @pytest.mark.parametrize("column_name", ["claim_ids", "reference_ids"])
+    def test_existing_public_unrelated_reference_is_not_successful_empty_dimension(api_engine, default_pg_client, column_name):
+        original = seed_source_document(api_engine)
+        unrelated = seed_source_document(api_engine, body="unrelated public document")
+        target = seed_event(api_engine, [original["revision_id"]])
+        unrelated_event = seed_event(api_engine, [unrelated["revision_id"]])
+        original_claim = seed_claim(api_engine, original, "original public product")
+        unrelated_claim = seed_claim(api_engine, unrelated, "unrelated public product")
+        dimension = seed_dimension(api_engine, target, original, original_claim)
+        assert default_pg_client.get("/v1/events/" + unrelated_event).status_code == 200
+        assert default_pg_client.get("/v1/evidence/" + unrelated["evidence_id"]).status_code == 200
+        identifier = unrelated_claim if column_name == "claim_ids" else unrelated["evidence_id"]
+        with api_engine.begin() as connection:
+            connection.execute(update(enrichment_results).where(enrichment_results.c.result_id == dimension).values(**{column_name:[identifier]}))
+        response = default_pg_client.get("/v1/events/" + target)
+>       assert response.status_code == 503, response.text
+E       AssertionError: {"schema_version":2,"event":{"event_id":"77dd9316-4e4c-45b8-ab38-72b5fe16692a","event_type":"vulnerability","title":"fixture event","external_ids":[],"primary_product_ids":[],"first_seen_at":"2026-10-15T05:00:00Z","status":"active","source_count":1,"latest_revision_id":"33c5beee-2a33-491c-ad72-f710efd0b12d","freshness":"unknown"},"dimensions":[],"revisions":[{"revision_id":"33c5beee-2a33-491c-ad72-f710efd0b12d","document_id":"405c54af-10b9-4ff6-99e3-bd39e14f12f4","revision_number":1,"source_id":"ca11a87a-e742-4de6-bcc2-f95ec7542c5a","source_published_at":null,"source_modified_at":null,"first_observed_at":"2026-10-15T05:00:00Z","ingested_at":"2026-10-15T05:00:00Z","parse_status":"parsed","document_kind":"advisory","canonical_uri":"https://example.invalid/advisory?public_id=1"}],"claims":[{"claim_id":"6ef4bb2f-d22d-4bad-a2e3-54a4a7a593d1","predicate":"affected_product","display_value":"original public product","origin":"source_explicit","status":"supported","source_revision_id":"33c5beee-2a33-491c-ad72-f710efd0b12d","evidence_ids":["466cecb2-f7a5-4fe9-b92d-5e7a285fb1ff"]}],"data_mode":"fixture"}
+E       assert 200 == 503
+E        +  where 200 = <Response [200 OK]>.status_code
+
+/mnt/d/dianzi/reports/runs/recovery_r04_api_review_1_recheck_20261015/independent_tests/test_review_related_references.py:26: AssertionError
+_ test_existing_public_unrelated_reference_is_not_successful_empty_dimension[reference_ids] _
+
+api_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r04_api_review_recheck_20261015?options=-c+search_path%3Dtest_r04_api_7e848c35f60e47b194a3b9c2e445ad23+-c+statement_timeout%3D20000+-c+lock_timeout%3D5000)
+default_pg_client = <starlette.testclient.TestClient object at 0x771c73945760>
+column_name = 'reference_ids'
+
+    @pytest.mark.parametrize("column_name", ["claim_ids", "reference_ids"])
+    def test_existing_public_unrelated_reference_is_not_successful_empty_dimension(api_engine, default_pg_client, column_name):
+        original = seed_source_document(api_engine)
+        unrelated = seed_source_document(api_engine, body="unrelated public document")
+        target = seed_event(api_engine, [original["revision_id"]])
+        unrelated_event = seed_event(api_engine, [unrelated["revision_id"]])
+        original_claim = seed_claim(api_engine, original, "original public product")
+        unrelated_claim = seed_claim(api_engine, unrelated, "unrelated public product")
+        dimension = seed_dimension(api_engine, target, original, original_claim)
+        assert default_pg_client.get("/v1/events/" + unrelated_event).status_code == 200
+        assert default_pg_client.get("/v1/evidence/" + unrelated["evidence_id"]).status_code == 200
+        identifier = unrelated_claim if column_name == "claim_ids" else unrelated["evidence_id"]
+        with api_engine.begin() as connection:
+            connection.execute(update(enrichment_results).where(enrichment_results.c.result_id == dimension).values(**{column_name:[identifier]}))
+        response = default_pg_client.get("/v1/events/" + target)
+>       assert response.status_code == 503, response.text
+E       AssertionError: {"schema_version":2,"event":{"event_id":"4aa4ddf7-b732-4537-bc3d-60d1a13536f2","event_type":"vulnerability","title":"fixture event","external_ids":[],"primary_product_ids":[],"first_seen_at":"2026-10-15T05:00:00Z","status":"active","source_count":1,"latest_revision_id":"fdea59d5-c9c4-454c-9b6d-3b14a9b8b7b3","freshness":"unknown"},"dimensions":[],"revisions":[{"revision_id":"fdea59d5-c9c4-454c-9b6d-3b14a9b8b7b3","document_id":"030f9e9a-6ddd-4fcc-919a-0511cdf35279","revision_number":1,"source_id":"80d3c88d-f576-49c3-ac7c-1635191ac61c","source_published_at":null,"source_modified_at":null,"first_observed_at":"2026-10-15T05:00:00Z","ingested_at":"2026-10-15T05:00:00Z","parse_status":"parsed","document_kind":"advisory","canonical_uri":"https://example.invalid/advisory?public_id=1"}],"claims":[{"claim_id":"42d2c6fe-67b6-428d-8eac-d3b4c7c83ed8","predicate":"affected_product","display_value":"original public product","origin":"source_explicit","status":"supported","source_revision_id":"fdea59d5-c9c4-454c-9b6d-3b14a9b8b7b3","evidence_ids":["93569aa9-defb-4482-bfc3-ca105005a636"]}],"data_mode":"fixture"}
+E       assert 200 == 503
+E        +  where 200 = <Response [200 OK]>.status_code
+
+/mnt/d/dianzi/reports/runs/recovery_r04_api_review_1_recheck_20261015/independent_tests/test_review_related_references.py:26: AssertionError
+=============================== warnings summary ===============================
+../../../../../../../../../tmp/dianzi-r04-api-review-1-20261015/venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /tmp/dianzi-r04-api-review-1-20261015/venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /mnt/d/dianzi/reports/runs/recovery_r04_api_review_1_recheck_20261015/pg_unrelated_reference.xml -
+=========================== short test summary info ============================
+FAILED ../../../../../../../../d/dianzi/reports/runs/recovery_r04_api_review_1_recheck_20261015/independent_tests/test_review_related_references.py::test_existing_public_unrelated_reference_is_not_successful_empty_dimension[claim_ids]
+FAILED ../../../../../../../../d/dianzi/reports/runs/recovery_r04_api_review_1_recheck_20261015/independent_tests/test_review_related_references.py::test_existing_public_unrelated_reference_is_not_successful_empty_dimension[reference_ids]
+2 failed, 1 warning in 5.39s

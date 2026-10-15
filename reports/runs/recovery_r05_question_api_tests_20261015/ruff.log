@@ -1,0 +1,161 @@
+F401 [*] `uuid.UUID` imported but unused
+  --> tests/integration/test_r05_question_api_pg.py:8:18
+   |
+ 6 | from concurrent.futures import ThreadPoolExecutor
+ 7 | from threading import Event
+ 8 | from uuid import UUID, uuid4
+   |                  ^^^^
+ 9 |
+10 | import pytest
+   |
+help: Remove unused import: `uuid.UUID`
+  |
+7 | from threading import Event
+  - from uuid import UUID, uuid4
+8 + from uuid import uuid4
+9 |
+  |
+
+E501 Line too long (106 > 100)
+   --> tests/integration/test_r05_question_api_pg.py:100:101
+    |
+ 98 |     wire = FixtureGenerationWire()
+ 99 |     monkeypatch.setattr(application_module, "build_engine", lambda settings: vector_database)
+100 |     monkeypatch.setattr(question_routes, "LocalSemanticModels", lambda directory: FixtureSemanticModels())
+    |                                                                                                     ^^^^^^
+101 |
+102 |     def fixture_post(gateway, url, body, *, protocol_headers, deadline):
+    |
+
+E501 Line too long (134 > 100)
+   --> tests/integration/test_r05_question_api_pg.py:324:101
+    |
+322 |         assert_problem(restarted.get("/v1/answers/" + row["answer_id"]), 409, "answer_failed")
+323 |         assert_problem(
+324 |             restarted.post("/api/v1/questions", json=api["payload"], headers={**api["headers"], "Idempotency-Key": "fixture-failed"}),
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+325 |             409,
+326 |             "answer_failed",
+    |
+
+E501 Line too long (115 > 100)
+   --> tests/integration/test_r05_question_api_pg.py:345:101
+    |
+343 |             with api["engine"].begin() as connection:
+344 |                 connection.execute(
+345 |                     update(users).where(users.c.user_id == api["identity"]["user_id"]).values(tenant_id="tenant-b")
+    |                                                                                                     ^^^^^^^^^^^^^^^
+346 |                 )
+    |
+
+E501 Line too long (105 > 100)
+   --> tests/integration/test_r05_question_api_pg.py:353:101
+    |
+351 |         response,
+352 |         {"revoked": 401, "permission": 403, "tenant": 404}[change],
+353 |         {"revoked": "session_expired", "permission": "permission_denied", "tenant": "not_found"}[change],
+    |                                                                                                     ^^^^^
+354 |     )
+355 |     assert stored_answer(api)["response"]["kind"] == "failed"
+    |
+
+E501 Line too long (105 > 100)
+   --> tests/integration/test_r05_question_api_pg.py:373:101
+    |
+371 |     with api["engine"].begin() as connection:
+372 |         connection.execute(
+373 |             update(events).values(visibility="tenant", tenant_id="tenant-b", scope_key="tenant:tenant-b")
+    |                                                                                                     ^^^^^
+374 |         )
+375 |     assert_problem(post_question(api), 404, "not_found")
+    |
+
+E501 Line too long (136 > 100)
+   --> tests/integration/test_r05_question_api_pg.py:387:101
+    |
+385 | …
+386 | …
+387 | …json=api["payload"], headers=api["headers"]), 503, "question_models_not_configured")
+    |                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+388 | ….json()["answer_id"]).json() == first.json()
+389 | …
+    |
+
+E501 Line too long (118 > 100)
+   --> tests/integration/test_r05_question_api_pg.py:406:101
+    |
+404 |     )
+405 |     for variant in variants:
+406 |         assert_problem(post_question(api, payload={**api["payload"], **variant}), 422, "question_scope_not_supported")
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^
+407 |     assert api["wire"].calls == []
+408 |     with api["engine"].connect() as connection:
+    |
+
+E501 Line too long (111 > 100)
+  --> tests/unit/test_r05_question_routes.py:34:101
+   |
+32 |             raise AssertionError("a rejected request reached the question service")
+33 |
+34 |     monkeypatch.setattr(question_routes, "build_question_service", lambda engine, settings: FixtureQuestions())
+   |                                                                                                     ^^^^^^^^^^^
+35 |     auth = AuthenticationSessionService(InMemoryUserDirectory(), (ORIGIN,), False)
+36 |     password = SecretStr(secrets.token_urlsafe(32))
+   |
+
+E501 Line too long (107 > 100)
+  --> tests/unit/test_r05_question_routes.py:38:101
+   |
+36 |     password = SecretStr(secrets.token_urlsafe(32))
+37 |     register_sensitive_failure_value(password)
+38 |     auth.create_precreated_user("fixture-route-user", password.get_secret_value(), "tenant-a", Role.VIEWER)
+   |                                                                                                     ^^^^^^^
+39 |     settings = ApplicationSettings(app_env="test", data_mode="fixture", database_url=SecretStr("sqlite://"))
+40 |     client = TestClient(create_application(auth, settings=settings))
+   |
+
+E501 Line too long (113 > 100)
+  --> tests/unit/test_r05_question_routes.py:68:101
+   |
+66 |     client.cookies.clear()
+67 |     for prefix in ("/v1", "/api/v1"):
+68 |         assert_problem(client.post(prefix + "/questions", json=payload, headers=headers), 401, "session_expired")
+   |                                                                                                     ^^^^^^^^^^^^^
+69 |         assert_problem(client.get(prefix + "/answers/" + str(uuid4())), 401, "session_expired")
+70 |     assert calls == []
+   |
+
+E501 Line too long (106 > 100)
+  --> tests/unit/test_r05_question_routes.py:82:101
+   |
+80 |         {**headers, "Origin": "https://untrusted.example"},
+81 |     ):
+82 |         assert_problem(client.post("/v1/questions", json=payload, headers=rejected), 403, "csrf_rejected")
+   |                                                                                                     ^^^^^^
+83 |     assert calls == []
+   |
+
+E501 Line too long (105 > 100)
+  --> tests/unit/test_r05_question_routes.py:89:101
+   |
+87 |     client, _, calls, payload, headers = route_fixture
+88 |     monkeypatch.setitem(ROLE_PERMISSIONS, Role.VIEWER, frozenset())
+89 |     assert_problem(client.post("/v1/questions", json=payload, headers=headers), 403, "permission_denied")
+   |                                                                                                     ^^^^^
+90 |     assert_problem(client.get("/api/v1/answers/" + str(uuid4())), 403, "permission_denied")
+91 |     assert calls == []
+   |
+
+E501 Line too long (107 > 100)
+  --> tests/unit/test_r05_question_routes.py:97:101
+   |
+95 |     client, auth, calls, payload, headers = route_fixture
+96 |     auth.logout(client.cookies[SESSION_COOKIE_NAME])
+97 |     assert_problem(client.post("/api/v1/questions", json=payload, headers=headers), 401, "session_expired")
+   |                                                                                                     ^^^^^^^
+98 |     assert_problem(client.get("/v1/answers/" + str(uuid4())), 401, "session_expired")
+99 |     assert calls == []
+   |
+
+Found 14 errors.
+[*] 1 fixable with the `--fix` option.

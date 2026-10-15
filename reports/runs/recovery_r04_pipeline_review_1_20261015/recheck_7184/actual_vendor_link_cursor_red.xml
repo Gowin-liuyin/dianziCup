@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="2" time="5.298" timestamp="2026-10-15T14:26:54.087723+08:00" hostname="yin"><testcase classname="d.dianzi.reports.runs.recovery_r04_pipeline_review_1_20261015.recheck_7184.testcopy.test_actual_vendor_pagination" name="test_actual_integer_pages_repeat_and_cursor_url_must_follow_after" time="0.001"><failure message="ai_intel.ingestion.source_documents.SourceDocumentError: invalid fixed source cursor">def test_actual_integer_pages_repeat_and_cursor_url_must_follow_after():
+        assert BODY==SECOND
+        assert hashlib.sha256(BODY).hexdigest()=='f5007db50489ecebbbfec5d8cc8798eb18cff1d12faf503795ce97c85e6894e1'
+        assert [record['ghsa_id'] for record in json.loads(BODY)]==[record['ghsa_id'] for record in json.loads(SECOND)]
+&gt;       query=dict(parse_qsl(urlsplit(source_page_url('vllm_vendor',EXPECTED)).query))
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/mnt/d/dianzi/reports/runs/recovery_r04_pipeline_review_1_20261015/recheck_7184/testcopy/test_actual_vendor_pagination.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+source_kind = 'vllm_vendor'
+cursor = {'after': 'Y3Vyc29yOnYyOpHOAAg-eQ==', 'cursor_version': 2}
+
+    def source_page_url(source_kind: SourceKind, cursor: dict[str, JsonValue]) -&gt; str:
+        """游标仅是已校验整数位置，不能变成任意 URL 或修改固定查询。"""
+        if source_kind not in {"nvd_ollama", "vllm_vendor"}:
+            raise SourceDocumentError("unknown fixed source")
+        key, initial = ("offset", 0) if source_kind == "nvd_ollama" else ("page", 1)
+        position = cursor.get(key, initial)
+        if set(cursor) - {key} or type(position) is not int or position &lt; initial:
+&gt;           raise SourceDocumentError("invalid fixed source cursor")
+E           ai_intel.ingestion.source_documents.SourceDocumentError: invalid fixed source cursor
+
+src/ai_intel/ingestion/source_jobs.py:68: SourceDocumentError</failure></testcase><testcase classname="d.dianzi.reports.runs.recovery_r04_pipeline_review_1_20261015.recheck_7184.testcopy.test_actual_vendor_pagination" name="test_actual_next_link_is_committed_as_cursor_instead_of_integer_page" time="3.385"><failure message="AssertionError: assert {'page': 2} == {'after': 'Y3...r_version': 2}&#10;  &#10;  Left contains 1 more item:&#10;  {'page': 2}&#10;  Right contains 2 more items:&#10;  {'after': 'Y3Vyc29yOnYyOpHOAAg-eQ==', 'cursor_version': 2}&#10;  Use -v to get more diff">job_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r04_pipeline_review_20261015?options=-c+search_path%3Dtest_r02_schema_67c94e1b22a34370b1c5794dd2f2c283+-c+statement_timeout%3D10000)
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-21/test_actual_next_link_is_commi0')
+
+    @pytest.mark.real_pg
+    def test_actual_next_link_is_committed_as_cursor_instead_of_integer_page(job_engine,tmp_path):
+        initial=queue(job_engine,kind='vllm_vendor')
+        handler=build_source_page_handler(ContentStore(tmp_path),fetcher=lambda url:FetchResult(url,200,'application/json',BODY,redacted_headers={'Link':LINK}),clock=lambda:NOW)
+        assert execute_job(job_engine,initial,'review-actual-link',{SOURCE_JOB_TYPE:handler},clock=lambda:NOW)=='succeeded'
+        with Session(job_engine) as session:
+            state=session.scalar(select(source_cursors.c.cursor_json))
+&gt;           assert state['position']==EXPECTED
+E           AssertionError: assert {'page': 2} == {'after': 'Y3...r_version': 2}
+E             
+E             Left contains 1 more item:
+E             {'page': 2}
+E             Right contains 2 more items:
+E             {'after': 'Y3Vyc29yOnYyOpHOAAg-eQ==', 'cursor_version': 2}
+E             Use -v to get more diff
+
+/mnt/d/dianzi/reports/runs/recovery_r04_pipeline_review_1_20261015/recheck_7184/testcopy/test_actual_vendor_pagination.py:41: AssertionError</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,104 @@
+.................F............{'kind': 'subnormal_recheck', 'normal_coordinate': 0.0, 'stored_coordinate': 1e-45, 'cosine_distance': 'nan'}
+F{'kind': 'subnormal_recheck', 'normal_coordinate': 1.0, 'stored_coordinate': 1e-45, 'cosine_distance': '0.0'}
+F
+================================== FAILURES ===================================
+______ test_validated_underflow_roundtrip_keeps_nonzero_cosine_semantics ______
+
+vector_database = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_ae956de0bc374deaad5d88447b6f2fee%2Cpublic+-c+statement_timeout%3D15000)
+
+    def test_validated_underflow_roundtrip_keeps_nonzero_cosine_semantics(vector_database) -> None:
+>       result = validate_embedding_batch([[1e-50] * 384], 1, 384, 'review-underflow-v1')
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+D:\dianzi\reports\runs\recovery_r05_vector_foundation_review_1_20261015\test_independent_vector_foundation_v2.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+vectors = [[1e-50, 1e-50, 1e-50, 1e-50, 1e-50, 1e-50, ...]], expected_count = 1
+dimension = 384, model_version = 'review-underflow-v1'
+
+    def validate_embedding_batch(
+        vectors: list[list[float]],
+        expected_count: int,
+        dimension: int,
+        model_version: str,
+    ) -> EmbeddingResult:
+        """�ܾ���Ч�ռ䡢�������������Ҿ����޶���������������滻��ֵ��"""
+        if (
+            type(expected_count) is not int
+            or not 1 <= expected_count <= 256
+            or type(dimension) is not int
+            or not 1 <= dimension <= 4096
+            or not isinstance(model_version, str)
+            or not 1 <= len(model_version) <= 200
+            or any(not 33 <= ord(character) <= 126 for character in model_version)
+        ):
+            raise ModelContractError("embedding space or batch boundary is invalid")
+        if len(vectors) != expected_count:
+            raise ModelContractError("embedding count does not match input batch order")
+        for vector in vectors:
+            if len(vector) != dimension:
+                raise ModelContractError("embedding dimension mismatch; refused for indexing")
+            if any(
+                type(coordinate) is not float
+                or not math.isfinite(coordinate)
+                or abs(coordinate) > 3.4028234663852886e38
+                for coordinate in vector
+            ):
+                raise ModelContractError("embedding coordinates must be finite float32 values")
+            if not any(coordinate != 0.0 for coordinate in array("f", vector)):
+>               raise ModelContractError("zero embedding has no cosine distance")
+E               ai_intel.infrastructure.models.clients.ModelContractError: zero embedding has no cosine distance
+
+src\ai_intel\infrastructure\models\clients.py:119: ModelContractError
+___________ test_subnormal_coordinate_is_preserved_in_real_pg[0.0] ____________
+
+vector_database = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_de2b347971c64ea3af3ec93c3ca347d0%2Cpublic+-c+statement_timeout%3D15000)
+normal_coordinate = 0.0
+
+    @pytest.mark.parametrize('normal_coordinate', [0.0, 1.0])
+    def test_subnormal_coordinate_is_preserved_in_real_pg(vector_database, normal_coordinate) -> None:
+        row = [2**-149, normal_coordinate] + [0.0] * 382
+        result = validate_embedding_batch([row], 1, 384, 'review-subnormal-recheck')
+        assert result.vectors[0][0] == 2**-149
+        with Session(vector_database) as session:
+            values = chunk_values(session, 1.0, result.model_version)
+            values['embedding'] = list(result.vectors[0])
+            session.execute(insert(retrieval_chunks).values(values))
+            actual = session.scalar(select(retrieval_chunks.c.embedding))
+            distance = session.scalar(select(retrieval_chunks.c.embedding.cosine_distance(row)))
+            print({'kind': 'subnormal_recheck', 'normal_coordinate': normal_coordinate,
+                   'stored_coordinate': actual[0], 'cosine_distance': str(distance)})
+>           assert actual[0] == 2**-149
+E           assert 1e-45 == (2 ** -149)
+
+D:\dianzi\reports\runs\recovery_r05_vector_foundation_review_1_20261015\test_independent_vector_recheck.py:47: AssertionError
+___________ test_subnormal_coordinate_is_preserved_in_real_pg[1.0] ____________
+
+vector_database = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_205b0e2de61e419faa02778f56e15111%2Cpublic+-c+statement_timeout%3D15000)
+normal_coordinate = 1.0
+
+    @pytest.mark.parametrize('normal_coordinate', [0.0, 1.0])
+    def test_subnormal_coordinate_is_preserved_in_real_pg(vector_database, normal_coordinate) -> None:
+        row = [2**-149, normal_coordinate] + [0.0] * 382
+        result = validate_embedding_batch([row], 1, 384, 'review-subnormal-recheck')
+        assert result.vectors[0][0] == 2**-149
+        with Session(vector_database) as session:
+            values = chunk_values(session, 1.0, result.model_version)
+            values['embedding'] = list(result.vectors[0])
+            session.execute(insert(retrieval_chunks).values(values))
+            actual = session.scalar(select(retrieval_chunks.c.embedding))
+            distance = session.scalar(select(retrieval_chunks.c.embedding.cosine_distance(row)))
+            print({'kind': 'subnormal_recheck', 'normal_coordinate': normal_coordinate,
+                   'stored_coordinate': actual[0], 'cosine_distance': str(distance)})
+>           assert actual[0] == 2**-149
+E           assert 1e-45 == (2 ** -149)
+
+D:\dianzi\reports\runs\recovery_r05_vector_foundation_review_1_20261015\test_independent_vector_recheck.py:47: AssertionError
+- generated xml file: D:\dianzi\reports\runs\recovery_r05_vector_foundation_review_1_20261015\recheck_pg.xml -
+=========================== short test summary info ===========================
+FAILED ::test_validated_underflow_roundtrip_keeps_nonzero_cosine_semantics - ...
+FAILED ::test_subnormal_coordinate_is_preserved_in_real_pg[0.0] - assert 1e-4...
+FAILED ::test_subnormal_coordinate_is_preserved_in_real_pg[1.0] - assert 1e-4...
+3 failed, 29 passed in 25.65s
+
+STDERR:

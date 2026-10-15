@@ -1,0 +1,20 @@
+diff --git a/frontend/src/App.test.tsx b/frontend/src/App.test.tsx
+index 7d19f08..8ff4b72 100644
+--- a/frontend/src/App.test.tsx
++++ b/frontend/src/App.test.tsx
+@@ -48,4 +48,15 @@ describe("workbench shell", () => {
+     expect(screen.getByRole("heading", { name: "调查与任务" })).toBeTruthy();
+     expect(screen.getByText(/页面不会通过动画递增进度/)).toBeTruthy();
+   });
++
++  it.each([["events", "情报工作区"], ["sources", "来源与采集"]])("keeps the %s workspace while the skip link focuses main content", (page, heading) => {
++    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => undefined)));
++    window.history.replaceState(null, "", `/#${page}`);
++    render(<App />);
++    fireEvent.click(screen.getByRole("link", { name: "跳到主要内容" }));
++    expect(document.activeElement).toBe(document.getElementById("main-content"));
++    expect(window.location.hash).toBe(`#${page}`);
++    expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
++    expect(screen.queryByRole("heading", { name: "运行概览" })).toBeNull();
++  });
+ });

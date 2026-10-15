@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="18" time="10.665" timestamp="2026-10-15T16:19:31.790912+08:00" hostname="yin"><testcase classname="tests.contract.test_t18_model_clients" name="test_valid_structured_output_keeps_usage_and_versions_t18_c01" time="0.000" /><testcase classname="tests.contract.test_t18_model_clients" name="test_extra_fields_or_bad_json_fails_or_single_repair_only_t18_c02" time="0.000" /><testcase classname="tests.contract.test_t18_model_clients" name="test_wrong_vector_dimension_or_count_refused_for_indexing_t18_c03" time="0.000" /><testcase classname="tests.contract.test_t18_model_clients" name="test_fixture_provider_rejected_in_production_t18_c04" time="0.000" /><testcase classname="tests.contract.test_t18_model_clients" name="test_private_content_without_egress_grant_blocked_t18_c05" time="0.000" /><testcase classname="tests.contract.test_t18_model_clients" name="test_missing_key_or_budget_reports_unavailable_not_fake_t18_c06" time="0.000" /><testcase classname="" name="test_float32_underflow_is_rejected_before_becoming_a_zero_vector" time="0.000"><failure message="Failed: DID NOT RAISE &lt;class 'ai_intel.infrastructure.models.clients.ModelContractError'&gt;">def test_float32_underflow_is_rejected_before_becoming_a_zero_vector() -&gt; None:
+&gt;       with pytest.raises(ModelContractError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE &lt;class 'ai_intel.infrastructure.models.clients.ModelContractError'&gt;
+
+D:\dianzi\reports\runs\recovery_r05_vector_foundation_review_1_20261015\test_independent_vector_foundation_v2.py:36: Failed</failure></testcase><testcase classname="" name="test_small_representable_float32_is_not_confused_with_zero" time="0.000" /><testcase classname="" name="test_validated_underflow_roundtrip_keeps_nonzero_cosine_semantics" time="1.218"><failure message="AssertionError: validated nonzero vector became a stored zero vector&#10;assert False&#10; +  where False = any([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, ...])">vector_database = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_7336a0dd1fda4954a3d9aea42dd92c91%2Cpublic+-c+statement_timeout%3D15000)
+
+    def test_validated_underflow_roundtrip_keeps_nonzero_cosine_semantics(vector_database) -&gt; None:
+        result = validate_embedding_batch([[1e-50] * 384], 1, 384, 'review-underflow-v1')
+        with Session(vector_database) as session:
+            values = chunk_values(session, 1.0, result.model_version)
+            values['embedding'] = list(result.vectors[0])
+            session.execute(insert(retrieval_chunks).values(values))
+            actual = session.scalar(select(retrieval_chunks.c.embedding))
+            distance = session.scalar(select(retrieval_chunks.c.embedding.cosine_distance([1.0] * 384)))
+            print({'kind': 'validated_float32_roundtrip', 'python_nonzero': any(result.vectors[0]),
+                   'stored_nonzero': any(actual), 'stored_coordinate': actual[0], 'cosine_distance': str(distance)})
+&gt;           assert any(actual), 'validated nonzero vector became a stored zero vector'
+E           AssertionError: validated nonzero vector became a stored zero vector
+E           assert False
+E            +  where False = any([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, ...])
+
+D:\dianzi\reports\runs\recovery_r05_vector_foundation_review_1_20261015\test_independent_vector_foundation_v2.py:55: AssertionError</failure></testcase><testcase classname="" name="test_migration_replay_keeps_rows_and_answer_owner_audit" time="1.165" /><testcase classname="" name="test_answer_audit_json_arrays_are_refused[response]" time="1.102" /><testcase classname="" name="test_answer_audit_json_arrays_are_refused[scope_epochs]" time="1.098" /><testcase classname="" name="test_answer_audit_json_arrays_are_refused[model_trace]" time="1.039" /><testcase classname="" name="test_owner_fk_refuses_orphan_answer" time="1.040" /><testcase classname="" name="test_concurrent_duplicate_chunk_space_has_one_committed_row" time="1.102" /><testcase classname="" name="test_schema_only_migration_upgrades_and_replays_without_public_tables" time="0.795" /><testcase classname="" name="test_schema_only_search_path_vector_operator_visibility_is_documented" time="0.989" /><testcase classname="" name="test_upgrade_0006_keeps_unknown_legacy_fact_and_time" time="0.707" /></testsuite></testsuites>

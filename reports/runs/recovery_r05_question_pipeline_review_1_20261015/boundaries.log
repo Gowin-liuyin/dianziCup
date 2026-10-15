@@ -1,0 +1,32 @@
+......F......
+================================== FAILURES ===================================
+__ test_other_owner_in_same_tenant_cannot_get_answer_and_history_stays_stale __
+
+vector_database = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_bdd56d3166024c84a5a45052970e7c89%2Cpublic+-c+statement_timeout%3D15000)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001F375569610>
+
+    def test_other_owner_in_same_tenant_cannot_get_answer_and_history_stays_stale(vector_database, monkeypatch):
+        auth, token, service, http, payload, headers, calls = setup_case(vector_database, monkeypatch)
+        with http:
+            first = http.post('/v1/questions', json=payload.model_dump(mode='json'), headers={**headers, 'idempotency-key': 'review-own'})
+            assert first.status_code == 200
+            answer_id = first.json()['answer_id']
+            other = auth.create_precreated_user('review-other-owner', 'review-other-synthetic-password', 'review-tenant', Role.VIEWER)
+            other_token, _ = auth.login(other.username, 'review-other-synthetic-password', ORIGIN, 'review-other-client')
+            http.cookies.set(SESSION_COOKIE_NAME, other_token)
+            denied = http.get('/v1/answers/' + answer_id)
+>           assert denied.status_code == 404
+E           assert 503 == 404
+E            +  where 503 = <Response [503 Service Unavailable]>.status_code
+
+D:\dianzi\reports\runs\recovery_r05_question_pipeline_review_1_20261015\test_review_boundaries.py:72: AssertionError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\wt\r05-pipe-review\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\dianzi\reports\runs\recovery_r05_question_pipeline_review_1_20261015\boundaries.xml -
+=========================== short test summary info ===========================
+FAILED ..\..\..\dianzi\reports\runs\recovery_r05_question_pipeline_review_1_20261015\test_review_boundaries.py::test_other_owner_in_same_tenant_cannot_get_answer_and_history_stays_stale
+1 failed, 12 passed, 1 warning in 15.73s

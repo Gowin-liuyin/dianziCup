@@ -1,0 +1,51 @@
+diff --git a/backend/src/ai_intel/infrastructure/models/clients.py b/backend/src/ai_intel/infrastructure/models/clients.py
+index b3a2a6d..50260c9 100644
+--- a/backend/src/ai_intel/infrastructure/models/clients.py
++++ b/backend/src/ai_intel/infrastructure/models/clients.py
+@@ -115,8 +115,15 @@ def validate_embedding_batch(
+             for coordinate in vector
+         ):
+             raise ModelContractError("embedding coordinates must be finite float32 values")
+-        if not any(coordinate != 0.0 for coordinate in array("f", vector)):
++        float32_vector = array("f", vector)
++        if not any(coordinate != 0.0 for coordinate in float32_vector):
+             raise ModelContractError("zero embedding has no cosine distance")
++        squared_norm = math.fsum(
++            array("f", (coordinate * coordinate for coordinate in float32_vector))
++        )
++        safe_maximum = 3.4028234663852886e38 / (1.0 + dimension * 2.0**-23)
++        if not math.isfinite(squared_norm) or not 0.0 < squared_norm <= safe_maximum:
++            raise ModelContractError("float32 embedding norm is not safe for cosine distance")
+     frozen = tuple(tuple(vector) for vector in vectors)
+     return EmbeddingResult(vectors=frozen, model_version=model_version, dimension=dimension)
+ 
+diff --git a/backend/tests/unit/test_r05_embedding_boundaries.py b/backend/tests/unit/test_r05_embedding_boundaries.py
+index b871868..8d16564 100644
+--- a/backend/tests/unit/test_r05_embedding_boundaries.py
++++ b/backend/tests/unit/test_r05_embedding_boundaries.py
+@@ -43,13 +43,20 @@ def test_vectors_are_frozen_without_normalizing_or_reordering() -> None:
+     assert result.vectors == ((0.0, 2.0), (-3.0, 4.0))
+ 
+ 
+-@pytest.mark.parametrize("coordinate", [1e-50, -(1e-50), 2.0 ** -150])
++@pytest.mark.parametrize("coordinate", [1e-50, -(1e-50), 2.0**-150])
+ def test_underflow_to_float32_zero_cannot_enter_cosine_index(coordinate: float) -> None:
+     with pytest.raises(ModelContractError, match="zero embedding"):
+         validate_embedding_batch([[coordinate] * 384], 1, 384, "float32-underflow-v1")
+ 
+ 
+-def test_smallest_representable_float32_subnormal_remains_valid() -> None:
+-    coordinate = 2.0 ** -149
+-    result = validate_embedding_batch([[coordinate] * 384], 1, 384, "float32-subnormal-v1")
+-    assert result.vectors == ((coordinate,) * 384,)
++def test_mixed_subnormal_with_finite_cosine_norm_remains_valid() -> None:
++    coordinate = 2.0**-149
++    vector = [coordinate, 1.0] + [0.0] * 382
++    result = validate_embedding_batch([vector], 1, 384, "float32-subnormal-v1")
++    assert result.vectors == (tuple(vector),)
++
++
++@pytest.mark.parametrize("coordinate", [2.0**-149, 1e-23, 1e20])
++def test_degenerate_float32_cosine_norm_is_rejected(coordinate: float) -> None:
++    with pytest.raises(ModelContractError, match="norm is not safe"):
++        validate_embedding_batch([[coordinate] * 384], 1, 384, "float32-norm-v1")

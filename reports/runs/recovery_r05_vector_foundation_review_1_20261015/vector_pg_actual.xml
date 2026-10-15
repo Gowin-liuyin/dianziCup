@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="9" time="10.495" timestamp="2026-10-15T16:14:36.553072+08:00" hostname="yin"><testcase classname="tests.integration.test_r05_vector_persistence" name="test_upgrade_preserves_immutable_evidence_and_real_extension" time="1.339" /><testcase classname="tests.integration.test_r05_vector_persistence" name="test_real_vector_roundtrip_cosine_and_model_space_filter" time="1.214" /><testcase classname="tests.integration.test_r05_vector_persistence" name="test_real_pg_rejects_bad_dimensions_and_nonfinite_values[invalid0]" time="1.194" /><testcase classname="tests.integration.test_r05_vector_persistence" name="test_real_pg_rejects_bad_dimensions_and_nonfinite_values[invalid1]" time="1.437" /><testcase classname="tests.integration.test_r05_vector_persistence" name="test_real_pg_rejects_bad_dimensions_and_nonfinite_values[invalid2]" time="1.305" /><testcase classname="tests.integration.test_r05_vector_persistence" name="test_chunk_coordinates_are_not_permanent_evidence_coordinates" time="1.195" /><testcase classname="tests.integration.test_r02_schema_migration" name="test_empty_and_legacy_upgrade_keep_columns_and_old_claims[None]" time="0.777"><failure message="AssertionError: assert '0014_grounded_answer_vectors' == '0013_revisio...urce_metadata'&#10;  &#10;  - 0013_revision_source_metadata&#10;  + 0014_grounded_answer_vectors">empty_schema_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r02_schema_accbdecf705f4bec82fdbf2d056d2df9+-c+statement_timeout%3D10000)
+previous_revision = None
+
+    @pytest.mark.parametrize("previous_revision", [None, "0006_auth_state"])
+    def test_empty_and_legacy_upgrade_keep_columns_and_old_claims(
+        empty_schema_engine: Engine, previous_revision: str | None
+    ) -&gt; None:
+        migration_url = empty_schema_engine.url.render_as_string(hide_password=False)
+        legacy_claim_id = str(uuid4())
+        legacy_time = datetime(2026, 10, 1, 12, 30, tzinfo=UTC)
+        if previous_revision:
+            run_migrations(migration_url, previous_revision)
+            with empty_schema_engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "INSERT INTO claims (claim_id,subject,predicate,object_value,claim_status,"
+                        "claim_origin,condition_value,freshness,asserted_at,visibility,created_at) "
+                        "VALUES (:id,'legacy-component','affected_by','legacy text','unverified',"
+                        "'source_explicit','unknown','unknown',:time,'public',:time)"
+                    ),
+                    {"id": legacy_claim_id, "time": legacy_time},
+                )
+        run_migrations(migration_url)
+        table_names = (
+            "claims",
+            "claim_evidence",
+            "claim_assertions",
+            "claim_status_history",
+            "claim_relations",
+            "entities",
+            "entity_aliases",
+            "events",
+            "event_external_ids",
+            "event_documents",
+            "event_operations",
+            "change_events",
+            "publication_receipts",
+        )
+        inspector = inspect(empty_schema_engine)
+        for table_name in table_names:
+            mapped_table = getattr(persistence_models, table_name)
+            actual_columns = {column["name"] for column in inspector.get_columns(table_name)}
+            assert actual_columns == set(mapped_table.c.keys()), table_name
+        with empty_schema_engine.connect() as connection:
+            revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+&gt;           assert revision == "0013_revision_source_metadata"
+E           AssertionError: assert '0014_grounded_answer_vectors' == '0013_revisio...urce_metadata'
+E             
+E             - 0013_revision_source_metadata
+E             + 0014_grounded_answer_vectors
+
+tests\integration\test_r02_schema_migration.py:87: AssertionError</failure></testcase><testcase classname="tests.integration.test_r02_schema_migration" name="test_empty_and_legacy_upgrade_keep_columns_and_old_claims[0006_auth_state]" time="0.832"><failure message="AssertionError: assert '0014_grounded_answer_vectors' == '0013_revisio...urce_metadata'&#10;  &#10;  - 0013_revision_source_metadata&#10;  + 0014_grounded_answer_vectors">empty_schema_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r02_schema_8412598060544fd2936d885ebc1af7d0+-c+statement_timeout%3D10000)
+previous_revision = '0006_auth_state'
+
+    @pytest.mark.parametrize("previous_revision", [None, "0006_auth_state"])
+    def test_empty_and_legacy_upgrade_keep_columns_and_old_claims(
+        empty_schema_engine: Engine, previous_revision: str | None
+    ) -&gt; None:
+        migration_url = empty_schema_engine.url.render_as_string(hide_password=False)
+        legacy_claim_id = str(uuid4())
+        legacy_time = datetime(2026, 10, 1, 12, 30, tzinfo=UTC)
+        if previous_revision:
+            run_migrations(migration_url, previous_revision)
+            with empty_schema_engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "INSERT INTO claims (claim_id,subject,predicate,object_value,claim_status,"
+                        "claim_origin,condition_value,freshness,asserted_at,visibility,created_at) "
+                        "VALUES (:id,'legacy-component','affected_by','legacy text','unverified',"
+                        "'source_explicit','unknown','unknown',:time,'public',:time)"
+                    ),
+                    {"id": legacy_claim_id, "time": legacy_time},
+                )
+        run_migrations(migration_url)
+        table_names = (
+            "claims",
+            "claim_evidence",
+            "claim_assertions",
+            "claim_status_history",
+            "claim_relations",
+            "entities",
+            "entity_aliases",
+            "events",
+            "event_external_ids",
+            "event_documents",
+            "event_operations",
+            "change_events",
+            "publication_receipts",
+        )
+        inspector = inspect(empty_schema_engine)
+        for table_name in table_names:
+            mapped_table = getattr(persistence_models, table_name)
+            actual_columns = {column["name"] for column in inspector.get_columns(table_name)}
+            assert actual_columns == set(mapped_table.c.keys()), table_name
+        with empty_schema_engine.connect() as connection:
+            revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+&gt;           assert revision == "0013_revision_source_metadata"
+E           AssertionError: assert '0014_grounded_answer_vectors' == '0013_revisio...urce_metadata'
+E             
+E             - 0013_revision_source_metadata
+E             + 0014_grounded_answer_vectors
+
+tests\integration\test_r02_schema_migration.py:87: AssertionError</failure></testcase><testcase classname="tests.integration.test_r02_schema_migration" name="test_0011_page_receipt_history_migrates_without_inventing_request_fingerprint" time="0.854" /></testsuite></testsuites>

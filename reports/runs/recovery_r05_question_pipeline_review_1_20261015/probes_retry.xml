@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="3" time="6.261" timestamp="2026-10-15T17:13:02.201821+08:00" hostname="yin"><testcase classname="test_review_probes" name="test_missing_idempotency_key_rejects_before_any_paid_call" time="1.585"><failure message="assert 200 == 422&#10; +  where 200 = &lt;Response [200 OK]&gt;.status_code">vector_database = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_5283368bde5f4e2592d133e9293eebd7%2Cpublic+-c+statement_timeout%3D15000)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000025910662D20&gt;
+
+    def test_missing_idempotency_key_rejects_before_any_paid_call(vector_database, monkeypatch):
+        auth, token, service, http, payload, headers, calls = setup_case(vector_database, monkeypatch)
+        with http:
+            first = http.post('/v1/questions', json=payload.model_dump(mode='json'), headers=headers)
+            second = http.post('/api/v1/questions', json=payload.model_dump(mode='json'), headers=headers)
+        observed = {'first_status': first.status_code, 'second_status': second.status_code, 'simulated_paid_wire_calls': len(calls), 'first_kind': first.json().get('kind'), 'second_kind': second.json().get('kind')}
+        print('missing_key_observed=' + json.dumps(observed))
+&gt;       assert first.status_code == second.status_code == 422
+E       assert 200 == 422
+E        +  where 200 = &lt;Response [200 OK]&gt;.status_code
+
+D:\dianzi\reports\runs\recovery_r05_question_pipeline_review_1_20261015\test_review_probes.py:82: AssertionError</failure></testcase><testcase classname="test_review_probes" name="test_abrupt_process_exit_then_restart_has_terminal_indeterminate_state" time="2.471"><failure message="AssertionError: a dead owner must become a tracked terminal indeterminate failure without another paid call&#10;assert 'pending' == 'failed'&#10;  &#10;  - failed&#10;  + pending">vector_database = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_20ab5a939f1e4a338927fe6d989130b1%2Cpublic+-c+statement_timeout%3D15000)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x00000259118DF890&gt;
+
+    def test_abrupt_process_exit_then_restart_has_terminal_indeterminate_state(vector_database, monkeypatch):
+        auth, token, service, http, payload, headers, calls = setup_case(vector_database, monkeypatch)
+        key = 'review-crash-key'
+        scope = auth.build_access_scope(token)
+        worker = Path(__file__).with_name('crash_worker.py')
+        child_environment = os.environ.copy()
+        child_environment['REVIEW_ISOLATED_DATABASE_URL'] = vector_database.url.render_as_string(hide_password=False)
+        child_environment['REVIEW_USER_ID'] = scope.user_id
+        child_environment['REVIEW_TENANT_ID'] = scope.tenant_id
+        child_environment['REVIEW_PAYLOAD'] = json.dumps(payload.model_dump(mode='json'), ensure_ascii=False)
+        child_environment['REVIEW_KEY'] = key
+        exited = subprocess.run([sys.executable, str(worker)], env=child_environment, capture_output=True, text=True, timeout=30)
+        assert exited.returncode == 73
+        with vector_database.connect() as connection:
+            row = connection.execute(select(grounded_answers)).mappings().one()
+            before = {'kind': row['response']['kind'], 'attempts_count': len(row['model_trace']['attempts']), 'fee': row['model_trace']['fee']}
+        replacement = GroundedQuestionService(vector_database, service.retriever, service.client, data_mode='fixture')
+        try:
+            replacement.ask(payload, lambda: auth.build_access_scope(token), key)
+            actual = 'completed'
+        except QuestionFailure as error:
+            actual = error.code
+        with vector_database.connect() as connection:
+            after_kind = connection.execute(select(grounded_answers.c.response)).scalar_one()['kind']
+        print('crash_restart_observed=' + json.dumps({'before': before, 'restart_code': actual, 'after_kind': after_kind, 'new_simulated_calls': len(calls)}))
+&gt;       assert after_kind == 'failed', 'a dead owner must become a tracked terminal indeterminate failure without another paid call'
+E       AssertionError: a dead owner must become a tracked terminal indeterminate failure without another paid call
+E       assert 'pending' == 'failed'
+E         
+E         - failed
+E         + pending
+
+D:\dianzi\reports\runs\recovery_r05_question_pipeline_review_1_20261015\test_review_probes.py:111: AssertionError</failure></testcase><testcase classname="test_review_probes" name="test_real_session_revoked_during_second_paid_wire_does_not_return_answer" time="1.486" /></testsuite></testsuites>

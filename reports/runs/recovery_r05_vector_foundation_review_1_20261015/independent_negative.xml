@@ -1,0 +1,695 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="5" skipped="0" tests="17" time="11.032" timestamp="2026-10-15T16:15:56.374290+08:00" hostname="yin"><testcase classname="tests.contract.test_t18_model_clients" name="test_valid_structured_output_keeps_usage_and_versions_t18_c01" time="0.000" /><testcase classname="tests.contract.test_t18_model_clients" name="test_extra_fields_or_bad_json_fails_or_single_repair_only_t18_c02" time="0.000" /><testcase classname="tests.contract.test_t18_model_clients" name="test_wrong_vector_dimension_or_count_refused_for_indexing_t18_c03" time="0.000" /><testcase classname="tests.contract.test_t18_model_clients" name="test_fixture_provider_rejected_in_production_t18_c04" time="0.000" /><testcase classname="tests.contract.test_t18_model_clients" name="test_private_content_without_egress_grant_blocked_t18_c05" time="0.000" /><testcase classname="tests.contract.test_t18_model_clients" name="test_missing_key_or_budget_reports_unavailable_not_fake_t18_c06" time="0.000" /><testcase classname="" name="test_float32_underflow_is_rejected_before_becoming_a_zero_vector" time="0.000"><failure message="Failed: DID NOT RAISE &lt;class 'ai_intel.infrastructure.models.clients.ModelContractError'&gt;">def test_float32_underflow_is_rejected_before_becoming_a_zero_vector() -&gt; None:
+&gt;       with pytest.raises(ModelContractError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE &lt;class 'ai_intel.infrastructure.models.clients.ModelContractError'&gt;
+
+D:\dianzi\reports\runs\recovery_r05_vector_foundation_review_1_20261015\test_independent_vector_foundation.py:36: Failed</failure></testcase><testcase classname="" name="test_small_representable_float32_is_not_confused_with_zero" time="0.000" /><testcase classname="" name="test_validated_underflow_roundtrip_keeps_nonzero_cosine_semantics" time="1.120"><failure message="AssertionError: validated nonzero vector became a stored zero vector&#10;assert False&#10; +  where False = any([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, ...])">vector_database = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_8011ea0d08634618a2ab3fee80a5a240%2Cpublic+-c+statement_timeout%3D15000)
+
+    def test_validated_underflow_roundtrip_keeps_nonzero_cosine_semantics(vector_database) -&gt; None:
+        result = validate_embedding_batch([[1e-50] * 384], 1, 384, 'review-underflow-v1')
+        with Session(vector_database) as session:
+            values = chunk_values(session, 1.0, result.model_version)
+            values['embedding'] = list(result.vectors[0])
+            session.execute(insert(retrieval_chunks).values(values))
+            actual = session.scalar(select(retrieval_chunks.c.embedding))
+            distance = session.scalar(select(retrieval_chunks.c.embedding.cosine_distance([1.0] * 384)))
+            print({'kind': 'validated_float32_roundtrip', 'python_nonzero': any(result.vectors[0]),
+                   'stored_nonzero': any(actual), 'stored_coordinate': actual[0], 'cosine_distance': str(distance)})
+&gt;           assert any(actual), 'validated nonzero vector became a stored zero vector'
+E           AssertionError: validated nonzero vector became a stored zero vector
+E           assert False
+E            +  where False = any([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, ...])
+
+D:\dianzi\reports\runs\recovery_r05_vector_foundation_review_1_20261015\test_independent_vector_foundation.py:55: AssertionError</failure></testcase><testcase classname="" name="test_migration_replay_keeps_rows_and_answer_owner_audit" time="1.226" /><testcase classname="" name="test_answer_audit_json_arrays_are_refused[response]" time="1.227"><failure message="sqlalchemy.exc.IntegrityError: (psycopg.errors.CheckViolation) new row for relation &quot;users&quot; violates check constraint &quot;ck_users_tenant_admin_requires_tenant&quot;&#10;DETAIL:  Failing row contains (ca5b1a34-fc8a-4908-9741-b871cbbd9734, ca5b1a34-fc8a-4908-9741-b871cbbd9734, synthetic-noncredential, null, viewer, 2026-10-15 08:16:00.331164+00).&#10;[SQL: INSERT INTO users (user_id, username, password_hash, tenant_id, role, created_at) VALUES (%(user_id)s::VARCHAR, %(username)s::VARCHAR, %(password_hash)s::VARCHAR, %(tenant_id)s::VARCHAR, %(role)s::VARCHAR, %(created_at)s::TIMESTAMP WITH TIME ZONE)]&#10;[parameters: {'user_id': 'ca5b1a34-fc8a-4908-9741-b871cbbd9734', 'username': 'ca5b1a34-fc8a-4908-9741-b871cbbd9734', 'password_hash': 'synthetic-noncredential', 'tenant_id': None, 'role': 'viewer', 'created_at': datetime.datetime(2026, 10, 15, 8, 16, 0, 331164, tzinfo=datetime.timezone.utc)}]&#10;(Background on this error at: https://sqlalche.me/e/21/gkpj)">self = &lt;sqlalchemy.engine.base.Connection object at 0x000001B76BC9FBC0&gt;
+dialect = &lt;sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x000001B76B903E30&gt;
+context = &lt;sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x000001B76BCC0950&gt;
+statement = &lt;sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x000001B76BCC0E00&gt;
+parameters = [{'created_at': datetime.datetime(2026, 10, 15, 8, 16, 0, 331164, tzinfo=datetime.timezone.utc), 'password_hash': 'synthetic-noncredential', 'role': 'viewer', 'tenant_id': None, ...}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -&gt; CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+&gt;                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r05_pgvector_20261015) at 0x1b76bb88c50&gt;
+query = 'INSERT INTO users (user_id, username, password_hash, tenant_id, role, created_at) VALUES (%(user_id)s::VARCHAR, %(use...CHAR, %(password_hash)s::VARCHAR, %(tenant_id)s::VARCHAR, %(role)s::VARCHAR, %(created_at)s::TIMESTAMP WITH TIME ZONE)'
+params = {'created_at': datetime.datetime(2026, 10, 15, 8, 16, 0, 331164, tzinfo=datetime.timezone.utc), 'password_hash': 'synthetic-noncredential', 'role': 'viewer', 'tenant_id': None, ...}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -&gt; Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+&gt;           raise ex.with_traceback(None)
+E           psycopg.errors.CheckViolation: new row for relation "users" violates check constraint "ck_users_tenant_admin_requires_tenant"
+E           DETAIL:  Failing row contains (ca5b1a34-fc8a-4908-9741-b871cbbd9734, ca5b1a34-fc8a-4908-9741-b871cbbd9734, synthetic-noncredential, null, viewer, 2026-10-15 08:16:00.331164+00).
+
+D:\dianzi\backend\.venv\Lib\site-packages\psycopg\cursor.py:117: CheckViolation
+
+The above exception was the direct cause of the following exception:
+
+vector_database = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_df9d1bc2df5344ee872fe6cbc81612f7%2Cpublic+-c+statement_timeout%3D15000)
+invalid_field = 'response'
+
+    @pytest.mark.parametrize('invalid_field', ['response', 'scope_epochs', 'model_trace'])
+    def test_answer_audit_json_arrays_are_refused(vector_database, invalid_field) -&gt; None:
+        user_id = str(uuid4())
+        with Session(vector_database) as session:
+&gt;           session.execute(insert(users).values(user_id=user_id, username=user_id, password_hash='synthetic-noncredential',
+                                                tenant_id=None, role='viewer', created_at=datetime.now(UTC)))
+
+D:\dianzi\reports\runs\recovery_r05_vector_foundation_review_1_20261015\test_independent_vector_foundation.py:84: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py:2473: in execute
+    return self._execute_internal(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py:2373: in _execute_internal
+    result = conn.execute(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context
+    return self._exec_single_context(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r05_pgvector_20261015) at 0x1b76bb88c50&gt;
+query = 'INSERT INTO users (user_id, username, password_hash, tenant_id, role, created_at) VALUES (%(user_id)s::VARCHAR, %(use...CHAR, %(password_hash)s::VARCHAR, %(tenant_id)s::VARCHAR, %(role)s::VARCHAR, %(created_at)s::TIMESTAMP WITH TIME ZONE)'
+params = {'created_at': datetime.datetime(2026, 10, 15, 8, 16, 0, 331164, tzinfo=datetime.timezone.utc), 'password_hash': 'synthetic-noncredential', 'role': 'viewer', 'tenant_id': None, ...}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -&gt; Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+&gt;           raise ex.with_traceback(None)
+E           sqlalchemy.exc.IntegrityError: (psycopg.errors.CheckViolation) new row for relation "users" violates check constraint "ck_users_tenant_admin_requires_tenant"
+E           DETAIL:  Failing row contains (ca5b1a34-fc8a-4908-9741-b871cbbd9734, ca5b1a34-fc8a-4908-9741-b871cbbd9734, synthetic-noncredential, null, viewer, 2026-10-15 08:16:00.331164+00).
+E           [SQL: INSERT INTO users (user_id, username, password_hash, tenant_id, role, created_at) VALUES (%(user_id)s::VARCHAR, %(username)s::VARCHAR, %(password_hash)s::VARCHAR, %(tenant_id)s::VARCHAR, %(role)s::VARCHAR, %(created_at)s::TIMESTAMP WITH TIME ZONE)]
+E           [parameters: {'user_id': 'ca5b1a34-fc8a-4908-9741-b871cbbd9734', 'username': 'ca5b1a34-fc8a-4908-9741-b871cbbd9734', 'password_hash': 'synthetic-noncredential', 'tenant_id': None, 'role': 'viewer', 'created_at': datetime.datetime(2026, 10, 15, 8, 16, 0, 331164, tzinfo=datetime.timezone.utc)}]
+E           (Background on this error at: https://sqlalche.me/e/21/gkpj)
+
+D:\dianzi\backend\.venv\Lib\site-packages\psycopg\cursor.py:117: IntegrityError</failure></testcase><testcase classname="" name="test_answer_audit_json_arrays_are_refused[scope_epochs]" time="1.166"><failure message="sqlalchemy.exc.IntegrityError: (psycopg.errors.CheckViolation) new row for relation &quot;users&quot; violates check constraint &quot;ck_users_tenant_admin_requires_tenant&quot;&#10;DETAIL:  Failing row contains (98ec5f83-d484-4eb2-830a-a3b88d19c6b8, 98ec5f83-d484-4eb2-830a-a3b88d19c6b8, synthetic-noncredential, null, viewer, 2026-10-15 08:16:01.75491+00).&#10;[SQL: INSERT INTO users (user_id, username, password_hash, tenant_id, role, created_at) VALUES (%(user_id)s::VARCHAR, %(username)s::VARCHAR, %(password_hash)s::VARCHAR, %(tenant_id)s::VARCHAR, %(role)s::VARCHAR, %(created_at)s::TIMESTAMP WITH TIME ZONE)]&#10;[parameters: {'user_id': '98ec5f83-d484-4eb2-830a-a3b88d19c6b8', 'username': '98ec5f83-d484-4eb2-830a-a3b88d19c6b8', 'password_hash': 'synthetic-noncredential', 'tenant_id': None, 'role': 'viewer', 'created_at': datetime.datetime(2026, 10, 15, 8, 16, 1, 754910, tzinfo=datetime.timezone.utc)}]&#10;(Background on this error at: https://sqlalche.me/e/21/gkpj)">self = &lt;sqlalchemy.engine.base.Connection object at 0x000001B76B9BA4E0&gt;
+dialect = &lt;sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x000001B76BB1F1A0&gt;
+context = &lt;sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x000001B76B9BA510&gt;
+statement = &lt;sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x000001B76B9B96A0&gt;
+parameters = [{'created_at': datetime.datetime(2026, 10, 15, 8, 16, 1, 754910, tzinfo=datetime.timezone.utc), 'password_hash': 'synthetic-noncredential', 'role': 'viewer', 'tenant_id': None, ...}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -&gt; CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+&gt;                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r05_pgvector_20261015) at 0x1b76ba03110&gt;
+query = 'INSERT INTO users (user_id, username, password_hash, tenant_id, role, created_at) VALUES (%(user_id)s::VARCHAR, %(use...CHAR, %(password_hash)s::VARCHAR, %(tenant_id)s::VARCHAR, %(role)s::VARCHAR, %(created_at)s::TIMESTAMP WITH TIME ZONE)'
+params = {'created_at': datetime.datetime(2026, 10, 15, 8, 16, 1, 754910, tzinfo=datetime.timezone.utc), 'password_hash': 'synthetic-noncredential', 'role': 'viewer', 'tenant_id': None, ...}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -&gt; Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+&gt;           raise ex.with_traceback(None)
+E           psycopg.errors.CheckViolation: new row for relation "users" violates check constraint "ck_users_tenant_admin_requires_tenant"
+E           DETAIL:  Failing row contains (98ec5f83-d484-4eb2-830a-a3b88d19c6b8, 98ec5f83-d484-4eb2-830a-a3b88d19c6b8, synthetic-noncredential, null, viewer, 2026-10-15 08:16:01.75491+00).
+
+D:\dianzi\backend\.venv\Lib\site-packages\psycopg\cursor.py:117: CheckViolation
+
+The above exception was the direct cause of the following exception:
+
+vector_database = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_bf385d8787dc4e6084e7a965d81d3475%2Cpublic+-c+statement_timeout%3D15000)
+invalid_field = 'scope_epochs'
+
+    @pytest.mark.parametrize('invalid_field', ['response', 'scope_epochs', 'model_trace'])
+    def test_answer_audit_json_arrays_are_refused(vector_database, invalid_field) -&gt; None:
+        user_id = str(uuid4())
+        with Session(vector_database) as session:
+&gt;           session.execute(insert(users).values(user_id=user_id, username=user_id, password_hash='synthetic-noncredential',
+                                                tenant_id=None, role='viewer', created_at=datetime.now(UTC)))
+
+D:\dianzi\reports\runs\recovery_r05_vector_foundation_review_1_20261015\test_independent_vector_foundation.py:84: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py:2473: in execute
+    return self._execute_internal(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py:2373: in _execute_internal
+    result = conn.execute(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context
+    return self._exec_single_context(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r05_pgvector_20261015) at 0x1b76ba03110&gt;
+query = 'INSERT INTO users (user_id, username, password_hash, tenant_id, role, created_at) VALUES (%(user_id)s::VARCHAR, %(use...CHAR, %(password_hash)s::VARCHAR, %(tenant_id)s::VARCHAR, %(role)s::VARCHAR, %(created_at)s::TIMESTAMP WITH TIME ZONE)'
+params = {'created_at': datetime.datetime(2026, 10, 15, 8, 16, 1, 754910, tzinfo=datetime.timezone.utc), 'password_hash': 'synthetic-noncredential', 'role': 'viewer', 'tenant_id': None, ...}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -&gt; Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+&gt;           raise ex.with_traceback(None)
+E           sqlalchemy.exc.IntegrityError: (psycopg.errors.CheckViolation) new row for relation "users" violates check constraint "ck_users_tenant_admin_requires_tenant"
+E           DETAIL:  Failing row contains (98ec5f83-d484-4eb2-830a-a3b88d19c6b8, 98ec5f83-d484-4eb2-830a-a3b88d19c6b8, synthetic-noncredential, null, viewer, 2026-10-15 08:16:01.75491+00).
+E           [SQL: INSERT INTO users (user_id, username, password_hash, tenant_id, role, created_at) VALUES (%(user_id)s::VARCHAR, %(username)s::VARCHAR, %(password_hash)s::VARCHAR, %(tenant_id)s::VARCHAR, %(role)s::VARCHAR, %(created_at)s::TIMESTAMP WITH TIME ZONE)]
+E           [parameters: {'user_id': '98ec5f83-d484-4eb2-830a-a3b88d19c6b8', 'username': '98ec5f83-d484-4eb2-830a-a3b88d19c6b8', 'password_hash': 'synthetic-noncredential', 'tenant_id': None, 'role': 'viewer', 'created_at': datetime.datetime(2026, 10, 15, 8, 16, 1, 754910, tzinfo=datetime.timezone.utc)}]
+E           (Background on this error at: https://sqlalche.me/e/21/gkpj)
+
+D:\dianzi\backend\.venv\Lib\site-packages\psycopg\cursor.py:117: IntegrityError</failure></testcase><testcase classname="" name="test_answer_audit_json_arrays_are_refused[model_trace]" time="1.184"><failure message="sqlalchemy.exc.IntegrityError: (psycopg.errors.CheckViolation) new row for relation &quot;users&quot; violates check constraint &quot;ck_users_tenant_admin_requires_tenant&quot;&#10;DETAIL:  Failing row contains (5b8d1cf9-3e77-43a9-b906-d8145feb951c, 5b8d1cf9-3e77-43a9-b906-d8145feb951c, synthetic-noncredential, null, viewer, 2026-10-15 08:16:03.100957+00).&#10;[SQL: INSERT INTO users (user_id, username, password_hash, tenant_id, role, created_at) VALUES (%(user_id)s::VARCHAR, %(username)s::VARCHAR, %(password_hash)s::VARCHAR, %(tenant_id)s::VARCHAR, %(role)s::VARCHAR, %(created_at)s::TIMESTAMP WITH TIME ZONE)]&#10;[parameters: {'user_id': '5b8d1cf9-3e77-43a9-b906-d8145feb951c', 'username': '5b8d1cf9-3e77-43a9-b906-d8145feb951c', 'password_hash': 'synthetic-noncredential', 'tenant_id': None, 'role': 'viewer', 'created_at': datetime.datetime(2026, 10, 15, 8, 16, 3, 100957, tzinfo=datetime.timezone.utc)}]&#10;(Background on this error at: https://sqlalche.me/e/21/gkpj)">self = &lt;sqlalchemy.engine.base.Connection object at 0x000001B76BDB6750&gt;
+dialect = &lt;sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x000001B76BBD2210&gt;
+context = &lt;sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x000001B76BDB6960&gt;
+statement = &lt;sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x000001B76BDB67B0&gt;
+parameters = [{'created_at': datetime.datetime(2026, 10, 15, 8, 16, 3, 100957, tzinfo=datetime.timezone.utc), 'password_hash': 'synthetic-noncredential', 'role': 'viewer', 'tenant_id': None, ...}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -&gt; CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+&gt;                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r05_pgvector_20261015) at 0x1b76bb89610&gt;
+query = 'INSERT INTO users (user_id, username, password_hash, tenant_id, role, created_at) VALUES (%(user_id)s::VARCHAR, %(use...CHAR, %(password_hash)s::VARCHAR, %(tenant_id)s::VARCHAR, %(role)s::VARCHAR, %(created_at)s::TIMESTAMP WITH TIME ZONE)'
+params = {'created_at': datetime.datetime(2026, 10, 15, 8, 16, 3, 100957, tzinfo=datetime.timezone.utc), 'password_hash': 'synthetic-noncredential', 'role': 'viewer', 'tenant_id': None, ...}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -&gt; Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+&gt;           raise ex.with_traceback(None)
+E           psycopg.errors.CheckViolation: new row for relation "users" violates check constraint "ck_users_tenant_admin_requires_tenant"
+E           DETAIL:  Failing row contains (5b8d1cf9-3e77-43a9-b906-d8145feb951c, 5b8d1cf9-3e77-43a9-b906-d8145feb951c, synthetic-noncredential, null, viewer, 2026-10-15 08:16:03.100957+00).
+
+D:\dianzi\backend\.venv\Lib\site-packages\psycopg\cursor.py:117: CheckViolation
+
+The above exception was the direct cause of the following exception:
+
+vector_database = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_9e5c21177e1f4406a8f10f7a29acddab%2Cpublic+-c+statement_timeout%3D15000)
+invalid_field = 'model_trace'
+
+    @pytest.mark.parametrize('invalid_field', ['response', 'scope_epochs', 'model_trace'])
+    def test_answer_audit_json_arrays_are_refused(vector_database, invalid_field) -&gt; None:
+        user_id = str(uuid4())
+        with Session(vector_database) as session:
+&gt;           session.execute(insert(users).values(user_id=user_id, username=user_id, password_hash='synthetic-noncredential',
+                                                tenant_id=None, role='viewer', created_at=datetime.now(UTC)))
+
+D:\dianzi\reports\runs\recovery_r05_vector_foundation_review_1_20261015\test_independent_vector_foundation.py:84: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py:2473: in execute
+    return self._execute_internal(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py:2373: in _execute_internal
+    result = conn.execute(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context
+    return self._exec_single_context(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r05_pgvector_20261015) at 0x1b76bb89610&gt;
+query = 'INSERT INTO users (user_id, username, password_hash, tenant_id, role, created_at) VALUES (%(user_id)s::VARCHAR, %(use...CHAR, %(password_hash)s::VARCHAR, %(tenant_id)s::VARCHAR, %(role)s::VARCHAR, %(created_at)s::TIMESTAMP WITH TIME ZONE)'
+params = {'created_at': datetime.datetime(2026, 10, 15, 8, 16, 3, 100957, tzinfo=datetime.timezone.utc), 'password_hash': 'synthetic-noncredential', 'role': 'viewer', 'tenant_id': None, ...}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -&gt; Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+&gt;           raise ex.with_traceback(None)
+E           sqlalchemy.exc.IntegrityError: (psycopg.errors.CheckViolation) new row for relation "users" violates check constraint "ck_users_tenant_admin_requires_tenant"
+E           DETAIL:  Failing row contains (5b8d1cf9-3e77-43a9-b906-d8145feb951c, 5b8d1cf9-3e77-43a9-b906-d8145feb951c, synthetic-noncredential, null, viewer, 2026-10-15 08:16:03.100957+00).
+E           [SQL: INSERT INTO users (user_id, username, password_hash, tenant_id, role, created_at) VALUES (%(user_id)s::VARCHAR, %(username)s::VARCHAR, %(password_hash)s::VARCHAR, %(tenant_id)s::VARCHAR, %(role)s::VARCHAR, %(created_at)s::TIMESTAMP WITH TIME ZONE)]
+E           [parameters: {'user_id': '5b8d1cf9-3e77-43a9-b906-d8145feb951c', 'username': '5b8d1cf9-3e77-43a9-b906-d8145feb951c', 'password_hash': 'synthetic-noncredential', 'tenant_id': None, 'role': 'viewer', 'created_at': datetime.datetime(2026, 10, 15, 8, 16, 3, 100957, tzinfo=datetime.timezone.utc)}]
+E           (Background on this error at: https://sqlalche.me/e/21/gkpj)
+
+D:\dianzi\backend\.venv\Lib\site-packages\psycopg\cursor.py:117: IntegrityError</failure></testcase><testcase classname="" name="test_owner_fk_refuses_orphan_answer" time="1.010" /><testcase classname="" name="test_concurrent_duplicate_chunk_space_has_one_committed_row" time="1.187" /><testcase classname="" name="test_schema_only_migration_upgrades_and_replays_without_public_tables" time="0.793" /><testcase classname="" name="test_schema_only_search_path_vector_operator_visibility_is_documented" time="1.126" /></testsuite></testsuites>

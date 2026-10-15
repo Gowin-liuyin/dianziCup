@@ -1,0 +1,1977 @@
+diff --git a/backend/migrations/versions/0014_grounded_answer_vectors.py b/backend/migrations/versions/0014_grounded_answer_vectors.py
+new file mode 100644
+index 0000000..f4f014b
+--- /dev/null
++++ b/backend/migrations/versions/0014_grounded_answer_vectors.py
+@@ -0,0 +1,81 @@
++"""保存真实模型空间的派生检索块与用户拥有的引用回答。
++
++Revision ID: 0014_grounded_answer_vectors
++Revises: 0013_revision_source_metadata
++"""
++
++import sqlalchemy as sa
++from alembic import op
++from pgvector.sqlalchemy import VECTOR
++from sqlalchemy.dialects.postgresql import JSONB
++
++revision = "0014_grounded_answer_vectors"
++down_revision = "0013_revision_source_metadata"
++branch_labels = None
++depends_on = None
++
++
++def upgrade() -> None:
++    """仅新增派生数据和答案，不重写原文、证据、事实或历史游标。"""
++    op.execute("CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public")
++    op.execute(
++        "SELECT set_config('search_path', current_setting('search_path') || ',public', true)"
++    )
++    op.create_table(
++        "retrieval_chunks",
++        sa.Column("chunk_id", sa.Text(), primary_key=True),
++        sa.Column("evidence_id", sa.Text(), sa.ForeignKey("evidence.evidence_id"), nullable=False),
++        sa.Column(
++            "revision_id",
++            sa.Text(),
++            sa.ForeignKey("document_revisions.revision_id"),
++            nullable=False,
++        ),
++        sa.Column("start_offset", sa.Integer(), nullable=False),
++        sa.Column("end_offset", sa.Integer(), nullable=False),
++        sa.Column("chunk_text", sa.Text(), nullable=False),
++        sa.Column("text_sha256", sa.Text(), nullable=False),
++        sa.Column("model_version", sa.Text(), nullable=False),
++        sa.Column("embedding", VECTOR(384), nullable=False),
++        sa.Column("indexed_at", sa.DateTime(timezone=True), nullable=False),
++        sa.CheckConstraint(
++            "start_offset >= 0 AND end_offset > start_offset", name="ck_chunk_offsets"
++        ),
++        sa.CheckConstraint(
++            "end_offset - start_offset = char_length(chunk_text)", name="ck_chunk_length"
++        ),
++        sa.CheckConstraint("char_length(model_version) BETWEEN 1 AND 200", name="ck_chunk_space"),
++        sa.UniqueConstraint(
++            "evidence_id",
++            "start_offset",
++            "end_offset",
++            "model_version",
++            name="uq_evidence_chunk_space",
++        ),
++    )
++    op.create_index(
++        "ix_chunks_revision_space", "retrieval_chunks", ["revision_id", "model_version"]
++    )
++    op.create_table(
++        "grounded_answers",
++        sa.Column("answer_id", sa.Text(), primary_key=True),
++        sa.Column("user_id", sa.Text(), sa.ForeignKey("users.user_id"), nullable=False),
++        sa.Column("tenant_id", sa.Text()),
++        sa.Column("question_text", sa.Text(), nullable=False),
++        sa.Column("response", JSONB(), nullable=False),
++        sa.Column("scope_epochs", JSONB(), nullable=False),
++        sa.Column("model_trace", JSONB(), nullable=False),
++        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
++        sa.CheckConstraint(
++            "char_length(question_text) BETWEEN 1 AND 4096", name="ck_answer_question_length"
++        ),
++        sa.CheckConstraint("jsonb_typeof(response) = 'object'", name="ck_answer_response_object"),
++        sa.CheckConstraint("jsonb_typeof(scope_epochs) = 'object'", name="ck_answer_epochs_object"),
++        sa.CheckConstraint("jsonb_typeof(model_trace) = 'object'", name="ck_answer_trace_object"),
++    )
++    op.create_index("ix_answers_owner_created", "grounded_answers", ["user_id", "created_at"])
++
++
++def downgrade() -> None:
++    """答案保留历史证据与费用轨迹；关闭功能后前向修复，不破坏历史。"""
++    raise RuntimeError("grounded answer history requires forward-only recovery")
+diff --git a/backend/pyproject.toml b/backend/pyproject.toml
+index c3fe379..3d4556a 100644
+--- a/backend/pyproject.toml
++++ b/backend/pyproject.toml
+@@ -18,6 +18,14 @@ dependencies = [
+     "minio==7.2.20",
+     "dnspython>=2.9,<3",
+     "pypdf>=6.20.1,<7",
++    "pgvector==0.5.1",
++]
++
++[project.optional-dependencies]
++semantic = [
++    "onnxruntime==1.24.4",
++    "tokenizers==0.22.2",
++    "numpy==2.4.2",
+ ]
+ 
+ [dependency-groups]
+diff --git a/backend/src/ai_intel/infrastructure/models/clients.py b/backend/src/ai_intel/infrastructure/models/clients.py
+index 297cd4c..dd881c2 100644
+--- a/backend/src/ai_intel/infrastructure/models/clients.py
++++ b/backend/src/ai_intel/infrastructure/models/clients.py
+@@ -3,6 +3,7 @@
+ from __future__ import annotations
+ 
+ import hashlib
++import math
+ from collections.abc import Callable
+ from dataclasses import dataclass, field
+ 
+@@ -90,12 +91,31 @@ def validate_embedding_batch(
+     dimension: int,
+     model_version: str,
+ ) -> EmbeddingResult:
+-    """向量校验: 维度或条目数不符拒绝入索引。"""
++    """拒绝无效空间、非有限数与余弦距离无定义的零向量，不替换坏值。"""
++    if (
++        type(expected_count) is not int
++        or not 1 <= expected_count <= 256
++        or type(dimension) is not int
++        or not 1 <= dimension <= 4096
++        or not isinstance(model_version, str)
++        or not 1 <= len(model_version) <= 200
++        or any(not 33 <= ord(character) <= 126 for character in model_version)
++    ):
++        raise ModelContractError("embedding space or batch boundary is invalid")
+     if len(vectors) != expected_count:
+         raise ModelContractError("embedding count does not match input batch order")
+     for vector in vectors:
+         if len(vector) != dimension:
+             raise ModelContractError("embedding dimension mismatch; refused for indexing")
++        if any(
++            type(coordinate) is not float
++            or not math.isfinite(coordinate)
++            or abs(coordinate) > 3.4028234663852886e38
++            for coordinate in vector
++        ):
++            raise ModelContractError("embedding coordinates must be finite float32 values")
++        if not any(coordinate != 0.0 for coordinate in vector):
++            raise ModelContractError("zero embedding has no cosine distance")
+     frozen = tuple(tuple(vector) for vector in vectors)
+     return EmbeddingResult(vectors=frozen, model_version=model_version, dimension=dimension)
+ 
+diff --git a/backend/src/ai_intel/infrastructure/models/semantic.py b/backend/src/ai_intel/infrastructure/models/semantic.py
+new file mode 100644
+index 0000000..01e37ba
+--- /dev/null
++++ b/backend/src/ai_intel/infrastructure/models/semantic.py
+@@ -0,0 +1,393 @@
++"""Fixed, verified local ONNX models; bounded workers never download or execute model code."""
++
++from __future__ import annotations
++
++import hashlib
++import math
++import multiprocessing
++import os
++import threading
++import time
++from dataclasses import dataclass
++from importlib import import_module
++from multiprocessing.connection import Connection, _ConnectionBase
++from multiprocessing.process import BaseProcess
++from pathlib import Path
++from typing import Literal
++
++from ai_intel.infrastructure.models.clients import (
++    EmbeddingResult,
++    ModelContractError,
++    ModelNotConfiguredError,
++    validate_embedding_batch,
++)
++
++MAX_BATCH = 8
++MAX_TOKENS = 512
++MAX_TEXT_CHARACTERS = 16384
++MAX_MEMORY_BYTES = 2 * 1024**3
++_WORKER_LOCK = threading.Lock()
++
++
++class SemanticInputError(ValueError):
++    """Empty, oversized or malformed input is rejected without truncation."""
++
++
++class SemanticRuntimeError(RuntimeError):
++    """The local worker failed; this is never an empty successful result."""
++
++
++class SemanticTimeoutError(TimeoutError):
++    """The total worker deadline includes verification, loading and inference."""
++
++
++@dataclass(frozen=True)
++class ModelArtifact:
++    relative_path: str
++    size: int
++    sha256: str
++
++
++@dataclass(frozen=True)
++class LocalModel:
++    folder: str
++    repository: str
++    revision: str
++    artifacts: tuple[ModelArtifact, ...]
++    output_name: str
++
++    @property
++    def space_description(self) -> str:
++        semantics = "query:/passage:;masked-mean;l2" if self.folder == "e5" else "pair;raw-logit"
++        return (
++            f"{self.repository}@{self.revision};onnx-fp32-v1;"
++            f"weights={self.artifacts[0].sha256};tokenizer={self.artifacts[1].sha256};"
++            f"{semantics};max512;dim={384 if self.folder == 'e5' else 1}"
++        )
++
++    @property
++    def model_version(self) -> str:
++        fingerprint = hashlib.sha256(self.space_description.encode("utf-8")).hexdigest()
++        return f"{self.repository}@{self.revision};space={fingerprint}"
++
++
++E5_MODEL = LocalModel(
++    folder="e5",
++    repository="intfloat/multilingual-e5-small",
++    revision="614241f622f53c4eeff9890bdc4f31cfecc418b3",
++    artifacts=(
++        ModelArtifact(
++            "onnx/model.onnx",
++            470268510,
++            "ca456c06b3a9505ddfd9131408916dd79290368331e7d76bb621f1cba6bc8665",
++        ),
++        ModelArtifact(
++            "tokenizer.json",
++            17082730,
++            "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39",
++        ),
++    ),
++    output_name="last_hidden_state",
++)
++RERANK_MODEL = LocalModel(
++    folder="mmarco",
++    repository="cross-encoder/mmarco-mMiniLMv2-L12-H384-v1",
++    revision="1427fd652930e4ba29e8149678df786c240d8825",
++    artifacts=(
++        ModelArtifact(
++            "onnx/model.onnx",
++            470883696,
++            "3e9a03ed1e966f7c5288dd4230e3d6a9bf5e3a170a06f1f4241c5bca12c6487c",
++        ),
++        ModelArtifact(
++            "tokenizer.json",
++            17082660,
++            "62c24cdc13d4c9952d63718d6c9fa4c287974249e16b7ade6d5a85e7bbb75626",
++        ),
++    ),
++    output_name="logits",
++)
++
++
++@dataclass(frozen=True)
++class RankedPassage:
++    index: int
++    score: float
++
++
++@dataclass(frozen=True)
++class RerankResult:
++    items: tuple[RankedPassage, ...]
++    model_version: str
++
++
++def _validate_text(text: str) -> None:
++    if (
++        not isinstance(text, str)
++        or not text.strip()
++        or len(text) > MAX_TEXT_CHARACTERS
++        or "\0" in text
++    ):
++        raise SemanticInputError("text must be nonempty and within the character limit")
++    try:
++        text.encode("utf-8")
++    except UnicodeError:
++        raise SemanticInputError("text must be valid UTF-8") from None
++
++
++def _validate_passages(passages: tuple[str, ...]) -> None:
++    if not isinstance(passages, tuple) or not 1 <= len(passages) <= MAX_BATCH:
++        raise SemanticInputError("passages must be a tuple containing one to eight texts")
++    for passage in passages:
++        _validate_text(passage)
++
++
++def _float_rows(payload: object, count: int, dimension: int) -> list[list[float]]:
++    if not isinstance(payload, list) or len(payload) != count:
++        raise ModelContractError("local model output count mismatch")
++    rows: list[list[float]] = []
++    for row in payload:
++        if not isinstance(row, list) or len(row) != dimension:
++            raise ModelContractError("local model output dimension mismatch")
++        values: list[float] = []
++        for value in row:
++            if type(value) is not float or not math.isfinite(value):
++                raise ModelContractError("local model output must contain finite floats")
++            values.append(value)
++        rows.append(values)
++    return rows
++
++
++def _verified_model_directory(cache_root: Path, model: LocalModel) -> Path:
++    directory = cache_root / model.folder
++    for artifact in model.artifacts:
++        path = directory / artifact.relative_path
++        if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(cache_root):
++            raise ModelNotConfiguredError("fixed local model artifact missing or outside cache")
++        if path.stat().st_size != artifact.size:
++            raise ModelNotConfiguredError("fixed local model artifact size mismatch")
++        with path.open("rb") as stream:
++            digest = hashlib.file_digest(stream, "sha256").hexdigest()
++        if digest != artifact.sha256:
++            raise ModelNotConfiguredError("fixed local model artifact checksum mismatch")
++    return directory
++
++
++@dataclass(frozen=True)
++class LocalSemanticModels:
++    """Construct once from trusted server configuration, never a request-supplied cache path."""
++
++    model_cache_directory: Path
++    timeout_seconds: float = 30.0
++
++    def __post_init__(self) -> None:
++        root = self.model_cache_directory
++        if not isinstance(root, Path) or not root.is_absolute() or root.is_symlink():
++            raise ValueError("model cache must be an absolute trusted directory")
++        if (
++            type(self.timeout_seconds) not in (int, float)
++            or not math.isfinite(self.timeout_seconds)
++            or not 0 < self.timeout_seconds <= 30
++        ):
++            raise ValueError("timeout must be finite and between zero and thirty seconds")
++        object.__setattr__(self, "model_cache_directory", root.resolve())
++
++    def embed_query(self, query: str) -> EmbeddingResult:
++        _validate_text(query)
++        return self._embed((query,), "query")
++
++    def embed_passages(self, passages: tuple[str, ...]) -> EmbeddingResult:
++        _validate_passages(passages)
++        return self._embed(passages, "passage")
++
++    def _embed(
++        self, texts: tuple[str, ...], prefix: Literal["query", "passage"]
++    ) -> EmbeddingResult:
++        payload = _run_worker(self, E5_MODEL, prefix, texts, None)
++        rows = _float_rows(payload, len(texts), 384)
++        for row in rows:
++            norm = math.sqrt(math.fsum(value * value for value in row))
++            if not math.isclose(norm, 1.0, rel_tol=1e-5, abs_tol=1e-5):
++                raise ModelContractError("local embedding must be nonzero and L2 normalized")
++        return validate_embedding_batch(rows, len(texts), 384, E5_MODEL.model_version)
++
++    def rerank(self, query: str, passages: tuple[str, ...]) -> RerankResult:
++        _validate_text(query)
++        _validate_passages(passages)
++        payload = _run_worker(self, RERANK_MODEL, "rerank", passages, query)
++        rows = _float_rows(payload, len(passages), 1)
++        items = tuple(RankedPassage(index, row[0]) for index, row in enumerate(rows))
++        return RerankResult(
++            items=tuple(sorted(items, key=lambda item: (-item.score, item.index))),
++            model_version=RERANK_MODEL.model_version,
++        )
++
++
++def _run_worker(
++    client: LocalSemanticModels,
++    model: LocalModel,
++    operation: Literal["query", "passage", "rerank"],
++    texts: tuple[str, ...],
++    query: str | None,
++) -> object:
++    if not _WORKER_LOCK.acquire(blocking=False):
++        raise SemanticRuntimeError("local semantic inference is already busy")
++    receiving: _ConnectionBase | None = None
++    sending: _ConnectionBase | None = None
++    process: BaseProcess | None = None
++    primary_error: BaseException | None = None
++    try:
++        try:
++            deadline = time.monotonic() + client.timeout_seconds
++            context = multiprocessing.get_context("spawn")
++            receiving, sending = context.Pipe(duplex=False)
++            process = context.Process(
++                target=_semantic_worker,
++                args=(sending, client.model_cache_directory, model, operation, texts, query),
++                daemon=True,
++            )
++            process.start()
++            sending.close()
++        except Exception:
++            raise SemanticRuntimeError("local semantic worker could not initialize") from None
++        if not receiving.poll(max(0.0, deadline - time.monotonic())):
++            raise SemanticTimeoutError("local semantic worker exceeded total deadline")
++        try:
++            response: object = receiving.recv()
++        except EOFError:
++            raise SemanticRuntimeError("local semantic worker exited without a result") from None
++        if not isinstance(response, tuple) or len(response) != 2:
++            raise ModelContractError("local worker returned an invalid envelope")
++        status, payload = response
++        if status == "input":
++            raise SemanticInputError("input exceeds the 512 token limit; no truncation applied")
++        if status == "unavailable":
++            raise ModelNotConfiguredError("verified local model or runtime unavailable")
++        if status != "ok":
++            raise SemanticRuntimeError("local semantic worker failed")
++        if time.monotonic() > deadline:
++            raise SemanticTimeoutError("local semantic worker exceeded total deadline")
++        return payload
++    except BaseException as error:
++        primary_error = error
++        raise
++    finally:
++        cleanup_failed = False
++        try:
++            for connection in (sending, receiving):
++                if connection is not None:
++                    try:
++                        connection.close()
++                    except Exception:
++                        cleanup_failed = True
++            if process is not None:
++                if process.pid is not None:
++                    for stop in (process.terminate, process.kill):
++                        try:
++                            if process.is_alive():
++                                stop()
++                            process.join(timeout=1.0)
++                        except Exception:
++                            cleanup_failed = True
++                try:
++                    if process.pid is not None and process.is_alive():
++                        cleanup_failed = True
++                    else:
++                        process.close()
++                except Exception:
++                    cleanup_failed = True
++        finally:
++            _WORKER_LOCK.release()
++        if cleanup_failed:
++            if primary_error is not None:
++                primary_error.add_note("local semantic worker cleanup was incomplete")
++            else:
++                raise SemanticRuntimeError("local semantic worker cleanup failed") from None
++
++
++def _semantic_worker(
++    connection: Connection,
++    cache_root: Path,
++    model: LocalModel,
++    operation: str,
++    texts: tuple[str, ...],
++    query: str | None,
++) -> None:
++    try:
++        _bound_worker_memory()
++        for name in (
++            "OMP_NUM_THREADS",
++            "OPENBLAS_NUM_THREADS",
++            "MKL_NUM_THREADS",
++            "RAYON_NUM_THREADS",
++        ):
++            os.environ[name] = "2"
++        os.environ["TOKENIZERS_PARALLELISM"] = "false"
++        directory = _verified_model_directory(cache_root, model)
++        result = _infer_local(directory, model, operation, texts, query)
++        connection.send(("ok", result))
++    except SemanticInputError:
++        connection.send(("input", None))
++    except (ImportError, ModelNotConfiguredError):
++        connection.send(("unavailable", None))
++    except Exception:
++        connection.send(("failed", None))
++    finally:
++        connection.close()
++
++
++def _infer_local(
++    directory: Path, model: LocalModel, operation: str, texts: tuple[str, ...], query: str | None
++) -> object:
++    """Third-party values stay inside this boundary; the caller validates plain float rows."""
++    tokenizers = import_module("tokenizers")
++    ort = import_module("onnxruntime")
++    np = import_module("numpy")
++    ort.disable_telemetry_events()
++    tokenizer = tokenizers.Tokenizer.from_file(str(directory / "tokenizer.json"))
++    tokenizer.no_truncation()
++    tokenizer.no_padding()
++    inputs = (
++        [(query, text) for text in texts]
++        if query is not None
++        else [f"{operation}: {text}" for text in texts]
++    )
++    encoded = tokenizer.encode_batch(inputs)
++    if any(len(item.ids) > MAX_TOKENS for item in encoded):
++        raise SemanticInputError("token limit exceeded")
++    tokenizer.enable_padding(pad_id=1, pad_token="<pad>")
++    encoded = tokenizer.encode_batch(inputs)
++    options = ort.SessionOptions()
++    options.intra_op_num_threads = 2
++    options.inter_op_num_threads = 1
++    options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
++    options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
++    options.enable_mem_pattern = False
++    options.enable_cpu_mem_arena = False
++    session = ort.InferenceSession(
++        str(directory / "onnx/model.onnx"), options, providers=["CPUExecutionProvider"]
++    )
++    session.disable_fallback()
++    fields = {
++        "input_ids": np.asarray([item.ids for item in encoded], dtype=np.int64),
++        "attention_mask": np.asarray([item.attention_mask for item in encoded], dtype=np.int64),
++        "token_type_ids": np.asarray([item.type_ids for item in encoded], dtype=np.int64),
++    }
++    names = {item.name for item in session.get_inputs()}
++    values = session.run(
++        [model.output_name], {name: value for name, value in fields.items() if name in names}
++    )[0]
++    if model == E5_MODEL:
++        mask = fields["attention_mask"][..., None].astype(values.dtype)
++        pooled = (values * mask).sum(axis=1) / mask.sum(axis=1)
++        norms = np.linalg.norm(pooled, axis=1, keepdims=True)
++        values = pooled / norms
++    result: object = values.tolist()
++    return result
++
++
++def _bound_worker_memory() -> None:
++    """Apply a hard 2GiB bound before importing the inference libraries; fail closed."""
++    from ai_intel.infrastructure.process_limits import bound_process_resources
++
++    bound_process_resources(memory_bytes=MAX_MEMORY_BYTES, cpu_seconds=30)
+diff --git a/backend/src/ai_intel/infrastructure/process_limits.py b/backend/src/ai_intel/infrastructure/process_limits.py
+new file mode 100644
+index 0000000..cb48056
+--- /dev/null
++++ b/backend/src/ai_intel/infrastructure/process_limits.py
+@@ -0,0 +1,89 @@
++"""Hard memory and CPU limits for trusted isolated parser and local-model workers."""
++
++from __future__ import annotations
++
++import ctypes
++import os
++import sys
++
++
++def bound_process_resources(*, memory_bytes: int, cpu_seconds: int) -> int | None:
++    """Linux使用进程地址空间限额，Windows使用进程Job硬内存限额。"""
++    if type(memory_bytes) is not int or not 1 <= memory_bytes <= 2 * 1024**3:
++        raise ValueError("memory_bytes must be an integer between one byte and two GiB")
++    if type(cpu_seconds) is not int or not 1 <= cpu_seconds <= 30:
++        raise ValueError("cpu_seconds must be an integer between one and thirty")
++    if sys.platform == "linux":
++        import resource
++
++        resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
++        resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
++        return None
++
++    if os.name != "nt":
++        raise OSError("process resource limit unavailable")
++
++    from ctypes import wintypes
++
++    class IoCounters(ctypes.Structure):
++        _fields_ = [
++            (name, ctypes.c_ulonglong)
++            for name in (
++                "read_operations",
++                "write_operations",
++                "other_operations",
++                "read_bytes",
++                "write_bytes",
++                "other_bytes",
++            )
++        ]
++
++    class BasicLimits(ctypes.Structure):
++        _fields_ = [
++            ("process_time", ctypes.c_longlong),
++            ("job_time", ctypes.c_longlong),
++            ("flags", wintypes.DWORD),
++            ("minimum_working_set", ctypes.c_size_t),
++            ("maximum_working_set", ctypes.c_size_t),
++            ("active_processes", wintypes.DWORD),
++            ("affinity", ctypes.c_size_t),
++            ("priority", wintypes.DWORD),
++            ("scheduling", wintypes.DWORD),
++        ]
++
++    class ExtendedLimits(ctypes.Structure):
++        _fields_ = [
++            ("basic", BasicLimits),
++            ("io", IoCounters),
++            ("process_memory", ctypes.c_size_t),
++            ("job_memory", ctypes.c_size_t),
++            ("peak_process_memory", ctypes.c_size_t),
++            ("peak_job_memory", ctypes.c_size_t),
++        ]
++
++    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
++    kernel.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
++    kernel.CreateJobObjectW.restype = wintypes.HANDLE
++    kernel.GetCurrentProcess.restype = wintypes.HANDLE
++    kernel.SetInformationJobObject.argtypes = [
++        wintypes.HANDLE,
++        ctypes.c_int,
++        ctypes.c_void_p,
++        wintypes.DWORD,
++    ]
++    kernel.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
++    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
++    handle = kernel.CreateJobObjectW(None, None)
++    if handle is None:
++        raise OSError("process resource limit unavailable")
++    limits = ExtendedLimits()
++    limits.basic.flags = 0x100 | 0x2000 | 0x2
++    limits.basic.process_time = cpu_seconds * 10_000_000
++    limits.process_memory = memory_bytes
++    if not kernel.SetInformationJobObject(handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
++        kernel.CloseHandle(handle)
++        raise OSError("process resource limit unavailable")
++    if not kernel.AssignProcessToJobObject(handle, kernel.GetCurrentProcess()):
++        kernel.CloseHandle(handle)
++        raise OSError("process resource limit unavailable")
++    return int(handle)
+diff --git a/backend/src/ai_intel/ingestion/parsing/_pdf_worker.py b/backend/src/ai_intel/ingestion/parsing/_pdf_worker.py
+index 6808f9c..aae0732 100644
+--- a/backend/src/ai_intel/ingestion/parsing/_pdf_worker.py
++++ b/backend/src/ai_intel/ingestion/parsing/_pdf_worker.py
+@@ -2,16 +2,16 @@
+ 
+ from __future__ import annotations
+ 
+-import ctypes
+ import json
+ import logging
+-import os
+ import sys
+ from io import BytesIO
+ 
+ from pypdf import PdfReader, overwrite_configuration
+ from pypdf.errors import PyPdfError
+ 
++from ai_intel.infrastructure.process_limits import bound_process_resources
++
+ MAX_PDF_BYTES = 32 * 1024 * 1024
+ MAX_PDF_PAGES = 300
+ MAX_TEXT_CHARACTERS = 1_000_000
+@@ -19,80 +19,8 @@ MAX_MEMORY_BYTES = 512 * 1024 * 1024
+ 
+ 
+ def _bound_memory() -> int | None:
+-    """Linux使用进程地址空间限额，Windows使用进程Job硬内存限额。"""
+-    if sys.platform == "linux":
+-        import resource
+-
+-        resource.setrlimit(resource.RLIMIT_AS, (MAX_MEMORY_BYTES, MAX_MEMORY_BYTES))
+-        resource.setrlimit(resource.RLIMIT_CPU, (15, 15))
+-        return None
+-
+-    if os.name != "nt":
+-        raise OSError("pdf resource limit unavailable")
+-
+-    from ctypes import wintypes
+-
+-    class IoCounters(ctypes.Structure):
+-        _fields_ = [
+-            (name, ctypes.c_ulonglong)
+-            for name in (
+-                "read_operations",
+-                "write_operations",
+-                "other_operations",
+-                "read_bytes",
+-                "write_bytes",
+-                "other_bytes",
+-            )
+-        ]
+-
+-    class BasicLimits(ctypes.Structure):
+-        _fields_ = [
+-            ("process_time", ctypes.c_longlong),
+-            ("job_time", ctypes.c_longlong),
+-            ("flags", wintypes.DWORD),
+-            ("minimum_working_set", ctypes.c_size_t),
+-            ("maximum_working_set", ctypes.c_size_t),
+-            ("active_processes", wintypes.DWORD),
+-            ("affinity", ctypes.c_size_t),
+-            ("priority", wintypes.DWORD),
+-            ("scheduling", wintypes.DWORD),
+-        ]
+-
+-    class ExtendedLimits(ctypes.Structure):
+-        _fields_ = [
+-            ("basic", BasicLimits),
+-            ("io", IoCounters),
+-            ("process_memory", ctypes.c_size_t),
+-            ("job_memory", ctypes.c_size_t),
+-            ("peak_process_memory", ctypes.c_size_t),
+-            ("peak_job_memory", ctypes.c_size_t),
+-        ]
+-
+-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+-    kernel.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+-    kernel.CreateJobObjectW.restype = wintypes.HANDLE
+-    kernel.GetCurrentProcess.restype = wintypes.HANDLE
+-    kernel.SetInformationJobObject.argtypes = [
+-        wintypes.HANDLE,
+-        ctypes.c_int,
+-        ctypes.c_void_p,
+-        wintypes.DWORD,
+-    ]
+-    kernel.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+-    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+-    handle = kernel.CreateJobObjectW(None, None)
+-    if handle is None:
+-        raise OSError("pdf resource limit unavailable")
+-    limits = ExtendedLimits()
+-    limits.basic.flags = 0x100 | 0x2000
+-    limits.process_memory = MAX_MEMORY_BYTES
+-    if not kernel.SetInformationJobObject(handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
+-        kernel.CloseHandle(handle)
+-        raise OSError("pdf resource limit unavailable")
+-    if not kernel.AssignProcessToJobObject(handle, kernel.GetCurrentProcess()):
+-        kernel.CloseHandle(handle)
+-        raise OSError("pdf resource limit unavailable")
+-    return int(handle)
++    """Keep the parser envelope while sharing the native process limiter."""
++    return bound_process_resources(memory_bytes=MAX_MEMORY_BYTES, cpu_seconds=15)
+ 
+ 
+ def extract_pages(content: bytes) -> dict[str, object]:
+diff --git a/backend/src/ai_intel/retrieval/persistence_models.py b/backend/src/ai_intel/retrieval/persistence_models.py
+new file mode 100644
+index 0000000..033da68
+--- /dev/null
++++ b/backend/src/ai_intel/retrieval/persistence_models.py
+@@ -0,0 +1,35 @@
++"""检索块是可重建派生数据，永久证据与事实仍归原有PG知识表。"""
++
++from pgvector.sqlalchemy import VECTOR
++from sqlalchemy import Column, DateTime, ForeignKey, Integer, Table, Text
++from sqlalchemy.dialects.postgresql import JSONB
++
++from ai_intel.knowledge.models import metadata
++
++retrieval_chunks = Table(
++    "retrieval_chunks",
++    metadata,
++    Column("chunk_id", Text(), primary_key=True),
++    Column("evidence_id", Text(), ForeignKey("evidence.evidence_id"), nullable=False),
++    Column("revision_id", Text(), ForeignKey("document_revisions.revision_id"), nullable=False),
++    Column("start_offset", Integer(), nullable=False),
++    Column("end_offset", Integer(), nullable=False),
++    Column("chunk_text", Text(), nullable=False),
++    Column("text_sha256", Text(), nullable=False),
++    Column("model_version", Text(), nullable=False),
++    Column("embedding", VECTOR(384), nullable=False),
++    Column("indexed_at", DateTime(timezone=True), nullable=False),
++)
++
++grounded_answers = Table(
++    "grounded_answers",
++    metadata,
++    Column("answer_id", Text(), primary_key=True),
++    Column("user_id", Text(), ForeignKey("users.user_id"), nullable=False),
++    Column("tenant_id", Text()),
++    Column("question_text", Text(), nullable=False),
++    Column("response", JSONB(), nullable=False),
++    Column("scope_epochs", JSONB(), nullable=False),
++    Column("model_trace", JSONB(), nullable=False),
++    Column("created_at", DateTime(timezone=True), nullable=False),
++)
+diff --git a/backend/tests/contract/test_r05_semantic_contract.py b/backend/tests/contract/test_r05_semantic_contract.py
+new file mode 100644
+index 0000000..99cb614
+--- /dev/null
++++ b/backend/tests/contract/test_r05_semantic_contract.py
+@@ -0,0 +1,49 @@
++"""Local provider contract, including real process cleanup on unavailable artifacts."""
++
++import multiprocessing
++from dataclasses import FrozenInstanceError, replace
++from pathlib import Path
++
++import pytest
++
++from ai_intel.infrastructure.models import semantic
++from ai_intel.infrastructure.models.clients import ModelNotConfiguredError
++from ai_intel.infrastructure.models.semantic import E5_MODEL, RERANK_MODEL, LocalSemanticModels
++
++
++def test_model_spaces_pin_source_revision_weights_tokenizer_and_codec() -> None:
++    assert E5_MODEL.revision == "614241f622f53c4eeff9890bdc4f31cfecc418b3"
++    assert RERANK_MODEL.revision == "1427fd652930e4ba29e8149678df786c240d8825"
++    assert E5_MODEL.model_version != RERANK_MODEL.model_version
++    changed_tokenizer = replace(E5_MODEL.artifacts[1], sha256="f" * 64)
++    other_space = replace(E5_MODEL, artifacts=(E5_MODEL.artifacts[0], changed_tokenizer))
++    assert other_space.model_version != E5_MODEL.model_version
++
++
++def test_embedding_domain_result_is_immutable(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    row = [1.0] + [0.0] * 383
++    monkeypatch.setattr(semantic, "_run_worker", lambda *args: [row])
++    result = LocalSemanticModels(tmp_path).embed_query("question")
++    assert isinstance(result.vectors, tuple) and isinstance(result.vectors[0], tuple)
++    with pytest.raises(FrozenInstanceError):
++        result.dimension = 3
++    row[0] = 0.0
++    assert result.vectors[0][0] == 1.0
++
++
++def test_missing_weights_in_real_spawn_fail_closed_and_reap_child(tmp_path: Path) -> None:
++    client = LocalSemanticModels(tmp_path)
++    before = {child.pid for child in multiprocessing.active_children()}
++    with pytest.raises(ModelNotConfiguredError):
++        client.embed_query("private input must remain in memory")
++    assert {child.pid for child in multiprocessing.active_children()} == before
++
++
++def test_modified_local_weights_in_real_spawn_are_not_loaded(tmp_path: Path) -> None:
++    artifact = tmp_path / "e5" / "onnx" / "model.onnx"
++    artifact.parent.mkdir(parents=True)
++    artifact.write_bytes(b"unverified model content")
++    with pytest.raises(ModelNotConfiguredError):
++        LocalSemanticModels(tmp_path).embed_query("question")
+diff --git a/backend/tests/integration/test_r05_vector_persistence.py b/backend/tests/integration/test_r05_vector_persistence.py
+new file mode 100644
+index 0000000..c855696
+--- /dev/null
++++ b/backend/tests/integration/test_r05_vector_persistence.py
+@@ -0,0 +1,160 @@
++"""隔离PG验证真实vector类型和增量迁移；这里的合成向量不计模型live。"""
++
++import json
++from datetime import UTC, datetime
++from pathlib import Path
++from uuid import uuid4
++
++import pytest
++from sqlalchemy import create_engine, func, insert, select, text
++from sqlalchemy.engine import Engine, make_url
++from sqlalchemy.exc import DBAPIError, IntegrityError
++from sqlalchemy.orm import Session
++from sqlalchemy.schema import CreateSchema, DropSchema
++
++from ai_intel.domain.access import AccessScope, Role
++from ai_intel.infrastructure.content_store import ContentStore
++from ai_intel.infrastructure.database import run_migrations
++from ai_intel.ingestion.source_documents import SourceResponse, persist_source_response
++from ai_intel.knowledge.models import document_revisions, evidence
++from ai_intel.retrieval.persistence_models import retrieval_chunks
++
++pytestmark = pytest.mark.real_pg
++
++
++@pytest.fixture
++def vector_database(isolated_test_database_url: str, tmp_path_factory: pytest.TempPathFactory):
++    url = make_url(isolated_test_database_url)
++    assert url.database == "test_dianzi_r05_pgvector_20261015"
++    base = create_engine(url, connect_args={"connect_timeout": 5})
++    schema = "test_r05_vectors_" + uuid4().hex
++    with base.begin() as connection:
++        assert connection.scalar(text("SELECT current_database()")) == url.database
++        connection.execute(CreateSchema(schema))
++    isolated = url.update_query_dict(
++        {"options": f"-c search_path={schema},public -c statement_timeout=15000"}
++    )
++    connection_url = isolated.render_as_string(hide_password=False)
++    engine = create_engine(isolated, connect_args={"connect_timeout": 5})
++    try:
++        run_migrations(connection_url, "0013_revision_source_metadata")
++        fixture = (
++            Path(__file__).resolve().parents[3]
++            / "fixtures/recorded/vllm_vendor_20261015_public.json"
++        )
++        record = json.loads(fixture.read_bytes())[0]
++        at = datetime(2026, 10, 15, 8, tzinfo=UTC)
++        with Session(engine) as session, session.begin():
++            persist_source_response(
++                session,
++                ContentStore(tmp_path_factory.mktemp("vector-content")),
++                AccessScope.for_authenticated_user("fixture-vector-admin", None, Role.SYSTEM_ADMIN),
++                SourceResponse(
++                    "vllm_vendor",
++                    json.dumps([record]).encode(),
++                    "https://api.github.com/repos/vllm-project/vllm/security-advisories?per_page=10&state=published",
++                    at,
++                ),
++                ingested_at=at,
++            )
++        with engine.connect() as connection:
++            previous = tuple(
++                connection.execute(
++                    select(evidence.c.evidence_id, evidence.c.quote_sha256).order_by(
++                        evidence.c.evidence_id
++                    )
++                )
++            )
++        run_migrations(connection_url)
++        with engine.connect() as connection:
++            following = tuple(
++                connection.execute(
++                    select(evidence.c.evidence_id, evidence.c.quote_sha256).order_by(
++                        evidence.c.evidence_id
++                    )
++                )
++            )
++        assert following == previous and following
++        yield engine
++    finally:
++        engine.dispose()
++        with base.begin() as connection:
++            connection.execute(DropSchema(schema, cascade=True))
++        base.dispose()
++
++
++def chunk_values(
++    session: Session, coordinate: float, space: str = "fixture-space-v1"
++) -> dict[str, object]:
++    row = session.execute(select(evidence.c.evidence_id, evidence.c.revision_id).limit(1)).one()
++    vector = [0.0] * 384
++    vector[0] = coordinate
++    vector[1] = 1.0
++    return {
++        "chunk_id": str(uuid4()),
++        "evidence_id": row.evidence_id,
++        "revision_id": row.revision_id,
++        "start_offset": 0,
++        "end_offset": 4,
++        "chunk_text": "test",
++        "text_sha256": "0" * 64,
++        "model_version": space,
++        "embedding": vector,
++        "indexed_at": datetime.now(UTC),
++    }
++
++
++def test_upgrade_preserves_immutable_evidence_and_real_extension(vector_database: Engine) -> None:
++    with vector_database.connect() as connection:
++        assert connection.scalar(select(func.count()).select_from(document_revisions)) == 1
++        assert (
++            connection.scalar(text("SELECT extversion FROM pg_extension WHERE extname='vector'"))
++            == "0.8.2"
++        )
++        assert (
++            connection.scalar(text("SELECT version_num FROM alembic_version"))
++            == "0014_grounded_answer_vectors"
++        )
++
++
++def test_real_vector_roundtrip_cosine_and_model_space_filter(vector_database: Engine) -> None:
++    with Session(vector_database) as session:
++        first = chunk_values(session, 1.0)
++        second = chunk_values(session, -1.0, "fixture-space-v2")
++        session.execute(insert(retrieval_chunks), [first, second])
++        query = [1.0, 1.0] + [0.0] * 382
++        distance = retrieval_chunks.c.embedding.cosine_distance(query)
++        rows = session.execute(
++            select(retrieval_chunks.c.chunk_id, distance.label("distance"))
++            .where(retrieval_chunks.c.model_version == "fixture-space-v1")
++            .order_by(distance)
++        ).all()
++        assert [row.chunk_id for row in rows] == [first["chunk_id"]]
++        assert rows[0].distance == pytest.approx(0.0, abs=1e-6)
++        roundtrip = session.scalar(
++            select(retrieval_chunks.c.embedding).where(
++                retrieval_chunks.c.chunk_id == first["chunk_id"]
++            )
++        )
++        assert roundtrip == [1.0, 1.0] + [0.0] * 382
++
++
++@pytest.mark.parametrize("invalid", [[1.0] * 383, [float("nan")] * 384, [float("inf")] * 384])
++def test_real_pg_rejects_bad_dimensions_and_nonfinite_values(
++    vector_database: Engine, invalid: list[float]
++) -> None:
++    with Session(vector_database) as session:
++        values = chunk_values(session, 1.0)
++        values["embedding"] = invalid
++        with pytest.raises(DBAPIError):
++            session.execute(insert(retrieval_chunks).values(values))
++        session.rollback()
++        assert session.scalar(select(func.count()).select_from(retrieval_chunks)) == 0
++
++
++def test_chunk_coordinates_are_not_permanent_evidence_coordinates(vector_database: Engine) -> None:
++    with Session(vector_database) as session:
++        values = chunk_values(session, 1.0)
++        values["end_offset"] = 5
++        with pytest.raises(IntegrityError):
++            session.execute(insert(retrieval_chunks).values(values))
+diff --git a/backend/tests/live/test_r05_semantic_live.py b/backend/tests/live/test_r05_semantic_live.py
+new file mode 100644
+index 0000000..386d927
+--- /dev/null
++++ b/backend/tests/live/test_r05_semantic_live.py
+@@ -0,0 +1,98 @@
++"""Opt-in real local weights; absent resources fail explicitly, with no fixture or skip."""
++
++import json
++import math
++import os
++import time
++from pathlib import Path
++
++import pytest
++
++from ai_intel.infrastructure.models.semantic import LocalSemanticModels, SemanticInputError
++
++PASSAGES = (
++    "Prompt injection can make a language model follow malicious instructions in a document.",
++    "Steam the rice with water until the grains are soft and ready to eat.",
++    "提示注入会让语言模型遵循文档中嵌入的恶意指令。",
++)
++
++
++@pytest.fixture
++def local_models() -> LocalSemanticModels:
++    cache = os.environ.get("R05_SEMANTIC_CACHE")
++    if not cache:
++        pytest.fail(
++            "blocked_live: R05_SEMANTIC_CACHE must point to verified official local weights"
++        )
++    return LocalSemanticModels(Path(cache))
++
++
++def test_real_chinese_english_embeddings(local_models: LocalSemanticModels) -> None:
++    start = time.monotonic()
++    chinese_query = local_models.embed_query("什么是提示注入攻击？")
++    chinese_seconds = time.monotonic() - start
++    start = time.monotonic()
++    english_query = local_models.embed_query("What is prompt injection?")
++    english_seconds = time.monotonic() - start
++    start = time.monotonic()
++    passages = local_models.embed_passages(PASSAGES)
++    passage_seconds = time.monotonic() - start
++    assert chinese_query.dimension == english_query.dimension == passages.dimension == 384
++    for vector in (*chinese_query.vectors, *english_query.vectors, *passages.vectors):
++        assert all(type(value) is float and math.isfinite(value) for value in vector)
++        assert math.isclose(sum(value * value for value in vector), 1.0, abs_tol=1e-5)
++    assert passages.vectors[0] != passages.vectors[1]
++    cosine_scores = [
++        sum(left * right for left, right in zip(chinese_query.vectors[0], passage, strict=True))
++        for passage in passages.vectors
++    ]
++    print(
++        json.dumps(
++            {
++                "kind": "real_embedding_smoke",
++                "model_version": passages.model_version,
++                "chinese_query_seconds": chinese_seconds,
++                "english_query_seconds": english_seconds,
++                "passage_batch_seconds": passage_seconds,
++                "chinese_query_cosines": cosine_scores,
++                "quality_threshold": None,
++            }
++        )
++    )
++
++
++def test_real_cross_encoder_keeps_duplicate_indexes(local_models: LocalSemanticModels) -> None:
++    start = time.monotonic()
++    result = local_models.rerank(
++        "什么是提示注入攻击？", (PASSAGES[0], PASSAGES[1], PASSAGES[0], PASSAGES[2])
++    )
++    elapsed = time.monotonic() - start
++    assert sorted(item.index for item in result.items) == [0, 1, 2, 3]
++    assert all(type(item.score) is float and math.isfinite(item.score) for item in result.items)
++    assert all(
++        left.score >= right.score
++        for left, right in zip(result.items, result.items[1:], strict=False)
++    )
++    scores = {item.index: item.score for item in result.items}
++    assert scores[0] == scores[2]
++    assert [item.index for item in result.items].index(0) < [
++        item.index for item in result.items
++    ].index(2)
++    print(
++        json.dumps(
++            {
++                "kind": "real_reranker_smoke",
++                "model_version": result.model_version,
++                "total_seconds": elapsed,
++                "ranked": [{"index": item.index, "score": item.score} for item in result.items],
++                "quality_threshold": None,
++            }
++        )
++    )
++
++
++def test_real_token_limit_is_rejected_without_truncation(local_models: LocalSemanticModels) -> None:
++    with pytest.raises(SemanticInputError, match="512 token"):
++        local_models.embed_query("word " * 600)
++    with pytest.raises(SemanticInputError, match="512 token"):
++        local_models.rerank("query", ("word " * 600,))
+diff --git a/backend/tests/unit/test_r05_embedding_boundaries.py b/backend/tests/unit/test_r05_embedding_boundaries.py
+new file mode 100644
+index 0000000..2f79523
+--- /dev/null
++++ b/backend/tests/unit/test_r05_embedding_boundaries.py
+@@ -0,0 +1,43 @@
++"""共享向量边界拒绝无法安全进入真实 pgvector 的值。"""
++
++import pytest
++
++from ai_intel.infrastructure.models.clients import ModelContractError, validate_embedding_batch
++
++
++@pytest.mark.parametrize(
++    "vectors",
++    [
++        [[float("nan"), 1.0]],
++        [[float("inf"), 1.0]],
++        [[True, 1.0]],
++        [[1, 1.0]],
++        [[1e39, 1.0]],
++        [[0.0, -0.0]],
++        [["1.0", 1.0]],
++    ],
++)
++def test_invalid_coordinates_do_not_become_indexable(vectors: list[list[float]]) -> None:
++    with pytest.raises(ModelContractError):
++        validate_embedding_batch(vectors, 1, 2, "embedding-v1")
++
++
++@pytest.mark.parametrize(
++    "count,dimension", [(0, 2), (257, 2), (True, 2), (1, 0), (1, 4097), (1, True)]
++)
++def test_invalid_batch_metadata_is_rejected(count: int, dimension: int) -> None:
++    with pytest.raises(ModelContractError):
++        validate_embedding_batch([[1.0, 0.0]], count, dimension, "embedding-v1")
++
++
++@pytest.mark.parametrize("version", ["", "has space", "has\nnewline", "中文", "x" * 201])
++def test_invalid_space_identifier_is_rejected(version: str) -> None:
++    with pytest.raises(ModelContractError):
++        validate_embedding_batch([[1.0, 0.0]], 1, 2, version)
++
++
++def test_vectors_are_frozen_without_normalizing_or_reordering() -> None:
++    original = [[0.0, 2.0], [-3.0, 4.0]]
++    result = validate_embedding_batch(original, 2, 2, "intfloat/e5@revision;space=fingerprint")
++    original[0][1] = 7.0
++    assert result.vectors == ((0.0, 2.0), (-3.0, 4.0))
+diff --git a/backend/tests/unit/test_r05_process_limits.py b/backend/tests/unit/test_r05_process_limits.py
+new file mode 100644
+index 0000000..fe78d24
+--- /dev/null
++++ b/backend/tests/unit/test_r05_process_limits.py
+@@ -0,0 +1,77 @@
++"""Native limits are applied only inside disposable children, including negative CPU tests."""
++
++import os
++import subprocess
++import sys
++
++import pytest
++
++from ai_intel.infrastructure.process_limits import bound_process_resources
++
++
++@pytest.mark.parametrize("memory_bytes", [True, False, 0, -1, 2 * 1024**3 + 1, 1.5])
++def test_memory_limit_requires_bounded_integer(memory_bytes: int) -> None:
++    with pytest.raises(ValueError, match="memory_bytes"):
++        bound_process_resources(memory_bytes=memory_bytes, cpu_seconds=1)
++
++
++@pytest.mark.parametrize("cpu_seconds", [True, False, 0, -1, 31, 1.5])
++def test_cpu_limit_requires_bounded_integer(cpu_seconds: int) -> None:
++    with pytest.raises(ValueError, match="cpu_seconds"):
++        bound_process_resources(memory_bytes=100 * 1024**2, cpu_seconds=cpu_seconds)
++
++
++def test_real_native_memory_limit_refuses_large_allocation() -> None:
++    result = subprocess.run(
++        [
++            sys.executable,
++            "-c",
++            "from ai_intel.infrastructure.process_limits import bound_process_resources; "
++            "handle = bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=5); "
++            "print('LIMIT_APPLIED',flush=True); allocation=bytearray(200*1024**2); "
++            "print('UNEXPECTED_ALLOCATION',flush=True)",
++        ],
++        capture_output=True,
++        timeout=8,
++        check=False,
++    )
++    assert b"LIMIT_APPLIED" in result.stdout
++    assert b"UNEXPECTED_ALLOCATION" not in result.stdout
++    assert result.returncode != 0
++    assert b"MemoryError" in result.stderr or result.returncode < 0
++
++
++def test_real_native_cpu_limit_terminates_busy_child() -> None:
++    code = (
++        "from ai_intel.infrastructure.process_limits import bound_process_resources\n"
++        "handle = bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\n"
++        "print('LIMIT_APPLIED',flush=True)\n"
++        "while True:\n    pass\n"
++    )
++    result = subprocess.run(
++        [sys.executable, "-c", code], capture_output=True, timeout=8, check=False
++    )
++    assert b"LIMIT_APPLIED" in result.stdout
++    assert result.returncode != 0
++    assert b"Traceback" not in result.stderr
++
++
++def test_unsupported_platform_refuses_unbounded_execution(monkeypatch: pytest.MonkeyPatch) -> None:
++    monkeypatch.setattr(sys, "platform", "unsupported")
++    monkeypatch.setattr(os, "name", "posix")
++    with pytest.raises(OSError, match="unavailable"):
++        bound_process_resources(memory_bytes=100 * 1024**2, cpu_seconds=1)
++
++
++def test_pdf_retains_memory_and_cpu_envelope(monkeypatch: pytest.MonkeyPatch) -> None:
++    from ai_intel.ingestion.parsing import _pdf_worker
++
++    observed: list[tuple[int, int]] = []
++
++    def bound(*, memory_bytes: int, cpu_seconds: int) -> int:
++        observed.append((memory_bytes, cpu_seconds))
++        return 42
++
++    monkeypatch.setattr(_pdf_worker, "bound_process_resources", bound)
++    assert _pdf_worker._bound_memory() == 42
++    assert observed == [(512 * 1024**2, 15)]
+diff --git a/backend/tests/unit/test_r05_semantic.py b/backend/tests/unit/test_r05_semantic.py
+new file mode 100644
+index 0000000..acd2935
+--- /dev/null
++++ b/backend/tests/unit/test_r05_semantic.py
+@@ -0,0 +1,412 @@
++"""Explicit synthetic boundaries; no fixture claims to be a live semantic model."""
++
++from pathlib import Path
++
++import pytest
++
++from ai_intel.infrastructure.models import semantic
++from ai_intel.infrastructure.models.clients import ModelContractError, ModelNotConfiguredError
++from ai_intel.infrastructure.models.semantic import (
++    E5_MODEL,
++    RERANK_MODEL,
++    LocalSemanticModels,
++    ModelArtifact,
++    SemanticInputError,
++)
++
++
++@pytest.fixture
++def client(tmp_path: Path) -> LocalSemanticModels:
++    return LocalSemanticModels(tmp_path)
++
++
++def vector(axis: int) -> list[float]:
++    return [1.0 if index == axis else 0.0 for index in range(384)]
++
++
++@pytest.mark.parametrize("timeout", [True, False, 0, -1, 31, float("nan"), float("inf")])
++def test_configuration_rejects_invalid_deadline(tmp_path: Path, timeout: float) -> None:
++    with pytest.raises(ValueError, match="timeout"):
++        LocalSemanticModels(tmp_path, timeout)
++
++
++def test_configuration_rejects_relative_cache() -> None:
++    with pytest.raises(ValueError, match="absolute"):
++        LocalSemanticModels(Path("models"))
++
++
++@pytest.mark.parametrize("text", ["", "  ", "a\0b", "x" * 16385, "\ud800"])
++def test_invalid_query_fails_before_worker(client: LocalSemanticModels, text: str) -> None:
++    with pytest.raises(SemanticInputError):
++        client.embed_query(text)
++    with pytest.raises(SemanticInputError):
++        client.rerank(text, ("paragraph",))
++
++
++@pytest.mark.parametrize("passages", [(), ("",), ("x",) * 9])
++def test_invalid_batch_is_not_empty_success(
++    client: LocalSemanticModels, passages: tuple[str, ...]
++) -> None:
++    with pytest.raises(SemanticInputError):
++        client.embed_passages(passages)
++    with pytest.raises(SemanticInputError):
++        client.rerank("question", passages)
++
++
++def test_embedding_keeps_order_duplicates_and_prefix(
++    client: LocalSemanticModels, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    calls: list[tuple[str, tuple[str, ...]]] = []
++
++    def run(
++        configured: LocalSemanticModels,
++        model: semantic.LocalModel,
++        operation: str,
++        texts: tuple[str, ...],
++        query: str | None,
++    ) -> object:
++        assert configured is client
++        assert model == E5_MODEL
++        assert query is None
++        calls.append((operation, texts))
++        return [vector(0)] if operation == "query" else [vector(1), vector(0), vector(1)]
++
++    monkeypatch.setattr(semantic, "_run_worker", run)
++    result = client.embed_passages(("重复", "English", "重复"))
++    assert result.dimension == 384
++    assert result.vectors == (tuple(vector(1)), tuple(vector(0)), tuple(vector(1)))
++    assert result.model_version == E5_MODEL.model_version
++    assert client.embed_query("问题").vectors == (tuple(vector(0)),)
++    assert calls == [("passage", ("重复", "English", "重复")), ("query", ("问题",))]
++
++
++@pytest.mark.parametrize(
++    "payload",
++    [
++        [],
++        [[1.0]],
++        [[0.0] * 384],
++        [[True] * 384],
++        [[1] * 384],
++        [[float("nan")] * 384],
++        [[float("inf")] * 384],
++        [[-float("inf")] * 384],
++        [[0.5] * 384],
++        [vector(0), vector(1)],
++    ],
++)
++def test_embedding_rejects_malformed_backend_output(
++    client: LocalSemanticModels, monkeypatch: pytest.MonkeyPatch, payload: object
++) -> None:
++    monkeypatch.setattr(semantic, "_run_worker", lambda *args: payload)
++    with pytest.raises(ModelContractError):
++        client.embed_query("test")
++
++
++def test_rerank_keeps_all_original_indexes_and_stable_ties(
++    client: LocalSemanticModels, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    monkeypatch.setattr(semantic, "_run_worker", lambda *args: [[-2.0], [3.0], [3.0], [-2.0]])
++    result = client.rerank("query", ("repeat", "best", "best", "repeat"))
++    assert [(item.index, item.score) for item in result.items] == [
++        (1, 3.0),
++        (2, 3.0),
++        (0, -2.0),
++        (3, -2.0),
++    ]
++    assert result.model_version == RERANK_MODEL.model_version
++
++
++@pytest.mark.parametrize("payload", [[], [[float("nan")]], [[True]], [[1]], [[1.0, 2.0]]])
++def test_rerank_rejects_invalid_scores(
++    client: LocalSemanticModels, monkeypatch: pytest.MonkeyPatch, payload: object
++) -> None:
++    monkeypatch.setattr(semantic, "_run_worker", lambda *args: payload)
++    with pytest.raises(ModelContractError):
++        client.rerank("query", ("passage",))
++
++
++def test_unavailable_cache_has_no_fallback(client: LocalSemanticModels) -> None:
++    with pytest.raises(ModelNotConfiguredError):
++        semantic._verified_model_directory(client.model_cache_directory, E5_MODEL)
++
++
++def test_artifact_size_and_hash_are_both_checked(tmp_path: Path) -> None:
++    import hashlib
++
++    directory = tmp_path / "synthetic"
++    directory.mkdir()
++    artifact_path = directory / "weights"
++    artifact_path.write_bytes(b"approved")
++    model = semantic.LocalModel(
++        "synthetic",
++        "synthetic-only",
++        "0" * 40,
++        (ModelArtifact("weights", 8, hashlib.sha256(b"approved").hexdigest()),),
++        "test",
++    )
++    assert semantic._verified_model_directory(tmp_path, model) == directory
++    artifact_path.write_bytes(b"modified")
++    with pytest.raises(ModelNotConfiguredError, match="checksum"):
++        semantic._verified_model_directory(tmp_path, model)
++    artifact_path.write_bytes(b"bigger content")
++    with pytest.raises(ModelNotConfiguredError, match="size"):
++        semantic._verified_model_directory(tmp_path, model)
++
++
++def test_model_space_changes_for_other_artifact() -> None:
++    from dataclasses import replace
++
++    alternative = replace(
++        E5_MODEL,
++        artifacts=(replace(E5_MODEL.artifacts[0], sha256="0" * 64), E5_MODEL.artifacts[1]),
++    )
++    assert alternative.model_version != E5_MODEL.model_version
++
++
++def test_busy_worker_fails_without_spawning(client: LocalSemanticModels) -> None:
++    semantic._WORKER_LOCK.acquire()
++    try:
++        with pytest.raises(semantic.SemanticRuntimeError, match="busy"):
++            client.embed_query("query")
++    finally:
++        semantic._WORKER_LOCK.release()
++
++
++class WorkerPipe:
++    def __init__(self, response: object, ready: bool = True) -> None:
++        self.response = response
++        self.ready = ready
++        self.closed = False
++
++    def poll(self, timeout: float) -> bool:
++        assert 0 <= timeout <= 30
++        return self.ready
++
++    def recv(self) -> object:
++        if self.response is None:
++            raise EOFError
++        return self.response
++
++    def close(self) -> None:
++        self.closed = True
++
++
++class WorkerProcess:
++    pid: int | None = None
++
++    def __init__(self) -> None:
++        self.alive = False
++        self.terminated = False
++        self.joined = False
++        self.closed = False
++
++    def start(self) -> None:
++        self.pid = 1
++        self.alive = True
++
++    def is_alive(self) -> bool:
++        return self.alive
++
++    def terminate(self) -> None:
++        self.terminated = True
++        self.alive = False
++
++    def kill(self) -> None:
++        self.alive = False
++
++    def join(self, timeout: float) -> None:
++        self.joined = True
++
++    def close(self) -> None:
++        self.closed = True
++
++
++class WorkerContext:
++    def __init__(self, response: object, ready: bool = True) -> None:
++        self.receiver = WorkerPipe(response, ready)
++        self.sender = WorkerPipe(None)
++        self.process = WorkerProcess()
++
++    def Pipe(self, duplex: bool) -> tuple[WorkerPipe, WorkerPipe]:
++        assert duplex is False
++        return self.receiver, self.sender
++
++    def Process(self, **kwargs: object) -> WorkerProcess:
++        assert kwargs["daemon"] is True
++        return self.process
++
++
++@pytest.mark.parametrize(
++    ("response", "ready", "error"),
++    [
++        (("input", None), True, SemanticInputError),
++        (("unavailable", None), True, ModelNotConfiguredError),
++        (("failed", "untrusted detail"), True, semantic.SemanticRuntimeError),
++        (("not-status", None), True, semantic.SemanticRuntimeError),
++        (["ok", []], True, ModelContractError),
++        (("ok", []), False, semantic.SemanticTimeoutError),
++        (None, True, semantic.SemanticRuntimeError),
++    ],
++)
++def test_worker_errors_cleanup_without_fallback(
++    client: LocalSemanticModels,
++    monkeypatch: pytest.MonkeyPatch,
++    response: object,
++    ready: bool,
++    error: type[Exception],
++) -> None:
++    context = WorkerContext(response, ready)
++    monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda *args: context)
++    with pytest.raises(error) as captured:
++        client.embed_query("private text must not enter error output")
++    assert "private text" not in str(captured.value)
++    assert "untrusted detail" not in str(captured.value)
++    assert context.receiver.closed and context.sender.closed
++    assert context.process.terminated and context.process.joined and context.process.closed
++    assert not semantic._WORKER_LOCK.locked()
++
++
++@pytest.mark.parametrize("stage", ["get_context", "pipe", "process", "start"])
++@pytest.mark.parametrize("failure", [OSError, RuntimeError])
++def test_initialization_failure_releases_capacity_and_allows_next_call(
++    client: LocalSemanticModels,
++    monkeypatch: pytest.MonkeyPatch,
++    stage: str,
++    failure: type[Exception],
++) -> None:
++    context = WorkerContext(("ok", [vector(0)]))
++
++    def unavailable(*args: object, **kwargs: object) -> None:
++        raise failure("sensitive initialization details")
++
++    if stage == "get_context":
++        monkeypatch.setattr(semantic.multiprocessing, "get_context", unavailable)
++    else:
++        monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda *args: context)
++        target = context.process if stage == "start" else context
++        name = {"pipe": "Pipe", "process": "Process", "start": "start"}[stage]
++        monkeypatch.setattr(target, name, unavailable)
++    try:
++        with pytest.raises(semantic.SemanticRuntimeError) as captured:
++            client.embed_query("private question")
++        assert "sensitive" not in str(captured.value)
++        assert "private" not in str(captured.value)
++        assert not semantic._WORKER_LOCK.locked()
++        if stage in ("process", "start"):
++            assert context.receiver.closed and context.sender.closed
++        if stage == "start":
++            assert context.process.closed
++        healthy = WorkerContext(("ok", [vector(0)]))
++        monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda *args: healthy)
++        assert client.embed_query("next question").vectors == (tuple(vector(0)),)
++        assert healthy.receiver.closed and healthy.sender.closed
++        assert healthy.process.closed and not semantic._WORKER_LOCK.locked()
++    finally:
++        if semantic._WORKER_LOCK.locked():
++            semantic._WORKER_LOCK.release()
++
++
++def test_cleanup_failure_preserves_primary_error_and_releases_capacity(
++    client: LocalSemanticModels, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    context = WorkerContext(("input", None))
++
++    def close_unavailable() -> None:
++        raise OSError("sensitive cleanup details")
++
++    monkeypatch.setattr(context.receiver, "close", close_unavailable)
++    monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda *args: context)
++    try:
++        with pytest.raises(SemanticInputError) as captured:
++            client.embed_query("private question")
++        assert "sensitive" not in str(captured.value)
++        assert context.sender.closed and context.process.closed
++        assert not semantic._WORKER_LOCK.locked()
++        assert captured.value.__notes__ == ["local semantic worker cleanup was incomplete"]
++    finally:
++        if semantic._WORKER_LOCK.locked():
++            semantic._WORKER_LOCK.release()
++
++
++def test_cleanup_failure_on_success_is_visible_and_releases_capacity(
++    client: LocalSemanticModels, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    context = WorkerContext(("ok", [vector(0)]))
++
++    def close_unavailable() -> None:
++        raise OSError("sensitive cleanup details")
++
++    monkeypatch.setattr(context.receiver, "close", close_unavailable)
++    monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda *args: context)
++    try:
++        with pytest.raises(semantic.SemanticRuntimeError, match="cleanup"):
++            client.embed_query("question")
++        assert context.process.closed
++        assert not semantic._WORKER_LOCK.locked()
++    finally:
++        if semantic._WORKER_LOCK.locked():
++            semantic._WORKER_LOCK.release()
++
++
++def test_symlink_artifact_is_rejected_before_read(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    artifact_path = tmp_path / "e5" / "onnx" / "model.onnx"
++    monkeypatch.setattr(Path, "is_symlink", lambda path: path == artifact_path)
++    with pytest.raises(ModelNotConfiguredError, match="outside cache"):
++        semantic._verified_model_directory(tmp_path, E5_MODEL)
++
++
++def test_over_token_limit_fails_before_onnx_load(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    from types import SimpleNamespace
++
++    class Tokenizer:
++        truncated = True
++        padded = True
++
++        def no_truncation(self) -> None:
++            self.truncated = False
++
++        def no_padding(self) -> None:
++            self.padded = False
++
++        def encode_batch(self, inputs: object) -> list[SimpleNamespace]:
++            assert not self.truncated and not self.padded
++            return [SimpleNamespace(ids=[0] * 513)]
++
++    tokenizer = Tokenizer()
++    modules = {
++        "tokenizers": SimpleNamespace(Tokenizer=SimpleNamespace(from_file=lambda path: tokenizer)),
++        "onnxruntime": SimpleNamespace(disable_telemetry_events=lambda: None),
++        "numpy": SimpleNamespace(),
++    }
++    monkeypatch.setattr(semantic, "import_module", lambda name: modules[name])
++    with pytest.raises(SemanticInputError, match="token limit"):
++        semantic._infer_local(tmp_path, E5_MODEL, "query", ("long tokenized input",), None)
++
++
++def test_worker_applies_resource_limit_before_any_artifact_or_library_load(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    events: list[str] = []
++    responses: list[object] = []
++
++    class Sender:
++        def send(self, payload: object) -> None:
++            responses.append(payload)
++
++        def close(self) -> None:
++            events.append("closed")
++
++    def bounded() -> None:
++        events.append("resource-limit")
++        raise OSError("limit unavailable")
++
++    monkeypatch.setattr(semantic, "_bound_worker_memory", bounded)
++    monkeypatch.setattr(semantic, "_verified_model_directory", lambda *args: pytest.fail("loaded"))
++    semantic._semantic_worker(Sender(), tmp_path, E5_MODEL, "query", ("sensitive",), None)
++    assert events == ["resource-limit", "closed"]
++    assert responses == [("failed", None)]
+diff --git a/backend/uv.lock b/backend/uv.lock
+index c5ab859..e8352cf 100644
+--- a/backend/uv.lock
++++ b/backend/uv.lock
+@@ -14,6 +14,7 @@ dependencies = [
+     { name = "fastapi" },
+     { name = "httpx" },
+     { name = "minio" },
++    { name = "pgvector" },
+     { name = "psycopg", extra = ["binary"] },
+     { name = "pydantic" },
+     { name = "pydantic-settings" },
+@@ -23,6 +24,13 @@ dependencies = [
+     { name = "uvicorn" },
+ ]
+ 
++[package.optional-dependencies]
++semantic = [
++    { name = "numpy" },
++    { name = "onnxruntime" },
++    { name = "tokenizers" },
++]
++
+ [package.dev-dependencies]
+ dev = [
+     { name = "httpx" },
+@@ -42,14 +50,19 @@ requires-dist = [
+     { name = "fastapi", specifier = ">=0.115,<1.0" },
+     { name = "httpx", specifier = ">=0.28,<1" },
+     { name = "minio", specifier = "==7.2.20" },
++    { name = "numpy", marker = "extra == 'semantic'", specifier = "==2.4.2" },
++    { name = "onnxruntime", marker = "extra == 'semantic'", specifier = "==1.24.4" },
++    { name = "pgvector", specifier = "==0.5.1" },
+     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4.0" },
+     { name = "pydantic", specifier = ">=2.10,<3.0" },
+     { name = "pydantic-settings", specifier = ">=2.7,<3.0" },
+     { name = "pypdf", specifier = ">=6.20.1,<7" },
+     { name = "redis", specifier = ">=5.2,<7" },
+     { name = "sqlalchemy", specifier = ">=2.0.36,<3.0" },
++    { name = "tokenizers", marker = "extra == 'semantic'", specifier = "==0.22.2" },
+     { name = "uvicorn", specifier = ">=0.32,<1.0" },
+ ]
++provides-extras = ["semantic"]
+ 
+ [package.metadata.requires-dev]
+ dev = [
+@@ -332,6 +345,32 @@ wheels = [
+     { url = "https://files.pythonhosted.org/packages/a0/b6/78aaf9141fb46742928c113f3cf6ef2259d538cb02b604b7656c1dc9883c/fastapi-0.142.2-py3-none-any.whl", hash = "sha256:bd5f4d81f1e93a88bcd77caf4dfe3c2dbffc3805407a0007e9a114c18b3a670b", size = 144409, upload-time = "2026-09-30T09:51:09.8Z" },
+ ]
+ 
++[[package]]
++name = "filelock"
++version = "4.2.0"
++source = { registry = "https://pypi.org/simple" }
++sdist = { url = "https://files.pythonhosted.org/packages/f4/a9/1af41b37c3279712b22cdc63aac78a52432202b6fe1f9666a2a3d2831fb4/filelock-4.2.0.tar.gz", hash = "sha256:7a60906c75227cf04d0c273afadc8219400f11aeb13cc69591d4f6cdc6c8036e", size = 569667, upload-time = "2026-10-14T20:57:13.11Z" }
++wheels = [
++    { url = "https://files.pythonhosted.org/packages/8e/a3/9bc26acff301fe1aaea1cc3d82a1d57e0a34df3e1cadbfa91ac2dbcdde5c/filelock-4.2.0-py3-none-any.whl", hash = "sha256:2ff5690882e8cdb00ef31fb3d01a3094c29f30985426c59495afb1733f3b7238", size = 135032, upload-time = "2026-10-14T20:57:11.349Z" },
++]
++
++[[package]]
++name = "flatbuffers"
++version = "25.12.19"
++source = { registry = "https://pypi.org/simple" }
++wheels = [
++    { url = "https://files.pythonhosted.org/packages/e8/2d/d2a548598be01649e2d46231d151a6c56d10b964d94043a335ae56ea2d92/flatbuffers-25.12.19-py2.py3-none-any.whl", hash = "sha256:7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4", size = 26661, upload-time = "2025-12-19T23:16:13.622Z" },
++]
++
++[[package]]
++name = "fsspec"
++version = "2026.9.0"
++source = { registry = "https://pypi.org/simple" }
++sdist = { url = "https://files.pythonhosted.org/packages/77/cd/9be253869fc42e764de7f3dedd6969af7d44ff9c3375214a3442a6f3fc08/fsspec-2026.9.0.tar.gz", hash = "sha256:0f08147951c8cb31d844c3547d631053b127863b60be04cf06e121333ee0e2fe", size = 333545, upload-time = "2026-09-18T17:50:42.825Z" }
++wheels = [
++    { url = "https://files.pythonhosted.org/packages/6c/c0/a98505f18594f1bce828bb159cec0fcf9860562f1a2c85913409fc8f3d9e/fsspec-2026.9.0-py3-none-any.whl", hash = "sha256:8dd6e646e99ea382bd85f97a45e6b526a442d79423a7dc673f1e2756d05fcb5f", size = 221738, upload-time = "2026-09-18T17:50:41.341Z" },
++]
++
+ [[package]]
+ name = "h11"
+ version = "0.16.0"
+@@ -341,6 +380,22 @@ wheels = [
+     { url = "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl", hash = "sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86", size = 37515, upload-time = "2025-04-24T03:35:24.344Z" },
+ ]
+ 
++[[package]]
++name = "hf-xet"
++version = "1.7.0"
++source = { registry = "https://pypi.org/simple" }
++sdist = { url = "https://files.pythonhosted.org/packages/9e/27/06d899ea7bd721d272f84aac98bdb238de98af4cc767a69056d967d68c71/hf_xet-1.7.0.tar.gz", hash = "sha256:d406ec79053c0871817f700c2ac8c36ba0d87f9c34b7458b0f0063bb218b0466", size = 985689, upload-time = "2026-10-06T20:18:43.89Z" }
++wheels = [
++    { url = "https://files.pythonhosted.org/packages/9c/0b/b03be21ffaada749ba0d3197d8aefbf1aa698bac149580421c15239b299e/hf_xet-1.7.0-cp38-abi3-macosx_10_12_x86_64.whl", hash = "sha256:e3e88a7a75d7d95cbee1f37dc31341d6201124cf21c6c4b1dfab8ccba9b09e0f", size = 3796096, upload-time = "2026-10-06T20:18:28.43Z" },
++    { url = "https://files.pythonhosted.org/packages/c3/47/a26ebdce7056a61e931f228439bc0ab08cbec239d1690f965e5e637cba79/hf_xet-1.7.0-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:59fba37039233c7fcbe196817d6cdcf1b40dfb17b410f229d85b0cf0a1848da4", size = 3560352, upload-time = "2026-10-06T20:18:30.365Z" },
++    { url = "https://files.pythonhosted.org/packages/a3/4c/2bf3b66c215d409655f28de1622393dde04c9461280d48c7924bb3b2decd/hf_xet-1.7.0-cp38-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:2814a6e999d13464c4d679b788cc5d784eb5a4edfc638a31f10e9a11ab531ef8", size = 4212180, upload-time = "2026-10-06T20:18:32.292Z" },
++    { url = "https://files.pythonhosted.org/packages/49/0c/a2f703a5a78267556e89e03316fa0805c86b72b50829bc67665746e8ebf0/hf_xet-1.7.0-cp38-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:fcfd6c22418e57dd5b3aea649e813b2e2cfb2aebf317b210d90f1fe4b3018b52", size = 3990011, upload-time = "2026-10-06T20:18:34.21Z" },
++    { url = "https://files.pythonhosted.org/packages/a4/77/e52e4201b1cbf571530a61cc57f70182045a39a230089ee5f1df182a4de2/hf_xet-1.7.0-cp38-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:80f79dae613ce9e0ea1fd1ae15616ca9ac74aed4c770aabc199c4f03ebecc863", size = 4190628, upload-time = "2026-10-06T20:18:36.062Z" },
++    { url = "https://files.pythonhosted.org/packages/6c/dc/03a21b89f118664a0926ff25b0f8e44a519bf22724a6a8fc7a9abbc188b6/hf_xet-1.7.0-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:0a9e802f33bf50c851abe45fc5380e61f959e2d369647d6742b79ad9d6c27cab", size = 4418814, upload-time = "2026-10-06T20:18:37.888Z" },
++    { url = "https://files.pythonhosted.org/packages/4d/59/b35106dfa71b6eef605dc88bd038fe99c7f86fb132a15b60d0bf2f235b2c/hf_xet-1.7.0-cp38-abi3-win_amd64.whl", hash = "sha256:2b7bb5727889b0f2436dbaaad8fc4c3e66b8240d992716989e0c086b4278b1bc", size = 3822644, upload-time = "2026-10-06T20:18:40.052Z" },
++    { url = "https://files.pythonhosted.org/packages/48/cd/072313585f74fe9d441e2eb5e0a4703c30586cd709810ea369675f61b74e/hf_xet-1.7.0-cp38-abi3-win_arm64.whl", hash = "sha256:acc3851cf2576a8fb2ae926da863f4efabe21303cf292e9a44332802ab0dcc6a", size = 3662436, upload-time = "2026-10-06T20:18:42.205Z" },
++]
++
+ [[package]]
+ name = "httpcore"
+ version = "1.0.9"
+@@ -369,6 +424,26 @@ wheels = [
+     { url = "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad", size = 73517, upload-time = "2024-12-06T15:37:21.509Z" },
+ ]
+ 
++[[package]]
++name = "huggingface-hub"
++version = "1.33.0"
++source = { registry = "https://pypi.org/simple" }
++dependencies = [
++    { name = "click" },
++    { name = "filelock" },
++    { name = "fsspec" },
++    { name = "hf-xet", marker = "platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'" },
++    { name = "httpx" },
++    { name = "packaging" },
++    { name = "pyyaml" },
++    { name = "tqdm" },
++    { name = "typing-extensions" },
++]
++sdist = { url = "https://files.pythonhosted.org/packages/25/2a/484d112c0d8fc5f665d7b65137ac9cdb2953c982391598c3597968a12ee7/huggingface_hub-1.33.0.tar.gz", hash = "sha256:367be21a201db9523eddf8aeac7048f2602c1b308691c97640d5e72ed188007e", size = 1043548, upload-time = "2026-09-24T09:49:29.971Z" }
++wheels = [
++    { url = "https://files.pythonhosted.org/packages/fc/16/963096d224b80909432dc16561a615fd33d2d13beef3ce4c63fa25e40867/huggingface_hub-1.33.0-py3-none-any.whl", hash = "sha256:04e434b06e100eddbce9a6e817d72693a7884b10a79bd67ab48080d5c07eb899", size = 846435, upload-time = "2026-09-24T09:49:28.059Z" },
++]
++
+ [[package]]
+ name = "idna"
+ version = "3.20"
+@@ -504,6 +579,15 @@ wheels = [
+     { url = "https://files.pythonhosted.org/packages/3e/9a/b697530a882588a84db616580f2ba5d1d515c815e11c30d219145afeec87/minio-7.2.20-py3-none-any.whl", hash = "sha256:eb33dd2fb80e04c3726a76b13241c6be3c4c46f8d81e1d58e757786f6501897e", size = 93751, upload-time = "2025-11-27T00:37:13.993Z" },
+ ]
+ 
++[[package]]
++name = "mpmath"
++version = "1.3.0"
++source = { registry = "https://pypi.org/simple" }
++sdist = { url = "https://files.pythonhosted.org/packages/e0/47/dd32fa426cc72114383ac549964eecb20ecfd886d1e5ccf5340b55b02f57/mpmath-1.3.0.tar.gz", hash = "sha256:7a28eb2a9774d00c7bc92411c19a89209d5da7c4c9a9e227be8330a23a25b91f", size = 508106, upload-time = "2023-03-07T16:47:11.061Z" }
++wheels = [
++    { url = "https://files.pythonhosted.org/packages/43/e3/7d92a15f894aa0c9c4b49b8ee9ac9850d6e63b03c9c32c0367a13ae62209/mpmath-1.3.0-py3-none-any.whl", hash = "sha256:a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c", size = 536198, upload-time = "2023-03-07T16:47:09.197Z" },
++]
++
+ [[package]]
+ name = "mypy"
+ version = "1.20.2"
+@@ -535,6 +619,44 @@ wheels = [
+     { url = "https://files.pythonhosted.org/packages/79/7b/2c79738432f5c924bef5071f933bcc9efd0473bac3b4aa584a6f7c1c8df8/mypy_extensions-1.1.0-py3-none-any.whl", hash = "sha256:1be4cccdb0f2482337c4743e60421de3a356cd97508abadd57d47403e94f5505", size = 4963, upload-time = "2025-04-22T14:54:22.983Z" },
+ ]
+ 
++[[package]]
++name = "numpy"
++version = "2.4.2"
++source = { registry = "https://pypi.org/simple" }
++sdist = { url = "https://files.pythonhosted.org/packages/57/fd/0005efbd0af48e55eb3c7208af93f2862d4b1a56cd78e84309a2d959208d/numpy-2.4.2.tar.gz", hash = "sha256:659a6107e31a83c4e33f763942275fd278b21d095094044eb35569e86a21ddae", size = 20723651, upload-time = "2026-01-31T23:13:10.135Z" }
++wheels = [
++    { url = "https://files.pythonhosted.org/packages/51/6e/6f394c9c77668153e14d4da83bcc247beb5952f6ead7699a1a2992613bea/numpy-2.4.2-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:21982668592194c609de53ba4933a7471880ccbaadcc52352694a59ecc860b3a", size = 16667963, upload-time = "2026-01-31T23:10:52.147Z" },
++    { url = "https://files.pythonhosted.org/packages/1f/f8/55483431f2b2fd015ae6ed4fe62288823ce908437ed49db5a03d15151678/numpy-2.4.2-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:40397bda92382fcec844066efb11f13e1c9a3e2a8e8f318fb72ed8b6db9f60f1", size = 14693571, upload-time = "2026-01-31T23:10:54.789Z" },
++    { url = "https://files.pythonhosted.org/packages/2f/20/18026832b1845cdc82248208dd929ca14c9d8f2bac391f67440707fff27c/numpy-2.4.2-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:b3a24467af63c67829bfaa61eecf18d5432d4f11992688537be59ecd6ad32f5e", size = 5203469, upload-time = "2026-01-31T23:10:57.343Z" },
++    { url = "https://files.pythonhosted.org/packages/7d/33/2eb97c8a77daaba34eaa3fa7241a14ac5f51c46a6bd5911361b644c4a1e2/numpy-2.4.2-cp312-cp312-macosx_14_0_x86_64.whl", hash = "sha256:805cc8de9fd6e7a22da5aed858e0ab16be5a4db6c873dde1d7451c541553aa27", size = 6550820, upload-time = "2026-01-31T23:10:59.429Z" },
++    { url = "https://files.pythonhosted.org/packages/b1/91/b97fdfd12dc75b02c44e26c6638241cc004d4079a0321a69c62f51470c4c/numpy-2.4.2-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:6d82351358ffbcdcd7b686b90742a9b86632d6c1c051016484fa0b326a0a1548", size = 15663067, upload-time = "2026-01-31T23:11:01.291Z" },
++    { url = "https://files.pythonhosted.org/packages/f5/c6/a18e59f3f0b8071cc85cbc8d80cd02d68aa9710170b2553a117203d46936/numpy-2.4.2-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9e35d3e0144137d9fdae62912e869136164534d64a169f86438bc9561b6ad49f", size = 16619782, upload-time = "2026-01-31T23:11:03.669Z" },
++    { url = "https://files.pythonhosted.org/packages/b7/83/9751502164601a79e18847309f5ceec0b1446d7b6aa12305759b72cf98b2/numpy-2.4.2-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:adb6ed2ad29b9e15321d167d152ee909ec73395901b70936f029c3bc6d7f4460", size = 17013128, upload-time = "2026-01-31T23:11:05.913Z" },
++    { url = "https://files.pythonhosted.org/packages/61/c4/c4066322256ec740acc1c8923a10047818691d2f8aec254798f3dd90f5f2/numpy-2.4.2-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:8906e71fd8afcb76580404e2a950caef2685df3d2a57fe82a86ac8d33cc007ba", size = 18345324, upload-time = "2026-01-31T23:11:08.248Z" },
++    { url = "https://files.pythonhosted.org/packages/ab/af/6157aa6da728fa4525a755bfad486ae7e3f76d4c1864138003eb84328497/numpy-2.4.2-cp312-cp312-win32.whl", hash = "sha256:ec055f6dae239a6299cace477b479cca2fc125c5675482daf1dd886933a1076f", size = 5960282, upload-time = "2026-01-31T23:11:10.497Z" },
++    { url = "https://files.pythonhosted.org/packages/92/0f/7ceaaeaacb40567071e94dbf2c9480c0ae453d5bb4f52bea3892c39dc83c/numpy-2.4.2-cp312-cp312-win_amd64.whl", hash = "sha256:209fae046e62d0ce6435fcfe3b1a10537e858249b3d9b05829e2a05218296a85", size = 12314210, upload-time = "2026-01-31T23:11:12.176Z" },
++    { url = "https://files.pythonhosted.org/packages/2f/a3/56c5c604fae6dd40fa2ed3040d005fca97e91bd320d232ac9931d77ba13c/numpy-2.4.2-cp312-cp312-win_arm64.whl", hash = "sha256:fbde1b0c6e81d56f5dccd95dd4a711d9b95df1ae4009a60887e56b27e8d903fa", size = 10220171, upload-time = "2026-01-31T23:11:14.684Z" },
++]
++
++[[package]]
++name = "onnxruntime"
++version = "1.24.4"
++source = { registry = "https://pypi.org/simple" }
++dependencies = [
++    { name = "flatbuffers" },
++    { name = "numpy" },
++    { name = "packaging" },
++    { name = "protobuf" },
++    { name = "sympy" },
++]
++wheels = [
++    { url = "https://files.pythonhosted.org/packages/d7/38/31db1b232b4ba960065a90c1506ad7a56995cd8482033184e97fadca17cc/onnxruntime-1.24.4-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:cad1c2b3f455c55678ab2a8caa51fb420c25e6e3cf10f4c23653cdabedc8de78", size = 17341875, upload-time = "2026-03-17T22:05:51.669Z" },
++    { url = "https://files.pythonhosted.org/packages/aa/60/c4d1c8043eb42f8a9aa9e931c8c293d289c48ff463267130eca97d13357f/onnxruntime-1.24.4-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:1a5c5a544b22f90859c88617ecb30e161ee3349fcc73878854f43d77f00558b5", size = 15172485, upload-time = "2026-03-17T22:03:32.182Z" },
++    { url = "https://files.pythonhosted.org/packages/6d/ab/5b68110e0460d73fad814d5bd11c7b1ddcce5c37b10177eb264d6a36e331/onnxruntime-1.24.4-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:0d640eb9f3782689b55cfa715094474cd5662f2f137be6a6f847a594b6e9705c", size = 17244912, upload-time = "2026-03-17T22:04:37.251Z" },
++    { url = "https://files.pythonhosted.org/packages/8b/f4/6b89e297b93704345f0f3f8c62229bee323ef25682a3f9b4f89a39324950/onnxruntime-1.24.4-cp312-cp312-win_amd64.whl", hash = "sha256:535b29475ca42b593c45fbb2152fbf1cdf3f287315bf650e6a724a0a1d065cdb", size = 12596856, upload-time = "2026-03-17T22:05:41.224Z" },
++    { url = "https://files.pythonhosted.org/packages/43/06/8b8ec6e9e6a474fcd5d772453f627ad4549dfe3ab8c0bf70af5afcde551b/onnxruntime-1.24.4-cp312-cp312-win_arm64.whl", hash = "sha256:e6214096e14b7b52e3bee1903dc12dc7ca09cb65e26664668a4620cc5e6f9a90", size = 12270275, upload-time = "2026-03-17T22:05:31.132Z" },
++]
++
+ [[package]]
+ name = "opentelemetry-api"
+ version = "1.45.0"
+@@ -565,6 +687,15 @@ wheels = [
+     { url = "https://files.pythonhosted.org/packages/f1/d9/7fb5aa316bc299258e68c73ba3bddbc499654a07f151cba08f6153988714/pathspec-1.1.1-py3-none-any.whl", hash = "sha256:a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189", size = 57328, upload-time = "2026-04-27T01:46:07.06Z" },
+ ]
+ 
++[[package]]
++name = "pgvector"
++version = "0.5.1"
++source = { registry = "https://pypi.org/simple" }
++sdist = { url = "https://files.pythonhosted.org/packages/f8/23/96aa38899fbf8e103766db608d6e42acac269a96e08f3003fe9da3396fed/pgvector-0.5.1.tar.gz", hash = "sha256:94998a54b801b1075d623b8fa677fcb8210a7977b88f8e2203ab115c155af2e4", size = 35714, upload-time = "2026-10-09T01:50:22.779Z" }
++wheels = [
++    { url = "https://files.pythonhosted.org/packages/a2/8d/a9c2a531da0ebb54b4a7174450e8534a39db112a141ae3a437de28420111/pgvector-0.5.1-py3-none-any.whl", hash = "sha256:ec5bcd5ffaefe6ecb2dcc9564ca921d284564b969183bc837a144604773af8ea", size = 31056, upload-time = "2026-10-09T01:50:21.614Z" },
++]
++
+ [[package]]
+ name = "pluggy"
+ version = "1.6.0"
+@@ -586,6 +717,21 @@ wheels = [
+     { url = "https://files.pythonhosted.org/packages/54/6f/84908cad2d6aa5144abcf7b42709fe4fdb459bc640ec7ac5786e7693dabc/prompt_toolkit-3.0.53-py3-none-any.whl", hash = "sha256:01c0891d7f9237d5e339f7d3e42cdae80b7534abb1c7c0e3352efba6231492f2", size = 392288, upload-time = "2026-07-26T20:56:12.512Z" },
+ ]
+ 
++[[package]]
++name = "protobuf"
++version = "7.36.2"
++source = { registry = "https://pypi.org/simple" }
++sdist = { url = "https://files.pythonhosted.org/packages/d9/89/5b8517baa72f84a67b8a307ba953c91057af618bf40bf676f3c03551f8f0/protobuf-7.36.2.tar.gz", hash = "sha256:497d0463ff3316681da6c0b9e8d06cb465d61abce00b613ab42226175644d1bb", size = 512737, upload-time = "2026-09-17T20:07:59.326Z" }
++wheels = [
++    { url = "https://files.pythonhosted.org/packages/32/72/98342feb672507c8f3a69e34b4fa8961f608edba5c1a48a6f47156d92cb5/protobuf-7.36.2-cp310-abi3-macosx_10_9_universal2.whl", hash = "sha256:cbc70b17ee27e28894c7fee8bb04be1abead49e936bc70eb60052531eee2079e", size = 456039, upload-time = "2026-09-17T20:07:51.542Z" },
++    { url = "https://files.pythonhosted.org/packages/b6/ea/91fdf7c2b8bbd49cde056f00a9df6773532987e1c00fe2830b895af95c7e/protobuf-7.36.2-cp310-abi3-manylinux2014_aarch64.whl", hash = "sha256:e11e1f0180583a2af89db6a2ecd9e8dc40aa6d2988ca175bfd0e6d12ea72d74e", size = 344219, upload-time = "2026-09-17T20:07:52.914Z" },
++    { url = "https://files.pythonhosted.org/packages/17/ab/5fd5f8ece73fad885c5a09aa849b32d70472f954ba3a92d3bb5974ea953b/protobuf-7.36.2-cp310-abi3-manylinux2014_s390x.whl", hash = "sha256:f4fee11ec330d238b34a05c9b675f693c20415d1c5bd7d5320cc2f8a798eb9cf", size = 357223, upload-time = "2026-09-17T20:07:53.985Z" },
++    { url = "https://files.pythonhosted.org/packages/db/f3/3996583dd2906297a637af12114deddf7658af6e683fedb83be061983fb5/protobuf-7.36.2-cp310-abi3-manylinux2014_x86_64.whl", hash = "sha256:89f23aa53c24553a2416fd4fd1ec06f74fa42b14b546d8883128813f775bbfd2", size = 343223, upload-time = "2026-09-17T20:07:54.931Z" },
++    { url = "https://files.pythonhosted.org/packages/fc/1b/dcc64f358fcb51811b58ae40b3d28f820725f116d86487cc20bd4b130701/protobuf-7.36.2-cp310-abi3-win32.whl", hash = "sha256:912c1221170e16c08d1f086762f563dd61ff83c18b5fa6652952dfaded66f728", size = 442998, upload-time = "2026-09-17T20:07:55.826Z" },
++    { url = "https://files.pythonhosted.org/packages/8a/55/b77bda4e5e5f5971fb51b07663694690e9afdb9402136c16a522bd621cad/protobuf-7.36.2-cp310-abi3-win_amd64.whl", hash = "sha256:a300819d441e078a5608c0d3c709796bb548136058fda017ae51d425b44fd353", size = 456514, upload-time = "2026-09-17T20:07:57.188Z" },
++    { url = "https://files.pythonhosted.org/packages/e4/04/d52c7016b04b6c5108f26691f9d33ec82a9b65d041f1a9c771137693d618/protobuf-7.36.2-py3-none-any.whl", hash = "sha256:bdb3a345d48db958e6ce1f18e508beb0cc981d64f24088427549c866cd039f1e", size = 179806, upload-time = "2026-09-17T20:07:58.211Z" },
++]
++
+ [[package]]
+ name = "psycopg"
+ version = "3.3.6"
+@@ -776,6 +922,24 @@ wheels = [
+     { url = "https://files.pythonhosted.org/packages/0d/17/c5c6b53ddc18f297992099b3d9ec16c855c0ccc83263a21fe4d1c625ec6c/python_dotenv-1.2.3-py3-none-any.whl", hash = "sha256:904552145e8bfed22162c09dab1c2b9b54fefa7b23ba780f4f26ca0316b0f0d9", size = 22780, upload-time = "2026-08-16T16:54:52.473Z" },
+ ]
+ 
++[[package]]
++name = "pyyaml"
++version = "6.0.3"
++source = { registry = "https://pypi.org/simple" }
++sdist = { url = "https://files.pythonhosted.org/packages/05/8e/961c0007c59b8dd7729d542c61a4d537767a59645b82a0b521206e1e25c2/pyyaml-6.0.3.tar.gz", hash = "sha256:d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f", size = 130960, upload-time = "2025-09-25T21:33:16.546Z" }
++wheels = [
++    { url = "https://files.pythonhosted.org/packages/d1/33/422b98d2195232ca1826284a76852ad5a86fe23e31b009c9886b2d0fb8b2/pyyaml-6.0.3-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:7f047e29dcae44602496db43be01ad42fc6f1cc0d8cd6c83d342306c32270196", size = 182063, upload-time = "2025-09-25T21:32:11.445Z" },
++    { url = "https://files.pythonhosted.org/packages/89/a0/6cf41a19a1f2f3feab0e9c0b74134aa2ce6849093d5517a0c550fe37a648/pyyaml-6.0.3-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:fc09d0aa354569bc501d4e787133afc08552722d3ab34836a80547331bb5d4a0", size = 173973, upload-time = "2025-09-25T21:32:12.492Z" },
++    { url = "https://files.pythonhosted.org/packages/ed/23/7a778b6bd0b9a8039df8b1b1d80e2e2ad78aa04171592c8a5c43a56a6af4/pyyaml-6.0.3-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:9149cad251584d5fb4981be1ecde53a1ca46c891a79788c0df828d2f166bda28", size = 775116, upload-time = "2025-09-25T21:32:13.652Z" },
++    { url = "https://files.pythonhosted.org/packages/65/30/d7353c338e12baef4ecc1b09e877c1970bd3382789c159b4f89d6a70dc09/pyyaml-6.0.3-cp312-cp312-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:5fdec68f91a0c6739b380c83b951e2c72ac0197ace422360e6d5a959d8d97b2c", size = 844011, upload-time = "2025-09-25T21:32:15.21Z" },
++    { url = "https://files.pythonhosted.org/packages/8b/9d/b3589d3877982d4f2329302ef98a8026e7f4443c765c46cfecc8858c6b4b/pyyaml-6.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:ba1cc08a7ccde2d2ec775841541641e4548226580ab850948cbfda66a1befcdc", size = 807870, upload-time = "2025-09-25T21:32:16.431Z" },
++    { url = "https://files.pythonhosted.org/packages/05/c0/b3be26a015601b822b97d9149ff8cb5ead58c66f981e04fedf4e762f4bd4/pyyaml-6.0.3-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:8dc52c23056b9ddd46818a57b78404882310fb473d63f17b07d5c40421e47f8e", size = 761089, upload-time = "2025-09-25T21:32:17.56Z" },
++    { url = "https://files.pythonhosted.org/packages/be/8e/98435a21d1d4b46590d5459a22d88128103f8da4c2d4cb8f14f2a96504e1/pyyaml-6.0.3-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:41715c910c881bc081f1e8872880d3c650acf13dfa8214bad49ed4cede7c34ea", size = 790181, upload-time = "2025-09-25T21:32:18.834Z" },
++    { url = "https://files.pythonhosted.org/packages/74/93/7baea19427dcfbe1e5a372d81473250b379f04b1bd3c4c5ff825e2327202/pyyaml-6.0.3-cp312-cp312-win32.whl", hash = "sha256:96b533f0e99f6579b3d4d4995707cf36df9100d67e0c8303a0c55b27b5f99bc5", size = 137658, upload-time = "2025-09-25T21:32:20.209Z" },
++    { url = "https://files.pythonhosted.org/packages/86/bf/899e81e4cce32febab4fb42bb97dcdf66bc135272882d1987881a4b519e9/pyyaml-6.0.3-cp312-cp312-win_amd64.whl", hash = "sha256:5fcd34e47f6e0b794d17de1b4ff496c00986e1c83f7ab2fb8fcfe9616ff7477b", size = 154003, upload-time = "2025-09-25T21:32:21.167Z" },
++    { url = "https://files.pythonhosted.org/packages/1a/08/67bd04656199bbb51dbed1439b7f27601dfb576fb864099c7ef0c3e55531/pyyaml-6.0.3-cp312-cp312-win_arm64.whl", hash = "sha256:64386e5e707d03a7e172c0701abfb7e10f0fb753ee1d773128192742712a98fd", size = 140344, upload-time = "2025-09-25T21:32:22.617Z" },
++]
++
+ [[package]]
+ name = "redis"
+ version = "6.4.0"
+@@ -903,6 +1067,56 @@ wheels = [
+     { url = "https://files.pythonhosted.org/packages/4e/d6/1ec1b290f9e0fb067899b61e1d37a30c923068bad260b216dbe37a7d2967/starlette-1.7.0-py3-none-any.whl", hash = "sha256:67f8e99895493dd2911a03f11314af6ceebeae4e704bb9f43dfc6a9db151c93e", size = 78980, upload-time = "2026-09-23T07:30:24.567Z" },
+ ]
+ 
++[[package]]
++name = "sympy"
++version = "1.14.0"
++source = { registry = "https://pypi.org/simple" }
++dependencies = [
++    { name = "mpmath" },
++]
++sdist = { url = "https://files.pythonhosted.org/packages/83/d3/803453b36afefb7c2bb238361cd4ae6125a569b4db67cd9e79846ba2d68c/sympy-1.14.0.tar.gz", hash = "sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517", size = 7793921, upload-time = "2025-04-27T18:05:01.611Z" }
++wheels = [
++    { url = "https://files.pythonhosted.org/packages/a2/09/77d55d46fd61b4a135c444fc97158ef34a095e5681d0a6c10b75bf356191/sympy-1.14.0-py3-none-any.whl", hash = "sha256:e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5", size = 6299353, upload-time = "2025-04-27T18:04:59.103Z" },
++]
++
++[[package]]
++name = "tokenizers"
++version = "0.22.2"
++source = { registry = "https://pypi.org/simple" }
++dependencies = [
++    { name = "huggingface-hub" },
++]
++sdist = { url = "https://files.pythonhosted.org/packages/73/6f/f80cfef4a312e1fb34baf7d85c72d4411afde10978d4657f8cdd811d3ccc/tokenizers-0.22.2.tar.gz", hash = "sha256:473b83b915e547aa366d1eee11806deaf419e17be16310ac0a14077f1e28f917", size = 372115, upload-time = "2026-01-05T10:45:15.988Z" }
++wheels = [
++    { url = "https://files.pythonhosted.org/packages/92/97/5dbfabf04c7e348e655e907ed27913e03db0923abb5dfdd120d7b25630e1/tokenizers-0.22.2-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:544dd704ae7238755d790de45ba8da072e9af3eea688f698b137915ae959281c", size = 3100275, upload-time = "2026-01-05T10:41:02.158Z" },
++    { url = "https://files.pythonhosted.org/packages/2e/47/174dca0502ef88b28f1c9e06b73ce33500eedfac7a7692108aec220464e7/tokenizers-0.22.2-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:1e418a55456beedca4621dbab65a318981467a2b188e982a23e117f115ce5001", size = 2981472, upload-time = "2026-01-05T10:41:00.276Z" },
++    { url = "https://files.pythonhosted.org/packages/d6/84/7990e799f1309a8b87af6b948f31edaa12a3ed22d11b352eaf4f4b2e5753/tokenizers-0.22.2-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:2249487018adec45d6e3554c71d46eb39fa8ea67156c640f7513eb26f318cec7", size = 3290736, upload-time = "2026-01-05T10:40:32.165Z" },
++    { url = "https://files.pythonhosted.org/packages/78/59/09d0d9ba94dcd5f4f1368d4858d24546b4bdc0231c2354aa31d6199f0399/tokenizers-0.22.2-cp39-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:25b85325d0815e86e0bac263506dd114578953b7b53d7de09a6485e4a160a7dd", size = 3168835, upload-time = "2026-01-05T10:40:38.847Z" },
++    { url = "https://files.pythonhosted.org/packages/47/50/b3ebb4243e7160bda8d34b731e54dd8ab8b133e50775872e7a434e524c28/tokenizers-0.22.2-cp39-abi3-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:bfb88f22a209ff7b40a576d5324bf8286b519d7358663db21d6246fb17eea2d5", size = 3521673, upload-time = "2026-01-05T10:40:56.614Z" },
++    { url = "https://files.pythonhosted.org/packages/e0/fa/89f4cb9e08df770b57adb96f8cbb7e22695a4cb6c2bd5f0c4f0ebcf33b66/tokenizers-0.22.2-cp39-abi3-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:1c774b1276f71e1ef716e5486f21e76333464f47bece56bbd554485982a9e03e", size = 3724818, upload-time = "2026-01-05T10:40:44.507Z" },
++    { url = "https://files.pythonhosted.org/packages/64/04/ca2363f0bfbe3b3d36e95bf67e56a4c88c8e3362b658e616d1ac185d47f2/tokenizers-0.22.2-cp39-abi3-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:df6c4265b289083bf710dff49bc51ef252f9d5be33a45ee2bed151114a56207b", size = 3379195, upload-time = "2026-01-05T10:40:51.139Z" },
++    { url = "https://files.pythonhosted.org/packages/2e/76/932be4b50ef6ccedf9d3c6639b056a967a86258c6d9200643f01269211ca/tokenizers-0.22.2-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:369cc9fc8cc10cb24143873a0d95438bb8ee257bb80c71989e3ee290e8d72c67", size = 3274982, upload-time = "2026-01-05T10:40:58.331Z" },
++    { url = "https://files.pythonhosted.org/packages/1d/28/5f9f5a4cc211b69e89420980e483831bcc29dade307955cc9dc858a40f01/tokenizers-0.22.2-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:29c30b83d8dcd061078b05ae0cb94d3c710555fbb44861139f9f83dcca3dc3e4", size = 9478245, upload-time = "2026-01-05T10:41:04.053Z" },
++    { url = "https://files.pythonhosted.org/packages/6c/fb/66e2da4704d6aadebf8cb39f1d6d1957df667ab24cff2326b77cda0dcb85/tokenizers-0.22.2-cp39-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:37ae80a28c1d3265bb1f22464c856bd23c02a05bb211e56d0c5301a435be6c1a", size = 9560069, upload-time = "2026-01-05T10:45:10.673Z" },
++    { url = "https://files.pythonhosted.org/packages/16/04/fed398b05caa87ce9b1a1bb5166645e38196081b225059a6edaff6440fac/tokenizers-0.22.2-cp39-abi3-musllinux_1_2_i686.whl", hash = "sha256:791135ee325f2336f498590eb2f11dc5c295232f288e75c99a36c5dbce63088a", size = 9899263, upload-time = "2026-01-05T10:45:12.559Z" },
++    { url = "https://files.pythonhosted.org/packages/05/a1/d62dfe7376beaaf1394917e0f8e93ee5f67fea8fcf4107501db35996586b/tokenizers-0.22.2-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:38337540fbbddff8e999d59970f3c6f35a82de10053206a7562f1ea02d046fa5", size = 10033429, upload-time = "2026-01-05T10:45:14.333Z" },
++    { url = "https://files.pythonhosted.org/packages/fd/18/a545c4ea42af3df6effd7d13d250ba77a0a86fb20393143bbb9a92e434d4/tokenizers-0.22.2-cp39-abi3-win32.whl", hash = "sha256:a6bf3f88c554a2b653af81f3204491c818ae2ac6fbc09e76ef4773351292bc92", size = 2502363, upload-time = "2026-01-05T10:45:20.593Z" },
++    { url = "https://files.pythonhosted.org/packages/65/71/0670843133a43d43070abeb1949abfdef12a86d490bea9cd9e18e37c5ff7/tokenizers-0.22.2-cp39-abi3-win_amd64.whl", hash = "sha256:c9ea31edff2968b44a88f97d784c2f16dc0729b8b143ed004699ebca91f05c48", size = 2747786, upload-time = "2026-01-05T10:45:18.411Z" },
++    { url = "https://files.pythonhosted.org/packages/72/f4/0de46cfa12cdcbcd464cc59fde36912af405696f687e53a091fb432f694c/tokenizers-0.22.2-cp39-abi3-win_arm64.whl", hash = "sha256:9ce725d22864a1e965217204946f830c37876eee3b2ba6fc6255e8e903d5fcbc", size = 2612133, upload-time = "2026-01-05T10:45:17.232Z" },
++]
++
++[[package]]
++name = "tqdm"
++version = "4.70.1"
++source = { registry = "https://pypi.org/simple" }
++dependencies = [
++    { name = "colorama", marker = "sys_platform == 'win32'" },
++]
++sdist = { url = "https://files.pythonhosted.org/packages/0d/ea/b2a5bd54b28a324dae8211928b2d730b6547500342c7e6c6dea08bd0a485/tqdm-4.70.1.tar.gz", hash = "sha256:cefd0eca11b2a37a3aee776544d4f4ae913f02688135b5556b8788dfa474afc4", size = 171846, upload-time = "2026-09-11T07:25:16.601Z" }
++wheels = [
++    { url = "https://files.pythonhosted.org/packages/a7/03/921a3d3c75785aca9ebfbfcabfbc3a1be12e2ab5265deb026d55a5a3f83e/tqdm-4.70.1-py3-none-any.whl", hash = "sha256:c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73", size = 80199, upload-time = "2026-09-11T07:25:14.599Z" },
++]
++
+ [[package]]
+ name = "typing-extensions"
+ version = "4.16.0"

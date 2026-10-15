@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="13" time="15.726" timestamp="2026-10-15T17:16:11.569414+08:00" hostname="yin"><testcase classname="test_review_boundaries" name="test_same_key_completed_replay_then_conflict_is_not_paid_again" time="1.266" /><testcase classname="test_review_boundaries" name="test_fact_or_owner_change_during_paid_wire_prevents_return[epoch_changed]" time="1.125" /><testcase classname="test_review_boundaries" name="test_fact_or_owner_change_during_paid_wire_prevents_return[evidence_unverified]" time="1.148" /><testcase classname="test_review_boundaries" name="test_fact_or_owner_change_during_paid_wire_prevents_return[revision_not_current]" time="1.231" /><testcase classname="test_review_boundaries" name="test_fact_or_owner_change_during_paid_wire_prevents_return[claims_withdrawn]" time="1.156" /><testcase classname="test_review_boundaries" name="test_fact_or_owner_change_during_paid_wire_prevents_return[owner_tenant_changed]" time="1.152" /><testcase classname="test_review_boundaries" name="test_other_owner_in_same_tenant_cannot_get_answer_and_history_stays_stale" time="1.387"><failure message="assert 503 == 404&#10; +  where 503 = &lt;Response [503 Service Unavailable]&gt;.status_code">vector_database = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_bdd56d3166024c84a5a45052970e7c89%2Cpublic+-c+statement_timeout%3D15000)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001F375569610&gt;
+
+    def test_other_owner_in_same_tenant_cannot_get_answer_and_history_stays_stale(vector_database, monkeypatch):
+        auth, token, service, http, payload, headers, calls = setup_case(vector_database, monkeypatch)
+        with http:
+            first = http.post('/v1/questions', json=payload.model_dump(mode='json'), headers={**headers, 'idempotency-key': 'review-own'})
+            assert first.status_code == 200
+            answer_id = first.json()['answer_id']
+            other = auth.create_precreated_user('review-other-owner', 'review-other-synthetic-password', 'review-tenant', Role.VIEWER)
+            other_token, _ = auth.login(other.username, 'review-other-synthetic-password', ORIGIN, 'review-other-client')
+            http.cookies.set(SESSION_COOKIE_NAME, other_token)
+            denied = http.get('/v1/answers/' + answer_id)
+&gt;           assert denied.status_code == 404
+E           assert 503 == 404
+E            +  where 503 = &lt;Response [503 Service Unavailable]&gt;.status_code
+
+D:\dianzi\reports\runs\recovery_r05_question_pipeline_review_1_20261015\test_review_boundaries.py:72: AssertionError</failure></testcase><testcase classname="test_review_boundaries" name="test_r12_scope_explicitly_422_without_reservation_or_paid_call[changes0]" time="1.036" /><testcase classname="test_review_boundaries" name="test_r12_scope_explicitly_422_without_reservation_or_paid_call[changes1]" time="1.045" /><testcase classname="test_review_boundaries" name="test_r12_scope_explicitly_422_without_reservation_or_paid_call[changes2]" time="1.109" /><testcase classname="test_review_boundaries" name="test_r12_scope_explicitly_422_without_reservation_or_paid_call[changes3]" time="1.075" /><testcase classname="test_review_boundaries" name="test_r12_scope_explicitly_422_without_reservation_or_paid_call[changes4]" time="1.253" /><testcase classname="test_review_boundaries" name="test_r12_scope_explicitly_422_without_reservation_or_paid_call[changes5]" time="1.051" /></testsuite></testsuites>

@@ -1,0 +1,47 @@
+2ff2f999b3824252d54b93af6d1da78ecb6f1427
+5af8185a14984d61d6c4dab5cc85932ac7ed294c
+ .../versions/0013_revision_source_metadata.py      |  61 ++++
+ backend/src/ai_intel/ingestion/sources/nvd.py      | 248 ++++++++++----
+ .../ingestion/sources/vendor_advisories.py         | 169 ++++++++++
+ backend/src/ai_intel/knowledge/models.py           |  20 ++
+ backend/src/ai_intel/knowledge/revisions.py        |  15 +-
+ .../tests/contract/test_t10_cve_nvd_connectors.py  |   4 +-
+ .../tests/integration/test_r02_schema_migration.py |   7 +-
+ .../integration/test_r04_revision_metadata.py      | 131 ++++++++
+ backend/tests/unit/test_r04_nvd_actual_schema.py   | 151 +++++++++
+ backend/tests/unit/test_r04_vendor_advisories.py   | 358 +++++++++++++++++++++
+ fixtures/recorded/cve_nvd_synthetic.json           |  60 ++--
+ fixtures/recorded/nvd_api_20261015_public.json     |   1 +
+ .../nvd_api_20261015_public.provenance.json        |  17 +
+ fixtures/recorded/vllm_vendor_20261015_public.json |   1 +
+ .../vllm_vendor_20261015_public.provenance.json    |  13 +
+ 15 files changed, 1165 insertions(+), 91 deletions(-)
+backend/src/ai_intel/knowledge/models.py:86:    Column("source_response_hash", Text(), ForeignKey("content_objects.content_hash")),
+backend/src/ai_intel/knowledge/models.py:261:    Column("response_content_hash", Text(), ForeignKey("content_objects.content_hash")),
+backend/src/ai_intel/knowledge/revisions.py:317:    response_revision_refs = session.execute(
+backend/src/ai_intel/knowledge/revisions.py:320:        .where(document_revisions.c.source_response_hash == content_hash)
+backend/src/ai_intel/knowledge/revisions.py:322:    response_fetch_refs = session.execute(
+backend/src/ai_intel/knowledge/revisions.py:325:        .where(fetch_attempts.c.response_content_hash == content_hash)
+backend/src/ai_intel/knowledge/revisions.py:329:        for count in (revision_refs, document_refs, response_revision_refs, response_fetch_refs)
+backend/src/ai_intel/knowledge/revisions.py:332:    store.delete_object(content_hash)
+backend/src/ai_intel/knowledge/revisions.py:333:    session.execute(content_objects.delete().where(content_objects.c.content_hash == content_hash))
+backend/src/ai_intel/ingestion/sources/nvd.py:74:def _source_timestamp(value: object, field_name: str) -> str | None:
+backend/src/ai_intel/ingestion/sources/nvd.py:82:        parsed = datetime.fromisoformat(text)
+backend/src/ai_intel/ingestion/sources/nvd.py:128:    description = next(
+backend/src/ai_intel/ingestion/sources/nvd.py:149:                weaknesses.append(text["value"])
+backend/src/ai_intel/ingestion/sources/nvd.py:157:        link = entry["url"]
+backend/src/ai_intel/ingestion/sources/nvd.py:159:            parts = urlsplit(link)
+19:        op.add_column("document_revisions", sa.Column(name, sa.Text()))
+21:        op.add_column("document_revisions", sa.Column(name, sa.DateTime(timezone=True)))
+24:        sa.Column("parse_status", sa.Text(), nullable=False, server_default="legacy_unverified"),
+26:    op.add_column("document_revisions", sa.Column("source_response_hash", sa.Text()))
+27:    op.create_foreign_key(
+37:        "parse_status IN ('pending','parsed','partial','failed','legacy_unverified')",
+41:        sa.Column("block_type", sa.Text(), nullable=False, server_default="paragraph"),
+43:    op.add_column("text_blocks", sa.Column("page_number", sa.Integer()))
+44:    op.add_column("text_blocks", sa.Column("json_pointer", sa.Text()))
+46:        "ck_block_page_number", "text_blocks", "page_number IS NULL OR page_number >= 1"
+48:    op.add_column("fetch_attempts", sa.Column("response_content_hash", sa.Text()))
+49:    op.add_column("fetch_attempts", sa.Column("final_url", sa.Text()))
+50:    op.create_foreign_key(
+59:def downgrade() -> None:

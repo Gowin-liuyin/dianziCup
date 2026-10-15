@@ -1,3 +1,35 @@
+## 当前权威快照 · 2026-10-15T18:06:30+08:00
+
+集成分支codex/full-delivery-recovery；代码HEAD 7ed73540c001a4e7f5b5fa5dc2948c4b4635590f。G-A accepted，远端最后核对fa5deb0d0b519869ca92d34d9ffe7d8e39b06fb4，2026-10-15T15:41:48+08:00。G-B功能候选awaiting_review，未阶段push；整R04/R05仅候选complete，原T整卡状态与全部验收不变。各层整卡verification保持not_run，限定真实证据见G-B报告；不能拿未整卡登记当作无功能，也不能拿组件Ship反推accepted。
+
+两固定真实源→MinIO原文/不可变revision→PG事件/证据/任务与游标→认证API→真实桌面/390页面闭环；48ad解析、7af API、8f6分页、c83限流及来源UI专项Must已限定关闭。105事件/434证据前向0014迁移identity hash保留。整R04等待新G-B阶段审查。
+
+dc014事务接线三Must独立关闭：必需key、420s PG预约/owner/expiry CAS、同事务认证锁；32PG/24新PG/8独立进程与竞态探针。root37PG/route/contract及10隔离旧PG安全通过；综合1418pass/1fail后精确分类原安全1pass。真实修复版浏览器单问10212.6966ms，20同模型块复用，2实际供应商attempt；累计8真实调用、费用unknown，不是准确率/性能分母。整卡等待新阶段审查。
+
+a0a94f1问答前端独立限定Ship：254前端、type/lint/build、9原fixture+11新增浏览器检查；root dc014真实桌面→引用→390/reduced-motion→固定revision→GET重读→退出1pass。动态背景已接，POST90s预算不等于性能目标。完整资产/图谱/推荐/报告/Agent工作台仍partial。
+
+所有API/Vite/worker/beat段均已结束，dc014产品段2026-10-15T17:29:17+08:00至2026-10-15T17:44:17+08:00 deadline；MinIO段3仍在，截止2026-10-15T18:57:02+08:00，Docker总截止2026-10-17T21:49:15+08:00。旧两venv原样搬至D:/dianzi-runtime-cache/01a13a70-858c-7d92-8070-0b2693ad7fc4/retired-review-venvs/20261015/，4857/6532文件hash前后相同，历史日志路径不改，映射receipt在controller。没有持续运行时长合并。
+
+四槽当前：root独占共享schema/配置/迁移/锁/进度/集成/Git，冻结G-B并派新阶段reviewer；r06_feed_parsers独占D:/wt/r06-feeds的arxiv_atom.py/trailofbits_rss.py及新tests/run报告，7ed基线，不改公共文件；新r06_source_preparation_independent_review只审e4f docs/sample prep，独立D:/wt/r06-prep-review，不写业务；剩余槽给新G-B checkpoint reviewer。R06 source prep/纯parser可独立于R05付费问答，不能提前签G-C/live。
+
+真实模型累计8次，fee unknown；秘密/模型缓存/连接仓外。容器semantic extra、容量/固定出网待R20部署接线，不能称默认Docker QA已通；Linux来源网络未由Windows成功替证。人工双人金标/裁决与FOFA授权资产范围未给，PPT后置；继续不受影响工作。下一步新G-B reviewer复跑/核对冻结版本→有依据登记阶段/CR/切片→stage commit与授权远端正常push并核对SHA→R06–R10。R24-A→R23→R24-B保持。
+
+## 当前权威快照 · 2026-10-15T17:08:27+08:00
+
+集成分支codex/full-delivery-recovery，HEAD 23c18784d71f1ed788072e6b3f2af70bac94fcb1；远端最后已核对G-A fa5deb0d0b519869ca92d34d9ffe7d8e39b06fb4（15:41:48+08）。G-A accepted；G-B in_progress/partial、未阶段push，所有原T整卡及R最终验收范围不变。以下旧快照是历史，不覆盖本段。
+
+限流/重复头/超长头批次c83e1a03f2独立限定Ship，已集成23c1878；906 unit、421相关、19既有PG、40自拟通过，另RFC850完整50年日期边界1红为非阻断保守误blocked债务，未skip。真实来源与浏览器结果仍限定早前afe/8f6分段；整卡未验收。
+
+基础3ab2357的float32全零/平方范数Must均独立关闭；grounding b151独立47探针/113核心/29安全通过，已集成1688367。root d7b6bf1已接API认证→PG当前公开证据→真实E5/PGvector/rerank→双轮生成核验→复鉴权/epoch→PG答案/历史GET；880 unit默认65.78%及124相关通过，11PG检索为显式合成模型接线，不是live。新独立pipeline reviewer审d7，另API/PG测试作者并行。完整产品问答live尚未执行；供应商累计真实4次，费用unknown。
+
+问答前端ebbdc9a已冻结249 unit/9隔离浏览器，root冷启动等待增量a0a94f1为254 unit/类型/lint/build通过，新独立UI reviewer审目标a0a94f1，原12秒被10秒超时的红例保留。尚未集成或真实页面问答验收；来源工作台afe真实桌面/移动/管理员2+1通过，动态背景和reduced-motion仍有真实证据。完整工作台未完成。
+
+并行四槽：root独占共享合同/schema/锁/进度/集成/Git并准备真实运行；r05_question_api_pg_tests拥有新test_r05_question_api_pg.py/test_r05_question_routes.py及自有报告，WT D:/wt/r05-api-tests@d7；新独立r05_question_pipeline_independent_review只审d7，不改业务；新独立r05_question_frontend_independent_review审a0a94f1与自己的负例。来源限流和grounding独立review已封存退出。实现者不能accepted/push，报告/日志仅自有范围。
+
+API/worker/beat和前端上一段afe均16:10到期关闭，目前未有新的产品服务；MinIO段2实际16:55:49 deadline结束exit0、无OOM，段3实际16:57:02启动、7200秒硬截止18:57:02，同对象/身份、存在73秒中断。首次段3 helper在启动前路径替换错误exit1已记录initial_start_failure.json，修正后才启动。Docker总截止2026-10-17T21:49:15+08。不同版本/中断不拼连续时长。
+
+当前部署缺口：Dockerfile未安装semantic extra，compose API384MiB不足约1.25GiB模型子进程，private-only网络无供应商出网；待主控受控部署接线/独立审查，不能称默认容器已支持问答。后续运行须2GiB受控Job，不继承旧PDF512MiB。凭据/模型缓存/连接仓外；缺双人金标与FOFA授权资产范围；PPT用户后置。下一步：新PG/API负例与root修复→新独立复核→有限真实模型/PG/API/浏览器问答→新G-B阶段review和push；持续完整目标。
+
 ## 当前权威快照 · 2026-10-15T16:17:02+08:00
 
 集成分支codex/full-delivery-recovery，HEAD fd01ea3e0205361c1f446d6fb97694aa3aa715cf；远端最后核实为G-A fa5deb0d0b519869ca92d34d9ffe7d8e39b06fb4，2026-10-15T15:41:48+08:00成功推送并ls-remote核对，见reports/push/recovery_push_log.jsonl。G-A范围已独立accepted；当前G-B in_progress/partial，未阶段push；原T整卡状态与最终范围不变。

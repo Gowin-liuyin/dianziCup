@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="5" skipped="0" tests="5" time="0.892" timestamp="2026-10-15T12:24:26.124885+08:00" hostname="yin"><testcase classname="_review.test_independent_negative" name="test_terminal_failure_is_not_a_recoverable_entry[permanent_failed]" time="0.139"><failure message="AssertionError: terminal failure has no automatic replay path but page/watermark committed&#10;assert not True">review_engine = Engine([redacted fragment][redacted fragment][redacted fragment][redacted fragment]_r01:***[redacted fragment][redacted fragment][redacted fragment][redacted fragment][redacted fragment]261015)
+terminal = 'permanent_failed'
+
+    @pytest.mark.parametrize("terminal", ["permanent_failed", "blocked", "attempts_exhausted"])
+    def test_terminal_failure_is_not_a_recoverable_entry(review_engine, terminal):
+        now = datetime.now(UTC)
+        source_id = seed_source(review_engine, now)
+        job_type = "independent-recovery-" + uuid4().hex
+        payload = json.dumps({"source_id": source_id, "entry_id": "missing-raw-entry"}).encode()
+        with Session(review_engine) as session, session.begin():
+            job_id = enqueue_job(session, None, job_type, payload, now, max_attempts=1 if terminal == "attempts_exhausted" else 5)
+    
+        def failed_handler(session, context, payload):
+            raise JobExecutionError("independent_upstream_failure", permanent=terminal == "permanent_failed", blocked=terminal == "blocked")
+    
+        outcome = execute_job(review_engine, job_id, "independent-worker", {job_type: failed_handler}, clock=lambda: now)
+        assert outcome == ("blocked" if terminal == "blocked" else "failed")
+        accepted = False
+        try:
+            with Session(review_engine) as session, session.begin():
+                repository = SourceCursorRepository(session, ADMIN, source_id, clock=lambda: now)
+                lease = repository.claim(stream_kind="live", lease_owner="independent-source-worker", window_start=now - timedelta(days=1), window_end=now)
+                receipt = repository.commit_page(lease, page_key=make_page_key(lease, {}), input_cursor={}, output_cursor={"page": 1}, entries=({"entry_id": "missing-raw-entry"},), persist_entry=lambda session, entry: PersistedPageEntry(failed_job_id=job_id), is_last_page=True, watermark_published_at=now)
+                accepted = True
+        except CursorCommitError:
+            pass
+        with review_engine.connect() as connection:
+            cursor = connection.execute(select(source_cursors).where(source_cursors.c.source_id == source_id)).mappings().first()
+            job = connection.execute(select(job_runs).where(job_runs.c.job_id == job_id)).mappings().one()
+        observe("terminal_" + terminal, {"source_id": source_id, "job_id": job_id, "job_status": job["status"], "attempt_count": job["attempt_count"], "max_attempts": job["max_attempts"], "page_accepted": accepted, "cursor": dict(cursor) if cursor else None})
+&gt;       assert not accepted, "terminal failure has no automatic replay path but page/watermark committed"
+E       AssertionError: terminal failure has no automatic replay path but page/watermark committed
+E       assert not True
+
+..\_review\test_independent_negative.py:73: AssertionError</failure></testcase><testcase classname="_review.test_independent_negative" name="test_terminal_failure_is_not_a_recoverable_entry[blocked]" time="0.054"><failure message="AssertionError: terminal failure has no automatic replay path but page/watermark committed&#10;assert not True">review_engine = Engine([redacted fragment][redacted fragment][redacted fragment][redacted fragment]_r01:***[redacted fragment][redacted fragment][redacted fragment][redacted fragment][redacted fragment]261015)
+terminal = 'blocked'
+
+    @pytest.mark.parametrize("terminal", ["permanent_failed", "blocked", "attempts_exhausted"])
+    def test_terminal_failure_is_not_a_recoverable_entry(review_engine, terminal):
+        now = datetime.now(UTC)
+        source_id = seed_source(review_engine, now)
+        job_type = "independent-recovery-" + uuid4().hex
+        payload = json.dumps({"source_id": source_id, "entry_id": "missing-raw-entry"}).encode()
+        with Session(review_engine) as session, session.begin():
+            job_id = enqueue_job(session, None, job_type, payload, now, max_attempts=1 if terminal == "attempts_exhausted" else 5)
+    
+        def failed_handler(session, context, payload):
+            raise JobExecutionError("independent_upstream_failure", permanent=terminal == "permanent_failed", blocked=terminal == "blocked")
+    
+        outcome = execute_job(review_engine, job_id, "independent-worker", {job_type: failed_handler}, clock=lambda: now)
+        assert outcome == ("blocked" if terminal == "blocked" else "failed")
+        accepted = False
+        try:
+            with Session(review_engine) as session, session.begin():
+                repository = SourceCursorRepository(session, ADMIN, source_id, clock=lambda: now)
+                lease = repository.claim(stream_kind="live", lease_owner="independent-source-worker", window_start=now - timedelta(days=1), window_end=now)
+                receipt = repository.commit_page(lease, page_key=make_page_key(lease, {}), input_cursor={}, output_cursor={"page": 1}, entries=({"entry_id": "missing-raw-entry"},), persist_entry=lambda session, entry: PersistedPageEntry(failed_job_id=job_id), is_last_page=True, watermark_published_at=now)
+                accepted = True
+        except CursorCommitError:
+            pass
+        with review_engine.connect() as connection:
+            cursor = connection.execute(select(source_cursors).where(source_cursors.c.source_id == source_id)).mappings().first()
+            job = connection.execute(select(job_runs).where(job_runs.c.job_id == job_id)).mappings().one()
+        observe("terminal_" + terminal, {"source_id": source_id, "job_id": job_id, "job_status": job["status"], "attempt_count": job["attempt_count"], "max_attempts": job["max_attempts"], "page_accepted": accepted, "cursor": dict(cursor) if cursor else None})
+&gt;       assert not accepted, "terminal failure has no automatic replay path but page/watermark committed"
+E       AssertionError: terminal failure has no automatic replay path but page/watermark committed
+E       assert not True
+
+..\_review\test_independent_negative.py:73: AssertionError</failure></testcase><testcase classname="_review.test_independent_negative" name="test_terminal_failure_is_not_a_recoverable_entry[attempts_exhausted]" time="0.049"><failure message="AssertionError: terminal failure has no automatic replay path but page/watermark committed&#10;assert not True">review_engine = Engine([redacted fragment][redacted fragment][redacted fragment][redacted fragment]_r01:***[redacted fragment][redacted fragment][redacted fragment][redacted fragment][redacted fragment]261015)
+terminal = 'attempts_exhausted'
+
+    @pytest.mark.parametrize("terminal", ["permanent_failed", "blocked", "attempts_exhausted"])
+    def test_terminal_failure_is_not_a_recoverable_entry(review_engine, terminal):
+        now = datetime.now(UTC)
+        source_id = seed_source(review_engine, now)
+        job_type = "independent-recovery-" + uuid4().hex
+        payload = json.dumps({"source_id": source_id, "entry_id": "missing-raw-entry"}).encode()
+        with Session(review_engine) as session, session.begin():
+            job_id = enqueue_job(session, None, job_type, payload, now, max_attempts=1 if terminal == "attempts_exhausted" else 5)
+    
+        def failed_handler(session, context, payload):
+            raise JobExecutionError("independent_upstream_failure", permanent=terminal == "permanent_failed", blocked=terminal == "blocked")
+    
+        outcome = execute_job(review_engine, job_id, "independent-worker", {job_type: failed_handler}, clock=lambda: now)
+        assert outcome == ("blocked" if terminal == "blocked" else "failed")
+        accepted = False
+        try:
+            with Session(review_engine) as session, session.begin():
+                repository = SourceCursorRepository(session, ADMIN, source_id, clock=lambda: now)
+                lease = repository.claim(stream_kind="live", lease_owner="independent-source-worker", window_start=now - timedelta(days=1), window_end=now)
+                receipt = repository.commit_page(lease, page_key=make_page_key(lease, {}), input_cursor={}, output_cursor={"page": 1}, entries=({"entry_id": "missing-raw-entry"},), persist_entry=lambda session, entry: PersistedPageEntry(failed_job_id=job_id), is_last_page=True, watermark_published_at=now)
+                accepted = True
+        except CursorCommitError:
+            pass
+        with review_engine.connect() as connection:
+            cursor = connection.execute(select(source_cursors).where(source_cursors.c.source_id == source_id)).mappings().first()
+            job = connection.execute(select(job_runs).where(job_runs.c.job_id == job_id)).mappings().one()
+        observe("terminal_" + terminal, {"source_id": source_id, "job_id": job_id, "job_status": job["status"], "attempt_count": job["attempt_count"], "max_attempts": job["max_attempts"], "page_accepted": accepted, "cursor": dict(cursor) if cursor else None})
+&gt;       assert not accepted, "terminal failure has no automatic replay path but page/watermark committed"
+E       AssertionError: terminal failure has no automatic replay path but page/watermark committed
+E       assert not True
+
+..\_review\test_independent_negative.py:73: AssertionError</failure></testcase><testcase classname="_review.test_independent_negative" name="test_same_page_key_different_entries_must_not_silently_reuse_receipt" time="0.036"><failure message="AssertionError: same cursor/count with different entry identities reused an unrelated receipt&#10;assert False">review_engine = Engine([redacted fragment][redacted fragment][redacted fragment][redacted fragment]_r01:***[redacted fragment][redacted fragment][redacted fragment][redacted fragment][redacted fragment]261015)
+
+    def test_same_page_key_different_entries_must_not_silently_reuse_receipt(review_engine):
+        now = datetime.now(UTC)
+        source_id = seed_source(review_engine, now)
+        callbacks = []
+        with Session(review_engine) as session, session.begin():
+            repository = SourceCursorRepository(session, ADMIN, source_id, clock=lambda: now)
+            lease = repository.claim(stream_kind="live", lease_owner="review-replay", window_start=now - timedelta(days=1), window_end=now)
+    
+            def durable_recovery(session, entry):
+                callbacks.append(entry["entry_id"])
+                job_id = enqueue_job(session, None, "source_recovery", json.dumps({"source_id": source_id, "entry_id": entry["entry_id"]}).encode(), now)
+                return PersistedPageEntry(failed_job_id=job_id)
+    
+            original = repository.commit_page(lease, page_key=make_page_key(lease, {}), input_cursor={}, output_cursor={"page": 1}, entries=({"entry_id": "original-entry"},), persist_entry=durable_recovery, is_last_page=True)
+        rejected = False
+        with Session(review_engine) as session, session.begin():
+            repository = SourceCursorRepository(session, ADMIN, source_id, clock=lambda: now)
+            try:
+                repeated = repository.commit_page(lease, page_key=make_page_key(lease, {}), input_cursor={}, output_cursor={"page": 1}, entries=({"entry_id": "new-entry-not-saved"},), persist_entry=durable_recovery, is_last_page=True)
+            except CursorCommitError:
+                rejected = True
+        observe("changed_replay_entries", {"source_id": source_id, "original_failed_job_ids": original.failed_job_ids, "changed_entry_rejected": rejected, "callbacks": callbacks, "receipt_reused": not rejected and repeated.reused})
+&gt;       assert rejected, "same cursor/count with different entry identities reused an unrelated receipt"
+E       AssertionError: same cursor/count with different entry identities reused an unrelated receipt
+E       assert False
+
+..\_review\test_independent_negative.py:98: AssertionError</failure></testcase><testcase classname="_review.test_independent_negative" name="test_same_page_key_changed_completion_must_not_silently_reuse_receipt" time="0.066"><failure message="AssertionError: completion changed but replay was reported successful while window stayed unfinished&#10;assert False">review_engine = Engine([redacted fragment][redacted fragment][redacted fragment][redacted fragment]_r01:***[redacted fragment][redacted fragment][redacted fragment][redacted fragment][redacted fragment]261015)
+
+    def test_same_page_key_changed_completion_must_not_silently_reuse_receipt(review_engine):
+        now = datetime.now(UTC)
+        source_id = seed_source(review_engine, now)
+        with Session(review_engine) as session, session.begin():
+            repository = SourceCursorRepository(session, ADMIN, source_id, clock=lambda: now)
+            lease = repository.claim(stream_kind="live", lease_owner="review-finality", window_start=now - timedelta(days=1), window_end=now)
+            original = repository.commit_page(lease, page_key=make_page_key(lease, {}), input_cursor={}, output_cursor={}, entries=(), persist_entry=lambda session, entry: False, is_last_page=False, watermark_published_at=now)
+        rejected = False
+        with Session(review_engine) as session, session.begin():
+            repository = SourceCursorRepository(session, ADMIN, source_id, clock=lambda: now)
+            try:
+                repeated = repository.commit_page(lease, page_key=make_page_key(lease, {}), input_cursor={}, output_cursor={}, entries=(), persist_entry=lambda session, entry: False, is_last_page=True, watermark_published_at=now)
+            except CursorCommitError:
+                rejected = True
+        with review_engine.connect() as connection:
+            cursor = connection.execute(select(source_cursors).where(source_cursors.c.source_id == source_id)).mappings().one()
+            receipt_count = len(connection.execute(select(source_page_receipts.c.page_key).where(source_page_receipts.c.source_id == source_id)).all())
+        observe("changed_replay_completion", {"source_id": source_id, "changed_completion_rejected": rejected, "receipt_reused": not rejected and repeated.reused, "receipt_count": receipt_count, "cursor": dict(cursor)})
+&gt;       assert rejected, "completion changed but replay was reported successful while window stayed unfinished"
+E       AssertionError: completion changed but replay was reported successful while window stayed unfinished
+E       assert False
+
+..\_review\test_independent_negative.py:119: AssertionError</failure></testcase></testsuite></testsuites>

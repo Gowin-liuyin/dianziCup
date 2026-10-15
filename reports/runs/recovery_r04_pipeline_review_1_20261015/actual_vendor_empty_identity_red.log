@@ -1,0 +1,111 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+_____ test_actual_empty_package_identity_is_unknown_with_raw_range_intact ______
+
+    def test_actual_empty_package_identity_is_unknown_with_raw_range_intact():
+        record=json.loads(BODY)[5]
+        assert record['ghsa_id']=='GHSA-5fj9-pfhr-6j48'
+>       normalized=normalize_vendor_advisory(record,repository='vllm-project/vllm')
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/mnt/d/dianzi/reports/runs/recovery_r04_pipeline_review_1_20261015/testcopy/test_actual_vendor_page.py:23: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/ai_intel/ingestion/sources/vendor_advisories.py:75: in normalize_vendor_advisory
+    vulnerabilities = _vulnerabilities(payload.get("vulnerabilities"))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/ai_intel/ingestion/sources/vendor_advisories.py:162: in _vulnerabilities
+    package_ecosystem=_text(package.get("ecosystem"), "package ecosystem"),
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = '', field = 'package ecosystem'
+
+    def _text(value: object, field: str, *, max_characters: int = 10_000) -> str | None:
+        if value is None:
+            return None
+        if (
+            not isinstance(value, str)
+            or not value.strip()
+            or "\x00" in value
+            or len(value) > max_characters
+        ):
+>           raise VendorAdvisoryError(f"invalid vendor {field} text")
+E           ai_intel.ingestion.sources.vendor_advisories.VendorAdvisoryError: invalid vendor package ecosystem text
+
+src/ai_intel/ingestion/sources/vendor_advisories.py:113: VendorAdvisoryError
+_____ test_actual_page_persists_all_members_without_invented_package_fact ______
+page_engine = Engine(postgresql+psycopg://test_dianzi_r0[redacted test credential]:***@[redacted test credential]27.0.0.[redacted test credential]:25432/test_dianzi_r04_pipeline_review_2026[redacted test credential][redacted test credential]5?options=-c+search_path%3Dtest_r04_source_documents_8fed2c866fb548a6a6a[redacted test credential][redacted test credential][redacted test credential]2[redacted test credential]db4[redacted test credential]69f2+-c+statement_timeout%3D[redacted test credential]5000)
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-[redacted test credential]4/test_actual_page_persists_all_0')
+
+    @pytest.mark.real_pg
+    def test_actual_page_persists_all_members_without_invented_package_fact(page_engine,tmp_path):
+        store=ContentStore(tmp_path)
+>       saved=persist(page_engine,store,SourceResponse('vllm_vendor',BODY,URL,NOW))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/mnt/d/dianzi/reports/runs/recovery_r04_pipeline_review_[redacted test credential]_2026[redacted test credential][redacted test credential]5/testcopy/test_actual_vendor_page.py:32: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/mnt/d/dianzi/reports/runs/recovery_r04_pipeline_review_[redacted test credential]_2026[redacted test credential][redacted test credential]5/testcopy/test_r04_source_documents.py:[redacted test credential]8: in persist
+    return persist_source_response(
+src/ai_intel/ingestion/source_documents.py:396: in persist_source_response
+    members = _prepare_documents(response)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = SourceResponse(source_kind='vllm_vendor', body=b'[{"ghsa_id":"GHSA-6cxc-2vcg-w5qc","cve_id":null,"url":"https://api.gi...?per_page=[redacted test credential]&state=[redacted test credential]&page=[redacted test credential]', observed_at=datetime.datetime(2026, [redacted test credential], [redacted test credential]5, 5, [redacted test credential]5, tzinfo=datetime.timezone.utc))
+
+    def _prepare_documents(response: SourceResponse) -> tuple[_PreparedDocument, ...]:
+        parameters = _request_parameters(response)
+        if not isinstance(response.body, bytes) or len(response.body) > MAX_RESPONSE_BYTES:
+            raise SourceDocumentError("source response byte limit exceeded")
+        validated = parse_json_document(response.body)
+        if validated.status != "parsed":
+            raise SourceDocumentError("source response is not strict JSON2")
+        content = response.body.decode("utf-8")
+        payload: object = json.loads(content)
+        try:
+            if response.source_kind == "nvd_ollama":
+                if not isinstance(payload, dict):
+                    raise SourceDocumentError("NVD response must be an object")
+                page = normalize_nvd_page(payload)
+                if page.start_index != int(parameters["startIndex"]):
+                    raise SourceDocumentError("NVD response offset differs from request")
+                members = _nvd_members(content)
+                maximum = int(parameters["resultsPerPage"])
+            else:
+                if not isinstance(payload, list):
+                    raise SourceDocumentError("vendor response must be an array")
+                members = _array_members(content, _skip_space(content, 0))
+                maximum = int(parameters["per_page"])
+            if len(members) > min(maximum, [redacted test credential]0):
+                raise SourceDocumentError("source response exceeds page limit")
+            prepared: list[_PreparedDocument] = []
+            record_ids: set[str] = set()
+            for index, (member, raw_bytes) in enumerate(members):
+                if not isinstance(member, dict):
+                    raise SourceDocumentError("source member must be an object")
+                parsed = parse_json_document(raw_bytes)
+                if parsed.status != "parsed":
+                    raise SourceDocumentError("source member cannot be parsed")
+                document = _prepare_member(response.source_kind, index, member, raw_bytes, parsed)
+                if document.record_id in record_ids:
+                    raise SourceDocumentError("duplicate record in source response")
+                if len(document.title) > 500 or any(
+                    len(fact.json_pointer) > 500 for fact in document.facts
+                ):
+                    raise SourceDocumentError("source member exceeds publication field limits")
+                record_ids.add(document.record_id)
+                prepared.append(document)
+            return tuple(prepared)
+        except SourceDocumentError:
+            raise
+        except (ValueError, TypeError, KeyError, IndexError):
+>           raise SourceDocumentError("source response member violates source contract") from None
+E           ai_intel.ingestion.source_documents.SourceDocumentError: source response member violates source contract
+
+src/ai_intel/ingestion/source_documents.py:254: SourceDocumentError
+- generated xml file: /mnt/d/dianzi/reports/runs/recovery_r04_pipeline_review_1_20261015/actual_vendor_empty_identity_red.xml -
+=========================== short test summary info ============================
+FAILED ../../../../../../../../d/dianzi/reports/runs/recovery_r04_pipeline_review_1_20261015/testcopy/test_actual_vendor_page.py::test_actual_empty_package_identity_is_unknown_with_raw_range_intact
+FAILED ../../../../../../../../d/dianzi/reports/runs/recovery_r04_pipeline_review_1_20261015/testcopy/test_actual_vendor_page.py::test_actual_page_persists_all_members_without_invented_package_fact
+2 failed in 2.51s

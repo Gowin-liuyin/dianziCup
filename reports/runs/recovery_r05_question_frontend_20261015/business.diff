@@ -1,0 +1,655 @@
+diff --git a/frontend/e2e/r05_question_workspace.spec.ts b/frontend/e2e/r05_question_workspace.spec.ts
+new file mode 100644
+index 0000000..63697f3
+--- /dev/null
++++ b/frontend/e2e/r05_question_workspace.spec.ts
+@@ -0,0 +1,63 @@
++import { randomBytes } from "node:crypto";
++import { expect, test, type Page } from "@playwright/test";
++import { questionAnswerFixture, questionFixtureIds as ids } from "../src/features/questions/question.fixture";
++
++/** 此文件只运行显式隔离fixture，所有/v1请求被路由隔离，不作为live问答证明。 */
++async function setupFixture(page: Page, options: { unknownFirst?: boolean; status?: number; code?: string; freshness?: string; anonymous?: boolean; longText?: boolean } = {}) {
++  const csrf = randomBytes(32).toString("hex");
++  const posts: { body: string | null; key: string | undefined }[] = [];
++  await page.route("**/v1/**", async (route) => {
++    const request = route.request(); const path = new URL(request.url()).pathname;
++    const send = async (body: unknown, status = 200) => route.fulfill({ status, contentType: status >= 400 ? "application/problem+json" : "application/json", body: JSON.stringify(body) });
++    if (path === "/v1/auth/me") return options.anonymous ? send({ error: { code: "session_expired" } }, 401) : send({ user_id: "isolated-browser-question-user", tenant_id: "isolated-browser-tenant", role: "analyst", permissions: ["read:public"], permission_version: 1, data_mode: "fixture", csrf_token: csrf });
++    if (path === "/v1/auth/csrf") return send({ csrf_token: csrf, header_name: "X-CSRF-Token" });
++    if (path === "/v1/health/live") return send({ status: "live" });
++    if (path === "/v1/health/ready") return send({ status: "ready", reason: "isolated browser fixture", dependencies: {} });
++    if (path === "/v1/questions") {
++      expect(request.method()).toBe("POST"); expect(request.headers()["x-csrf-token"]).toBe(csrf);
++      posts.push({ body: request.postData(), key: request.headers()["idempotency-key"] });
++      if (options.unknownFirst && posts.length === 1) return route.abort("failed");
++      if (options.status) return send({ type: "about:blank", title: "isolated failure", status: options.status, error: { code: options.code, retryable: true, message: "private upstream must not display" } }, options.status);
++      const answer = questionAnswerFixture();
++      if (options.longText) { answer.answer_text = "长文本边界".repeat(800); answer.citations[0] = { evidence_id: ids.evidence, revision_id: ids.revision, quote: "<img src=x onerror=alert('isolated')>" + "长原文".repeat(800), locator: "very-long-locator-".repeat(30), source_uri: "https://example.test/advisory" }; }
++      return send({ ...answer, freshness: options.freshness ?? "current" });
++    }
++    if (path === `/v1/answers/${ids.answer}`) return send({ ...questionAnswerFixture(), freshness: "stale" });
++    if (path === "/v1/events") return send({ schema_version: 2, items: [], next_cursor: null, data_mode: "fixture" });
++    if (path === `/v1/events/${ids.event}`) return send({ schema_version: 2, event: { event_id: ids.event, event_type: "advisory", title: "隔离浏览器事件", external_ids: [], primary_product_ids: [], first_seen_at: "2026-10-15T07:00:00Z", status: "active", source_count: 1, latest_revision_id: ids.revision, freshness: "current" }, dimensions: [], revisions: [], claims: [], data_mode: "fixture" });
++    if (path === `/v1/evidence/${ids.evidence}`) return send({ schema_version: 2, span_id: ids.evidence, revision_id: ids.revision, block_id: null, start_offset: 0, end_offset: 18, quote_text: "隔离原文：仅在指定条件下适用。", quote_sha256: "a".repeat(64), locator_kind: "text", page_number: null, json_pointer: null, verified_at: "2026-10-15T07:00:00Z", source_uri: "https://example.test/advisory", source_published_at: null, source_modified_at: null, first_observed_at: null, ingested_at: null, data_mode: "fixture" });
++    throw new Error(`Unexpected route in isolated question browser fixture: ${path}`);
++  });
++  await page.goto(`/#questions/${ids.event}`);
++  return posts;
++}
++async function ask(page: Page) { await page.getByLabel("你的问题", { exact: true }).fill("请核对风险机制与限制"); await page.getByRole("button", { name: "提交问题", exact: true }).click(); }
++
++test("R05 fixture C01/C03/C05 desktop answer, keyboard citation and fixed revision evidence", async ({ page }, testInfo) => {
++  const posts = await setupFixture(page); await expect(page.getByRole("heading", { name: "尚未提出问题" })).toBeVisible(); await ask(page);
++  await expect(page.getByRole("article", { name: "完整证据回答" })).toBeVisible(); expect(posts).toHaveLength(1);
++  expect(JSON.parse(posts[0]?.body ?? "null")).toEqual({ question: "请核对风险机制与限制", mode: "library", event_ids: [ids.event] });
++  await expect(page.getByText("1234 毫秒 · 完整回答耗时", { exact: true })).toBeVisible(); await expect(page.getByRole("article", { name: "完整证据回答" }).getByText("合成 / Fixture · 隔离数据", { exact: true })).toBeVisible();
++  await page.getByRole("link", { name: "依据 [1]", exact: true }).first().focus(); await page.keyboard.press("Enter"); await expect(page.locator(`#citation-${ids.evidence}`)).toBeFocused();
++  await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: testInfo.outputPath("fixture-question-desktop-1280.png"), fullPage: true });
++  await page.getByRole("link", { name: "检视固定修订证据 [1] →", exact: true }).click(); await expect(page.getByRole("heading", { name: "证据检视", exact: true })).toBeVisible(); await expect(page.getByText("隔离原文：仅在指定条件下适用。", { exact: true })).toBeVisible();
++  await expect(page.getByRole("complementary", { name: "证据检视" })).toBeFocused(); await expect(page.getByRole("complementary", { name: "证据检视" }).getByText(ids.revision, { exact: true })).toBeVisible();
++  await page.getByRole("link", { name: "基于此事件提问 →", exact: true }).click(); await expect(page.getByLabel("事件标识", { exact: true })).toHaveValue(ids.event);
++});
++
++test("R05 fixture C04/C06 390px, reduced motion, unknown retry, saved answer freshness", async ({ page }, testInfo) => {
++  await page.setViewportSize({ width: 390, height: 844 }); await page.emulateMedia({ reducedMotion: "reduce" }); const posts = await setupFixture(page, { unknownFirst: true }); await ask(page); await expect(page.getByRole("alert")).toContainText("提交结果未确认");
++  await page.getByRole("button", { name: "原样重试本轮", exact: true }).focus(); await page.keyboard.press("Enter"); await expect(page.getByRole("article", { name: "完整证据回答" })).toBeVisible(); expect(posts).toHaveLength(2); expect(posts[1]).toEqual(posts[0]);
++  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
++  expect(await page.getByTestId("ambient-motion").evaluate((element) => getComputedStyle(element).animationName)).toBe("none");
++  await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: testInfo.outputPath("fixture-question-mobile-390-reduced.png"), fullPage: true });
++  await page.getByRole("button", { name: "查询 / 刷新回答", exact: true }).click(); await expect(page.getByText(/这是已过期回答/)).toBeVisible();
++  await page.reload(); await expect(page.getByRole("heading", { name: "尚未提出问题" })).toBeVisible(); await page.getByLabel("回答标识", { exact: true }).fill(ids.answer); await page.getByRole("button", { name: "查询 / 刷新回答", exact: true }).click(); await expect(page.getByText(/这是已过期回答/)).toBeVisible();
++  await expect(page.getByRole("link", { name: /检视固定修订证据/ })).toHaveCount(0); expect(posts).toHaveLength(2);
++});
++
++for (const scenario of [{ status: 403, code: "permission_denied", text: "没有问答或回答查看权限" }, { status: 409, code: "answer_in_progress", text: "仍在处理中" }, { status: 429, code: "question_capacity_busy", text: "繁忙或已达到限额" }, { status: 503, code: "question_models_not_configured", text: "生成模型尚未配置" }, { status: 503, code: "answer_evidence_unavailable", text: "合法证据不足" }]) {
++  test(`R05 fixture C02 ${scenario.status}/${scenario.code} visible without fake answer`, async ({ page }) => { const posts = await setupFixture(page, scenario); await ask(page); await expect(page.getByRole("alert")).toContainText(scenario.text); await expect(page.getByRole("article", { name: "完整证据回答" })).toHaveCount(0); expect(posts).toHaveLength(1); await expect(page.getByText(/private upstream/)).toHaveCount(0); });
++}
++test("R05 fixture C06 anonymous is explicit and performs no question request", async ({ page }) => { const posts = await setupFixture(page, { anonymous: true }); await expect(page.getByRole("heading", { name: "登录后使用证据问答", exact: true })).toBeVisible(); expect(posts).toHaveLength(0); });
++test("R05 fixture C05 long text and HTML remain readable text at 390px", async ({ page }) => { await page.setViewportSize({ width: 390, height: 844 }); await setupFixture(page, { longText: true }); await ask(page); await expect(page.getByRole("article", { name: "完整证据回答" })).toBeVisible(); expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true); await expect(page.locator("img")).toHaveCount(0); await expect(page.getByRole("blockquote")).toContainText("<img src=x onerror=alert('isolated')>"); });
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index eafc0ec..f168cba 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -9,6 +9,8 @@ import { AmbientBackdrop } from "./components/ambient-backdrop";
+ import { CapabilityWorkspace } from "./features/preparation/capability-workspace";
+ import { EventWorkspace } from "./features/events/event-workspace";
+ import { SourceWorkspace } from "./features/sources/source-workspace";
++import { QuestionWorkspace } from "./features/questions/question-workspace";
++import { readQuestionRoute } from "./api/question-contracts";
+ import "./styles.css";
+ 
+ type HealthState = { kind: "loading" } | { kind: "checked"; live: boolean; readiness: Readiness | null; errors: ApiProblem[]; checkedAt: string };
+@@ -115,7 +117,9 @@ function DependencyDetails({ health }: { health: HealthState }) {
+ 
+ function Workbench() {
+   const { state, sessionGeneration } = useAuthSession();
+-  const [page, setPage] = useState<WorkspacePage | "missing">(() => readWorkspacePage(window.location.hash));
++  const [hash, setHash] = useState(() => window.location.hash);
++  const questionRoute = readQuestionRoute(hash);
++  const page: WorkspacePage | "missing" = questionRoute === null ? readWorkspacePage(hash) : "questions";
+   const [health, setHealth] = useState<HealthState>({ kind: "loading" });
+   const healthGeneration = useRef(0);
+ 
+@@ -137,7 +141,7 @@ function Workbench() {
+   }, [refreshHealth]);
+ 
+   useEffect(() => {
+-    const navigate = () => setPage(readWorkspacePage(window.location.hash));
++    const navigate = () => setHash(window.location.hash);
+     window.addEventListener("hashchange", navigate);
+     return () => window.removeEventListener("hashchange", navigate);
+   }, []);
+@@ -188,7 +192,8 @@ function Workbench() {
+           {page === "session" && <div className="session-workspace"><SessionPanel /><div className="access-guidance"><p className="eyebrow">TRUST BOUNDARY / 授权边界</p><h2>按权限查看<br />按证据判断</h2><p>登录后，身份与权限由服务端确认。会话失效或退出时，页面立即清除身份信息。</p><a href="#runtime" className="text-link">返回运行概览 →</a></div></div>}
+           {page === "events" && <EventWorkspace key={sessionScopeKey} />}
+           {page === "sources" && <SourceWorkspace key={sessionScopeKey} />}
+-          {page !== "runtime" && page !== "session" && page !== "events" && page !== "sources" && page !== "missing" && <CapabilityWorkspace page={page} authenticated={state.kind === "authenticated"} />}
++          {page === "questions" && <QuestionWorkspace key={`${sessionScopeKey}:${hash}`} eventId={questionRoute?.eventId} />}
++          {page !== "runtime" && page !== "session" && page !== "events" && page !== "sources" && page !== "questions" && page !== "missing" && <CapabilityWorkspace page={page} authenticated={state.kind === "authenticated"} />}
+           {page === "missing" && <section className="panel missing-page"><EmptyState title="工作区不存在" description="请通过导航选择已登记页面。该地址没有触发业务请求。" /><a className="button secondary" href="#runtime">返回运行状态</a></section>}
+           {state.kind === "authenticated" && <footer className="workspace-footer"><span>{state.user.app_env ? `环境 ${state.user.app_env}` : "环境未由服务端标明"}</span><span>{state.user.platform_version ? `版本 ${state.user.platform_version}` : "版本未由服务端标明"}</span></footer>}
+         </main>
+diff --git a/frontend/src/api/question-client.test.ts b/frontend/src/api/question-client.test.ts
+new file mode 100644
+index 0000000..159f6af
+--- /dev/null
++++ b/frontend/src/api/question-client.test.ts
+@@ -0,0 +1,44 @@
++import { afterEach, describe, expect, it, vi } from "vitest";
++import { questionAnswerFixture, questionFixtureIds as ids } from "../features/questions/question.fixture";
++import { getAnswer, submitQuestion } from "./question-client";
++import type { QuestionSubmission } from "./question-contracts";
++
++const submission: QuestionSubmission = { body: { question: "隔离问题", mode: "library", event_ids: [ids.event] }, idempotencyKey: "isolated-key" };
++function response(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status }); }
++afterEach(() => vi.unstubAllGlobals());
++describe("question client — isolated fixture, not live", () => {
++  it("sends exact frozen body, cookie credentials, CSRF and request key", async () => {
++    const calls: { path: string; options: RequestInit }[] = [];
++    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options: RequestInit = {}) => { calls.push({ path: String(input), options }); return response(String(input).endsWith("csrf") ? { csrf_token: "isolated-token", header_name: "X-CSRF-Token" } : questionAnswerFixture()); }));
++    await submitQuestion(submission, () => true);
++    expect(calls.map((call) => call.path)).toEqual(["/v1/auth/csrf", "/v1/questions"]);
++    expect(calls[1]?.options.credentials).toBe("include");
++    expect(calls[1]?.options.body).toBe(JSON.stringify({ question: "隔离问题", mode: "library", event_ids: [ids.event] }));
++    expect(new Headers(calls[1]?.options.headers).get("X-CSRF-Token")).toBe("isolated-token");
++    expect(new Headers(calls[1]?.options.headers).get("Idempotency-Key")).toBe("isolated-key");
++  });
++  it("fences late CSRF when session changes and makes no paid write", async () => {
++    let current = true;
++    const fetchMock = vi.fn(async () => { current = false; return response({ csrf_token: "isolated-token", header_name: "X-CSRF-Token" }); });
++    vi.stubGlobal("fetch", fetchMock);
++    await expect(submitQuestion(submission, () => current)).rejects.toMatchObject({ code: "request_canceled" });
++    expect(fetchMock).toHaveBeenCalledTimes(1);
++  });
++  it("cancels before acquiring CSRF", async () => {
++    const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock);
++    const controller = new AbortController(); controller.abort();
++    await expect(submitQuestion(submission, () => true, controller.signal)).rejects.toMatchObject({ code: "request_canceled" });
++    expect(fetchMock).not.toHaveBeenCalled();
++  });
++  it.each([401, 403, 404, 409, 422, 429, 503])("preserves HTTP %s errors and never retries", async (status) => {
++    const fetchMock = vi.fn(async () => response({ type: "about:blank", title: "isolated failure", status, error: { code: "insufficient_evidence", retryable: true } }, status)); vi.stubGlobal("fetch", fetchMock);
++    await expect(getAnswer(ids.answer)).rejects.toMatchObject({ status });
++    expect(fetchMock).toHaveBeenCalledTimes(1);
++  });
++  it("rejects a different answer or malformed identifier", async () => {
++    const fetchMock = vi.fn(async () => response({ ...questionAnswerFixture(), answer_id: ids.other })); vi.stubGlobal("fetch", fetchMock);
++    await expect(getAnswer(ids.answer)).rejects.toMatchObject({ code: "invalid_response" });
++    await expect(getAnswer("../private")).rejects.toMatchObject({ status: 422 });
++    expect(fetchMock).toHaveBeenCalledTimes(1);
++  });
++});
+diff --git a/frontend/src/api/question-client.ts b/frontend/src/api/question-client.ts
+new file mode 100644
+index 0000000..4200704
+--- /dev/null
++++ b/frontend/src/api/question-client.ts
+@@ -0,0 +1,20 @@
++import { ApiProblem, fetchJson, getCsrfToken } from "./client";
++import { parseQuestionAnswer, validateQuestionId, validateQuestionSubmission, type QuestionAnswer, type QuestionSubmission } from "./question-contracts";
++
++/** 序列化后保留原body/key；CSRF等待后复核会话，写入不自动重试。 */
++export async function submitQuestion(submission: QuestionSubmission, isCurrent: () => boolean, signal?: AbortSignal): Promise<QuestionAnswer> {
++  validateQuestionSubmission(submission);
++  const body = JSON.stringify(submission.body);
++  const idempotencyKey = submission.idempotencyKey;
++  if (signal?.aborted || !isCurrent()) throw new ApiProblem(0, "request_canceled", false);
++  const csrf = await getCsrfToken(signal);
++  if (signal?.aborted || !isCurrent()) throw new ApiProblem(0, "request_canceled", false);
++  return parseQuestionAnswer(await fetchJson("/v1/questions", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, "Idempotency-Key": idempotencyKey }, body }, signal));
++}
++
++export async function getAnswer(answerId: string, signal?: AbortSignal): Promise<QuestionAnswer> {
++  const id = validateQuestionId(answerId);
++  const answer = parseQuestionAnswer(await fetchJson(`/v1/answers/${id}`, {}, signal));
++  if (answer.answer_id !== id) throw new ApiProblem(502, "invalid_response", true);
++  return answer;
++}
+diff --git a/frontend/src/api/question-contracts.test.ts b/frontend/src/api/question-contracts.test.ts
+new file mode 100644
+index 0000000..d049dbe
+--- /dev/null
++++ b/frontend/src/api/question-contracts.test.ts
+@@ -0,0 +1,25 @@
++import { describe, expect, it } from "vitest";
++import { questionAnswerFixture, questionFixtureIds as ids } from "../features/questions/question.fixture";
++import { parseQuestionAnswer, readQuestionRoute, validateQuestionSubmission, type QuestionSubmission } from "./question-contracts";
++
++describe("question contract — isolated fixture, not live", () => {
++  it("preserves frozen fields, complete milliseconds and separate claim kinds", () => {
++    const answer = parseQuestionAnswer(questionAnswerFixture());
++    expect(answer.latency_milliseconds).toBe(1234);
++    expect(answer.claims.map((claim) => claim.kind)).toEqual(["source_fact", "rule_result", "project_suggestion"]);
++    expect(answer.citations[0]?.revision_id).toBe(ids.revision);
++  });
++  it.each([null, [], {}, { ...questionAnswerFixture(), latency_ms: 1234 }, { ...questionAnswerFixture(), kind: "task" }, { ...questionAnswerFixture(), claims: null }, { ...questionAnswerFixture(), citations: null }, { ...questionAnswerFixture(), limitations: null }, { ...questionAnswerFixture(), data_mode: "demo" }, { ...questionAnswerFixture(), freshness: "valid" }, { ...questionAnswerFixture(), latency_milliseconds: -1 }, { ...questionAnswerFixture(), latency_milliseconds: 1.5 }, { ...questionAnswerFixture(), latency_milliseconds: Number.MAX_SAFE_INTEGER + 1 }, { ...questionAnswerFixture(), started_at: "2026-02-30T07:00:00Z" }, { ...questionAnswerFixture(), completed_at: "2026-10-14T07:00:00Z" }, { ...questionAnswerFixture(), answer_text: " " }, { ...questionAnswerFixture(), claims: [{ text: "unsupported", kind: "source_fact", support_ids: [] }] }, { ...questionAnswerFixture(), claims: [{ text: "invented", kind: "rule_result", support_ids: [ids.other] }] }, { ...questionAnswerFixture(), citations: [...questionAnswerFixture().citations, ...questionAnswerFixture().citations] }, { ...questionAnswerFixture(), limitations: Array.from({ length: 101 }, () => "limit") }])("rejects incomplete, mismatched or forged wire %#", (wire) => expect(() => parseQuestionAnswer(wire)).toThrow(/格式/));
++  it.each(["javascript:alert(1)", "data:text/html,test", "https://user:password@example.test/", "https://example.test/\\evil", "https://example.test/\nmalicious"])("rejects unsafe source URI %s", (sourceUri) => expect(() => parseQuestionAnswer({ ...questionAnswerFixture(), citations: [{ ...questionAnswerFixture().citations[0], source_uri: sourceUri }] })).toThrow(/格式/));
++  it("accepts valid Unicode and counts codepoints, while preserving raw question", () => {
++    const submission: QuestionSubmission = { body: { question: "😀".repeat(4096), mode: "library", event_ids: [ids.event] }, idempotencyKey: "isolated-key" };
++    expect(() => validateQuestionSubmission(submission)).not.toThrow();
++    expect(() => validateQuestionSubmission({ ...submission, body: { ...submission.body, question: "😀".repeat(4097) } })).toThrow(/校验/);
++  });
++  it.each(["", "  ", "a\0b", "\ud800"])("rejects invalid input without relying on server: %#", (question) => expect(() => validateQuestionSubmission({ body: { question, mode: "library", event_ids: [ids.event] }, idempotencyKey: "isolated-key" })).toThrow(/校验/));
++  it("parses only bounded event routes and normalizes identifiers", () => {
++    expect(readQuestionRoute(`#questions/${ids.event.toUpperCase()}`)).toEqual({ eventId: ids.event });
++    expect(readQuestionRoute("#questions/invalid")).toBeNull();
++    expect(readQuestionRoute(`#questions/${ids.event}/extra`)).toBeNull();
++  });
++});
+diff --git a/frontend/src/api/question-contracts.ts b/frontend/src/api/question-contracts.ts
+new file mode 100644
+index 0000000..ef12086
+--- /dev/null
++++ b/frontend/src/api/question-contracts.ts
+@@ -0,0 +1,94 @@
++import { ApiProblem } from "./client";
++import type { Citation, DataMode, Freshness } from "./knowledge-contracts";
++
++export type AnswerClaimKind = "source_fact" | "rule_result" | "project_suggestion";
++export interface AnswerClaim { text: string; kind: AnswerClaimKind; support_ids: string[]; }
++export interface QuestionAnswer {
++  kind: "completed"; answer_id: string; answer_text: string; claims: AnswerClaim[]; citations: Citation[];
++  limitations: string[]; freshness: Freshness; data_mode: DataMode; started_at: string; completed_at: string; latency_milliseconds: number;
++}
++export interface QuestionSubmission { body: { question: string; mode: "library"; event_ids: [string] }; idempotencyKey: string; }
++const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
++function invalid(): never { throw new ApiProblem(502, "invalid_response", true); }
++function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
++function record(value: unknown, keys: string[]): Record<string, unknown> {
++  if (!isRecord(value)) return invalid();
++  const fields = Object.keys(value);
++  if (fields.length !== keys.length || !fields.every((key) => keys.includes(key))) return invalid();
++  return value;
++}
++function text(value: unknown): string {
++  if (typeof value !== "string" || !value.trim() || value.includes("\0") || /[\uD800-\uDFFF]/u.test(value)) return invalid();
++  return value;
++}
++function identifier(value: unknown): string {
++  if (typeof value !== "string" || !uuidPattern.test(value)) return invalid();
++  return value.toLowerCase();
++}
++function list<T>(value: unknown, parse: (item: unknown) => T): T[] {
++  if (!Array.isArray(value) || value.length > 100) return invalid();
++  return value.map(parse);
++}
++function choice<T extends string>(value: unknown, choices: readonly T[]): T {
++  const result = choices.find((item) => item === value);
++  return result === undefined ? invalid() : result;
++}
++function timestamp(value: unknown): string {
++  const date = text(value);
++  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(date) || !Number.isFinite(Date.parse(date))) return invalid();
++  const year = Number(date.slice(0, 4));
++  const month = Number(date.slice(5, 7));
++  const day = Number(date.slice(8, 10));
++  if (year < 1 || month < 1 || month > 12 || day < 1 || day > new Date(Date.UTC(year, month, 0)).getUTCDate() || Number(date.slice(11, 13)) > 23 || Number(date.slice(14, 16)) > 59 || Number(date.slice(17, 19)) > 59) return invalid();
++  return date;
++}
++function parseCitation(value: unknown): Citation {
++  const fields = record(value, ["evidence_id", "revision_id", "quote", "locator", "source_uri"]);
++  const sourceUri = text(fields.source_uri);
++  try {
++    const url = new URL(sourceUri);
++    if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password || /[\s\\]/u.test(sourceUri)) return invalid();
++  } catch { return invalid(); }
++  return { evidence_id: identifier(fields.evidence_id), revision_id: identifier(fields.revision_id), quote: text(fields.quote), locator: text(fields.locator), source_uri: sourceUri };
++}
++function parseClaim(value: unknown): AnswerClaim {
++  const fields = record(value, ["text", "kind", "support_ids"]);
++  const kind = choice(fields.kind, ["source_fact", "rule_result", "project_suggestion"] as const);
++  const supportIds = list(fields.support_ids, identifier);
++  if (kind !== "project_suggestion" && supportIds.length === 0) return invalid();
++  return { text: text(fields.text), kind, support_ids: supportIds };
++}
++
++/** 拒绝额外字段、伪造支持、重复引用和不完整回答；不将wire数据强转为可信事实。 */
++export function parseQuestionAnswer(value: unknown): QuestionAnswer {
++  const fields = record(value, ["kind", "answer_id", "answer_text", "claims", "citations", "limitations", "freshness", "data_mode", "started_at", "completed_at", "latency_milliseconds"]);
++  if (fields.kind !== "completed") return invalid();
++  const claims = list(fields.claims, parseClaim);
++  const citations = list(fields.citations, parseCitation);
++  const citationIds = new Set(citations.map((citation) => citation.evidence_id));
++  if (citationIds.size !== citations.length || claims.some((claim) => claim.support_ids.some((id) => !citationIds.has(id)))) return invalid();
++  const startedAt = timestamp(fields.started_at);
++  const completedAt = timestamp(fields.completed_at);
++  if (Date.parse(completedAt) < Date.parse(startedAt) || typeof fields.latency_milliseconds !== "number" || !Number.isSafeInteger(fields.latency_milliseconds) || fields.latency_milliseconds < 0) return invalid();
++  return { kind: "completed", answer_id: identifier(fields.answer_id), answer_text: text(fields.answer_text), claims, citations, limitations: list(fields.limitations, text), freshness: choice(fields.freshness, ["current", "stale", "unknown"] as const), data_mode: choice(fields.data_mode, ["live", "fixture"] as const), started_at: startedAt, completed_at: completedAt, latency_milliseconds: fields.latency_milliseconds };
++}
++
++export function validateQuestionId(value: string): string {
++  if (!uuidPattern.test(value)) throw new ApiProblem(422, "validation_error", false);
++  return value.toLowerCase();
++}
++
++/** R05范围只接library单事件，不默默提交未接通的会话、资产或时间选项。 */
++export function validateQuestionSubmission(value: QuestionSubmission): void {
++  const body = value.body;
++  if (Object.keys(body).length !== 3 || !Object.keys(body).every((key) => ["question", "mode", "event_ids"].includes(key)) || body.mode !== "library" || !Array.isArray(body.event_ids) || body.event_ids.length !== 1) throw new ApiProblem(422, "validation_error", false);
++  validateQuestionId(body.event_ids[0]);
++  if (typeof body.question !== "string" || !body.question.trim() || [...body.question].length > 4096 || body.question.includes("\0") || /[\uD800-\uDFFF]/u.test(body.question) || !/^[\x21-\x7e]{1,200}$/.test(value.idempotencyKey)) throw new ApiProblem(422, "validation_error", false);
++}
++
++/** 仅解析标识深链接，不在URL或浏览器存储保留问题与回答正文。 */
++export function readQuestionRoute(hash: string): { eventId: string } | null {
++  const uuid = "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})";
++  const match = new RegExp(`^#questions/${uuid}$`, "i").exec(hash);
++  return match?.[1] === undefined ? null : { eventId: match[1].toLowerCase() };
++}
+diff --git a/frontend/src/features/events/event-workspace.tsx b/frontend/src/features/events/event-workspace.tsx
+index d65c0af..59cfd05 100644
+--- a/frontend/src/features/events/event-workspace.tsx
++++ b/frontend/src/features/events/event-workspace.tsx
+@@ -74,6 +74,7 @@ function EventDetail({ id, onSessionExpired, isCurrent }: { id: string; onSessio
+     {resource.kind === "loaded" && <div className="event-detail-body">
+       <div className="event-title"><h3>{resource.value.event.title}</h3><FreshnessBadge value={resource.value.event.freshness} /><span className="small-note">{resource.value.data_mode === "fixture" ? "合成 / Fixture" : "真实 / Live"}</span></div>
+       <code className="record-id">{resource.value.event.event_id}</code>
++      <a className="button secondary" href={`#questions/${resource.value.event.event_id}`}>基于此事件提问 →</a>
+       <h3 className="detail-section-title">九维富化</h3>
+       <p className="small-note">各维度独立记录状态。未返回的维度没有结果，不能解释为不适用或完成。</p>
+       {Object.entries(dimensionLabels).map(([name, label]) => {
+diff --git a/frontend/src/features/questions/question-workspace.test.tsx b/frontend/src/features/questions/question-workspace.test.tsx
+new file mode 100644
+index 0000000..5e0ae08
+--- /dev/null
++++ b/frontend/src/features/questions/question-workspace.test.tsx
+@@ -0,0 +1,119 @@
++import { randomBytes } from "node:crypto";
++import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
++import { afterEach, describe, expect, it, vi } from "vitest";
++import { App } from "../../App";
++import { AuthProvider, useAuthSession } from "../../app/auth-session";
++import { QuestionWorkspace } from "./question-workspace";
++import { questionAnswerFixture, questionFixtureIds as ids } from "./question.fixture";
++
++const csrf = randomBytes(32).toString("hex");
++const fixtureUser = { user_id: "isolated-question-user", tenant_id: "isolated-question-tenant", role: "analyst", permissions: ["read:public"], permission_version: 1, data_mode: "fixture", csrf_token: csrf };
++function response(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status }); }
++function deferredResponse() { let resolve: (value: Response) => void = () => { throw new Error("deferred fixture not initialized"); }; const promise = new Promise<Response>((release) => { resolve = release; }); return { promise, resolve }; }
++function fixtureApi(options: { anonymous?: boolean; denied?: boolean; mode?: string; unknownPost?: boolean; code?: string; status?: number; wire?: unknown; csrfResponse?: Promise<Response>; answerResponse?: Promise<Response> } = {}) {
++  const requests: { path: string; options: RequestInit }[] = [];
++  let writes = 0;
++  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
++    const path = String(input); requests.push({ path, options: init });
++    if (path === "/v1/auth/me") return options.anonymous ? response({ error: { code: "session_expired" } }, 401) : response({ ...fixtureUser, permissions: options.denied ? [] : fixtureUser.permissions, data_mode: options.mode ?? "fixture" });
++    if (path === "/v1/auth/csrf") return options.csrfResponse ?? response({ csrf_token: csrf, header_name: "X-CSRF-Token" });
++    if (path === "/v1/auth/logout") return response({ status: "logged_out" });
++    if (path === "/v1/health/live") return response({ status: "live" });
++    if (path === "/v1/health/ready") return response({ status: "ready", reason: "isolated fixture", dependencies: {} });
++    if (path === "/v1/questions" || path.startsWith("/v1/answers/")) {
++      if (path === "/v1/questions") { writes += 1; if (options.unknownPost && writes === 1) throw new Error("private upstream fixture secret ignored"); }
++      if (options.status) return response({ type: "about:blank", title: "private error", status: options.status, error: { code: options.code ?? "isolated_failure", retryable: true, message: "private stack ignored" } }, options.status);
++      return options.answerResponse ?? response(options.wire === undefined ? questionAnswerFixture() : options.wire);
++    }
++    throw new Error(`Unexpected isolated route: ${path}`);
++  }));
++  window.history.replaceState(null, "", `/#questions/${ids.event}`);
++  return requests;
++}
++async function formReady() { await screen.findByRole("button", { name: "提交问题" }); }
++function fillQuestion(value = "请核对风险机制") { fireEvent.change(screen.getByLabelText("你的问题"), { target: { value } }); }
++function submitForm() { fireEvent.submit(screen.getByRole("form", { name: "单事件问答" })); }
++afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.history.replaceState(null, "", "/"); });
++
++describe("question workspace — isolated fixture, not live", () => {
++  it.each([{ anonymous: true, title: "登录后使用证据问答" }, { denied: true, title: "没有问答访问权限" }])("makes no question request without authorized session: $title", async ({ title, ...options }) => {
++    const requests = fixtureApi(options); render(<App />); await screen.findByRole("heading", { name: title });
++    expect(requests.some((request) => request.path === "/v1/questions" || request.path === "/v1/auth/csrf" || request.path.startsWith("/v1/answers"))).toBe(false);
++  });
++  it("renders the empty state and validates input without a CSRF request", async () => {
++    const requests = fixtureApi(); render(<App />); await formReady();
++    expect(screen.getByRole("heading", { name: "尚未提出问题" })).toBeTruthy();
++    submitForm(); await screen.findByText(/请求未通过校验/);
++    expect(requests.some((request) => request.path === "/v1/auth/csrf")).toBe(false);
++  });
++  it("submits single-event library exactly once on double submit, shows separated claims and fixed evidence", async () => {
++    const delayed = deferredResponse(); const requests = fixtureApi({ csrfResponse: delayed.promise }); render(<App />); await formReady(); fillQuestion(); submitForm(); submitForm();
++    await screen.findByText(/正在提交问题并等待完整回答/);
++    expect(screen.getByRole("button", { name: "等待完整回答…" }).hasAttribute("disabled")).toBe(true);
++    delayed.resolve(response({ csrf_token: csrf, header_name: "X-CSRF-Token" }));
++    await screen.findByRole("article", { name: "完整证据回答" });
++    const posts = requests.filter((request) => request.path === "/v1/questions"); expect(posts).toHaveLength(1);
++    expect(JSON.parse(String(posts[0]?.options.body))).toEqual({ question: "请核对风险机制", mode: "library", event_ids: [ids.event] });
++    expect(screen.getByText("1234 毫秒 · 完整回答耗时")).toBeTruthy();
++    for (const label of ["来源事实", "规则结论", "项目建议"]) expect(screen.getByRole("region", { name: label })).toBeTruthy();
++    expect(screen.getByRole("link", { name: "检视固定修订证据 [1] →" }).getAttribute("href")).toBe(`#events/${ids.event}/evidence/${ids.evidence}/revision/${ids.revision}`);
++    expect(screen.getByRole("link", { name: "打开来源原文 [1] ↗" }).getAttribute("rel")).toBe("noopener noreferrer");
++    fireEvent.click(screen.getAllByRole("link", { name: "依据 [1]" })[0] ?? screen.getByRole("link", { name: "打开来源原文 [1] ↗" }));
++    expect(document.activeElement?.id).toBe(`citation-${ids.evidence}`);
++  });
++  it("retries unknown result with identical key/body, new question explicitly changes key", async () => {
++    const requests = fixtureApi({ unknownPost: true }); render(<App />); await formReady(); fillQuestion(); submitForm(); await screen.findByText(/提交结果未确认/);
++    expect(screen.getByLabelText("你的问题").hasAttribute("disabled")).toBe(true);
++    fireEvent.click(screen.getByRole("button", { name: "原样重试本轮" })); await screen.findByRole("article", { name: "完整证据回答" });
++    let posts = requests.filter((request) => request.path === "/v1/questions"); expect(posts[1]?.options.body).toBe(posts[0]?.options.body);
++    expect(new Headers(posts[1]?.options.headers).get("Idempotency-Key")).toBe(new Headers(posts[0]?.options.headers).get("Idempotency-Key"));
++    expect(screen.queryByText(/private upstream/)).toBeNull();
++    fireEvent.click(screen.getByRole("button", { name: "开始新问题" })); fillQuestion("新的隔离问题"); submitForm(); await screen.findByRole("article", { name: "完整证据回答" });
++    posts = requests.filter((request) => request.path === "/v1/questions"); expect(posts).toHaveLength(3);
++    expect(new Headers(posts[2]?.options.headers).get("Idempotency-Key")).not.toBe(new Headers(posts[0]?.options.headers).get("Idempotency-Key"));
++  });
++  it("blocks lookup and repeated submits while the paid write response is pending", async () => {
++    const delayed = deferredResponse(); const requests = fixtureApi({ answerResponse: delayed.promise }); render(<App />); await formReady(); fillQuestion(); submitForm();
++    await screen.findByText(/正在提交问题并等待完整回答/);
++    fireEvent.change(screen.getByLabelText("回答标识"), { target: { value: ids.answer } }); fireEvent.submit(screen.getByRole("form", { name: "查询已保存回答" })); submitForm();
++    delayed.resolve(response(questionAnswerFixture())); await screen.findByRole("article", { name: "完整证据回答" });
++    expect(requests.filter((request) => request.path === "/v1/questions")).toHaveLength(1); expect(requests.some((request) => request.path.startsWith("/v1/answers/"))).toBe(false);
++  });
++  it.each([{ status: 403, code: "csrf_rejected", message: "会话写入校验未通过" }, { status: 403, code: "permission_denied", message: "没有问答或回答查看权限" }, { status: 404, code: "not_found", message: "回答不存在" }, { status: 409, code: "answer_in_progress", message: "仍在处理中" }, { status: 409, code: "answer_failed", message: "同一请求已失败" }, { status: 409, code: "idempotency_conflict", message: "请求键发生冲突" }, { status: 422, code: "question_scope_not_supported", message: "请求未通过校验" }, { status: 429, code: "question_capacity_busy", message: "繁忙或已达到限额" }, { status: 503, code: "question_models_not_configured", message: "生成模型尚未配置" }, { status: 503, code: "answer_evidence_unavailable", message: "合法证据不足" }, { status: 503, code: "answer_evidence_changed", message: "依赖证据已变化" }, { status: 503, code: "question_model_unavailable", message: "模型或证据服务暂不可用" }])("keeps $status/$code explicit and never generates fake success", async ({ message, ...options }) => {
++    const requests = fixtureApi(options); render(<App />); await formReady(); fillQuestion(); submitForm(); await screen.findByText(new RegExp(message));
++    expect(screen.queryByRole("article", { name: "完整证据回答" })).toBeNull(); expect(screen.queryByText(/private stack/)).toBeNull();
++    expect(requests.filter((request) => request.path === "/v1/questions")).toHaveLength(1);
++  });
++  it("clears the session after 401 and removes all frozen private fields", async () => {
++    fixtureApi({ status: 401, code: "session_expired" }); render(<App />); await formReady(); fillQuestion(); submitForm(); await screen.findByRole("heading", { name: "登录后使用证据问答" });
++    expect(screen.getByText("会话已失效，请重新登录。")).toBeTruthy();
++    expect(screen.queryByLabelText("你的问题")).toBeNull(); expect(screen.queryByText(/question-ui-/)).toBeNull();
++  });
++  it.each(["stale", "unknown"])("renders limited coverage and %s without asserting current success", async (freshness) => {
++    fixtureApi({ wire: { ...questionAnswerFixture(), freshness } }); render(<App />); await formReady(); fillQuestion(); submitForm(); await screen.findByRole("article", { name: "完整证据回答" });
++    expect(screen.getByText(/隔离测试没有资产快照/)).toBeTruthy(); expect(screen.getByText(freshness === "stale" ? /这是已过期回答/ : /服务未确认该回答的当前性/)).toBeTruthy();
++  });
++  it.each([null, { ...questionAnswerFixture(), claims: [{ text: "invented", kind: "source_fact", support_ids: [ids.other] }] }, { ...questionAnswerFixture(), citations: [{ ...questionAnswerFixture().citations[0], source_uri: "javascript:alert(1)" }] }])("rejects unsafe wire without answering %#", async (wire) => {
++    fixtureApi({ wire }); render(<App />); await formReady(); fillQuestion(); submitForm(); await screen.findByText(/提交结果未确认/); expect(screen.queryByRole("article", { name: "完整证据回答" })).toBeNull();
++  });
++  it("does not label fixture answers as live even if the authenticated snapshot is live", async () => {
++    fixtureApi({ mode: "live" }); render(<App />); await formReady(); fillQuestion(); submitForm(); await screen.findByText(/提交结果未确认/); expect(screen.queryByRole("article", { name: "完整证据回答" })).toBeNull();
++  });
++  it("queries saved answers with GET, no CSRF or model POST, and does not invent their event binding", async () => {
++    const requests = fixtureApi(); render(<App />); await formReady(); fireEvent.change(screen.getByLabelText("回答标识"), { target: { value: ids.answer } }); fireEvent.submit(screen.getByRole("form", { name: "查询已保存回答" })); await screen.findByRole("article", { name: "完整证据回答" });
++    expect(requests.filter((request) => request.path.startsWith("/v1/answers/"))).toHaveLength(1); expect(requests.some((request) => request.path === "/v1/auth/csrf" || request.path === "/v1/questions")).toBe(false);
++    expect(screen.queryByRole("link", { name: /检视固定修订证据/ })).toBeNull();
++  });
++  it("fences late CSRF after leaving the page and after a session refresh", async () => {
++    const delayed = deferredResponse(); const requests = fixtureApi({ csrfResponse: delayed.promise }); render(<App />); await formReady(); fillQuestion(); submitForm();
++    window.history.replaceState(null, "", "/#session"); fireEvent(window, new HashChangeEvent("hashchange"));
++    await screen.findByRole("button", { name: "重新验证会话" }); fireEvent.click(screen.getByRole("button", { name: "重新验证会话" }));
++    delayed.resolve(response({ csrf_token: csrf, header_name: "X-CSRF-Token" })); await waitFor(() => expect(screen.getByRole("button", { name: "退出登录" })).toBeTruthy());
++    expect(requests.some((request) => request.path === "/v1/questions")).toBe(false);
++  });
++  it("does not revive old answers after logout while wire response is pending", async () => {
++    const delayed = deferredResponse(); fixtureApi({ answerResponse: delayed.promise });
++    function SessionHarness() { const session = useAuthSession(); return <><button onClick={() => void session.logout()}>隔离退出</button><QuestionWorkspace eventId={ids.event} /></>; }
++    render(<AuthProvider><SessionHarness /></AuthProvider>); await formReady(); fillQuestion(); submitForm(); await screen.findByText(/正在提交问题并等待完整回答/); fireEvent.click(screen.getByRole("button", { name: "隔离退出" })); delayed.resolve(response(questionAnswerFixture())); await screen.findByRole("heading", { name: "登录后使用证据问答" }); expect(screen.queryByText(/隔离测试回答/)).toBeNull();
++  });
++});
+diff --git a/frontend/src/features/questions/question-workspace.tsx b/frontend/src/features/questions/question-workspace.tsx
+new file mode 100644
+index 0000000..97192fe
+--- /dev/null
++++ b/frontend/src/features/questions/question-workspace.tsx
+@@ -0,0 +1,132 @@
++import { useEffect, useRef, useState, type FormEvent } from "react";
++import { ApiProblem, publicProblem } from "../../api/client";
++import { getAnswer, submitQuestion } from "../../api/question-client";
++import { validateQuestionId, validateQuestionSubmission, type AnswerClaimKind, type QuestionAnswer, type QuestionSubmission } from "../../api/question-contracts";
++import { useAuthSession } from "../../app/auth-session";
++import { formatShanghaiTimestamp } from "../../app/date-time";
++import { EmptyState, ErrorPanel } from "../../components/status";
++import "./questions.css";
++
++const claimLabels: Record<AnswerClaimKind, string> = { source_fact: "来源事实", rule_result: "规则结论", project_suggestion: "项目建议" };
++const freshnessLabels = { current: "当前有效", stale: "已过期，需重新核对", unknown: "时效未知" };
++
++function failureMessage(error: ApiProblem, submitting: boolean): string {
++  if (error.status === 401) return "会话已失效，请重新登录。当前回答已清除。";
++  if (error.status === 403) return error.code === "csrf_rejected" ? "会话写入校验未通过；原样重试会重新取得CSRF，问题与请求键保持不变。" : "当前会话没有问答或回答查看权限，请核对团队授权。";
++  if (error.status === 404) return "回答不存在，或当前会话不可查看。没有展示历史回答。";
++  if (error.status === 409) {
++    if (error.code === "answer_in_progress") return "同一请求仍在处理中。请稍后原样重试，不会自动发起新的生成。";
++    if (error.code === "answer_failed") return "同一请求已失败。核对服务状态后再明确开始新问题。";
++    return "请求键发生冲突或同一请求暂不可重放。保留原问题与请求键，不自动更换键。";
++  }
++  if (error.status === 422) return submitting ? "请求未通过校验。请输入一个完整事件UUID及1至4096字符问题；本轮只支持资料库单事件。" : "回答标识未通过校验，请输入完整UUID。";
++  if (error.status === 429) return "问答服务当前繁忙或已达到限额。没有自动重试，请稍后再决定操作。";
++  if (error.status === 503) {
++    if (error.code === "question_models_not_configured") return "生成模型尚未配置，未生成回答。请联系管理员核对模型配置。";
++    if (error.code === "answer_evidence_unavailable") return "当前合法证据不足，未生成确定回答。请回到事件页核对证据。";
++    if (error.code === "answer_evidence_changed") return "依赖证据已变化，当前没有取得有效回答。请核对修订后明确开始新问题。";
++    if (error.code === "answer_verification_failed") return "回答核验未通过，未展示未经支持的结论。";
++    return "模型或证据服务暂不可用、超时或核验失败。本次没有取得有效回答。";
++  }
++  if (submitting) return "提交结果未确认，请保留本轮问题与请求键原样重试；网络或格式错误不能解释为未提交。";
++  return error.code === "invalid_response" ? "回答格式不符合冻结合同，本次没有展示回答。" : "本次未取得回答。恢复连接后手动查询，失败不代表没有相关事实。";
++}
++
++function CompletedAnswer({ answer, eventId }: { answer: QuestionAnswer; eventId: string | null }) {
++  let validEventId: string | null = null;
++  try { validEventId = eventId === null ? null : validateQuestionId(eventId.trim()); } catch { validEventId = null; }
++  return <article className="question-answer" aria-label="完整证据回答">
++    <div className="question-answer-status"><span className="question-mode">{answer.data_mode === "fixture" ? "合成 / Fixture · 隔离数据" : "真实 / Live"}</span><span className={`question-freshness freshness-${answer.freshness}`}>{freshnessLabels[answer.freshness]}</span><strong>{answer.latency_milliseconds} 毫秒 · 完整回答耗时</strong></div>
++    {answer.freshness !== "current" && <p className="question-warning" role="status">{answer.freshness === "stale" ? "这是已过期回答，不能据此确认当前结论。重新提交问题将重新核对证据。" : "服务未确认该回答的当前性，不能将未知解释为有效或无风险。"}</p>}
++    <h3>完整回答</h3><p className="question-answer-text">{answer.answer_text}</p>
++    {answer.claims.length === 0 && <EmptyState title="未提供关键结论" description="回答正文没有结构化结论，不能由页面补造事实。" />}
++    {(["source_fact", "rule_result", "project_suggestion"] as const).map((kind) => {
++      const claims = answer.claims.filter((claim) => claim.kind === kind);
++      return <section className="question-claim-group" aria-label={claimLabels[kind]} key={kind}><h3>{claimLabels[kind]}</h3>{claims.length === 0 ? <p className="small-note">未提供{claimLabels[kind]}</p> : claims.map((claim, index) => <div className="question-claim" key={`${kind}-${index}`}><p>{claim.text}</p><div className="question-supports">{claim.support_ids.map((supportId, supportIndex) => <a key={`${supportId}-${supportIndex}`} href={`#citation-${supportId}`} onClick={(event) => { event.preventDefault(); document.getElementById(`citation-${supportId}`)?.focus(); document.getElementById(`citation-${supportId}`)?.scrollIntoView?.({ block: "nearest", behavior: "instant" }); }}>依据 [{answer.citations.findIndex((citation) => citation.evidence_id === supportId) + 1}]</a>)}</div></div>)}</section>;
++    })}
++    <section className="question-limitations" aria-labelledby="question-limitations-title"><h3 id="question-limitations-title">覆盖与限制</h3>{answer.limitations.length === 0 ? <p>服务未返回额外限制；这不等于已穷尽所有来源、版本或资产条件。</p> : <><p>本次回答存在以下覆盖边界，请与结论一起阅读。</p><ul>{answer.limitations.map((limitation, index) => <li key={index}>{limitation}</li>)}</ul></>}</section>
++    <section className="question-citations" aria-labelledby="question-citations-title"><h3 id="question-citations-title">原文引用</h3><p className="small-note">引文存在不等于内容支持。打开固定修订片段，逐条核对结论。</p>{validEventId === null && <p className="small-note">此回答未返回事件标识，无法确认内部事件链接；仍可核对引文、修订标识和来源原文。</p>}{answer.citations.length === 0 && <EmptyState title="没有原文引用" description="本次未提供可追溯原文，不能据此生成来源事实。" />}{answer.citations.map((citation, index) => <article tabIndex={-1} id={`citation-${citation.evidence_id}`} className="question-citation" key={citation.evidence_id}><h4>引用 [{index + 1}] · {citation.locator}</h4><blockquote>{citation.quote}</blockquote><dl className="question-metadata"><dt>证据</dt><dd><code>{citation.evidence_id}</code></dd><dt>原文修订</dt><dd><code>{citation.revision_id}</code></dd></dl><div className="question-actions">{validEventId !== null && <a className="text-link" href={`#events/${validEventId}/evidence/${citation.evidence_id}/revision/${citation.revision_id}`}>检视固定修订证据 [{index + 1}] →</a>}{new URL(citation.source_uri).protocol === "https:" ? <a className="text-link" href={citation.source_uri} target="_blank" rel="noopener noreferrer">打开来源原文 [{index + 1}] ↗</a> : <span className="small-note">来源仅提供HTTP地址，本页不打开该外链</span>}</div></article>)}</section>
++    <dl className="question-metadata question-answer-metadata"><dt>回答标识</dt><dd><code>{answer.answer_id}</code></dd><dt>开始时间</dt><dd><time dateTime={answer.started_at}>{formatShanghaiTimestamp(answer.started_at)}</time></dd><dt>完成时间</dt><dd><time dateTime={answer.completed_at}>{formatShanghaiTimestamp(answer.completed_at)}</time></dd></dl>
++  </article>;
++}
++
++function AuthenticatedQuestions({ initialEventId }: { initialEventId: string }) {
++  const { state, sessionGeneration, isSessionCurrent, expireSession, actionPending } = useAuthSession();
++  const [eventId, setEventId] = useState(initialEventId);
++  const [question, setQuestion] = useState("");
++  const [answerId, setAnswerId] = useState("");
++  const [submission, setSubmission] = useState<QuestionSubmission | null>(null);
++  const [pending, setPending] = useState<"submit" | "lookup" | null>(null);
++  const [answer, setAnswer] = useState<QuestionAnswer | null>(null);
++  const [answerEventId, setAnswerEventId] = useState<string | null>(null);
++  const confirmedAnswerScope = useRef<{ answerId: string; eventId: string } | null>(null);
++  const [failure, setFailure] = useState<{ error: ApiProblem; submitting: boolean } | null>(null);
++  const [completed, setCompleted] = useState(false);
++  const active = useRef<AbortController | null>(null);
++  const inFlight = useRef(false);
++  const mounted = useRef(true);
++  useEffect(() => { mounted.current = true; return () => { mounted.current = false; active.current?.abort(); }; }, []);
++
++  async function runRequest(kind: "submit" | "lookup", frozen?: QuestionSubmission) {
++    if (inFlight.current || actionPending || !isSessionCurrent(sessionGeneration)) return;
++    const controller = new AbortController();
++    active.current = controller;
++    inFlight.current = true;
++    setPending(kind);
++    setAnswer(null);
++    setFailure(null);
++    const current = () => mounted.current && !controller.signal.aborted && isSessionCurrent(sessionGeneration);
++    try {
++      const result = kind === "submit" && frozen !== undefined ? await submitQuestion(frozen, current, controller.signal) : await getAnswer(answerId.trim(), controller.signal);
++      if (!current()) return;
++      if (state.kind !== "authenticated" || result.data_mode !== state.user.data_mode) throw new ApiProblem(502, "invalid_response", false);
++      setAnswer(result);
++      setAnswerId(result.answer_id);
++      if (kind === "submit" && frozen !== undefined) {
++        confirmedAnswerScope.current = { answerId: result.answer_id, eventId: frozen.body.event_ids[0] };
++        setCompleted(true);
++      }
++      setAnswerEventId(confirmedAnswerScope.current?.answerId === result.answer_id ? confirmedAnswerScope.current.eventId : null);
++    } catch (error: unknown) {
++      if (!current()) return;
++      const problem = publicProblem(error);
++      setFailure({ error: problem, submitting: kind === "submit" });
++      if (problem.status === 401) expireSession(sessionGeneration);
++    } finally {
++      if (current()) { inFlight.current = false; setPending(null); }
++    }
++  }
++
++  function submit(event: FormEvent<HTMLFormElement>) {
++    event.preventDefault();
++    if (inFlight.current || submission !== null || actionPending || !isSessionCurrent(sessionGeneration)) return;
++    const frozen: QuestionSubmission = { body: { question, mode: "library", event_ids: [eventId.trim().toLowerCase()] }, idempotencyKey: `question-ui-${crypto.randomUUID()}` };
++    try { validateQuestionSubmission(frozen); } catch (error: unknown) { setAnswer(null); setFailure({ error: publicProblem(error), submitting: true }); return; }
++    setSubmission(frozen);
++    setCompleted(false);
++    void runRequest("submit", frozen);
++  }
++  function startNewQuestion() {
++    if (inFlight.current || actionPending || !isSessionCurrent(sessionGeneration)) return;
++    setSubmission(null); setCompleted(false); setAnswer(null); setFailure(null); setQuestion("");
++  }
++
++  const locked = submission !== null || pending !== null || actionPending;
++  return <div className="question-workspace"><div className="question-scope"><p className="eyebrow">LIBRARY / 单事件证据研究</p><p>基于当前有权查看的事件资料提问。此次只支持资料库单事件，不支持资产研判、历史时间或自动调查。</p><span className="question-mode">当前会话：{state.kind === "authenticated" && state.user.data_mode === "fixture" ? "合成 / Fixture · 隔离数据" : "真实 / Live"}</span></div><div className="question-workspace-grid">
++    <section className="panel question-input-panel" aria-labelledby="question-input-title"><div className="panel-heading"><div><p className="eyebrow">ASK / 从证据开始</p><h2 id="question-input-title">提出问题</h2></div><span className="small-note">library</span></div><form className="question-form" aria-label="单事件问答" onSubmit={submit}><label htmlFor="question-event-id">事件标识<input id="question-event-id" value={eventId} disabled={locked} onChange={(event) => setEventId(event.target.value)} placeholder="一个完整事件UUID" required /></label><label htmlFor="question-text">你的问题<textarea id="question-text" value={question} disabled={locked} onChange={(event) => setQuestion(event.target.value)} rows={6} required placeholder="描述你需要核对的事实、机制或修复依据" /></label><p className="small-note">{[...question].length} / 4096 字符。未知与缺失会明确显示，页面不会补造答案。</p><button className="button" disabled={locked} type="submit">{pending === "submit" ? "等待完整回答…" : "提交问题"}</button></form>
++      {submission !== null && <div className="question-frozen"><h3>{completed ? "本轮已取得回答" : "本轮请求已冻结"}</h3><dl className="question-metadata"><dt>事件</dt><dd><code>{submission.body.event_ids[0]}</code></dd><dt>请求键</dt><dd><code>{submission.idempotencyKey}</code></dd></dl><p className="small-note">结果未知时保留相同问题、事件和请求键。原样重试沿用同一业务请求；开始新问题后首次提交才生成新键。</p><div className="question-actions">{!completed && <button className="button secondary" disabled={pending !== null || actionPending} onClick={() => void runRequest("submit", submission)}>原样重试本轮</button>}<button className="button secondary" disabled={pending !== null || actionPending} onClick={startNewQuestion}>开始新问题</button></div></div>}
++      <form className="question-form question-lookup" aria-label="查询已保存回答" onSubmit={(event) => { event.preventDefault(); void runRequest("lookup"); }}><h3>读取已保存回答</h3><label htmlFor="question-answer-id">回答标识<input id="question-answer-id" value={answerId} disabled={pending !== null || actionPending} onChange={(event) => setAnswerId(event.target.value)} placeholder="保存的answer UUID" required /></label><button className="button secondary" type="submit" disabled={pending !== null || actionPending || !answerId.trim()}>查询 / 刷新回答</button><p className="small-note">服务端重新检查所有权与当前性。问题与回答正文只在本页内存中保留；返回后可凭回答标识查询。</p></form>
++    </section>
++    <section className="panel question-result-panel" aria-labelledby="question-result-title"><div className="panel-heading"><div><p className="eyebrow">ANSWER / 结论与依据</p><h2 id="question-result-title">回答与证据</h2></div><span className="small-note">完整完成后显示</span></div>{pending !== null && <p className="question-loading" role="status">{pending === "submit" ? "正在提交问题并等待完整回答。未返回结果前不能判断结论。" : "正在重新读取回答及其当前性…"}</p>}{failure !== null && <ErrorPanel error={failure.error} message={failureMessage(failure.error, failure.submitting)} />}{answer !== null && <CompletedAnswer answer={answer} eventId={answerEventId} />}{answer === null && pending === null && failure === null && <EmptyState title="尚未提出问题" description="提交问题或查询已保存回答后，这里展示服务端确认的结论、限制和原文引用。" />}</section>
++  </div></div>;
++}
++
++/** 登录上下文是唯一身份来源；会话切换由App代次key卸载全部私有问答状态。 */
++export function QuestionWorkspace({ eventId = "" }: { eventId?: string }) {
++  const { state, actionPending, error: sessionError } = useAuthSession();
++  if (state.kind === "loading") return <section className="panel"><p className="loading-state" role="status">正在恢复问答会话…</p></section>;
++  if (state.kind !== "authenticated") return <section className="panel question-access">{sessionError !== null && <ErrorPanel error={sessionError} />}<EmptyState title="登录后使用证据问答" description="当前没有有效会话，未读取事件或回答。" /><a className="button secondary" href="#session">前往登录</a></section>;
++  if (!state.user.permissions.some((permission) => permission === "read:public" || permission === "read:tenant")) return <section className="panel"><EmptyState title="没有问答访问权限" description="当前会话没有资料读取授权，请联系团队管理员。" /></section>;
++  if (actionPending) return <section className="panel"><p className="loading-state" role="status">正在核对会话，请稍后操作…</p></section>;
++  return <AuthenticatedQuestions initialEventId={eventId} />;
++}
+diff --git a/frontend/src/features/questions/question.fixture.ts b/frontend/src/features/questions/question.fixture.ts
+new file mode 100644
+index 0000000..ba16c35
+--- /dev/null
++++ b/frontend/src/features/questions/question.fixture.ts
+@@ -0,0 +1,5 @@
++/** 隔离单元与浏览器fixture，产品组件不导入本文件；不计live证据。 */
++export const questionFixtureIds = { event: "00000000-0000-4000-8000-000000000001", answer: "00000000-0000-4000-8000-000000000002", evidence: "00000000-0000-4000-8000-000000000003", revision: "00000000-0000-4000-8000-000000000004", other: "00000000-0000-4000-8000-000000000005" };
++export function questionAnswerFixture() {
++  return { kind: "completed", answer_id: questionFixtureIds.answer, answer_text: "隔离测试回答：资料说明了风险机制；尚无资产结论。", claims: [{ text: "隔离来源说明风险机制。", kind: "source_fact", support_ids: [questionFixtureIds.evidence] }, { text: "隔离规则要求复核条件。", kind: "rule_result", support_ids: [questionFixtureIds.evidence] }, { text: "建议复核部署条件。", kind: "project_suggestion", support_ids: [] }], citations: [{ evidence_id: questionFixtureIds.evidence, revision_id: questionFixtureIds.revision, quote: "隔离原文：仅在指定条件下适用。", locator: "text:0-18", source_uri: "https://example.test/advisory" }], limitations: ["隔离测试没有资产快照，无法确认具体部署影响。"], freshness: "current", data_mode: "fixture", started_at: "2026-10-15T07:00:00Z", completed_at: "2026-10-15T07:00:01.234Z", latency_milliseconds: 1234 };
++}
+diff --git a/frontend/src/features/questions/questions.css b/frontend/src/features/questions/questions.css
+new file mode 100644
+index 0000000..aa6f369
+--- /dev/null
++++ b/frontend/src/features/questions/questions.css
+@@ -0,0 +1,44 @@
++.question-workspace { min-width: 0; }
++.question-scope { border-left: 2px solid var(--accent); padding-left: 16px; margin-bottom: 24px; }
++.question-scope p { color: var(--muted); font-size: 13px; }
++.question-mode { color: var(--accent); font-size: 12px; }
++.question-workspace-grid { display: grid; grid-template-columns: minmax(280px, .75fr) minmax(0, 1.5fr); align-items: start; gap: 20px; }
++.question-form { display: grid; gap: 16px; padding: 20px; }
++.question-form label { display: grid; gap: 8px; color: var(--muted); font-size: 12px; min-width: 0; }
++.question-form input, .question-form textarea { width: 100%; min-width: 0; border: 1px solid #405658; background: var(--field); color: var(--ink); padding: 12px; font: inherit; border-radius: 4px; }
++.question-form input { font-family: var(--mono); }
++.question-form textarea { resize: vertical; min-height: 140px; line-height: 1.7; }
++.question-form textarea:focus-visible, .question-citation:focus { outline: 2px solid var(--accent); outline-offset: 3px; }
++.question-form .button { justify-self: start; }
++.question-form p { margin-bottom: 0; }
++.question-frozen, .question-lookup { border-top: 1px solid var(--line); padding: 20px; }
++.question-frozen h3 { color: var(--accent); }
++.question-metadata { display: grid; grid-template-columns: 75px minmax(0, 1fr); gap: 10px 14px; line-height: 1.7; font-size: 12px; }
++.question-metadata dt { color: var(--muted); }
++.question-metadata dd { margin: 0; overflow-wrap: anywhere; min-width: 0; }
++.question-metadata code { font-size: 11px; }
++.question-actions, .question-supports { display: flex; flex-wrap: wrap; gap: 12px; }
++.question-supports a { font-size: 12px; color: var(--accent); }
++.question-loading, .question-answer { padding: 24px; font-size: 13px; overflow-wrap: anywhere; }
++.question-loading { color: var(--muted); }
++.question-answer-status { display: flex; flex-wrap: wrap; gap: 10px 18px; padding-bottom: 20px; margin-bottom: 24px; border-bottom: 1px solid var(--line); font-size: 12px; }
++.question-answer-status strong { font: 12px var(--mono); font-weight: 400; }
++.question-freshness { color: var(--warn); }
++.question-freshness.freshness-current { color: var(--accent); }
++.question-answer-text, .question-citation blockquote { white-space: pre-wrap; line-height: 1.85; }
++.question-claim-group { margin-top: 24px; }
++.question-claim-group > h3 { color: var(--accent); }
++.question-claim { padding: 8px 0 16px; }
++.question-claim p { margin-bottom: 8px; }
++.question-limitations, .question-warning { padding: 16px; border-left: 2px solid var(--warn); background: #e3bd7d08; }
++.question-limitations { margin: 24px 0; }
++.question-limitations p, .question-limitations ul { margin-bottom: 0; }
++.question-limitations li { line-height: 1.7; margin-top: 8px; }
++.question-citation { padding: 20px 0; border-top: 1px solid var(--line); scroll-margin: 20px; }
++.question-citation h4 { margin: 0 0 12px; color: var(--ink); font-size: 13px; }
++.question-citation blockquote { margin: 0; padding-left: 14px; border-left: 1px solid #517868; color: var(--muted); }
++.question-answer-metadata { margin-top: 16px; padding-top: 20px; border-top: 1px solid var(--line); }
++.question-access { padding-bottom: 24px; }
++.question-access > .button { margin-left: 24px; }
++@media (max-width: 1100px) { .question-workspace-grid { grid-template-columns: minmax(0, 1fr); } }
++@media (max-width: 640px) { .question-form, .question-frozen, .question-answer, .question-loading { padding: 18px 16px; } .question-metadata { grid-template-columns: 65px minmax(0, 1fr); gap: 10px; } }

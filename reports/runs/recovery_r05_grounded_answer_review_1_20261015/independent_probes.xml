@@ -1,0 +1,405 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="4" skipped="0" tests="28" time="1.315" timestamp="2026-10-15T16:27:53.363570+08:00" hostname="yin"><testcase classname="" name="test_unrelated_subject_state_does_not_block_direct_fact[\u4ea7\u54c1A\u5df2\u57281.2.3\u4fee\u590d\u3002\u4ea7\u54c1B\u662f\u5426\u53d7\u5f71\u54cd\u672a\u77e5\u3002-\u4ea7\u54c1A\u5df2\u57281.2.3\u4fee\u590d\u3002]" time="0.052"><failure message="ai_intel.answering.contracts.GroundedAnswerFailure: answer_uncertainty_lost">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002C74B7803B0&gt;
+source = '产品A已在1.2.3修复。产品B是否受影响未知。', selected = '产品A已在1.2.3修复。'
+
+    @pytest.mark.parametrize(
+        "source,selected",
+        [
+            ("产品A已在1.2.3修复。产品B是否受影响未知。", "产品A已在1.2.3修复。"),
+            ("产品A已在1.2.3修复。产品B不受影响。", "产品A已在1.2.3修复。"),
+            ("产品A受影响。产品B不受影响。", "产品A受影响。"),
+            ("产品A不受影响。产品B是否受影响未知。", "产品A不受影响。"),
+        ],
+    )
+    def test_unrelated_subject_state_does_not_block_direct_fact(monkeypatch, source, selected):
+        client, calls = client_for(monkeypatch, [output(selected, selected), {"verdicts": [verdict()]}])
+&gt;       draft = generate_grounded_answer(client, "产品A的状态是什么？", (citation(source),))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+D:\dianzi\reports\runs\recovery_r05_grounded_answer_review_1_20261015\test_independent_grounded_probes.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;ai_intel.infrastructure.models.generation.GenerationClient object at 0x000002C74BC29040&gt;
+question = '产品A的状态是什么？'
+evidence = (CitationProjection(evidence_id=UUID('00000000-0000-0000-0000-000000000001'), revision_id=UUID('00000000-0000-0000-000...0065'), quote='产品A已在1.2.3修复。产品B是否受影响未知。', locator='text:0:24', source_uri=HttpUrl('https://vendor.example/advisory')),)
+
+    def generate_grounded_answer(
+        client: GenerationClient, question: str, evidence: tuple[CitationProjection, ...]
+    ) -&gt; GroundedAnswerDraft:
+        """Generate once, verify once, and fail safely with every actual attempt retained.
+    
+        Callers supply authorized public evidence, recheck ACL/epochs before return, and
+        configure each client call to at most 30 seconds. No rule or asset result is inferred.
+        """
+        deadline = time.monotonic() + TOTAL_TIMEOUT_SECONDS
+        attempts: tuple[AttemptMetadata, ...] = ()
+        try:
+            _validate_inputs(question, evidence)
+            if not isinstance(client, GenerationClient) or client.limits.total_timeout_seconds &gt; 30:
+                raise GroundedAnswerFailure("answer_client_timeout_invalid")
+            evidence_texts = tuple(
+                json.dumps(citation.model_dump(mode="json"), ensure_ascii=False)
+                for citation in evidence
+            )
+            request = GenerationRequest(
+                system_text=GENERATION_SYSTEM,
+                question=question,
+                evidence_texts=evidence_texts,
+                prompt_version=PROMPT_VERSION,
+                schema_version=SCHEMA_VERSION,
+                model_version=client.approved_model,
+                max_output_tokens=4096,
+                allow_format_repair=False,
+            )
+            _check_deadline(deadline)
+            generated_result = client.generate(request, GeneratedAnswer)
+            attempts += generated_result.attempts
+            if len(generated_result.attempts) != 1 or generated_result.format_repair_used:
+                raise GroundedAnswerFailure("answer_call_budget_invalid")
+            _check_deadline(deadline)
+            citations = validate_citations(generated_result.value, evidence)
+            verification_text = json.dumps(
+                {
+                    "claims_to_verify": [
+                        {"claim_index": index, **claim.model_dump(mode="json")}
+                        for index, claim in enumerate(generated_result.value.claims, 1)
+                    ],
+                    "selected_citations": [citation.model_dump(mode="json") for citation in citations],
+                },
+                ensure_ascii=False,
+            )
+            verification_request = request.model_copy(
+                update={
+                    "system_text": VERIFICATION_SYSTEM,
+                    "evidence_texts": (*evidence_texts, verification_text),
+                    "prompt_version": PROMPT_VERSION + "-verify",
+                    "schema_version": SCHEMA_VERSION + "-verify",
+                    "max_output_tokens": 2048,
+                }
+            )
+            _check_deadline(deadline)
+            verification_result = client.generate(verification_request, SupportVerification)
+            attempts += verification_result.attempts
+            if len(verification_result.attempts) != 1 or verification_result.format_repair_used:
+                raise GroundedAnswerFailure("answer_call_budget_invalid")
+            _check_deadline(deadline)
+            claims = generated_result.value.claims
+            validate_support_verdicts(claims, verification_result.value)
+            lines = []
+            for index, claim in enumerate(claims, 1):
+                label = "项目建议" if claim.kind == "project_suggestion" else "来源事实"
+                lines.append(f"{label} {index}：{claim.text}")
+            return GroundedAnswerDraft(
+                answer_text="\n".join(lines),
+                claims=claims,
+                citations=citations,
+                limitations=("回答仅覆盖本次提供的公开来源片段；未提供信息不代表不存在。",),
+                attempts=attempts,
+            )
+        except GroundedAnswerFailure as error:
+&gt;           raise GroundedAnswerFailure(error.code, attempts) from None
+E           ai_intel.answering.contracts.GroundedAnswerFailure: answer_uncertainty_lost
+
+src\ai_intel\answering\grounding.py:240: GroundedAnswerFailure</failure></testcase><testcase classname="" name="test_unrelated_subject_state_does_not_block_direct_fact[\u4ea7\u54c1A\u5df2\u57281.2.3\u4fee\u590d\u3002\u4ea7\u54c1B\u4e0d\u53d7\u5f71\u54cd\u3002-\u4ea7\u54c1A\u5df2\u57281.2.3\u4fee\u590d\u3002]" time="0.026"><failure message="ai_intel.answering.contracts.GroundedAnswerFailure: answer_negation_lost">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002C74BC63200&gt;
+source = '产品A已在1.2.3修复。产品B不受影响。', selected = '产品A已在1.2.3修复。'
+
+    @pytest.mark.parametrize(
+        "source,selected",
+        [
+            ("产品A已在1.2.3修复。产品B是否受影响未知。", "产品A已在1.2.3修复。"),
+            ("产品A已在1.2.3修复。产品B不受影响。", "产品A已在1.2.3修复。"),
+            ("产品A受影响。产品B不受影响。", "产品A受影响。"),
+            ("产品A不受影响。产品B是否受影响未知。", "产品A不受影响。"),
+        ],
+    )
+    def test_unrelated_subject_state_does_not_block_direct_fact(monkeypatch, source, selected):
+        client, calls = client_for(monkeypatch, [output(selected, selected), {"verdicts": [verdict()]}])
+&gt;       draft = generate_grounded_answer(client, "产品A的状态是什么？", (citation(source),))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+D:\dianzi\reports\runs\recovery_r05_grounded_answer_review_1_20261015\test_independent_grounded_probes.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;ai_intel.infrastructure.models.generation.GenerationClient object at 0x000002C74BC62660&gt;
+question = '产品A的状态是什么？'
+evidence = (CitationProjection(evidence_id=UUID('00000000-0000-0000-0000-000000000001'), revision_id=UUID('00000000-0000-0000-000...0000065'), quote='产品A已在1.2.3修复。产品B不受影响。', locator='text:0:21', source_uri=HttpUrl('https://vendor.example/advisory')),)
+
+    def generate_grounded_answer(
+        client: GenerationClient, question: str, evidence: tuple[CitationProjection, ...]
+    ) -&gt; GroundedAnswerDraft:
+        """Generate once, verify once, and fail safely with every actual attempt retained.
+    
+        Callers supply authorized public evidence, recheck ACL/epochs before return, and
+        configure each client call to at most 30 seconds. No rule or asset result is inferred.
+        """
+        deadline = time.monotonic() + TOTAL_TIMEOUT_SECONDS
+        attempts: tuple[AttemptMetadata, ...] = ()
+        try:
+            _validate_inputs(question, evidence)
+            if not isinstance(client, GenerationClient) or client.limits.total_timeout_seconds &gt; 30:
+                raise GroundedAnswerFailure("answer_client_timeout_invalid")
+            evidence_texts = tuple(
+                json.dumps(citation.model_dump(mode="json"), ensure_ascii=False)
+                for citation in evidence
+            )
+            request = GenerationRequest(
+                system_text=GENERATION_SYSTEM,
+                question=question,
+                evidence_texts=evidence_texts,
+                prompt_version=PROMPT_VERSION,
+                schema_version=SCHEMA_VERSION,
+                model_version=client.approved_model,
+                max_output_tokens=4096,
+                allow_format_repair=False,
+            )
+            _check_deadline(deadline)
+            generated_result = client.generate(request, GeneratedAnswer)
+            attempts += generated_result.attempts
+            if len(generated_result.attempts) != 1 or generated_result.format_repair_used:
+                raise GroundedAnswerFailure("answer_call_budget_invalid")
+            _check_deadline(deadline)
+            citations = validate_citations(generated_result.value, evidence)
+            verification_text = json.dumps(
+                {
+                    "claims_to_verify": [
+                        {"claim_index": index, **claim.model_dump(mode="json")}
+                        for index, claim in enumerate(generated_result.value.claims, 1)
+                    ],
+                    "selected_citations": [citation.model_dump(mode="json") for citation in citations],
+                },
+                ensure_ascii=False,
+            )
+            verification_request = request.model_copy(
+                update={
+                    "system_text": VERIFICATION_SYSTEM,
+                    "evidence_texts": (*evidence_texts, verification_text),
+                    "prompt_version": PROMPT_VERSION + "-verify",
+                    "schema_version": SCHEMA_VERSION + "-verify",
+                    "max_output_tokens": 2048,
+                }
+            )
+            _check_deadline(deadline)
+            verification_result = client.generate(verification_request, SupportVerification)
+            attempts += verification_result.attempts
+            if len(verification_result.attempts) != 1 or verification_result.format_repair_used:
+                raise GroundedAnswerFailure("answer_call_budget_invalid")
+            _check_deadline(deadline)
+            claims = generated_result.value.claims
+            validate_support_verdicts(claims, verification_result.value)
+            lines = []
+            for index, claim in enumerate(claims, 1):
+                label = "项目建议" if claim.kind == "project_suggestion" else "来源事实"
+                lines.append(f"{label} {index}：{claim.text}")
+            return GroundedAnswerDraft(
+                answer_text="\n".join(lines),
+                claims=claims,
+                citations=citations,
+                limitations=("回答仅覆盖本次提供的公开来源片段；未提供信息不代表不存在。",),
+                attempts=attempts,
+            )
+        except GroundedAnswerFailure as error:
+&gt;           raise GroundedAnswerFailure(error.code, attempts) from None
+E           ai_intel.answering.contracts.GroundedAnswerFailure: answer_negation_lost
+
+src\ai_intel\answering\grounding.py:240: GroundedAnswerFailure</failure></testcase><testcase classname="" name="test_unrelated_subject_state_does_not_block_direct_fact[\u4ea7\u54c1A\u53d7\u5f71\u54cd\u3002\u4ea7\u54c1B\u4e0d\u53d7\u5f71\u54cd\u3002-\u4ea7\u54c1A\u53d7\u5f71\u54cd\u3002]" time="0.023"><failure message="ai_intel.answering.contracts.GroundedAnswerFailure: answer_negation_lost">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002C74B5BD880&gt;
+source = '产品A受影响。产品B不受影响。', selected = '产品A受影响。'
+
+    @pytest.mark.parametrize(
+        "source,selected",
+        [
+            ("产品A已在1.2.3修复。产品B是否受影响未知。", "产品A已在1.2.3修复。"),
+            ("产品A已在1.2.3修复。产品B不受影响。", "产品A已在1.2.3修复。"),
+            ("产品A受影响。产品B不受影响。", "产品A受影响。"),
+            ("产品A不受影响。产品B是否受影响未知。", "产品A不受影响。"),
+        ],
+    )
+    def test_unrelated_subject_state_does_not_block_direct_fact(monkeypatch, source, selected):
+        client, calls = client_for(monkeypatch, [output(selected, selected), {"verdicts": [verdict()]}])
+&gt;       draft = generate_grounded_answer(client, "产品A的状态是什么？", (citation(source),))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+D:\dianzi\reports\runs\recovery_r05_grounded_answer_review_1_20261015\test_independent_grounded_probes.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;ai_intel.infrastructure.models.generation.GenerationClient object at 0x000002C74BC61DC0&gt;
+question = '产品A的状态是什么？'
+evidence = (CitationProjection(evidence_id=UUID('00000000-0000-0000-0000-000000000001'), revision_id=UUID('00000000-0000-0000-0000-000000000065'), quote='产品A受影响。产品B不受影响。', locator='text:0:15', source_uri=HttpUrl('https://vendor.example/advisory')),)
+
+    def generate_grounded_answer(
+        client: GenerationClient, question: str, evidence: tuple[CitationProjection, ...]
+    ) -&gt; GroundedAnswerDraft:
+        """Generate once, verify once, and fail safely with every actual attempt retained.
+    
+        Callers supply authorized public evidence, recheck ACL/epochs before return, and
+        configure each client call to at most 30 seconds. No rule or asset result is inferred.
+        """
+        deadline = time.monotonic() + TOTAL_TIMEOUT_SECONDS
+        attempts: tuple[AttemptMetadata, ...] = ()
+        try:
+            _validate_inputs(question, evidence)
+            if not isinstance(client, GenerationClient) or client.limits.total_timeout_seconds &gt; 30:
+                raise GroundedAnswerFailure("answer_client_timeout_invalid")
+            evidence_texts = tuple(
+                json.dumps(citation.model_dump(mode="json"), ensure_ascii=False)
+                for citation in evidence
+            )
+            request = GenerationRequest(
+                system_text=GENERATION_SYSTEM,
+                question=question,
+                evidence_texts=evidence_texts,
+                prompt_version=PROMPT_VERSION,
+                schema_version=SCHEMA_VERSION,
+                model_version=client.approved_model,
+                max_output_tokens=4096,
+                allow_format_repair=False,
+            )
+            _check_deadline(deadline)
+            generated_result = client.generate(request, GeneratedAnswer)
+            attempts += generated_result.attempts
+            if len(generated_result.attempts) != 1 or generated_result.format_repair_used:
+                raise GroundedAnswerFailure("answer_call_budget_invalid")
+            _check_deadline(deadline)
+            citations = validate_citations(generated_result.value, evidence)
+            verification_text = json.dumps(
+                {
+                    "claims_to_verify": [
+                        {"claim_index": index, **claim.model_dump(mode="json")}
+                        for index, claim in enumerate(generated_result.value.claims, 1)
+                    ],
+                    "selected_citations": [citation.model_dump(mode="json") for citation in citations],
+                },
+                ensure_ascii=False,
+            )
+            verification_request = request.model_copy(
+                update={
+                    "system_text": VERIFICATION_SYSTEM,
+                    "evidence_texts": (*evidence_texts, verification_text),
+                    "prompt_version": PROMPT_VERSION + "-verify",
+                    "schema_version": SCHEMA_VERSION + "-verify",
+                    "max_output_tokens": 2048,
+                }
+            )
+            _check_deadline(deadline)
+            verification_result = client.generate(verification_request, SupportVerification)
+            attempts += verification_result.attempts
+            if len(verification_result.attempts) != 1 or verification_result.format_repair_used:
+                raise GroundedAnswerFailure("answer_call_budget_invalid")
+            _check_deadline(deadline)
+            claims = generated_result.value.claims
+            validate_support_verdicts(claims, verification_result.value)
+            lines = []
+            for index, claim in enumerate(claims, 1):
+                label = "项目建议" if claim.kind == "project_suggestion" else "来源事实"
+                lines.append(f"{label} {index}：{claim.text}")
+            return GroundedAnswerDraft(
+                answer_text="\n".join(lines),
+                claims=claims,
+                citations=citations,
+                limitations=("回答仅覆盖本次提供的公开来源片段；未提供信息不代表不存在。",),
+                attempts=attempts,
+            )
+        except GroundedAnswerFailure as error:
+&gt;           raise GroundedAnswerFailure(error.code, attempts) from None
+E           ai_intel.answering.contracts.GroundedAnswerFailure: answer_negation_lost
+
+src\ai_intel\answering\grounding.py:240: GroundedAnswerFailure</failure></testcase><testcase classname="" name="test_unrelated_subject_state_does_not_block_direct_fact[\u4ea7\u54c1A\u4e0d\u53d7\u5f71\u54cd\u3002\u4ea7\u54c1B\u662f\u5426\u53d7\u5f71\u54cd\u672a\u77e5\u3002-\u4ea7\u54c1A\u4e0d\u53d7\u5f71\u54cd\u3002]" time="0.023"><failure message="ai_intel.answering.contracts.GroundedAnswerFailure: answer_uncertainty_lost">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002C74BCD6A80&gt;
+source = '产品A不受影响。产品B是否受影响未知。', selected = '产品A不受影响。'
+
+    @pytest.mark.parametrize(
+        "source,selected",
+        [
+            ("产品A已在1.2.3修复。产品B是否受影响未知。", "产品A已在1.2.3修复。"),
+            ("产品A已在1.2.3修复。产品B不受影响。", "产品A已在1.2.3修复。"),
+            ("产品A受影响。产品B不受影响。", "产品A受影响。"),
+            ("产品A不受影响。产品B是否受影响未知。", "产品A不受影响。"),
+        ],
+    )
+    def test_unrelated_subject_state_does_not_block_direct_fact(monkeypatch, source, selected):
+        client, calls = client_for(monkeypatch, [output(selected, selected), {"verdicts": [verdict()]}])
+&gt;       draft = generate_grounded_answer(client, "产品A的状态是什么？", (citation(source),))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+D:\dianzi\reports\runs\recovery_r05_grounded_answer_review_1_20261015\test_independent_grounded_probes.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+client = &lt;ai_intel.infrastructure.models.generation.GenerationClient object at 0x000002C74BCD6840&gt;
+question = '产品A的状态是什么？'
+evidence = (CitationProjection(evidence_id=UUID('00000000-0000-0000-0000-000000000001'), revision_id=UUID('00000000-0000-0000-000...000000065'), quote='产品A不受影响。产品B是否受影响未知。', locator='text:0:19', source_uri=HttpUrl('https://vendor.example/advisory')),)
+
+    def generate_grounded_answer(
+        client: GenerationClient, question: str, evidence: tuple[CitationProjection, ...]
+    ) -&gt; GroundedAnswerDraft:
+        """Generate once, verify once, and fail safely with every actual attempt retained.
+    
+        Callers supply authorized public evidence, recheck ACL/epochs before return, and
+        configure each client call to at most 30 seconds. No rule or asset result is inferred.
+        """
+        deadline = time.monotonic() + TOTAL_TIMEOUT_SECONDS
+        attempts: tuple[AttemptMetadata, ...] = ()
+        try:
+            _validate_inputs(question, evidence)
+            if not isinstance(client, GenerationClient) or client.limits.total_timeout_seconds &gt; 30:
+                raise GroundedAnswerFailure("answer_client_timeout_invalid")
+            evidence_texts = tuple(
+                json.dumps(citation.model_dump(mode="json"), ensure_ascii=False)
+                for citation in evidence
+            )
+            request = GenerationRequest(
+                system_text=GENERATION_SYSTEM,
+                question=question,
+                evidence_texts=evidence_texts,
+                prompt_version=PROMPT_VERSION,
+                schema_version=SCHEMA_VERSION,
+                model_version=client.approved_model,
+                max_output_tokens=4096,
+                allow_format_repair=False,
+            )
+            _check_deadline(deadline)
+            generated_result = client.generate(request, GeneratedAnswer)
+            attempts += generated_result.attempts
+            if len(generated_result.attempts) != 1 or generated_result.format_repair_used:
+                raise GroundedAnswerFailure("answer_call_budget_invalid")
+            _check_deadline(deadline)
+            citations = validate_citations(generated_result.value, evidence)
+            verification_text = json.dumps(
+                {
+                    "claims_to_verify": [
+                        {"claim_index": index, **claim.model_dump(mode="json")}
+                        for index, claim in enumerate(generated_result.value.claims, 1)
+                    ],
+                    "selected_citations": [citation.model_dump(mode="json") for citation in citations],
+                },
+                ensure_ascii=False,
+            )
+            verification_request = request.model_copy(
+                update={
+                    "system_text": VERIFICATION_SYSTEM,
+                    "evidence_texts": (*evidence_texts, verification_text),
+                    "prompt_version": PROMPT_VERSION + "-verify",
+                    "schema_version": SCHEMA_VERSION + "-verify",
+                    "max_output_tokens": 2048,
+                }
+            )
+            _check_deadline(deadline)
+            verification_result = client.generate(verification_request, SupportVerification)
+            attempts += verification_result.attempts
+            if len(verification_result.attempts) != 1 or verification_result.format_repair_used:
+                raise GroundedAnswerFailure("answer_call_budget_invalid")
+            _check_deadline(deadline)
+            claims = generated_result.value.claims
+            validate_support_verdicts(claims, verification_result.value)
+            lines = []
+            for index, claim in enumerate(claims, 1):
+                label = "项目建议" if claim.kind == "project_suggestion" else "来源事实"
+                lines.append(f"{label} {index}：{claim.text}")
+            return GroundedAnswerDraft(
+                answer_text="\n".join(lines),
+                claims=claims,
+                citations=citations,
+                limitations=("回答仅覆盖本次提供的公开来源片段；未提供信息不代表不存在。",),
+                attempts=attempts,
+            )
+        except GroundedAnswerFailure as error:
+&gt;           raise GroundedAnswerFailure(error.code, attempts) from None
+E           ai_intel.answering.contracts.GroundedAnswerFailure: answer_uncertainty_lost
+
+src\ai_intel\answering\grounding.py:240: GroundedAnswerFailure</failure></testcase><testcase classname="" name="test_wire_json_lists_and_uuid_strings_are_accepted[deepseek_openai]" time="0.025" /><testcase classname="" name="test_wire_json_lists_and_uuid_strings_are_accepted[deepseek_anthropic]" time="0.024" /><testcase classname="" name="test_all_document_line_separators_are_rejected[\n]" time="0.026" /><testcase classname="" name="test_all_document_line_separators_are_rejected[\r]" time="0.023" /><testcase classname="" name="test_all_document_line_separators_are_rejected[\r\n]" time="0.023" /><testcase classname="" name="test_all_document_line_separators_are_rejected[\x0b]" time="0.025" /><testcase classname="" name="test_all_document_line_separators_are_rejected[\x0c]" time="0.023" /><testcase classname="" name="test_all_document_line_separators_are_rejected[\x85]" time="0.026" /><testcase classname="" name="test_all_document_line_separators_are_rejected[\u2028]" time="0.025" /><testcase classname="" name="test_all_document_line_separators_are_rejected[\u2029]" time="0.024" /><testcase classname="" name="test_numeric_and_version_partial_matches_are_rejected[\u8bc4\u52069.8\u3002-\u8bc4\u520619.8\u3002]" time="0.033" /><testcase classname="" name="test_numeric_and_version_partial_matches_are_rejected[\u7248\u672c1.2.3\u5df2\u4fee\u590d\u3002-\u7248\u672c1.2.30\u5df2\u4fee\u590d\u3002]" time="0.023" /><testcase classname="" name="test_numeric_and_version_partial_matches_are_rejected[\u7248\u672c1.2\u5df2\u4fee\u590d\u3002-\u7248\u672c1.2.3\u5df2\u4fee\u590d\u3002]" time="0.023" /><testcase classname="" name="test_free_text_and_rule_output_do_not_escape[payload0]" time="0.029" /><testcase classname="" name="test_free_text_and_rule_output_do_not_escape[payload1]" time="0.037" /><testcase classname="" name="test_free_text_and_rule_output_do_not_escape[payload2]" time="0.033" /><testcase classname="" name="test_free_text_and_rule_output_do_not_escape[payload3]" time="0.026" /><testcase classname="" name="test_independent_negative_or_incomplete_verdict_cannot_pass[verdicts0]" time="0.032" /><testcase classname="" name="test_independent_negative_or_incomplete_verdict_cannot_pass[verdicts1]" time="0.031" /><testcase classname="" name="test_independent_negative_or_incomplete_verdict_cannot_pass[verdicts2]" time="0.032" /><testcase classname="" name="test_independent_negative_or_incomplete_verdict_cannot_pass[verdicts3]" time="0.038" /><testcase classname="" name="test_independent_negative_or_incomplete_verdict_cannot_pass[verdicts4]" time="0.037" /><testcase classname="" name="test_instruction_is_kept_out_of_trusted_system_and_rendered_limitations" time="0.033" /><testcase classname="" name="test_split_subjects_remain_separate_claims_and_supports" time="0.030" /></testsuite></testsuites>

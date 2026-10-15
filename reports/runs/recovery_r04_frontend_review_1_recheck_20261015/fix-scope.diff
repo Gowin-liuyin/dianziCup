@@ -1,0 +1,120 @@
+diff --git a/frontend/src/api/client.test.ts b/frontend/src/api/client.test.ts
+index 47e127e..4a6e6f5 100644
+--- a/frontend/src/api/client.test.ts
++++ b/frontend/src/api/client.test.ts
+@@ -90,3 +90,11 @@ describe("strict R01 HTTP boundary — synthetic response fixtures", () => {
+     await assertion;
+   });
+ });
++
++
++describe("HTTP errors with non-JSON upstream bodies", () => {
++  it.each([401, 403, 503])("preserves status %s and never exposes upstream text", async (status) => {
++    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("fixture upstream private body", { status })));
++    await expect(getCurrentUser()).rejects.toMatchObject({ status });
++  });
++});
+diff --git a/frontend/src/api/client.ts b/frontend/src/api/client.ts
+index c4ccd7f..175fcc9 100644
+--- a/frontend/src/api/client.ts
++++ b/frontend/src/api/client.ts
+@@ -87,7 +87,10 @@ export async function fetchJson(path: string, options: RequestInit = {}, signal?
+     headers.set("Accept", "application/json, application/problem+json");
+     const response = await fetch(path, { ...options, headers, credentials: "include", cache: "no-store", signal: controller.signal });
+     let body: unknown;
+-    try { body = await response.json(); } catch { return invalidResponse(); }
++    try { body = await response.json(); } catch {
++      if (!response.ok && !acceptedStatuses.includes(response.status)) throw parseProblem(null, response.status);
++      return invalidResponse();
++    }
+     if (!response.ok && !acceptedStatuses.includes(response.status)) throw parseProblem(body, response.status);
+     return body;
+   } catch (error: unknown) {
+diff --git a/frontend/src/features/events/event-workspace.test.tsx b/frontend/src/features/events/event-workspace.test.tsx
+index 71ca013..eb4fd34 100644
+--- a/frontend/src/features/events/event-workspace.test.tsx
++++ b/frontend/src/features/events/event-workspace.test.tsx
+@@ -16,7 +16,7 @@ const evidenceFixture = { schema_version: 2, span_id: evidenceId, revision_id: r
+ function response(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } }); }
+ function navigate(hash: string) { window.history.replaceState(null, "", `/${hash}`); fireEvent(window, new HashChangeEvent("hashchange")); }
+ 
+-function fixtureApi(options: { listStatus?: number; empty?: boolean; unsupported?: boolean; pagination?: boolean; mismatchedRevision?: boolean } = {}) {
++function fixtureApi(options: { listStatus?: number; rawError?: boolean; empty?: boolean; unsupported?: boolean; pagination?: boolean; mismatchedRevision?: boolean } = {}) {
+   const requests: string[] = [];
+   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+     const path = String(input);
+@@ -25,7 +25,7 @@ function fixtureApi(options: { listStatus?: number; empty?: boolean; unsupported
+     if (path === "/v1/health/live") return response({ status: "live" });
+     if (path === "/v1/health/ready") return response({ status: "ready", reason: "isolated fixture", dependencies: {} });
+     if (path.startsWith("/v1/events?")) {
+-      if (options.listStatus) return response({ error: { code: "fixture_failure", retryable: false } }, options.listStatus);
++      if (options.listStatus) return options.rawError ? new Response("isolated non-JSON upstream failure", { status: options.listStatus }) : response({ error: { code: "fixture_failure", retryable: false } }, options.listStatus);
+       if (options.unsupported && path.includes("product=")) return response({ error: { code: "unsupported_filter", retryable: false } }, 422);
+       const secondPage = path.includes("cursor=opaque-fixture");
+       return response({ schema_version: 2, items: options.empty ? [] : secondPage ? [{ ...eventFixture, event_id: secondEventId, title: "隔离测试：下一页事件" }] : [eventFixture], next_cursor: options.pagination && !secondPage ? "opaque-fixture" : null, data_mode: "fixture" });
+@@ -164,3 +164,43 @@ describe("R04 event/detail/evidence — isolated fixture mode only", () => {
+     expect(listRequests).toBe(2);
+   });
+ });
++
++
++describe("R04 review regressions — explicit isolated fixtures", () => {
++  it("rejects a wrong revision after clicking a claim reference", async () => {
++    fixtureApi({ mismatchedRevision: true });
++    render(<App />);
++    await screen.findByRole("link", { name: eventFixture.title });
++    navigate(`#events/${eventId}`);
++    const citation = await screen.findByRole("link", { name: "原文片段 [1]" });
++    fireEvent.click(citation);
++    await screen.findByText("服务返回的数据格式不符合接口约定，请重新检查。");
++    expect(screen.queryByText("历史原文片段", { selector: "blockquote" })).toBeNull();
++  });
++
++  it.each([403, 503])("clears selected detail and evidence before a new filter returns %s", async (status) => {
++    const options: { listStatus?: number } = {};
++    fixtureApi(options);
++    render(<App />);
++    await screen.findByRole("link", { name: eventFixture.title });
++    navigate(`#events/${eventId}/evidence/${evidenceId}/revision/${revisionId}`);
++    await screen.findByText("历史原文片段", { selector: "blockquote" });
++    await screen.findByText("模型假设");
++    options.listStatus = status;
++    fireEvent.change(screen.getByLabelText("检索关键词"), { target: { value: "changed scope" } });
++    fireEvent.click(screen.getByRole("button", { name: "检索情报" }));
++    await screen.findByText(status === 403 ? "没有查看权限" : "依赖暂不可用");
++    expect(screen.queryByText("模型假设")).toBeNull();
++    expect(screen.queryByText("历史原文片段", { selector: "blockquote" })).toBeNull();
++    expect(window.location.hash).toBe("#events");
++  });
++});
++
++
++it("expires the identity after an upstream empty/HTML 401 without restoring the session", async () => {
++  const requests = fixtureApi({ listStatus: 401, rawError: true });
++  render(<App />);
++  await screen.findByText("会话已失效，请重新登录。");
++  expect(screen.queryByRole("link", { name: eventFixture.title })).toBeNull();
++  expect(requests.filter((path) => path === "/v1/auth/me")).toHaveLength(1);
++});
+diff --git a/frontend/src/features/events/event-workspace.tsx b/frontend/src/features/events/event-workspace.tsx
+index 0b3fe62..32e1a02 100644
+--- a/frontend/src/features/events/event-workspace.tsx
++++ b/frontend/src/features/events/event-workspace.tsx
+@@ -81,7 +81,7 @@ function EventDetail({ id, onSessionExpired, isCurrent }: { id: string; onSessio
+       })}
+       <h3 className="detail-section-title">事实与来源断言</h3>
+       {resource.value.claims.length === 0 && <EmptyState title="尚未取得事实记录" description="没有事实记录不代表不存在相关风险。" />}
+-      {resource.value.claims.map((claim) => <article className="claim-row" key={claim.claim_id}><div><code>{claim.predicate}</code><span className="claim-status">{claimStatusLabels[claim.status]}</span><span className="small-note">{originLabels[claim.origin]}</span></div><p>{claim.display_value}</p><div className="citation-links">{claim.evidence_ids.map((evidenceId, index) => <a key={evidenceId} href={`#events/${id}/evidence/${evidenceId}`}>原文片段 [{index + 1}]</a>)}</div></article>)}
++      {resource.value.claims.map((claim) => <article className="claim-row" key={claim.claim_id}><div><code>{claim.predicate}</code><span className="claim-status">{claimStatusLabels[claim.status]}</span><span className="small-note">{originLabels[claim.origin]}</span></div><p>{claim.display_value}</p><div className="citation-links">{claim.evidence_ids.map((evidenceId, index) => <a key={evidenceId} href={`#events/${id}/evidence/${evidenceId}${claim.source_revision_id === null ? "" : `/revision/${claim.source_revision_id}`}`}>原文片段 [{index + 1}]</a>)}</div></article>)}
+       <h3 className="detail-section-title">原文修订时间线</h3>
+       {resource.value.revisions.length === 0 && <EmptyState title="尚未取得修订记录" description="历史版本需要保存的原文与修订记录，不能由当前来源信息推测。" />}
+       {resource.value.revisions.map((revision) => <article className="revision-entry" key={revision.revision_id}><div className="revision-entry-title"><strong>修订 {revision.revision_number}</strong><span className="small-note">解析：{revision.parse_status}</span></div><code className="record-id">{revision.revision_id}</code><dl className="evidence-metadata"><dt>源发布时间</dt><dd><SavedTime value={revision.source_published_at} /></dd><dt>源修订时间</dt><dd><SavedTime value={revision.source_modified_at} /></dd><dt>首次观察</dt><dd><SavedTime value={revision.first_observed_at} /></dd><dt>入库完成</dt><dd><SavedTime value={revision.ingested_at} /></dd></dl>{revision.canonical_uri ? <a className="text-link" href={revision.canonical_uri} target="_blank" rel="noopener noreferrer">打开该版本来源地址 ↗</a> : <p className="small-note">该历史版本原文地址未留存</p>}</article>)}
+@@ -159,6 +159,8 @@ export function EventWorkspace() {
+   const disconnected = resource.kind === "failed" && (resource.error.status === 404 || resource.error.status === 403);
+   function submitSearch(event: FormEvent<HTMLFormElement>) {
+     event.preventDefault();
++    setSelection(null);
++    window.history.replaceState(null, "", "#events");
+     setFilters({ q: query.trim(), product: product.trim(), risk_type: riskType.trim(), updated_after: updatedAfter || undefined, limit: 20 });
+   }
+ 

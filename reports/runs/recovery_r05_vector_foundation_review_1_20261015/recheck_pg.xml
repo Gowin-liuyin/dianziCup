@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="32" time="25.650" timestamp="2026-10-15T16:25:33.746315+08:00" hostname="yin"><testcase classname="tests.integration.test_r05_vector_persistence" name="test_upgrade_preserves_immutable_evidence_and_real_extension" time="1.203" /><testcase classname="tests.integration.test_r05_vector_persistence" name="test_real_vector_roundtrip_cosine_and_model_space_filter" time="1.048" /><testcase classname="tests.integration.test_r05_vector_persistence" name="test_real_pg_rejects_bad_dimensions_and_nonfinite_values[invalid0]" time="1.130" /><testcase classname="tests.integration.test_r05_vector_persistence" name="test_real_pg_rejects_bad_dimensions_and_nonfinite_values[invalid1]" time="1.150" /><testcase classname="tests.integration.test_r05_vector_persistence" name="test_real_pg_rejects_bad_dimensions_and_nonfinite_values[invalid2]" time="1.259" /><testcase classname="tests.integration.test_r05_vector_persistence" name="test_chunk_coordinates_are_not_permanent_evidence_coordinates" time="1.123" /><testcase classname="tests.integration.test_r02_schema_migration" name="test_empty_and_legacy_upgrade_keep_columns_and_old_claims[None]" time="0.784" /><testcase classname="tests.integration.test_r02_schema_migration" name="test_empty_and_legacy_upgrade_keep_columns_and_old_claims[0006_auth_state]" time="0.842" /><testcase classname="tests.integration.test_r02_schema_migration" name="test_0011_page_receipt_history_migrates_without_inventing_request_fingerprint" time="0.691" /><testcase classname="tests.contract.test_t18_model_clients" name="test_valid_structured_output_keeps_usage_and_versions_t18_c01" time="0.000" /><testcase classname="tests.contract.test_t18_model_clients" name="test_extra_fields_or_bad_json_fails_or_single_repair_only_t18_c02" time="0.000" /><testcase classname="tests.contract.test_t18_model_clients" name="test_wrong_vector_dimension_or_count_refused_for_indexing_t18_c03" time="0.000" /><testcase classname="tests.contract.test_t18_model_clients" name="test_fixture_provider_rejected_in_production_t18_c04" time="0.000" /><testcase classname="tests.contract.test_t18_model_clients" name="test_private_content_without_egress_grant_blocked_t18_c05" time="0.000" /><testcase classname="tests.contract.test_t18_model_clients" name="test_missing_key_or_budget_reports_unavailable_not_fake_t18_c06" time="0.000" /><testcase classname="" name="test_float32_underflow_is_rejected_before_becoming_a_zero_vector" time="0.000" /><testcase classname="" name="test_small_representable_float32_is_not_confused_with_zero" time="0.000" /><testcase classname="" name="test_validated_underflow_roundtrip_keeps_nonzero_cosine_semantics" time="1.013"><failure message="ai_intel.infrastructure.models.clients.ModelContractError: zero embedding has no cosine distance">vector_database = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_ae956de0bc374deaad5d88447b6f2fee%2Cpublic+-c+statement_timeout%3D15000)
+
+    def test_validated_underflow_roundtrip_keeps_nonzero_cosine_semantics(vector_database) -&gt; None:
+&gt;       result = validate_embedding_batch([[1e-50] * 384], 1, 384, 'review-underflow-v1')
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+D:\dianzi\reports\runs\recovery_r05_vector_foundation_review_1_20261015\test_independent_vector_foundation_v2.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+vectors = [[1e-50, 1e-50, 1e-50, 1e-50, 1e-50, 1e-50, ...]], expected_count = 1
+dimension = 384, model_version = 'review-underflow-v1'
+
+    def validate_embedding_batch(
+        vectors: list[list[float]],
+        expected_count: int,
+        dimension: int,
+        model_version: str,
+    ) -&gt; EmbeddingResult:
+        """拒绝无效空间、非有限数与余弦距离无定义的零向量，不替换坏值。"""
+        if (
+            type(expected_count) is not int
+            or not 1 &lt;= expected_count &lt;= 256
+            or type(dimension) is not int
+            or not 1 &lt;= dimension &lt;= 4096
+            or not isinstance(model_version, str)
+            or not 1 &lt;= len(model_version) &lt;= 200
+            or any(not 33 &lt;= ord(character) &lt;= 126 for character in model_version)
+        ):
+            raise ModelContractError("embedding space or batch boundary is invalid")
+        if len(vectors) != expected_count:
+            raise ModelContractError("embedding count does not match input batch order")
+        for vector in vectors:
+            if len(vector) != dimension:
+                raise ModelContractError("embedding dimension mismatch; refused for indexing")
+            if any(
+                type(coordinate) is not float
+                or not math.isfinite(coordinate)
+                or abs(coordinate) &gt; 3.4028234663852886e38
+                for coordinate in vector
+            ):
+                raise ModelContractError("embedding coordinates must be finite float32 values")
+            if not any(coordinate != 0.0 for coordinate in array("f", vector)):
+&gt;               raise ModelContractError("zero embedding has no cosine distance")
+E               ai_intel.infrastructure.models.clients.ModelContractError: zero embedding has no cosine distance
+
+src\ai_intel\infrastructure\models\clients.py:119: ModelContractError</failure></testcase><testcase classname="" name="test_migration_replay_keeps_rows_and_answer_owner_audit" time="1.135" /><testcase classname="" name="test_answer_audit_json_arrays_are_refused[response]" time="1.106" /><testcase classname="" name="test_answer_audit_json_arrays_are_refused[scope_epochs]" time="1.029" /><testcase classname="" name="test_answer_audit_json_arrays_are_refused[model_trace]" time="1.059" /><testcase classname="" name="test_owner_fk_refuses_orphan_answer" time="1.056" /><testcase classname="" name="test_concurrent_duplicate_chunk_space_has_one_committed_row" time="1.151" /><testcase classname="" name="test_schema_only_migration_upgrades_and_replays_without_public_tables" time="0.671" /><testcase classname="" name="test_schema_only_search_path_vector_operator_visibility_is_documented" time="1.017" /><testcase classname="" name="test_upgrade_0006_keeps_unknown_legacy_fact_and_time" time="0.705" /><testcase classname="" name="test_underflow_is_rejected_before_pg_write[row0]" time="0.979" /><testcase classname="" name="test_underflow_is_rejected_before_pg_write[row1]" time="1.083" /><testcase classname="" name="test_underflow_is_rejected_before_pg_write[row2]" time="1.007" /><testcase classname="" name="test_subnormal_coordinate_is_preserved_in_real_pg[0.0]" time="1.355"><failure message="assert 1e-45 == (2 ** -149)">vector_database = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_de2b347971c64ea3af3ec93c3ca347d0%2Cpublic+-c+statement_timeout%3D15000)
+normal_coordinate = 0.0
+
+    @pytest.mark.parametrize('normal_coordinate', [0.0, 1.0])
+    def test_subnormal_coordinate_is_preserved_in_real_pg(vector_database, normal_coordinate) -&gt; None:
+        row = [2**-149, normal_coordinate] + [0.0] * 382
+        result = validate_embedding_batch([row], 1, 384, 'review-subnormal-recheck')
+        assert result.vectors[0][0] == 2**-149
+        with Session(vector_database) as session:
+            values = chunk_values(session, 1.0, result.model_version)
+            values['embedding'] = list(result.vectors[0])
+            session.execute(insert(retrieval_chunks).values(values))
+            actual = session.scalar(select(retrieval_chunks.c.embedding))
+            distance = session.scalar(select(retrieval_chunks.c.embedding.cosine_distance(row)))
+            print({'kind': 'subnormal_recheck', 'normal_coordinate': normal_coordinate,
+                   'stored_coordinate': actual[0], 'cosine_distance': str(distance)})
+&gt;           assert actual[0] == 2**-149
+E           assert 1e-45 == (2 ** -149)
+
+D:\dianzi\reports\runs\recovery_r05_vector_foundation_review_1_20261015\test_independent_vector_recheck.py:47: AssertionError</failure></testcase><testcase classname="" name="test_subnormal_coordinate_is_preserved_in_real_pg[1.0]" time="1.442"><failure message="assert 1e-45 == (2 ** -149)">vector_database = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_205b0e2de61e419faa02778f56e15111%2Cpublic+-c+statement_timeout%3D15000)
+normal_coordinate = 1.0
+
+    @pytest.mark.parametrize('normal_coordinate', [0.0, 1.0])
+    def test_subnormal_coordinate_is_preserved_in_real_pg(vector_database, normal_coordinate) -&gt; None:
+        row = [2**-149, normal_coordinate] + [0.0] * 382
+        result = validate_embedding_batch([row], 1, 384, 'review-subnormal-recheck')
+        assert result.vectors[0][0] == 2**-149
+        with Session(vector_database) as session:
+            values = chunk_values(session, 1.0, result.model_version)
+            values['embedding'] = list(result.vectors[0])
+            session.execute(insert(retrieval_chunks).values(values))
+            actual = session.scalar(select(retrieval_chunks.c.embedding))
+            distance = session.scalar(select(retrieval_chunks.c.embedding.cosine_distance(row)))
+            print({'kind': 'subnormal_recheck', 'normal_coordinate': normal_coordinate,
+                   'stored_coordinate': actual[0], 'cosine_distance': str(distance)})
+&gt;           assert actual[0] == 2**-149
+E           assert 1e-45 == (2 ** -149)
+
+D:\dianzi\reports\runs\recovery_r05_vector_foundation_review_1_20261015\test_independent_vector_recheck.py:47: AssertionError</failure></testcase></testsuite></testsuites>

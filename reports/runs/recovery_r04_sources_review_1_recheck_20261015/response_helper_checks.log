@@ -1,0 +1,57 @@
+.........F.                                                              [100%]
+================================== FAILURES ===================================
+___ test_gc_23503_competition_returns_false_keeps_bytes_and_session_usable ____
+
+own_schema_engine = Engine([REDACTED test database locator])
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-354/test_gc_23503_competition_retu0')
+
+    def test_gc_23503_competition_returns_false_keeps_bytes_and_session_usable(
+        own_schema_engine, tmp_path
+    ):
+        store = ContentStore(tmp_path / 'objects')
+        when = datetime.now(UTC)
+        with Session(own_schema_engine) as session, session.begin():
+            seed_document(session, 'document', 'public', None)
+            source_id = session.scalar(text("SELECT source_id FROM documents WHERE document_id='document'"))
+            stored = register_response_content(session, store, b'raw response', when)
+        wrote = []
+    
+        def create_response_reference():
+            with Session(own_schema_engine) as writer, writer.begin():
+                writer.execute(fetch_attempts.insert().values(attempt_id='response-attempt',
+                    source_id=source_id, attempted_at=when, outcome='succeeded',
+                    new_event_count=0, response_content_hash=stored.content_hash))
+            wrote.append(True)
+    
+        with Session(own_schema_engine) as collector, collector.begin():
+            collector_connection = collector.connection()
+    
+            def interleave(_connection, _cursor, statement, _parameters, _context, _executemany):
+                if statement.startswith('DELETE FROM content_objects') and not wrote:
+                    writer = Thread(target=create_response_reference)
+                    writer.start()
+                    writer.join(timeout=5)
+                    assert not writer.is_alive() and wrote == [True]
+    
+            event.listen(collector_connection, 'before_cursor_execute', interleave)
+            try:
+                assert cleanup_unreferenced_object(collector, store, stored.content_hash) is False
+            finally:
+                event.remove(collector_connection, 'before_cursor_execute', interleave)
+>           assert collector.scalar(select(content_objects.c.content_hash)) == stored.content_hash
+E           AssertionError: assert '000000000000...0000000000000' == 'd8980a134cfd...ca54760e0adeb'
+E             
+E             - d8980a134cfd23d4bd02fbaa20e0c9e1bd4c79a7fbd1e0d3bd5ca54760e0adeb
+E             + 0000000000000000000000000000000000000000000000000000000000000000
+
+D:\dianzi\reports\runs\recovery_r04_sources_review_1_recheck_20261015\test_response_helper.py:112: AssertionError
+============================== warnings summary ===============================
+tests\integration\test_t05_persistence_and_raw_store.py:42
+  C:\Users\yinha\.codex\worktrees\recovery-r04-sources-review-1-recheck\dianzi\backend\tests\integration\test_t05_persistence_and_raw_store.py:42: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\dianzi\reports\runs\recovery_r04_sources_review_1_recheck_20261015\response_helper_checks.xml -
+=========================== short test summary info ===========================
+FAILED ::test_gc_23503_competition_returns_false_keeps_bytes_and_session_usable
+1 failed, 10 passed, 1 warning in 7.30s

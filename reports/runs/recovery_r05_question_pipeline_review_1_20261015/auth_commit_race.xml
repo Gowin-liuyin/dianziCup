@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="2" time="3.723" timestamp="2026-10-15T17:19:56.139778+08:00" hostname="yin"><testcase classname="test_review_auth_commit_race" name="test_permission_change_commits_after_final_scope_read_before_answer_commit[session_revoked]" time="1.446"><failure message="assert 200 == 401&#10; +  where 200 = &lt;Response [200 OK]&gt;.status_code">vector_database = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_669deb2b1f384c6ab063ec39ed20c0a1%2Cpublic+-c+statement_timeout%3D15000)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000016F393FFA70&gt;
+case = 'session_revoked'
+
+    @pytest.mark.parametrize('case', ['session_revoked', 'owner_tenant_changed'])
+    def test_permission_change_commits_after_final_scope_read_before_answer_commit(vector_database, monkeypatch, case):
+        auth, token, service, http, payload, headers, calls = setup_case(vector_database, monkeypatch)
+        original_require_current = service.retriever.require_current
+        owner_id = auth.build_access_scope(token).user_id
+        changed = []
+        def mutate_after_scope_read(session, scope, event_id, epoch, citations, *, lock_epoch=False):
+            if lock_epoch:
+                if case == 'session_revoked':
+                    auth.logout(token)
+                else:
+                    with vector_database.begin() as connection:
+                        connection.execute(update(users).where(users.c.user_id == owner_id).values(tenant_id='other-review-tenant'))
+                changed.append(True)
+            return original_require_current(session, scope, event_id, epoch, citations, lock_epoch=lock_epoch)
+        monkeypatch.setattr(service.retriever, 'require_current', mutate_after_scope_read)
+        with http:
+            response = http.post('/v1/questions', json=payload.model_dump(mode='json'), headers={**headers, 'idempotency-key': 'review-final-auth-' + case})
+        with vector_database.connect() as connection:
+            row = connection.execute(select(grounded_answers)).mappings().one()
+        print('post_reauth_commit_race_observed=' + json.dumps({'case': case, 'http_status': response.status_code, 'response_kind': response.json().get('kind'), 'answer_pg_kind': row['response']['kind'], 'simulated_wire_calls': len(calls), 'revocation_committed_before_answer': bool(changed)}))
+        assert changed == [True]
+&gt;       assert response.status_code == (401 if case == 'session_revoked' else 404)
+E       assert 200 == 401
+E        +  where 200 = &lt;Response [200 OK]&gt;.status_code
+
+D:\dianzi\reports\runs\recovery_r05_question_pipeline_review_1_20261015\test_review_auth_commit_race.py:34: AssertionError</failure></testcase><testcase classname="test_review_auth_commit_race" name="test_permission_change_commits_after_final_scope_read_before_answer_commit[owner_tenant_changed]" time="1.368"><failure message="assert 200 == 404&#10; +  where 200 = &lt;Response [200 OK]&gt;.status_code">vector_database = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_c33e6f548c9c4d5fad4b17af3bc27354%2Cpublic+-c+statement_timeout%3D15000)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000016F39457410&gt;
+case = 'owner_tenant_changed'
+
+    @pytest.mark.parametrize('case', ['session_revoked', 'owner_tenant_changed'])
+    def test_permission_change_commits_after_final_scope_read_before_answer_commit(vector_database, monkeypatch, case):
+        auth, token, service, http, payload, headers, calls = setup_case(vector_database, monkeypatch)
+        original_require_current = service.retriever.require_current
+        owner_id = auth.build_access_scope(token).user_id
+        changed = []
+        def mutate_after_scope_read(session, scope, event_id, epoch, citations, *, lock_epoch=False):
+            if lock_epoch:
+                if case == 'session_revoked':
+                    auth.logout(token)
+                else:
+                    with vector_database.begin() as connection:
+                        connection.execute(update(users).where(users.c.user_id == owner_id).values(tenant_id='other-review-tenant'))
+                changed.append(True)
+            return original_require_current(session, scope, event_id, epoch, citations, lock_epoch=lock_epoch)
+        monkeypatch.setattr(service.retriever, 'require_current', mutate_after_scope_read)
+        with http:
+            response = http.post('/v1/questions', json=payload.model_dump(mode='json'), headers={**headers, 'idempotency-key': 'review-final-auth-' + case})
+        with vector_database.connect() as connection:
+            row = connection.execute(select(grounded_answers)).mappings().one()
+        print('post_reauth_commit_race_observed=' + json.dumps({'case': case, 'http_status': response.status_code, 'response_kind': response.json().get('kind'), 'answer_pg_kind': row['response']['kind'], 'simulated_wire_calls': len(calls), 'revocation_committed_before_answer': bool(changed)}))
+        assert changed == [True]
+&gt;       assert response.status_code == (401 if case == 'session_revoked' else 404)
+E       assert 200 == 404
+E        +  where 200 = &lt;Response [200 OK]&gt;.status_code
+
+D:\dianzi\reports\runs\recovery_r05_question_pipeline_review_1_20261015\test_review_auth_commit_race.py:34: AssertionError</failure></testcase></testsuite></testsuites>

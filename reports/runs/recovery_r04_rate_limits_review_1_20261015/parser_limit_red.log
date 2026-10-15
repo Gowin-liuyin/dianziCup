@@ -1,0 +1,44 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__ test_raw_oversized_rate_header_does_not_become_seven_second_network_retry __
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002C108375A30>
+job_engine = Engine([redacted isolated test connection])
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-433/test_raw_oversized_rate_header0')
+
+    def test_raw_oversized_rate_header_does_not_become_seven_second_network_retry(
+        monkeypatch, job_engine, tmp_path
+    ):
+        sockets = install_wire(
+            monkeypatch, raw_response(429, b"Retry-After: " + b"9" * 65536 + b"\r\n")
+        )
+        job_id = queue(job_engine)
+        handler = build_source_page_handler(ContentStore(tmp_path), clock=lambda: NOW)
+        outcome = execute_job(job_engine, job_id, "parser-limit-review", {SOURCE_JOB_TYPE: handler}, clock=lambda: NOW)
+        with Session(job_engine) as session:
+            row = session.execute(select(job_runs)).mappings().one()
+            actual = {"outcome": outcome, "error_code": row["error_code"],
+                      "next_retry_at": row["next_retry_at"].isoformat() if row["next_retry_at"] else None}
+        assert sockets[0].closed
+>       assert outcome == "blocked", actual
+E       AssertionError: {'error_code': 'network_error', 'next_retry_at': '2026-10-15T12:35:03.900000+00:00', 'outcome': 'retry_wait'}
+E       assert 'retry_wait' == 'blocked'
+E         
+E         - blocked
+E         + retry_wait
+
+D:\dianzi\reports\runs\recovery_r04_rate_limits_review_1_20261015\test_wire_parser_limit.py:27: AssertionError
+============================== warnings summary ===============================
+tests\integration\test_r02_schema_migration.py:18
+  C:\Users\yinha\.codex\worktrees\r04-rate-limits-independent-review-1\dianzi\backend\tests\integration\test_r02_schema_migration.py:18: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+tests\integration\test_r04_source_jobs_pg.py:40
+  C:\Users\yinha\.codex\worktrees\r04-rate-limits-independent-review-1\dianzi\backend\tests\integration\test_r04_source_jobs_pg.py:40: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\dianzi\reports\runs\recovery_r04_rate_limits_review_1_20261015\parser_limit_red.xml -
+=========================== short test summary info ===========================
+FAILED ::test_raw_oversized_rate_header_does_not_become_seven_second_network_retry
+1 failed, 2 warnings in 1.78s

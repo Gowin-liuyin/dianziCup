@@ -1,0 +1,63 @@
+{
+  "observed_at": "2026-10-15T17:12:19+08:00",
+  "status": 200,
+  "body": {
+    "schema_version": 2,
+    "event": {
+      "event_id": "d0803ddc-0ca5-5506-932d-e5e2beed6e22",
+      "event_type": "vulnerability",
+      "title": "Artifact Pin Decay in vLLM allows pinned deployments to load unpinned code, weights, and processors",
+      "external_ids": [
+        "CVE-2026-47155",
+        "GHSA-3WW4-5JV9-J5GM"
+      ],
+      "primary_product_ids": [],
+      "first_seen_at": "2026-10-15T07:59:38.966588Z",
+      "status": "active",
+      "source_count": 1,
+      "latest_revision_id": "9d6f7923-6e9a-4e6e-8518-919e674ad4fd",
+      "freshness": "unknown"
+    },
+    "dimensions": [],
+    "revisions": [
+      {
+        "revision_id": "9d6f7923-6e9a-4e6e-8518-919e674ad4fd",
+        "document_id": "af435435-f051-5544-a83d-3fba6b3a6c06",
+        "revision_number": 1,
+        "source_id": "64f0f40e-912c-571b-9d63-6f5f3362f46f",
+        "source_published_at": "2026-06-10T14:11:37Z",
+        "source_modified_at": "2026-06-10T14:11:38Z",
+        "first_observed_at": "2026-10-15T07:59:38.966588Z",
+        "ingested_at": "2026-10-15T07:59:38.966588Z",
+        "parse_status": "parsed",
+        "document_kind": "advisory",
+        "canonical_uri": "https://github.com/vllm-project/vllm/security/advisories/GHSA-3ww4-5jv9-j5gm"
+      }
+    ],
+    "claims": [
+      {
+        "claim_id": "4f979cd9-5515-5553-a94e-45720727214d",
+        "predicate": "source_excerpt",
+        "display_value": "Originally filed via huntr: https://huntr.com/bounties/3f1e24c0-87d2-4f6c-a705-820f380879ac\r\nThe vllm maintainer (Russell Bryant) redirected to this private GHSA channel. Offline proof bundle (`vllm_artifact_pin_decay_bundle_verify.py` + `bundle-verification-20260430T143506Z.json`) available on request.\r\n\r\n### Summary\r\n\r\nvLLM's revision pinning controls do not consistently apply to all artifacts loaded for a model. A deployment that supplies `--revision` or `--code-revision` can still load dynamic code, GGUF files, image processors, retrieval side weights, or same-repository subfolder weights/config from an unpinned/default revision.\r\n\r\nThis is a supply-chain integrity issue for pinned vLLM deployments. Operators can believe they are serving a reviewed model revision while vLLM resolves behavior-affecting nested or sibling artifacts outside that reviewed revision.\r\n\r\n### Details\r\n\r\nThe expected invariant is:\r\n\r\n> When a vLLM operator supplies a model or code revision pin, every code, config, processor, weight file, side weight, and same-repository subfolder artifact loaded as part of that model should resolve under that pin unless vLLM exposes and enforces a separate explicit pin for that artifact.\r\n\r\nCurrent `main` was verified affected at commit `3795d7acf431980e62e738493f437ae2a51549da`.\r\n\r\nAffected source boundaries:\r\n\r\n- `vllm/model_executor/models/registry.py:1045-1051` and `:1058-1064`\r\n  - `_try_resolve_transformers()` passes `revision=model_config.revision` and `trust_remote_code=model_config.trust_remote_code`, but omits `code_revision=model_config.code_revision` for external `auto_map` dynamic module imports.\r\n- `vllm/model_executor/model_loader/gguf_loader.py:58-60`\r\n  - The direct-file GGUF form `repo/file.gguf` calls `hf_hub_download(repo_id=repo_id, filename=filename)` without passing `revision`.\r\n- `vllm/model_executor/models/roberta.py:203-209`\r\n  - BGE-M3 secondary sparse and ColBERT side weights are declared with `revision=None`.\r\n- `vllm/model_ex",
+        "origin": "structured_source",
+        "status": "supported",
+        "source_revision_id": "9d6f7923-6e9a-4e6e-8518-919e674ad4fd",
+        "evidence_ids": [
+          "4013602d-793b-4347-b8e4-d8ca477b0d0f"
+        ]
+      },
+      {
+        "claim_id": "72ca756c-5c7a-56cf-b493-d7e5217a1bb7",
+        "predicate": "affected_product",
+        "display_value": "vllm",
+        "origin": "structured_source",
+        "status": "supported",
+        "source_revision_id": "9d6f7923-6e9a-4e6e-8518-919e674ad4fd",
+        "evidence_ids": [
+          "654b5fa4-09f0-4602-a4c8-0a4b6400f2ae"
+        ]
+      }
+    ],
+    "data_mode": "live"
+  }
+}

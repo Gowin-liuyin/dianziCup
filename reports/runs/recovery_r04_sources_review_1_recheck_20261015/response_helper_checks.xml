@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="11" time="7.297" timestamp="2026-10-15T13:29:10.820168+08:00" hostname="yin"><testcase classname="" name="test_response_helper_keeps_exact_bytes_and_one_pg_record" time="0.802" /><testcase classname="" name="test_response_helper_rejects_invalid_input_without_registration[not-bytes-when0]" time="0.549" /><testcase classname="" name="test_response_helper_rejects_invalid_input_without_registration[payload1-when1]" time="0.582" /><testcase classname="" name="test_response_helper_rejects_invalid_input_without_registration[naive-time-when2]" time="0.562" /><testcase classname="" name="test_response_helper_never_registers_bad_or_unreadable_storage[hash]" time="0.578" /><testcase classname="" name="test_response_helper_never_registers_bad_or_unreadable_storage[size]" time="0.563" /><testcase classname="" name="test_response_helper_never_registers_bad_or_unreadable_storage[read_mismatch]" time="0.627" /><testcase classname="" name="test_response_helper_never_registers_bad_or_unreadable_storage[store_error]" time="0.549" /><testcase classname="" name="test_response_helper_never_registers_bad_or_unreadable_storage[read_error]" time="0.577" /><testcase classname="" name="test_gc_23503_competition_returns_false_keeps_bytes_and_session_usable" time="0.609"><failure message="AssertionError: assert '000000000000...0000000000000' == 'd8980a134cfd...ca54760e0adeb'&#10;  &#10;  - d8980a134cfd23d4bd02fbaa20e0c9e1bd4c79a7fbd1e0d3bd5ca54760e0adeb&#10;  + 0000000000000000000000000000000000000000000000000000000000000000">own_schema_engine = Engine([REDACTED test database locator])
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-354/test_gc_23503_competition_retu0')
+
+    def test_gc_23503_competition_returns_false_keeps_bytes_and_session_usable(
+        own_schema_engine, tmp_path
+    ):
+        store = ContentStore(tmp_path / 'objects')
+        when = datetime.now(UTC)
+        with Session(own_schema_engine) as session, session.begin():
+            seed_document(session, 'document', 'public', None)
+            source_id = session.scalar(text("SELECT source_id FROM documents WHERE document_id='document'"))
+            stored = register_response_content(session, store, b'raw response', when)
+        wrote = []
+    
+        def create_response_reference():
+            with Session(own_schema_engine) as writer, writer.begin():
+                writer.execute(fetch_attempts.insert().values(attempt_id='response-attempt',
+                    source_id=source_id, attempted_at=when, outcome='succeeded',
+                    new_event_count=0, response_content_hash=stored.content_hash))
+            wrote.append(True)
+    
+        with Session(own_schema_engine) as collector, collector.begin():
+            collector_connection = collector.connection()
+    
+            def interleave(_connection, _cursor, statement, _parameters, _context, _executemany):
+                if statement.startswith('DELETE FROM content_objects') and not wrote:
+                    writer = Thread(target=create_response_reference)
+                    writer.start()
+                    writer.join(timeout=5)
+                    assert not writer.is_alive() and wrote == [True]
+    
+            event.listen(collector_connection, 'before_cursor_execute', interleave)
+            try:
+                assert cleanup_unreferenced_object(collector, store, stored.content_hash) is False
+            finally:
+                event.remove(collector_connection, 'before_cursor_execute', interleave)
+&gt;           assert collector.scalar(select(content_objects.c.content_hash)) == stored.content_hash
+E           AssertionError: assert '000000000000...0000000000000' == 'd8980a134cfd...ca54760e0adeb'
+E             
+E             - d8980a134cfd23d4bd02fbaa20e0c9e1bd4c79a7fbd1e0d3bd5ca54760e0adeb
+E             + 0000000000000000000000000000000000000000000000000000000000000000
+
+D:\dianzi\reports\runs\recovery_r04_sources_review_1_recheck_20261015\test_response_helper.py:112: AssertionError</failure></testcase><testcase classname="" name="test_gc_propagates_non_fk_database_error_without_deleting_bytes" time="0.589" /></testsuite></testsuites>

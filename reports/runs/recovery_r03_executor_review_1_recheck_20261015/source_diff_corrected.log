@@ -1,0 +1,1179 @@
+diff --git a/backend/src/ai_intel/ingestion/cursor_repository.py b/backend/src/ai_intel/ingestion/cursor_repository.py
+index a3ed8ec..d466fae 100644
+--- a/backend/src/ai_intel/ingestion/cursor_repository.py
++++ b/backend/src/ai_intel/ingestion/cursor_repository.py
+@@ -4,6 +4,7 @@ from __future__ import annotations
+ 
+ import hashlib
+ import json
++import math
+ from collections.abc import Callable
+ from dataclasses import dataclass
+ from datetime import UTC, datetime, timedelta
+@@ -28,6 +29,7 @@ from ai_intel.knowledge.models import (
+     documents,
+     job_payloads,
+     job_runs,
++    outbox_events,
+     source_cursors,
+     source_page_receipts,
+ )
+@@ -35,6 +37,80 @@ from ai_intel.knowledge.models import (
+ StreamKind = Literal["live", "backfill"]
+ CURSOR_ADAPTER = TypeAdapter(dict[str, JsonValue])
+ MAX_CURSOR_BYTES = 65536
++MAX_PAGE_REQUEST_BYTES = 1048576
++MAX_JSON_DEPTH = 16
++MAX_JSON_NODES = 10000
++MAX_PENDING_RECOVERY_JOBS = 1000
++
++
++def _canonical_page_json(value: object) -> bytes:
++    """只接受有界原生JSON值；不通过字符串化或类型转换丢掉请求字段。"""
++    node_count = 0
++
++    def validate(item: object, depth: int) -> None:
++        nonlocal node_count
++        node_count += 1
++        if depth > MAX_JSON_DEPTH or node_count > MAX_JSON_NODES:
++            raise ValueError("page JSON exceeds bounded depth or node count")
++        if item is None or type(item) in (bool, int, str):
++            return
++        if type(item) is float and isinstance(item, float):
++            if not math.isfinite(item):
++                raise ValueError("page JSON requires finite numbers")
++            return
++        if type(item) is dict and isinstance(item, dict):
++            for key, child in item.items():
++                if type(key) is not str:
++                    raise ValueError("page JSON requires string keys")
++                validate(child, depth + 1)
++            return
++        if type(item) is list and isinstance(item, list):
++            for child in item:
++                validate(child, depth + 1)
++            return
++        raise ValueError("page JSON contains an unsupported value")
++
++    validate(value, 0)
++    encoded = json.dumps(
++        value,
++        sort_keys=True,
++        separators=(",", ":"),
++        ensure_ascii=False,
++        allow_nan=False,
++    ).encode("utf-8")
++    if len(encoded) > MAX_PAGE_REQUEST_BYTES:
++        raise ValueError("page JSON exceeds maximum size 1 MiB")
++    return encoded
++
++
++def page_request_digest(
++    lease: SourceCursorLease,
++    input_cursor: dict[str, JsonValue],
++    output_cursor: dict[str, JsonValue],
++    entries: tuple[dict[str, object], ...],
++    is_last_page: bool,
++    watermark_published_at: datetime | None,
++) -> str:
++    """服务端完整请求指纹；对象key顺序归一，条目/列表顺序与所有字段保留。"""
++    if type(entries) is not tuple or any(type(entry) is not dict for entry in entries):
++        raise ValueError("page entries require a tuple of JSON objects")
++    if type(is_last_page) is not bool:
++        raise ValueError("explicit page completion required")
++    payload = {
++        "fingerprint_version": "page-request-1",
++        "source_id": lease.source_id,
++        "stream_kind": lease.stream_kind,
++        "window_start": _aware_time(lease.window_start).isoformat() if lease.window_start else None,
++        "window_end": _aware_time(lease.window_end).isoformat(),
++        "input_cursor": input_cursor,
++        "output_cursor": output_cursor,
++        "entries": list(entries),
++        "is_last_page": is_last_page,
++        "watermark_published_at": (
++            _aware_time(watermark_published_at).isoformat() if watermark_published_at else None
++        ),
++    }
++    return hashlib.sha256(_canonical_page_json(payload)).hexdigest()
+ 
+ 
+ class SourceLeaseLostError(CursorCommitError):
+@@ -94,6 +170,7 @@ def _aware_time(value: datetime) -> datetime:
+ 
+ 
+ def _cursor(value: object) -> dict[str, JsonValue]:
++    _canonical_page_json(value)
+     validated = CURSOR_ADAPTER.validate_python(value, strict=True)
+     encoded = json.dumps(validated, sort_keys=True, allow_nan=False).encode("utf-8")
+     if len(encoded) > MAX_CURSOR_BYTES:
+@@ -101,14 +178,24 @@ def _cursor(value: object) -> dict[str, JsonValue]:
+     return CURSOR_ADAPTER.validate_json(encoded, strict=True)
+ 
+ 
+-def _cursor_state(value: object) -> tuple[dict[str, JsonValue], bool, datetime | None]:
++def _cursor_state(
++    value: object,
++) -> tuple[dict[str, JsonValue], bool, datetime | None, list[dict[str, str]] | None]:
+     """旧裸游标只视为未完成；不能从空游标猜测窗口已经采集成功。"""
+-    state = _cursor(value)
++    _canonical_page_json(value)
++    state = CURSOR_ADAPTER.validate_python(value, strict=True)
+     if "window_complete" not in state:
+-        return state, False, None
++        return _cursor(state), False, None, None
+     if (
+         not {"position", "window_complete"}.issubset(state)
+-        or set(state) - {"position", "window_complete", "pending_watermark_published_at"}
++        or set(state)
++        - {
++            "position",
++            "window_complete",
++            "pending_watermark_published_at",
++            "recovery_tracking_version",
++            "pending_recovery_job_ids",
++        }
+         or type(state["window_complete"]) is not bool
+     ):
+         raise CursorCommitError("invalid persisted cursor envelope")
+@@ -116,7 +203,27 @@ def _cursor_state(value: object) -> tuple[dict[str, JsonValue], bool, datetime |
+     if pending is not None and not isinstance(pending, str):
+         raise CursorCommitError("invalid pending source watermark")
+     pending_time = _aware_time(datetime.fromisoformat(pending)) if pending is not None else None
+-    return _cursor(state["position"]), state["window_complete"] is True, pending_time
++    references = None
++    if {"recovery_tracking_version", "pending_recovery_job_ids"} & set(state):
++        if (
++            type(state.get("recovery_tracking_version")) is not int
++            or state.get("recovery_tracking_version") != 1
++        ):
++            raise CursorCommitError("invalid recovery reference tracking version")
++        raw_references = state.get("pending_recovery_job_ids")
++        if not isinstance(raw_references, list) or len(raw_references) > MAX_PENDING_RECOVERY_JOBS:
++            raise CursorCommitError("invalid or unbounded recovery references")
++        references = []
++        for reference in raw_references:
++            if not isinstance(reference, dict) or set(reference) != {"job_id", "entry_id"}:
++                raise CursorCommitError("invalid recovery reference identity")
++            references.append(
++                {
++                    "job_id": _identity(reference["job_id"], "job_id"),
++                    "entry_id": _identity(reference["entry_id"], "entry_id"),
++                }
++            )
++    return _cursor(state["position"]), state["window_complete"] is True, pending_time, references
+ 
+ 
+ def _identity(value: object, label: str) -> str:
+@@ -263,7 +370,7 @@ class SourceCursorRepository:
+             if expiry is not None and expiry > now:
+                 return None
+             unfinished_window = _optional_time(row, "window_end")
+-            position, window_complete, _ = _cursor_state(row["cursor_json"])
++            position, window_complete, _, _ = _cursor_state(row["cursor_json"])
+             values: dict[str, object] = {
+                 "lease_owner": lease_owner,
+                 "lease_expires_at": now + expires_delta,
+@@ -279,6 +386,8 @@ class SourceCursorRepository:
+                         "position": position,
+                         "window_complete": False,
+                         "pending_watermark_published_at": None,
++                        "recovery_tracking_version": 1,
++                        "pending_recovery_job_ids": [],
+                     },
+                 )
+             claimed = (
+@@ -421,6 +530,7 @@ class SourceCursorRepository:
+                 select(job_runs, job_payloads.c.payload)
+                 .join(job_payloads, job_payloads.c.job_id == job_runs.c.job_id)
+                 .where(job_runs.c.job_id == job_id)
++                .with_for_update(of=job_runs)
+             )
+             .mappings()
+             .first()
+@@ -428,9 +538,16 @@ class SourceCursorRepository:
+         if (
+             job is None
+             or job["tenant_id"] != tenant_id
+-            or job["status"] in {"succeeded", "cancelled"}
++            or job["status"] not in {"queued", "retry_wait", "running"}
++            or not 0 <= _integer(job, "attempt_count") < _integer(job, "max_attempts") <= 10
+         ):
+             raise CursorCommitError("recovery job unavailable in configured source scope")
++        if job["status"] == "retry_wait" and _optional_time(job, "next_retry_at") is None:
++            raise CursorCommitError("recovery job has no durable retry schedule")
++        if job["status"] == "running" and (
++            not job["lease_owner"] or _optional_time(job, "lease_expires_at") is None
++        ):
++            raise CursorCommitError("recovery job has no recoverable lease")
+         payload = job["payload"]
+         if (
+             not isinstance(payload, bytes)
+@@ -438,6 +555,16 @@ class SourceCursorRepository:
+             or hashlib.sha256(payload).hexdigest() != job["payload_sha256"]
+         ):
+             raise CursorCommitError("recovery job payload is not durable")
++        delivery = self.session.execute(
++            select(outbox_events.c.event_id)
++            .where(
++                outbox_events.c.job_id == job_id,
++                outbox_events.c.payload_ref == job["payload_ref"],
++            )
++            .limit(1)
++        ).first()
++        if delivery is None:
++            raise CursorCommitError("recovery job has no durable delivery")
+         try:
+             identity = json.loads(payload)
+         except (ValueError, UnicodeDecodeError):
+@@ -469,6 +596,14 @@ class SourceCursorRepository:
+             watermark_published_at = _aware_time(watermark_published_at)
+             if watermark_published_at > lease.window_end:
+                 raise ValueError("watermark exceeds frozen source window")
++        request_sha256 = page_request_digest(
++            lease,
++            input_cursor,
++            output_cursor,
++            entries,
++            is_last_page,
++            watermark_published_at,
++        )
+         with self.session.begin_nested():
+             visibility, tenant_id = self._source_scope()
+             row = self._lock_lease(lease)
+@@ -485,27 +620,48 @@ class SourceCursorRepository:
+                 .first()
+             )
+             if existing is not None:
+-                if (
+-                    existing["input_cursor"] != input_cursor
+-                    or existing["output_cursor"] != output_cursor
+-                    or existing["entry_count"] != len(entries)
+-                ):
++                if existing["request_sha256"] is None:
++                    raise CursorCommitError("legacy_page_receipt_unverifiable")
++                if existing["request_sha256"] != request_sha256:
+                     raise CursorCommitError("page receipt conflicts with replay")
+                 return self._receipt(existing, reused=True)
+-            current_cursor, window_complete, pending_watermark = _cursor_state(row["cursor_json"])
++            current_cursor, window_complete, pending_watermark, pending_recovery = _cursor_state(
++                row["cursor_json"]
++            )
+             if window_complete or current_cursor != input_cursor:
+                 raise StaleSourceCursorError("input cursor no longer current")
++            if pending_recovery is None:
++                raise CursorCommitError("legacy_window_recovery_unverifiable")
+             if pending_watermark is not None and pending_watermark > lease.window_end:
+                 raise CursorCommitError("pending watermark exceeds frozen source window")
+             revision_ids: list[str] = []
+             failed_job_ids: list[str] = []
++            persisted_entries: list[tuple[PersistedPageEntry, str]] = []
+             for entry, entry_id in zip(entries, entry_ids, strict=True):
+                 saved = persist_entry(self.session, entry)
+                 self._verify_persisted_entry(saved, entry_id, visibility, tenant_id)
++                persisted_entries.append((saved, entry_id))
+                 if saved.revision_id is not None:
+                     revision_ids.append(saved.revision_id)
+                 elif saved.failed_job_id is not None:
+                     failed_job_ids.append(saved.failed_job_id)
++                    reference = {"job_id": saved.failed_job_id, "entry_id": entry_id}
++                    if reference not in pending_recovery:
++                        pending_recovery.append(reference)
++                        if len(pending_recovery) > MAX_PENDING_RECOVERY_JOBS:
++                            raise CursorCommitError(
++                                "window recovery references exceed bounded limit"
++                            )
++            for saved, entry_id in persisted_entries:
++                self._verify_persisted_entry(saved, entry_id, visibility, tenant_id)
++            if is_last_page:
++                for reference in pending_recovery:
++                    self._verify_persisted_entry(
++                        PersistedPageEntry(failed_job_id=reference["job_id"]),
++                        reference["entry_id"],
++                        visibility,
++                        tenant_id,
++                    )
+             self._verify_lease(row, lease)
+             now = _aware_time(self.clock())
+             if lease.stream_kind == "live" and watermark_published_at is not None:
+@@ -521,11 +677,17 @@ class SourceCursorRepository:
+                         if pending_watermark is not None and not is_last_page
+                         else None
+                     ),
++                    "recovery_tracking_version": 1,
++                    "pending_recovery_job_ids": [] if is_last_page else pending_recovery,
+                 },
+                 "last_successful_page": _integer(row, "last_successful_page") + 1,
+                 "updated_at": now,
+             }
+             current_watermark = _optional_time(row, "watermark_published_at")
++            try:
++                _canonical_page_json(values["cursor_json"])
++            except ValueError:
++                raise CursorCommitError("window recovery references exceed bounded JSON") from None
+             if lease.stream_kind == "live" and is_last_page and pending_watermark is not None:
+                 values["watermark_published_at"] = max(
+                     pending_watermark, current_watermark or pending_watermark
+@@ -550,6 +712,7 @@ class SourceCursorRepository:
+                         revision_ids=revision_ids,
+                         failed_job_ids=failed_job_ids,
+                         entry_count=len(entries),
++                        request_sha256=request_sha256,
+                         committed_at=now,
+                     )
+                     .returning(source_page_receipts)
+diff --git a/backend/tests/integration/test_r03_cursor_persistence.py b/backend/tests/integration/test_r03_cursor_persistence.py
+index a9ebb25..f404973 100644
+--- a/backend/tests/integration/test_r03_cursor_persistence.py
++++ b/backend/tests/integration/test_r03_cursor_persistence.py
+@@ -68,7 +68,7 @@ def cursor_engine(isolated_test_database_url: str):
+             == engine.url.database
+         )
+         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
+-            "0011_job_delivery_and_cursors"
++            "0012_source_page_fingerprint"
+         )
+     try:
+         yield engine
+@@ -570,6 +570,7 @@ def test_completed_window_replay_and_overlap_revision_keep_history_without_dupli
+             output_cursor={},
+             is_last_page=True,
+             persist_entry=lambda session, entry: callbacks.append(entry),
++            watermark=NOW - timedelta(days=1),
+         )
+         assert repeated.reused and repeated.revision_ids == final.revision_ids
+         repository.release(lease)
+diff --git a/backend/tests/integration/test_r03_cursor_review_fixes.py b/backend/tests/integration/test_r03_cursor_review_fixes.py
+new file mode 100644
+index 0000000..99a2bd4
+--- /dev/null
++++ b/backend/tests/integration/test_r03_cursor_review_fixes.py
+@@ -0,0 +1,441 @@
++"""0012游标回执完整输入、终态拒绝和有界窗口恢复引用真实PG回归。"""
++
++import json
++from datetime import timedelta
++from uuid import uuid4
++
++import pytest
++import test_r03_cursor_persistence as cursor_tests
++from sqlalchemy import func, select, update
++from sqlalchemy.orm import Session
++from test_r03_cursor_persistence import (
++    ADMIN,
++    NOW,
++    Clock,
++    claim,
++    commit,
++    row,
++    seed_source,
++)
++
++from ai_intel.infrastructure.outbox import enqueue_job
++from ai_intel.ingestion.cursor_repository import (
++    PersistedPageEntry,
++    SourceCursorRepository,
++    SourceLeaseLostError,
++)
++from ai_intel.ingestion.scheduler import CursorCommitError
++from ai_intel.knowledge.models import (
++    job_payloads,
++    job_runs,
++    outbox_events,
++    source_cursors,
++    source_page_receipts,
++)
++from ai_intel.workers.executor import JobExecutionError, execute_job
++from ai_intel.workers.jobs import claim_job, schedule_retry_or_fail
++
++pytestmark = pytest.mark.real_pg
++cursor_engine = cursor_tests.cursor_engine
++
++
++def create_recovery_job(session, source_id, entry_id, *, max_attempts=5):
++    return enqueue_job(
++        session,
++        None,
++        "fixture-source-recovery",
++        json.dumps({"source_id": source_id, "entry_id": entry_id}).encode(),
++        NOW,
++        max_attempts=max_attempts,
++    )
++
++
++def persist_recovery(source_id, callbacks):
++    def persist(session, entry):
++        callbacks.append(entry["entry_id"])
++        return PersistedPageEntry(
++            failed_job_id=create_recovery_job(session, source_id, entry["entry_id"])
++        )
++
++    return persist
++
++
++@pytest.mark.parametrize(
++    "change", ["entry_id", "unknown_field", "entry_order", "watermark", "completion", "output"]
++)
++def test_changed_replay_conflicts_without_callback_or_state_change(cursor_engine, change):
++    source_id, callbacks = seed_source(cursor_engine), []
++    entries = ({"entry_id": "a", "unknown": {"field": 1}}, {"entry_id": "b"})
++    with Session(cursor_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=Clock())
++        lease = claim(repository)
++        commit(
++            repository,
++            lease,
++            entries,
++            output_cursor={},
++            persist_entry=persist_recovery(source_id, callbacks),
++            watermark=NOW - timedelta(days=1),
++        )
++    before = row(cursor_engine, source_id)
++    replay_entries, output, watermark, final = entries, {}, NOW - timedelta(days=1), False
++    if change == "entry_id":
++        replay_entries = ({"entry_id": "replacement", "unknown": {"field": 1}}, {"entry_id": "b"})
++    elif change == "unknown_field":
++        replay_entries = ({"entry_id": "a", "unknown": {"field": 2}}, {"entry_id": "b"})
++    elif change == "entry_order":
++        replay_entries = entries[::-1]
++    elif change == "watermark":
++        watermark = NOW
++    elif change == "completion":
++        final = True
++    else:
++        output = {"different": 1}
++    with Session(cursor_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=Clock())
++        with pytest.raises(CursorCommitError, match="conflicts with replay"):
++            commit(
++                repository,
++                lease,
++                replay_entries,
++                output_cursor=output,
++                persist_entry=persist_recovery(source_id, callbacks),
++                watermark=watermark,
++                is_last_page=final,
++            )
++    assert callbacks == ["a", "b"] and row(cursor_engine, source_id) == before
++
++
++def test_equivalent_key_order_and_utc_replay_is_callback_free_across_sessions(cursor_engine):
++    from datetime import timezone
++
++    source_id, callbacks = seed_source(cursor_engine), []
++    with Session(cursor_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=Clock())
++        lease = claim(repository)
++        original = commit(
++            repository,
++            lease,
++            ({"entry_id": "entry", "b": 2, "a": 1},),
++            persist_entry=persist_recovery(source_id, callbacks),
++            is_last_page=True,
++            watermark=NOW,
++        )
++    with Session(cursor_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=Clock())
++        repeated = commit(
++            repository,
++            lease,
++            ({"a": 1, "b": 2, "entry_id": "entry"},),
++            persist_entry=lambda *args: pytest.fail("matching replay invoked callback"),
++            is_last_page=True,
++            watermark=NOW.astimezone(timezone(timedelta(hours=8))),
++        )
++    assert repeated.reused and repeated.failed_job_ids == original.failed_job_ids
++    assert callbacks == ["entry"]
++
++
++def test_null_legacy_receipt_fails_closed_without_callback_and_checks_lease_first(cursor_engine):
++    source_id = seed_source(cursor_engine)
++    clock = Clock()
++    with Session(cursor_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=clock)
++        lease = claim(repository)
++        commit(repository, lease, output_cursor={})
++        session.execute(
++            update(source_page_receipts)
++            .where(source_page_receipts.c.source_id == source_id)
++            .values(request_sha256=None)
++        )
++    before = row(cursor_engine, source_id)
++    with Session(cursor_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=clock)
++        with pytest.raises(CursorCommitError, match="legacy_page_receipt_unverifiable"):
++            commit(
++                repository,
++                lease,
++                output_cursor={},
++                persist_entry=lambda *args: pytest.fail("legacy callback"),
++            )
++        clock.now += timedelta(seconds=60)
++        with pytest.raises(SourceLeaseLostError):
++            commit(repository, lease, output_cursor={})
++    assert row(cursor_engine, source_id) == before
++
++
++@pytest.mark.parametrize(
++    "legacy",
++    [{}, {"position": {}, "window_complete": False, "pending_watermark_published_at": None}],
++)
++def test_unfinished_legacy_window_without_tracking_does_not_guess_empty_recovery(
++    cursor_engine, legacy
++):
++    source_id = seed_source(cursor_engine)
++    with Session(cursor_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=Clock())
++        lease = claim(repository)
++        session.execute(
++            update(source_cursors)
++            .where(source_cursors.c.source_id == source_id)
++            .values(cursor_json=legacy)
++        )
++    before = row(cursor_engine, source_id)
++    with Session(cursor_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=Clock())
++        with pytest.raises(CursorCommitError, match="legacy_window_recovery_unverifiable"):
++            commit(
++                repository,
++                lease,
++                ({"entry_id": "never-persisted"},),
++                is_last_page=True,
++                persist_entry=lambda *args: pytest.fail("legacy window callback"),
++                watermark=NOW,
++            )
++    assert row(cursor_engine, source_id) == before
++
++
++@pytest.mark.parametrize("status", ["queued", "retry_wait", "running"])
++def test_only_scheduled_recoverable_states_with_remaining_attempts_can_advance(
++    cursor_engine, status
++):
++    source_id = seed_source(cursor_engine)
++    with Session(cursor_engine) as session, session.begin():
++        job_id = create_recovery_job(session, source_id, "recoverable")
++        if status in {"retry_wait", "running"}:
++            claim_job(session, job_id, "recovery-worker", NOW)
++        if status == "retry_wait":
++            schedule_retry_or_fail(
++                session, job_id, "recovery-worker", False, NOW, expected_attempt=1
++            )
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=Clock())
++        receipt = commit(
++            repository,
++            claim(repository),
++            ({"entry_id": "recoverable"},),
++            is_last_page=True,
++            watermark=NOW,
++            persist_entry=lambda *args: PersistedPageEntry(failed_job_id=job_id),
++        )
++    assert (
++        receipt.failed_job_ids == (job_id,)
++        and row(cursor_engine, source_id)["watermark_published_at"] == NOW
++    )
++    assert row(cursor_engine, source_id)["cursor_json"]["pending_recovery_job_ids"] == []
++
++
++@pytest.mark.parametrize(
++    "invalid",
++    [
++        "exhausted_queued",
++        "exhausted_running",
++        "missing_schedule",
++        "missing_lease",
++        "missing_delivery",
++    ],
++)
++def test_unrecoverable_or_exhausted_nonterminal_references_roll_back_page(cursor_engine, invalid):
++    source_id = seed_source(cursor_engine)
++    with Session(cursor_engine) as session, session.begin():
++        job_id = create_recovery_job(session, source_id, "unrecoverable", max_attempts=1)
++        if invalid == "missing_delivery":
++            session.execute(outbox_events.delete().where(outbox_events.c.job_id == job_id))
++        else:
++            values = {"status": "queued", "attempt_count": 1}
++            if invalid == "exhausted_running":
++                values.update(
++                    status="running",
++                    lease_owner="worker",
++                    lease_expires_at=NOW + timedelta(seconds=60),
++                )
++            elif invalid == "missing_schedule":
++                values.update(status="retry_wait", attempt_count=0)
++            elif invalid == "missing_lease":
++                values.update(status="running", attempt_count=0)
++            session.execute(update(job_runs).where(job_runs.c.job_id == job_id).values(**values))
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=Clock())
++        lease = claim(repository)
++    before = row(cursor_engine, source_id)
++    with Session(cursor_engine) as session, session.begin(), pytest.raises(CursorCommitError):
++        commit(
++            SourceCursorRepository(session, ADMIN, source_id, clock=Clock()),
++            lease,
++            ({"entry_id": "unrecoverable"},),
++            is_last_page=True,
++            watermark=NOW,
++            persist_entry=lambda *args: PersistedPageEntry(failed_job_id=job_id),
++        )
++    assert row(cursor_engine, source_id) == before
++
++
++def test_final_page_rechecks_prior_job_after_actual_permanent_failure_and_takeover(cursor_engine):
++    source_id, clock, callbacks = seed_source(cursor_engine), Clock(), []
++    with Session(cursor_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=clock)
++        lease = claim(repository)
++        receipt = commit(
++            repository,
++            lease,
++            ({"entry_id": "prior"},),
++            persist_entry=persist_recovery(source_id, callbacks),
++            watermark=NOW,
++        )
++    job_id = receipt.failed_job_ids[0]
++
++    def permanent(session, context, payload):
++        raise JobExecutionError("actual_permanent_failure", permanent=True)
++
++    assert (
++        execute_job(
++            cursor_engine, job_id, "job-worker", {"fixture-source-recovery": permanent}, clock=clock
++        )
++        == "failed"
++    )
++    clock.now += timedelta(seconds=60)
++    with Session(cursor_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=clock)
++        resumed = claim(repository)
++    before = row(cursor_engine, source_id)
++    assert before["cursor_json"]["pending_recovery_job_ids"] == [
++        {"job_id": job_id, "entry_id": "prior"}
++    ]
++    with Session(cursor_engine) as session, session.begin(), pytest.raises(CursorCommitError):
++        commit(
++            SourceCursorRepository(session, ADMIN, source_id, clock=clock),
++            resumed,
++            input_cursor={"page": 1},
++            output_cursor={},
++            is_last_page=True,
++        )
++    assert row(cursor_engine, source_id) == before and before["watermark_published_at"] is None
++    with cursor_engine.connect() as connection:
++        assert (
++            connection.execute(
++                select(job_payloads.c.job_id).where(job_payloads.c.job_id == job_id)
++            ).scalar_one()
++            == job_id
++        )
++        assert (
++            connection.execute(
++                select(func.count())
++                .select_from(source_page_receipts)
++                .where(source_page_receipts.c.source_id == source_id)
++            ).scalar_one()
++            == 1
++        )
++
++
++def test_same_transaction_later_callback_cannot_make_earlier_reference_terminal(cursor_engine):
++    source_id, created = seed_source(cursor_engine), []
++
++    def callback(session, entry):
++        job_id = create_recovery_job(session, source_id, entry["entry_id"])
++        created.append(job_id)
++        if entry["entry_id"] == "second":
++            session.execute(
++                update(job_runs).where(job_runs.c.job_id == created[0]).values(status="blocked")
++            )
++        return PersistedPageEntry(failed_job_id=job_id)
++
++    with Session(cursor_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=Clock())
++        lease = claim(repository)
++        with pytest.raises(CursorCommitError):
++            commit(
++                repository,
++                lease,
++                ({"entry_id": "first"}, {"entry_id": "second"}),
++                persist_entry=callback,
++                is_last_page=True,
++                watermark=NOW,
++            )
++    assert row(cursor_engine, source_id)["last_successful_page"] == 0
++    with cursor_engine.connect() as connection:
++        assert (
++            connection.execute(
++                select(job_runs.c.job_id).where(job_runs.c.job_id.in_(created))
++            ).all()
++            == []
++        )
++
++
++def test_reference_limit_rejects_entire_page_and_keeps_prior_tracking(cursor_engine):
++    source_id = seed_source(cursor_engine)
++    with Session(cursor_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=Clock())
++        lease = claim(repository)
++        state = (
++            session.execute(
++                select(source_cursors).where(
++                    source_cursors.c.source_id == source_id,
++                )
++            )
++            .mappings()
++            .one()["cursor_json"]
++        )
++        state["pending_recovery_job_ids"] = [
++            {"job_id": str(uuid4()), "entry_id": str(index)} for index in range(1000)
++        ]
++        session.execute(
++            update(source_cursors)
++            .where(source_cursors.c.source_id == source_id)
++            .values(cursor_json=state)
++        )
++    before = row(cursor_engine, source_id)
++    callbacks = []
++    with (
++        Session(cursor_engine) as session,
++        session.begin(),
++        pytest.raises(CursorCommitError, match="exceed bounded limit"),
++    ):
++        commit(
++            SourceCursorRepository(session, ADMIN, source_id, clock=Clock()),
++            lease,
++            ({"entry_id": "over-limit"},),
++            persist_entry=persist_recovery(source_id, callbacks),
++        )
++    assert row(cursor_engine, source_id) == before
++
++
++def test_completed_window_tracking_does_not_recheck_terminal_jobs_from_old_history(cursor_engine):
++    source_id, clock, callbacks = seed_source(cursor_engine), Clock(), []
++    with Session(cursor_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=clock)
++        lease = claim(repository)
++        receipt = commit(
++            repository,
++            lease,
++            ({"entry_id": "old-window"},),
++            persist_entry=persist_recovery(source_id, callbacks),
++            is_last_page=True,
++            watermark=NOW,
++        )
++        repository.release(lease)
++        session.execute(
++            update(job_runs)
++            .where(job_runs.c.job_id == receipt.failed_job_ids[0])
++            .values(status="failed")
++        )
++    clock.now += timedelta(days=1)
++    with Session(cursor_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=clock)
++        next_window = repository.claim(
++            stream_kind="live", lease_owner="worker", window_start=NOW, window_end=clock.now
++        )
++        commit(
++            repository,
++            next_window,
++            input_cursor=next_window.cursor_json,
++            output_cursor={},
++            is_last_page=True,
++            watermark=clock.now,
++        )
++    state = row(cursor_engine, source_id)
++    assert state["watermark_published_at"] == clock.now
++    assert state["cursor_json"]["pending_recovery_job_ids"] == []
++    with cursor_engine.connect() as connection:
++        assert connection.execute(
++            select(source_page_receipts.c.failed_job_ids).where(
++                source_page_receipts.c.source_id == source_id,
++                source_page_receipts.c.page_key == receipt.page_key,
++            )
++        ).scalar_one() == list(receipt.failed_job_ids)
+diff --git a/backend/tests/integration/test_r03_cursor_review_negative.py b/backend/tests/integration/test_r03_cursor_review_negative.py
+new file mode 100644
+index 0000000..844036f
+--- /dev/null
++++ b/backend/tests/integration/test_r03_cursor_review_negative.py
+@@ -0,0 +1,275 @@
++"""Independent real-PG counterexamples for durable recovery and replay contracts."""
++
++import json
++import os
++from datetime import UTC, datetime, timedelta
++from pathlib import Path
++from uuid import uuid4
++
++import pytest
++from sqlalchemy import create_engine, select, text
++from sqlalchemy.orm import Session
++
++from ai_intel.domain.access import AccessScope, Role
++from ai_intel.infrastructure.outbox import enqueue_job
++from ai_intel.ingestion.cursor_repository import (
++    PersistedPageEntry,
++    SourceCursorRepository,
++    make_page_key,
++)
++from ai_intel.ingestion.scheduler import CursorCommitError
++from ai_intel.knowledge.models import job_runs, source_cursors, source_page_receipts
++from ai_intel.workers.executor import JobExecutionError, execute_job
++
++ADMIN = AccessScope.for_authenticated_user("independent-reviewer", None, Role.SYSTEM_ADMIN)
++RUN = Path(__file__).resolve().parents[3] / "reports/runs/recovery_r03_cursor_fixes_20261015"
++
++
++@pytest.fixture
++def review_engine():
++    engine = create_engine(
++        os.environ["TEST_DATABASE_URL"],
++        connect_args={
++            "connect_timeout": 5,
++            "options": "-c statement_timeout=20000 -c lock_timeout=5000",
++        },
++    )
++    with engine.connect() as connection:
++        assert (
++            connection.execute(text("select current_database()")).scalar_one()
++            == "test_dianzi_r03_cursor_fix_20261015"
++        )
++        assert (
++            connection.execute(text("select version_num from alembic_version")).scalar_one()
++            == "0012_source_page_fingerprint"
++        )
++    yield engine
++    engine.dispose()
++
++
++def seed_source(engine, now):
++    source_id = str(uuid4())
++    with engine.begin() as connection:
++        connection.execute(
++            text(
++                "insert into sources(source_id,name,category,base_origin,"
++                "visibility,tenant_id,created_at) values(:id,:name,'vendor_advisory',"
++                "'https://example.invalid','public',NULL,:now)"
++            ),
++            {"id": source_id, "name": "independent-r03-review-" + source_id, "now": now},
++        )
++    return source_id
++
++
++def observe(name, observation):
++    observation["observed_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
++    (RUN / (name + ".observation.json")).write_text(
++        json.dumps(observation, indent=2, default=str), encoding="utf-8"
++    )
++    print(json.dumps(observation, default=str))
++
++
++@pytest.mark.parametrize("terminal", ["permanent_failed", "blocked", "attempts_exhausted"])
++def test_terminal_failure_is_not_a_recoverable_entry(review_engine, terminal):
++    now = datetime.now(UTC)
++    source_id = seed_source(review_engine, now)
++    job_type = "independent-recovery-" + uuid4().hex
++    payload = json.dumps({"source_id": source_id, "entry_id": "missing-raw-entry"}).encode()
++    with Session(review_engine) as session, session.begin():
++        job_id = enqueue_job(
++            session,
++            None,
++            job_type,
++            payload,
++            now,
++            max_attempts=1 if terminal == "attempts_exhausted" else 5,
++        )
++
++    def failed_handler(session, context, payload):
++        raise JobExecutionError(
++            "independent_upstream_failure",
++            permanent=terminal == "permanent_failed",
++            blocked=terminal == "blocked",
++        )
++
++    outcome = execute_job(
++        review_engine, job_id, "independent-worker", {job_type: failed_handler}, clock=lambda: now
++    )
++    assert outcome == ("blocked" if terminal == "blocked" else "failed")
++    accepted = False
++    try:
++        with Session(review_engine) as session, session.begin():
++            repository = SourceCursorRepository(session, ADMIN, source_id, clock=lambda: now)
++            lease = repository.claim(
++                stream_kind="live",
++                lease_owner="independent-source-worker",
++                window_start=now - timedelta(days=1),
++                window_end=now,
++            )
++            _receipt = repository.commit_page(
++                lease,
++                page_key=make_page_key(lease, {}),
++                input_cursor={},
++                output_cursor={"page": 1},
++                entries=({"entry_id": "missing-raw-entry"},),
++                persist_entry=lambda session, entry: PersistedPageEntry(failed_job_id=job_id),
++                is_last_page=True,
++                watermark_published_at=now,
++            )
++            accepted = True
++    except CursorCommitError:
++        pass
++    with review_engine.connect() as connection:
++        cursor = (
++            connection.execute(
++                select(source_cursors).where(source_cursors.c.source_id == source_id)
++            )
++            .mappings()
++            .first()
++        )
++        job = (
++            connection.execute(select(job_runs).where(job_runs.c.job_id == job_id)).mappings().one()
++        )
++    observe(
++        "terminal_" + terminal,
++        {
++            "source_id": source_id,
++            "job_id": job_id,
++            "job_status": job["status"],
++            "attempt_count": job["attempt_count"],
++            "max_attempts": job["max_attempts"],
++            "page_accepted": accepted,
++            "cursor": dict(cursor) if cursor else None,
++        },
++    )
++    assert not accepted, (
++        "terminal failure has no automatic replay path but page/watermark committed"
++    )
++
++
++def test_same_page_key_different_entries_must_not_silently_reuse_receipt(review_engine):
++    now = datetime.now(UTC)
++    source_id = seed_source(review_engine, now)
++    callbacks = []
++    with Session(review_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=lambda: now)
++        lease = repository.claim(
++            stream_kind="live",
++            lease_owner="review-replay",
++            window_start=now - timedelta(days=1),
++            window_end=now,
++        )
++
++        def durable_recovery(session, entry):
++            callbacks.append(entry["entry_id"])
++            job_id = enqueue_job(
++                session,
++                None,
++                "source_recovery",
++                json.dumps({"source_id": source_id, "entry_id": entry["entry_id"]}).encode(),
++                now,
++            )
++            return PersistedPageEntry(failed_job_id=job_id)
++
++        original = repository.commit_page(
++            lease,
++            page_key=make_page_key(lease, {}),
++            input_cursor={},
++            output_cursor={"page": 1},
++            entries=({"entry_id": "original-entry"},),
++            persist_entry=durable_recovery,
++            is_last_page=True,
++        )
++    rejected = False
++    with Session(review_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=lambda: now)
++        try:
++            repeated = repository.commit_page(
++                lease,
++                page_key=make_page_key(lease, {}),
++                input_cursor={},
++                output_cursor={"page": 1},
++                entries=({"entry_id": "new-entry-not-saved"},),
++                persist_entry=durable_recovery,
++                is_last_page=True,
++            )
++        except CursorCommitError:
++            rejected = True
++    observe(
++        "changed_replay_entries",
++        {
++            "source_id": source_id,
++            "original_failed_job_ids": original.failed_job_ids,
++            "changed_entry_rejected": rejected,
++            "callbacks": callbacks,
++            "receipt_reused": not rejected and repeated.reused,
++        },
++    )
++    assert rejected, "same cursor/count with different entry identities reused an unrelated receipt"
++
++
++def test_same_page_key_changed_completion_must_not_silently_reuse_receipt(review_engine):
++    now = datetime.now(UTC)
++    source_id = seed_source(review_engine, now)
++    with Session(review_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=lambda: now)
++        lease = repository.claim(
++            stream_kind="live",
++            lease_owner="review-finality",
++            window_start=now - timedelta(days=1),
++            window_end=now,
++        )
++        _original = repository.commit_page(
++            lease,
++            page_key=make_page_key(lease, {}),
++            input_cursor={},
++            output_cursor={},
++            entries=(),
++            persist_entry=lambda session, entry: False,
++            is_last_page=False,
++            watermark_published_at=now,
++        )
++    rejected = False
++    with Session(review_engine) as session, session.begin():
++        repository = SourceCursorRepository(session, ADMIN, source_id, clock=lambda: now)
++        try:
++            repeated = repository.commit_page(
++                lease,
++                page_key=make_page_key(lease, {}),
++                input_cursor={},
++                output_cursor={},
++                entries=(),
++                persist_entry=lambda session, entry: False,
++                is_last_page=True,
++                watermark_published_at=now,
++            )
++        except CursorCommitError:
++            rejected = True
++    with review_engine.connect() as connection:
++        cursor = (
++            connection.execute(
++                select(source_cursors).where(source_cursors.c.source_id == source_id)
++            )
++            .mappings()
++            .one()
++        )
++        receipt_count = len(
++            connection.execute(
++                select(source_page_receipts.c.page_key).where(
++                    source_page_receipts.c.source_id == source_id
++                )
++            ).all()
++        )
++    observe(
++        "changed_replay_completion",
++        {
++            "source_id": source_id,
++            "changed_completion_rejected": rejected,
++            "receipt_reused": not rejected and repeated.reused,
++            "receipt_count": receipt_count,
++            "cursor": dict(cursor),
++        },
++    )
++    assert rejected, (
++        "completion changed but replay was reported successful while window stayed unfinished"
++    )
+diff --git a/backend/tests/unit/test_r03_cursor_boundaries.py b/backend/tests/unit/test_r03_cursor_boundaries.py
+index 8a3e04e..43fe350 100644
+--- a/backend/tests/unit/test_r03_cursor_boundaries.py
++++ b/backend/tests/unit/test_r03_cursor_boundaries.py
+@@ -2,6 +2,7 @@
+ 
+ from dataclasses import asdict
+ from datetime import UTC, datetime, timedelta
++from decimal import Decimal
+ 
+ import pytest
+ from sqlalchemy.orm import Session
+@@ -11,6 +12,7 @@ from ai_intel.ingestion.cursor_repository import (
+     SourceCursorLease,
+     SourceCursorRepository,
+     make_page_key,
++    page_request_digest,
+ )
+ from ai_intel.ingestion.scheduler import (
+     CursorCommitError,
+@@ -148,3 +150,85 @@ def test_fixture_successful_watermark_waits_for_final_page() -> None:
+     commit_page_persisted(state, FetchPageResult((), None, True), lambda entry: True)
+     assert state.watermark_published_at == "2026-10-12"
+     assert state.pending_watermark_published_at is None
++
++
++def test_request_digest_normalizes_key_order_and_utc_but_retains_all_entry_fields() -> None:
++    from datetime import timezone
++
++    first = page_request_digest(
++        lease(),
++        {},
++        {"next": 1},
++        ({"entry_id": "entry", "unknown": {"b": 2, "a": "中文"}},),
++        True,
++        NOW,
++    )
++    equivalent = page_request_digest(
++        lease(),
++        {},
++        {"next": 1},
++        ({"unknown": {"a": "中文", "b": 2}, "entry_id": "entry"},),
++        True,
++        NOW.astimezone(timezone(timedelta(hours=8))),
++    )
++    changed = page_request_digest(
++        lease(),
++        {},
++        {"next": 1},
++        ({"entry_id": "entry", "unknown": {"b": 3, "a": "中文"}},),
++        True,
++        NOW,
++    )
++    assert first == equivalent and first != changed and len(first) == 64
++
++
++@pytest.mark.parametrize(
++    "invalid",
++    [
++        float("nan"),
++        float("inf"),
++        float("-inf"),
++        NOW,
++        Decimal("1.2"),
++        object(),
++        {1: "non-string-key"},
++        ("not-json-list",),
++        b"bytes",
++    ],
++)
++def test_request_digest_rejects_non_json_fields_without_discarding_them(invalid) -> None:
++    with pytest.raises(ValueError):
++        page_request_digest(
++            lease(), {}, {}, ({"entry_id": "entry", "unknown": invalid},), False, None
++        )
++
++
++@pytest.mark.parametrize("kind", ["depth", "nodes", "bytes", "cycle"])
++def test_request_digest_rejects_unbounded_or_cyclic_input(kind: str) -> None:
++    value: object = "leaf"
++    if kind == "depth":
++        for _ in range(17):
++            value = [value]
++    elif kind == "nodes":
++        value = [0] * 10001
++    elif kind == "bytes":
++        value = "x" * 1048577
++    else:
++        cyclic = []
++        cyclic.append(cyclic)
++        value = cyclic
++    with pytest.raises(ValueError):
++        page_request_digest(
++            lease(), {}, {}, ({"entry_id": "entry", "unknown": value},), False, None
++        )
++
++
++def test_entry_order_and_completion_and_watermark_are_independent_request_inputs() -> None:
++    entries = ({"entry_id": "a"}, {"entry_id": "b"})
++    fingerprints = {
++        page_request_digest(lease(), {}, {}, entries, False, None),
++        page_request_digest(lease(), {}, {}, entries[::-1], False, None),
++        page_request_digest(lease(), {}, {}, entries, True, None),
++        page_request_digest(lease(), {}, {}, entries, False, NOW),
++    }
++    assert len(fingerprints) == 4

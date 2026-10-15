@@ -1,0 +1,70 @@
+FF......                                                                 [100%]
+=================================== FAILURES ===================================
+____________ test_two_real_nvd_pages_continue_from_committed_offset ____________
+
+job_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r04_pipeline_review_20261015?options=-c+search_path%3Dtest_r02_schema_ed125369a5bf4a8f9fb634d311b7a674+-c+statement_timeout%3D10000)
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-12/test_two_real_nvd_pages_contin0')
+
+    def test_two_real_nvd_pages_continue_from_committed_offset(job_engine,tmp_path):
+        now=[NOW]
+        urls=[]
+        def fetch(url):
+            urls.append(url)
+            result=nvd_response(next_page=True)
+            page=json.loads(result.body)
+            if 'startIndex=1' in url:
+                page['startIndex']=1
+                page['vulnerabilities'][0]['cve']['id']='CVE-2026-54321'
+            return FetchResult(result.final_url,200,'application/json',json.dumps(page).encode())
+        initial=queue(job_engine)
+        handler=build_source_page_handler(ContentStore(tmp_path),fetcher=fetch,clock=lambda:now[0])
+        assert execute_job(job_engine,initial,'review-1',{SOURCE_JOB_TYPE:handler},clock=lambda:now[0])=='succeeded'
+        with Session(job_engine) as session:
+            following=session.scalar(select(job_runs.c.job_id).where(job_runs.c.job_id!=initial))
+        now[0]+=timedelta(seconds=8)
+>       assert execute_job(job_engine,following,'review-2',{SOURCE_JOB_TYPE:handler},clock=lambda:now[0])=='succeeded'
+E       AssertionError: assert 'blocked' == 'succeeded'
+E         
+E         - succeeded
+E         + blocked
+
+/mnt/d/dianzi/reports/runs/recovery_r04_pipeline_review_1_20261015/testcopy/test_pipeline_negatives.py:44: AssertionError
+__________ test_vendor_full_page_requires_and_commits_empty_successor __________
+
+job_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r04_pipeline_review_20261015?options=-c+search_path%3Dtest_r02_schema_89570a81377e46beab25528bcd6661c1+-c+statement_timeout%3D10000)
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-12/test_vendor_full_page_requires0')
+
+    def test_vendor_full_page_requires_and_commits_empty_successor(job_engine,tmp_path):
+        now=[NOW]
+        base=json.loads(vendor_response().body)[0]
+        page=[]
+        for number in range(10):
+            record=dict(base)
+            suffix='23456789cf'[number]
+            record['ghsa_id']='GHSA-6cxc-2vcg-w5q'+suffix
+            record['html_url']='https://github.com/vllm-project/vllm/security/advisories/'+record['ghsa_id']
+            record['cve_id']=None
+            page.append(record)
+        urls=[]
+        def fetch(url):
+            urls.append(url)
+            return FetchResult('https://api.github.com',200,'application/json',json.dumps(page).encode() if url.endswith('page=1') else b'[]')
+        initial=queue(job_engine,kind='vllm_vendor')
+        handler=build_source_page_handler(ContentStore(tmp_path),fetcher=fetch,clock=lambda:now[0])
+        assert execute_job(job_engine,initial,'vendor-1',{SOURCE_JOB_TYPE:handler},clock=lambda:now[0])=='succeeded'
+        with Session(job_engine) as session:
+            following=session.scalar(select(job_runs.c.job_id).where(job_runs.c.job_id!=initial))
+            assert session.execute(select(source_cursors.c.cursor_json)).scalar()['position']=={'page':2}
+        now[0]+=timedelta(seconds=8)
+>       assert execute_job(job_engine,following,'vendor-2',{SOURCE_JOB_TYPE:handler},clock=lambda:now[0])=='succeeded'
+E       AssertionError: assert 'blocked' == 'succeeded'
+E         
+E         - succeeded
+E         + blocked
+
+/mnt/d/dianzi/reports/runs/recovery_r04_pipeline_review_1_20261015/testcopy/test_pipeline_negatives.py:75: AssertionError
+- generated xml file: /mnt/d/dianzi/reports/runs/recovery_r04_pipeline_review_1_20261015/targeted_negatives_resource_fixed.xml -
+=========================== short test summary info ============================
+FAILED ../../../../../../../../d/dianzi/reports/runs/recovery_r04_pipeline_review_1_20261015/testcopy/test_pipeline_negatives.py::test_two_real_nvd_pages_continue_from_committed_offset
+FAILED ../../../../../../../../d/dianzi/reports/runs/recovery_r04_pipeline_review_1_20261015/testcopy/test_pipeline_negatives.py::test_vendor_full_page_requires_and_commits_empty_successor
+2 failed, 6 passed in 15.52s

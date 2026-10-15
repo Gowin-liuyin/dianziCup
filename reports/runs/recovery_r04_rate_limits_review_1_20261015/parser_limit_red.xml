@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="1.771" timestamp="2026-10-15T16:48:48.124346+08:00" hostname="yin"><testcase classname="" name="test_raw_oversized_rate_header_does_not_become_seven_second_network_retry" time="0.954"><failure message="AssertionError: {'error_code': 'network_error', 'next_retry_at': '2026-10-15T12:35:03.900000+00:00', 'outcome': 'retry_wait'}&#10;assert 'retry_wait' == 'blocked'&#10;  &#10;  - blocked&#10;  + retry_wait">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002C108375A30&gt;
+job_engine = Engine([redacted isolated test connection])
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-433/test_raw_oversized_rate_header0')
+
+    def test_raw_oversized_rate_header_does_not_become_seven_second_network_retry(
+        monkeypatch, job_engine, tmp_path
+    ):
+        sockets = install_wire(
+            monkeypatch, raw_response(429, b"Retry-After: " + b"9" * 65536 + b"\r\n")
+        )
+        job_id = queue(job_engine)
+        handler = build_source_page_handler(ContentStore(tmp_path), clock=lambda: NOW)
+        outcome = execute_job(job_engine, job_id, "parser-limit-review", {SOURCE_JOB_TYPE: handler}, clock=lambda: NOW)
+        with Session(job_engine) as session:
+            row = session.execute(select(job_runs)).mappings().one()
+            actual = {"outcome": outcome, "error_code": row["error_code"],
+                      "next_retry_at": row["next_retry_at"].isoformat() if row["next_retry_at"] else None}
+        assert sockets[0].closed
+&gt;       assert outcome == "blocked", actual
+E       AssertionError: {'error_code': 'network_error', 'next_retry_at': '2026-10-15T12:35:03.900000+00:00', 'outcome': 'retry_wait'}
+E       assert 'retry_wait' == 'blocked'
+E         
+E         - blocked
+E         + retry_wait
+
+D:\dianzi\reports\runs\recovery_r04_rate_limits_review_1_20261015\test_wire_parser_limit.py:27: AssertionError</failure></testcase></testsuite></testsuites>

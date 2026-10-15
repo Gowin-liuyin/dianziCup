@@ -1,0 +1,45 @@
+--- test_independent_vector_foundation.py
++++ test_independent_vector_foundation_v2.py
+@@ -82,8 +82,8 @@
+     user_id = str(uuid4())
+     with Session(vector_database) as session:
+         session.execute(insert(users).values(user_id=user_id, username=user_id, password_hash='synthetic-noncredential',
+-                                            tenant_id=None, role='viewer', created_at=datetime.now(UTC)))
+-        values = dict(answer_id=str(uuid4()), user_id=user_id, tenant_id=None, question_text='question',
++                                            tenant_id='tenant-review', role='viewer', created_at=datetime.now(UTC)))
++        values = dict(answer_id=str(uuid4()), user_id=user_id, tenant_id='tenant-review', question_text='question',
+                       response={}, scope_epochs={}, model_trace={}, created_at=datetime.now(UTC))
+         values[invalid_field] = []
+         with pytest.raises(IntegrityError):
+@@ -153,3 +153,31 @@
+             connection.scalar(select(retrieval_chunks.c.embedding.cosine_distance([1.0] * 384)))
+         assert getattr(failure.value.orig, 'sqlstate', None) == '42883'
+         connection.rollback()
++
++
++def test_upgrade_0006_keeps_unknown_legacy_fact_and_time(isolated_test_database_url) -> None:
++    base = create_engine(isolated_test_database_url)
++    schema = 'test_r05_review_legacy_' + uuid4().hex
++    with base.begin() as connection:
++        assert connection.scalar(text('SELECT current_database()')) == 'test_dianzi_r05_pgvector_20261015'
++        connection.execute(CreateSchema(schema))
++    isolated = base.url.update_query_dict({'options': f'-c search_path={schema} -c statement_timeout=15000'})
++    engine = create_engine(isolated)
++    legacy_id, at = str(uuid4()), datetime(2026, 10, 1, 12, 30, tzinfo=UTC)
++    try:
++        run_migrations(isolated.render_as_string(hide_password=False), '0006_auth_state')
++        with engine.begin() as connection:
++            connection.execute(text("INSERT INTO claims (claim_id,subject,predicate,object_value,claim_status,"
++                                    "claim_origin,condition_value,freshness,asserted_at,visibility,created_at) "
++                                    "VALUES (:id,'review-component','affected_by','review old fact','unverified',"
++                                    "'source_explicit','unknown','unknown',:at,'public',:at)"), {'id': legacy_id, 'at': at})
++        run_migrations(isolated.render_as_string(hide_password=False))
++        with engine.connect() as connection:
++            assert connection.scalar(text('SELECT version_num FROM alembic_version')) == '0014_grounded_answer_vectors'
++            row = connection.execute(text('SELECT object_value,condition_value,freshness,asserted_at FROM claims WHERE claim_id=:id'), {'id': legacy_id}).one()
++            assert row == ('review old fact', 'unknown', 'unknown', at)
++    finally:
++        engine.dispose()
++        with base.begin() as connection:
++            connection.execute(DropSchema(schema, cascade=True))
++        base.dispose()
