@@ -1,0 +1,26 @@
+frontend/src/App.tsx:13:import { DocumentWorkspace } from "./features/documents/document-workspace";
+frontend/src/App.tsx:196:          {page === "documents" && <DocumentWorkspace key={sessionScopeKey} />}
+frontend/src/features/documents\document-workspace.tsx:45:function DocumentInspector({ id, revisionId, isCurrent, onExpired }: { id: string; revisionId: string | null; isCurrent: () => boolean; onExpired: () => void }) {
+frontend/src/features/documents\document-workspace.tsx:46:  const [resource, setResource] = useState<Resource<DocumentDetailResponse>>({ kind: "loading" });
+frontend/src/features/documents\document-workspace.tsx:53:  const [history, setHistory] = useState<Resource<DocumentRevisionsResponse>>({ kind: "loading" });
+frontend/src/features/documents\document-workspace.tsx:54:  const [historyRequest, setHistoryRequest] = useState({ offset: 0, retry: 0 });
+frontend/src/features/documents\document-workspace.tsx:55:  const [historyPending, setHistoryPending] = useState(true);
+frontend/src/features/documents\document-workspace.tsx:56:  const [historyError, setHistoryError] = useState<ApiProblem | null>(null);
+frontend/src/features/documents\document-workspace.tsx:61:    if (request.offset === 0) setResource({ kind: "loading" });
+frontend/src/features/documents\document-workspace.tsx:65:      setResource((previous) => {
+frontend/src/features/documents\document-workspace.tsx:76:      else setResource({ kind: "failed", error });
+frontend/src/features/documents\document-workspace.tsx:83:    const controller = new AbortController(); setHistoryPending(true); setHistoryError(null);
+frontend/src/features/documents\document-workspace.tsx:86:      setHistory((previous) => {
+frontend/src/features/documents\document-workspace.tsx:91:      }); setHistoryPending(false);
+frontend/src/features/documents\document-workspace.tsx:94:      const error = publicProblem(failure); setHistoryPending(false);
+frontend/src/features/documents\document-workspace.tsx:95:      if (historyRequest.offset > 0 && error.status !== 401 && error.status !== 403 && error.status !== 404) setHistoryError(error);
+frontend/src/features/documents\document-workspace.tsx:96:      else setHistory({ kind: "failed", error });
+frontend/src/features/documents\document-workspace.tsx:128:        {history.kind === "failed" && <DocumentError error={history.error} onRetry={() => setHistoryRequest({ offset: 0, retry: historyRequest.retry + 1 })} />}
+frontend/src/features/documents\document-workspace.tsx:133:          {history.value.next_offset !== null && <button className="button secondary" disabled={historyPending} onClick={() => setHistoryRequest({ offset: history.value.next_offset ?? 0, retry: 0 })}>{historyPending ? "加载版本中…" : "加载更多历史版本"}</button>}
+frontend/src/features/documents\document-workspace.tsx:135:        {historyError && <ErrorPanel error={historyError} message="后续历史版本读取失败，已取得的版本仍在此处；版本记录尚未完整。" onRetry={() => setHistoryRequest((value) => ({ ...value, retry: value.retry + 1 }))} />}
+frontend/src/features/documents\document-workspace.tsx:149:export function DocumentWorkspace() {
+frontend/src/features/documents\document-workspace.tsx:156:  const [resource, setResource] = useState<Resource<DocumentListResponse>>({ kind: "loading" });
+frontend/src/features/documents\document-workspace.tsx:164:    const controller = new AbortController(); setResource({ kind: "loading" });
+frontend/src/features/documents\document-workspace.tsx:165:    void getDocumentList(filters, controller.signal).then((value) => { if (!controller.signal.aborted && isCurrent()) setResource({ kind: "loaded", value }); }).catch((failure: unknown) => {
+frontend/src/features/documents\document-workspace.tsx:167:      const error = publicProblem(failure); setResource({ kind: "failed", error }); if (error.status === 401) expired();
+frontend/src/features/documents\document-workspace.tsx:195:    {selection === null ? <aside className="panel document-prompt"><p className="eyebrow">原文核查</p><h2>读资料<br />留意证据范围</h2><p>选择资料，核查保存的版本、发布时间精度与原文覆盖。</p><dl><dt>论文</dt><dd>研究主张与确认事实分别核查。</dd><dt>标准与政策</dt><dd>版本、建议、义务和适用范围以原文为准。</dd><dt>原文证据</dt><dd>定位已核验仍需确认片段是否支持论断。</dd></dl><p className="document-boundary">未知保持未知</p></aside> : <DocumentInspector key={`${selection.documentId}:${selection.revisionId}`} id={selection.documentId} revisionId={selection.revisionId} isCurrent={isCurrent} onExpired={expired} />}

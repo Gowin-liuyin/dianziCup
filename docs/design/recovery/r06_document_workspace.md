@@ -43,3 +43,9 @@ strict DTO 字段/枚举/日期/安全URL/版本归属；只读请求/cursor/fil
 全量前端295测试真实通过（20文件，0失败/跳过），lint/typecheck/build退出0。隔离 Edge 四浏览器测试真实通过，1366×900、390×900、reduced-motion、背景 pointer-events:none、原生 summary Space 展开、focus、文本 Range bounds、历史标题/证据、401与退出后晚到响应均有断言。实际查看 desktop/mobile full-page PNG：深色层次清楚，历史标题、摘要/部分解析、日期精度、许可未知可读，长ID与注入文本断行；无全页横滚。首次全页截图捕获了视口外的 fixed skip-link，最终截图先真实 scrollTo(0,0) 再拍，避免离屏固定元素投影进长图；没有隐藏产品DOM。
 
 首次默认 Chromium 1248 缺执行文件，三项环境失败，改用本机已安装 Edge。首次 Edge 为1过2失败：1366捕获 select 隐式label包含选项，产品增加明确 aria-label 后修复；状态夹具轮换只改hash保留已加载状态，测试改为reload取得新会话/数据。未删除、skip或降低断言，原报告保留。完整命令时间/exit与截图路径见 reports/tasks/R06-document-workspace.md 及自有run目录。真实后端/browser仍未在本工作树执行。
+
+## 初审修复的状态转换
+
+独立初审发现两个真实缺陷并已复现：历史403/404残留正文、同hash当前链接没有新GET。修复后资料detail/history共享读取代次与取消范围，权限/资源确定丢失时清空所有检视事实，同时清父列表快照和阻止在途list复活；503保持部分结果说明。当前版本链接显式重置检视组件、所选revision及正文/history分页，并发起不带revision的当前GET，不依赖hashchange。普通临时错误重试仍保留原选修订。
+
+原样独立36unit和6browser由作者复跑红→绿，新增永久4回归红→绿，完整299unit、原4browser与lint/typecheck/build真实通过；不是独立accepted或live。详见任务报告第二轮与review_fix_1_*日志。外观tokens/背景/旧功能不变，实际检查无权限清空和新当前版本截图。

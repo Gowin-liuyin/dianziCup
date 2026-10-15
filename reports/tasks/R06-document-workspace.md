@@ -57,3 +57,28 @@
 F1/R1：资料分类与明确正文覆盖/日期精度；F2/F3：指定revision原文与永久定位核查入口；D2：中文列表/详情/历史/窄屏/键盘/错误状态；E1：统一认证、严格投影、不执行原文、无产品fixture成功。均为本切片代码/隔离证据，不上推全部评分项通过。
 
 建议下一步：主控集成源码冻结后，使用专用真实PG/API会话复跑资料列表→历史→证据与权限负例，再交独立审查；progress由主控登记 awaiting_review。未经独立复跑，不accepted、不跨阶段。
+
+## 独立初审两项 Must 修复（2026-10-15 第二轮）
+
+状态仍 awaiting_review，待原独立 reviewer 定向复核；本文作者复跑独立用例不等于独立验收。原 aa17db32/475f71e 冻结、原295/4browser和全部失败报告均保留。
+
+初审确认：①已取得正文后历史分页403/404只隐藏history，旧正文仍展示；②初始当前地址在证据分页期间变历史，当前链接仍为相同hash，点击没有新GET。根因是detail/history只有各自错误状态，以及hash被用作唯一重读触发。
+
+修复范围仅 `frontend/src/features/documents/document-workspace.tsx`、新增 `document-recovery.test.tsx`、本报告/设计及自有run日志。detail与history共享资料读取代次和AbortController集合：任一403/404先提升代次并取消全部读取，再清detail/evidence/history、加载/partial错误状态；父工作区清列表快照并提升独立list代次，晚到成功不能恢复标题/数量/正文。503后续页保持已取得的部分内容和未完整说明，未改为权限丢失。当前链接显式取消旧请求、重挂检视区、reset所选revision/正文/历史分页并重新GET不带revision_id的当前版本；同hash也执行读取。普通临时详情失败仍重试原已选版本。
+
+先固定读取独立测试，输入SHA256见review_fix_1_inputs.json：review.test.ts=aa85efb493e10b02beb0f8037581cb1426d02c6e8e175b14cb9914b70a314749；review.browser.spec.ts=e79bc1c9034770e4cfd30b81598d390eb910bd67875b086adad84c426cbae13e。原样复制到自有run目录；只调整自用config的include/testMatch/cwd/loopback端口/输出目录，测试断言与fixture字节不改。独立 reviewer 原目录未写入。
+
+红→绿真实结果：
+
+| 自用命令 / 用例 | 修复前 | 末版 | 日志前缀（同run目录） |
+|---|---|---|---|
+| `node node_modules/vitest/vitest.mjs run --config=../reports/runs/recovery_r06_document_workspace_20261015/review_fix_1.vitest.config.ts --reporter=json --outputFile=...` | exit1，36中34过2失败 | exit0，36/36，0skip | review_fix_1_unit_red / unit_final |
+| `node node_modules/@playwright/test/cli.js test --config=../reports/runs/recovery_r06_document_workspace_20261015/review_fix_1.playwright.config.ts`，独占25377 Edge | exit1，6中3过3失败 | exit0，6/6，0skip/flaky | review_fix_1_browser_red / browser_final |
+| `npm test -- ... src/features/documents/document-recovery.test.tsx`，新增永久回归 | exit1，4中1过3失败 | exit0，4/4 | review_fix_1_regression_red / regression_green |
+| `npm test -- --reporter=json --outputFile=../reports/runs/recovery_r06_document_workspace_20261015/review_fix_1_full_unit_delivery.json` | 原295测试保留 | exit0，299/299，21文件0skip | review_fix_1_full_unit_delivery |
+| `npm run lint` / `npm run typecheck` / `npm run build` | 首轮lint有2 ref-cleanup warning（exit0） | 捕获effect局部Set后全exit0，0warning | review_fix_1_lint/typecheck/build_delivery |
+| 原 `playwright.documents.config.ts`，独占25376 Edge | 原四项不删改 | exit0，4/4，0skip/flaky | review_fix_1_original_browser_delivery |
+
+每条完整参数/真实起止/exit见追加commands.jsonl；上表`...`仅为报告省略日志输出参数，不是未执行命令。原样copies与红绿JSON/失败message均保留。新增永久回归包含403/404后已在途证据晚到、catalog/title/history清空，503部分保留及同hash当前新GET。六browser也覆盖新版本后旧证据丢弃、退出→重新登录→刷新时旧会话晚到结果不复活、390长title/license/notes/raw日期注入与动效开关。未伪造live或将失败改skip。
+
+实际查看修复截图：history-403-stale.png中资料列表已清除且检视区仅有无权限；current-link-stale.png中已出现新当前revision3/原文，无旧版正文。文件名来自原独立测试，不代表修复后仍stale。截图在review_fix_1_browser_artifacts/。源码/文档diff检查仅排除原生日志，不清洗原工具输出；末版源冻结随后登记。下一步由原独立reviewer对新SHA复核，真实资料API/browser依旧由主控接续，不自行accepted。

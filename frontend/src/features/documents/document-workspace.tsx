@@ -42,7 +42,7 @@ function EvidenceBlock({ evidence, index }: { evidence: EvidenceResponse; index:
   </article>;
 }
 
-function DocumentInspector({ id, revisionId, isCurrent, onExpired }: { id: string; revisionId: string | null; isCurrent: () => boolean; onExpired: () => void }) {
+function DocumentInspector({ id, revisionId, isCurrent, onExpired, onUnavailable, onReloadCurrent }: { id: string; revisionId: string | null; isCurrent: () => boolean; onExpired: () => void; onUnavailable: (error: ApiProblem) => void; onReloadCurrent: (id: string) => void }) {
   const [resource, setResource] = useState<Resource<DocumentDetailResponse>>({ kind: "loading" });
   const [request, setRequest] = useState({ offset: 0, retry: 0 });
   const [pending, setPending] = useState(true);
@@ -54,13 +54,30 @@ function DocumentInspector({ id, revisionId, isCurrent, onExpired }: { id: strin
   const [historyRequest, setHistoryRequest] = useState({ offset: 0, retry: 0 });
   const [historyPending, setHistoryPending] = useState(true);
   const [historyError, setHistoryError] = useState<ApiProblem | null>(null);
+  const readGeneration = useRef(0);
+  const activeReads = useRef(new Set<AbortController>());
+  const stopReads = useCallback(() => {
+    readGeneration.current += 1;
+    for (const controller of activeReads.current) controller.abort();
+    activeReads.current.clear();
+  }, []);
+  const invalidateDocument = useCallback((error: ApiProblem) => {
+    stopReads(); selectedRevision.current = null;
+    setResource({ kind: "failed", error }); setHistory({ kind: "failed", error });
+    setPending(false); setHistoryPending(false); setPageError(null); setHistoryError(null);
+    onUnavailable(error);
+  }, [stopReads, onUnavailable]);
+  function reloadCurrentDocument() { stopReads(); onReloadCurrent(id); }
 
   useEffect(() => {
     const controller = new AbortController();
+    const generation = readGeneration.current;
+    const controllers = activeReads.current;
+    controllers.add(controller);
     setPending(true); setPageError(null);
     if (request.offset === 0) setResource({ kind: "loading" });
     void getDocumentDetail(id, selectedRevision.current, request.offset, controller.signal).then((value) => {
-      if (controller.signal.aborted || !isCurrent()) return;
+      if (controller.signal.aborted || generation !== readGeneration.current || !isCurrent()) return;
       selectedRevision.current = value.document.revision_id;
       setResource((previous) => {
         if (request.offset === 0 || previous.kind !== "loaded") return { kind: "loaded", value };
@@ -70,19 +87,23 @@ function DocumentInspector({ id, revisionId, isCurrent, onExpired }: { id: strin
       });
       setPending(false);
     }).catch((failure: unknown) => {
-      if (controller.signal.aborted || !isCurrent()) return;
+      if (controller.signal.aborted || generation !== readGeneration.current || !isCurrent()) return;
       const error = publicProblem(failure); setPending(false);
+      if (error.status === 403 || error.status === 404) { invalidateDocument(error); return; }
       if (request.offset > 0 && error.status !== 401 && error.status !== 403 && error.status !== 404) setPageError(error);
       else setResource({ kind: "failed", error });
       if (error.status === 401) onExpired();
     });
-    return () => controller.abort();
-  }, [id, request, isCurrent, onExpired]);
+    return () => { controller.abort(); controllers.delete(controller); };
+  }, [id, request, isCurrent, onExpired, invalidateDocument]);
 
   useEffect(() => {
     const controller = new AbortController(); setHistoryPending(true); setHistoryError(null);
+    const generation = readGeneration.current;
+    const controllers = activeReads.current;
+    controllers.add(controller);
     void getDocumentRevisions(id, historyRequest.offset, controller.signal).then((value) => {
-      if (controller.signal.aborted || !isCurrent()) return;
+      if (controller.signal.aborted || generation !== readGeneration.current || !isCurrent()) return;
       setHistory((previous) => {
         if (historyRequest.offset === 0 || previous.kind !== "loaded") return { kind: "loaded", value };
         const items = [...previous.value.items, ...value.items];
@@ -90,14 +111,15 @@ function DocumentInspector({ id, revisionId, isCurrent, onExpired }: { id: strin
         return { kind: "loaded", value: { ...value, items } };
       }); setHistoryPending(false);
     }).catch((failure: unknown) => {
-      if (controller.signal.aborted || !isCurrent()) return;
+      if (controller.signal.aborted || generation !== readGeneration.current || !isCurrent()) return;
       const error = publicProblem(failure); setHistoryPending(false);
+      if (error.status === 403 || error.status === 404) { invalidateDocument(error); return; }
       if (historyRequest.offset > 0 && error.status !== 401 && error.status !== 403 && error.status !== 404) setHistoryError(error);
       else setHistory({ kind: "failed", error });
       if (error.status === 401) onExpired();
     });
-    return () => controller.abort();
-  }, [id, historyRequest, isCurrent, onExpired]);
+    return () => { controller.abort(); controllers.delete(controller); };
+  }, [id, historyRequest, isCurrent, onExpired, invalidateDocument]);
 
   useEffect(() => {
     if (resource.kind !== "loaded" || focused.current) return;
@@ -109,12 +131,12 @@ function DocumentInspector({ id, revisionId, isCurrent, onExpired }: { id: strin
   return <section ref={inspector} tabIndex={-1} className="panel document-inspector" aria-labelledby="document-detail-title">
     <div className="panel-heading"><h2 id="document-detail-title">资料检视</h2><a className="text-link" href="#documents">关闭详情</a></div>
     {resource.kind === "loading" && <p className="loading-state" role="status">正在取得资料版本与原文…</p>}
-    {resource.kind === "failed" && <DocumentError error={resource.error} onRetry={() => setRequest({ offset: 0, retry: request.retry + 1 })} />}
+    {resource.kind === "failed" && <DocumentError error={resource.error} onRetry={() => { if (resource.error.status === 404) reloadCurrentDocument(); else setRequest({ offset: 0, retry: request.retry + 1 }); }} />}
     {resource.kind === "loaded" && <div className="document-detail-body">
       <p className="document-mode">{modeLabel(resource.value.data_mode)} · {kindLabels[resource.value.document.document_kind]} · {resource.value.document.is_current ? "当前版本" : "历史版本"}</p>
       <h3 className="document-title">{resource.value.document.title}</h3>
       <div className="document-flags"><span>修订 {resource.value.document.revision_number}</span><span>{parseLabels[resource.value.document.parse_status]}</span><span>{coverageLabels[resource.value.document.content_coverage]}</span></div>
-      {!resource.value.document.is_current && <p className="document-boundary">正在查看保存的历史修订，标题和证据属于此版本。<a href={`#documents/${id}`}>查看当前版本 →</a></p>}
+      {!resource.value.document.is_current && <p className="document-boundary">正在查看保存的历史修订，标题和证据属于此版本。<a href={`#documents/${id}`} onClick={(event) => { event.preventDefault(); reloadCurrentDocument(); }}>查看当前版本 →</a></p>}
       <dl className="document-metadata"><dt>来源</dt><dd>{resource.value.document.source_name}</dd><dt>来源类别</dt><dd>{categoryLabels[resource.value.document.source_category]}</dd>
         <dt>文档标识</dt><dd><code>{id}</code></dd><dt>原文修订</dt><dd><code>{resource.value.document.revision_id}</code></dd>
         <dt>发布日期精度</dt><dd className="document-date"><Publication document={resource.value.document} /></dd><dt>源发布时间</dt><dd><SavedTime value={resource.value.document.source_published_at} /></dd>
@@ -155,15 +177,31 @@ export function DocumentWorkspace() {
   const [category, setCategory] = useState<SourceCategory | "">("");
   const [resource, setResource] = useState<Resource<DocumentListResponse>>({ kind: "loading" });
   const [retry, setRetry] = useState(0);
+  const [inspectorGeneration, setInspectorGeneration] = useState(0);
+  const [catalogInvalidated, setCatalogInvalidated] = useState(false);
+  const listGeneration = useRef(0);
+  const listController = useRef<AbortController | null>(null);
   const user = state.kind === "authenticated" ? state.user : null;
   const isCurrent = useCallback(() => isSessionCurrent(sessionGeneration), [isSessionCurrent, sessionGeneration]);
   const expired = useCallback(() => expireSession(sessionGeneration), [expireSession, sessionGeneration]);
+  const invalidateCatalog = useCallback((error: ApiProblem) => {
+    listGeneration.current += 1; listController.current?.abort();
+    setCatalogInvalidated(true); setResource({ kind: "failed", error });
+  }, []);
+  const reloadCurrent = useCallback((id: string) => {
+    listGeneration.current += 1; listController.current?.abort();
+    setResource({ kind: "loading" }); setCatalogInvalidated(false);
+    window.history.replaceState(null, "", `#documents/${id}`);
+    setSelection({ documentId: id, revisionId: null });
+    setInspectorGeneration((value) => value + 1); setRetry((value) => value + 1);
+  }, []);
   useEffect(() => { const navigate = () => setSelection(readDocumentSelection(window.location.hash)); window.addEventListener("hashchange", navigate); return () => window.removeEventListener("hashchange", navigate); }, []);
   useEffect(() => {
     if (user === null || actionPending) return;
-    const controller = new AbortController(); setResource({ kind: "loading" });
-    void getDocumentList(filters, controller.signal).then((value) => { if (!controller.signal.aborted && isCurrent()) setResource({ kind: "loaded", value }); }).catch((failure: unknown) => {
-      if (controller.signal.aborted || !isCurrent()) return;
+    const controller = new AbortController(); const generation = ++listGeneration.current;
+    listController.current = controller; setResource({ kind: "loading" }); setCatalogInvalidated(false);
+    void getDocumentList(filters, controller.signal).then((value) => { if (!controller.signal.aborted && generation === listGeneration.current && isCurrent()) setResource({ kind: "loaded", value }); }).catch((failure: unknown) => {
+      if (controller.signal.aborted || generation !== listGeneration.current || !isCurrent()) return;
       const error = publicProblem(failure); setResource({ kind: "failed", error }); if (error.status === 401) expired();
     }); return () => controller.abort();
   }, [filters, retry, user, actionPending, isCurrent, expired]);
@@ -181,7 +219,7 @@ export function DocumentWorkspace() {
       <button className="button" type="submit" disabled={resource.kind === "loading"}>检索资料</button><p className="small-note">仅检索已保存标题。资料覆盖与风险确认分别核查。</p>
     </form>
     {resource.kind === "loading" && <p role="status" className="loading-state">正在查询授权范围内的资料…</p>}
-    {resource.kind === "failed" && <DocumentError error={resource.error} collection onRetry={() => setRetry((value) => value + 1)} />}
+    {resource.kind === "failed" && (catalogInvalidated ? <EmptyState title="资料列表已清除" description="所选资料已不可访问，旧列表快照已隐藏。重新检索后再核查可见资料。" /> : <DocumentError error={resource.error} collection onRetry={() => setRetry((value) => value + 1)} />)}
     {resource.kind === "loaded" && <><p className="document-page-count">本页 {resource.value.items.length} 条 · {modeLabel(resource.value.data_mode)}</p>
       {resource.value.items.length === 0 && <EmptyState title="本次查询没有资料记录" description="本次授权范围与筛选没有返回资料，不能推论相关研究或风险不存在。" />}
       <ul className="document-list" aria-label="已保存资料列表">{resource.value.items.map((document) => <li key={document.document_id} className={selection?.documentId === document.document_id ? "document-selected" : undefined}>
@@ -192,6 +230,6 @@ export function DocumentWorkspace() {
       <div className="document-pagination"><button className="button secondary" disabled={filters.cursor === undefined} onClick={() => setFilters((value) => ({ ...value, cursor: undefined }))}>回到第一页</button><button className="button secondary" disabled={resource.value.next_cursor === null} onClick={() => { setSelection(null); window.history.replaceState(null, "", "#documents"); setFilters((value) => ({ ...value, cursor: resource.value.next_cursor ?? undefined })); }}>下一页资料</button></div>
     </>}
   </section>
-    {selection === null ? <aside className="panel document-prompt"><p className="eyebrow">原文核查</p><h2>读资料<br />留意证据范围</h2><p>选择资料，核查保存的版本、发布时间精度与原文覆盖。</p><dl><dt>论文</dt><dd>研究主张与确认事实分别核查。</dd><dt>标准与政策</dt><dd>版本、建议、义务和适用范围以原文为准。</dd><dt>原文证据</dt><dd>定位已核验仍需确认片段是否支持论断。</dd></dl><p className="document-boundary">未知保持未知</p></aside> : <DocumentInspector key={`${selection.documentId}:${selection.revisionId}`} id={selection.documentId} revisionId={selection.revisionId} isCurrent={isCurrent} onExpired={expired} />}
+    {selection === null ? <aside className="panel document-prompt"><p className="eyebrow">原文核查</p><h2>读资料<br />留意证据范围</h2><p>选择资料，核查保存的版本、发布时间精度与原文覆盖。</p><dl><dt>论文</dt><dd>研究主张与确认事实分别核查。</dd><dt>标准与政策</dt><dd>版本、建议、义务和适用范围以原文为准。</dd><dt>原文证据</dt><dd>定位已核验仍需确认片段是否支持论断。</dd></dl><p className="document-boundary">未知保持未知</p></aside> : <DocumentInspector key={`${selection.documentId}:${selection.revisionId}:${inspectorGeneration}`} id={selection.documentId} revisionId={selection.revisionId} isCurrent={isCurrent} onExpired={expired} onUnavailable={invalidateCatalog} onReloadCurrent={reloadCurrent} />}
   </div>;
 }
