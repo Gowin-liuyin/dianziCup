@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
 
 from ai_intel.infrastructure.models.json_output import strict_json_object
+from ai_intel.ingestion.source_catalog import parse_source_timestamp
 
 OSV_CONNECTOR_NAME = "osv-vulnerability"
 OSV_CONNECTOR_VERSION = "osv-1.0.0"
@@ -80,8 +80,8 @@ def _timestamp(value: object, field_name: str) -> str | None:
     text = _optional_text(value, field_name)
     if text is not None:
         try:
-            timestamp = datetime.fromisoformat(text)
-            if timestamp.utcoffset() is None or "T" not in text:
+            parse_source_timestamp(text)
+            if "T" not in text or re.search(r"(?:Z|[+-][0-9]{2}:[0-9]{2})$", text) is None:
                 raise ValueError("timestamp lacks explicit timezone")
         except ValueError:
             raise OsvContractError(f"{field_name} must be a timezone-aware timestamp") from None

@@ -130,19 +130,29 @@ CATALOG_SOURCES: dict[SourceKind, CatalogSource] = {
 }
 
 HEX_SHA = re.compile(r"[0-9a-f]{40}\Z")
+CATALOG_TIMESTAMP_PATTERN = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-5][0-9]:[0-5][0-9]"
+    r"(?:\.(?P<fraction>[0-9]+))?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])?"
+)
 
 
 def parse_source_timestamp(value: object) -> datetime | None:
-    """只有来源显式给出时区的时间可进入时延分母，日期精度原值另存。"""
+    """Strict syntax; unknown offsets or excess precision keep raw text, never a false instant."""
     if value is None:
         return None
     if not isinstance(value, str) or len(value) > 64:
         raise SourceCatalogError("invalid source timestamp")
+    match = CATALOG_TIMESTAMP_PATTERN.fullmatch(value)
+    if match is None and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is None:
+        raise SourceCatalogError("invalid source timestamp syntax")
     try:
         parsed = datetime.fromisoformat(value)
-    except ValueError:
+        fraction = match["fraction"] if match else None
+        if parsed.utcoffset() is None or value.endswith("-00:00") or len(fraction or "") > 6:
+            return None
+        return parsed.astimezone(UTC)
+    except (ValueError, OverflowError):
         raise SourceCatalogError("invalid source timestamp") from None
-    return parsed.astimezone(UTC) if parsed.utcoffset() is not None else None
 
 
 def _page(cursor: Mapping[str, object], *, maximum: int) -> int:
@@ -184,6 +194,21 @@ def build_catalog_request(source_kind: SourceKind, cursor: Mapping[str, object])
             return CatalogRequest(
                 "GET", "https://api.github.com/repos/avidml/avid-db/git/trees/main?recursive=1"
             )
+        if set(cursor) == {"tree_sha", "record_offset"}:
+            tree_sha, offset = cursor["tree_sha"], cursor["record_offset"]
+            if (
+                not isinstance(tree_sha, str)
+                or HEX_SHA.fullmatch(tree_sha) is None
+                or type(offset) is not int
+                or not 0 <= offset <= 2000
+            ):
+                raise SourceCatalogError("invalid AVID pinned tree position")
+            return CatalogRequest(
+                "GET",
+                "https://api.github.com/repos/avidml/avid-db/git/trees/"
+                + tree_sha
+                + "?recursive=1",
+            )
         sha = cursor.get("blob_sha")
         if (
             set(cursor) != {"blob_sha"}
@@ -193,14 +218,19 @@ def build_catalog_request(source_kind: SourceKind, cursor: Mapping[str, object])
             raise SourceCatalogError("invalid AVID immutable blob")
         return CatalogRequest("GET", "https://api.github.com/repos/avidml/avid-db/git/blobs/" + sha)
     if source_kind == "arxiv_security":
-        page = _page(cursor, maximum=100)
+        if set(cursor) == {"start"}:
+            start = cursor["start"]
+            if type(start) is not int or not 0 <= start <= 20000:
+                raise SourceCatalogError("invalid arXiv source position")
+        else:
+            start = (_page(cursor, maximum=100) - 1) * 20
         return CatalogRequest(
             "GET",
             "https://export.arxiv.org/api/query?"
             + urlencode(
                 {
                     "search_query": 'all:"AI security"',
-                    "start": (page - 1) * 20,
+                    "start": start,
                     "max_results": 20,
                     "sortBy": "lastUpdatedDate",
                     "sortOrder": "descending",

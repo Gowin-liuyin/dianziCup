@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
@@ -22,13 +23,29 @@ from ai_intel.infrastructure.network import (
     NetworkPolicy,
     NetworkPolicyViolation,
     NetworkRequestError,
+    RequestDeadline,
+    UnsupportedContentTypeError,
     create_network_gateway,
 )
 from ai_intel.infrastructure.outbox import enqueue_job
+from ai_intel.ingestion.catalog_documents import persist_catalog_documents
+from ai_intel.ingestion.catalog_pages import (
+    CatalogPage,
+    normalize_avid_blob,
+    normalize_catalog_page,
+    select_avid_blob,
+)
 from ai_intel.ingestion.cursor_repository import (
     PersistedPageEntry,
     SourceCursorRepository,
     make_page_key,
+)
+from ai_intel.ingestion.source_catalog import (
+    CATALOG_SOURCES,
+    CatalogRequest,
+    SourceCatalogError,
+    SourceKind,
+    build_catalog_request,
 )
 from ai_intel.ingestion.source_documents import (
     SourceDocumentError,
@@ -37,8 +54,13 @@ from ai_intel.ingestion.source_documents import (
     persist_source_response,
     validate_vendor_after,
 )
+from ai_intel.ingestion.sources.academic import AcademicContractError
+from ai_intel.ingestion.sources.feed import FeedParseError
 from ai_intel.ingestion.sources.nvd import normalize_nvd_page
+from ai_intel.ingestion.sources.osv import OsvContractError
+from ai_intel.ingestion.sources.repository import RepositoryFetchError
 from ai_intel.knowledge.models import fetch_attempts, outbox_events
+from ai_intel.knowledge.revisions import record_fetch_attempt, register_response_content
 from ai_intel.workers.executor import (
     JobExecutionContext,
     JobExecutionError,
@@ -54,8 +76,19 @@ VENDOR_LINK = re.compile(
     r'<([^<>\s]+)> *; *rel *= *(?:"([A-Za-z][A-Za-z0-9. -]*)"|([A-Za-z][A-Za-z0-9.-]*)) *',
     re.IGNORECASE,
 )
-SourceKind = Literal["nvd_ollama", "vllm_vendor"]
 SourceFetcher = Callable[[str], FetchResult]
+SourcePoster = Callable[[str, bytes], FetchResult]
+CATALOG_CONTENT_TYPES: dict[SourceKind, tuple[str, ...]] = {
+    "osv_ollama": ("application/json",),
+    "avid_community": ("application/json",),
+    "ollama_releases": ("application/json",),
+    "trailofbits_blog": ("application/rss+xml", "application/xml", "text/xml"),
+    "arxiv_security": ("application/atom+xml", "application/xml", "text/xml"),
+    "nist_ai_rmf": ("application/pdf",),
+    "cac_generative_ai": ("text/html",),
+}
+CATALOG_REQUEST_TIMEOUT_SECONDS = 12
+CATALOG_MAX_REQUESTS_PER_PAGE = 2
 
 
 class SourcePageRequest(BaseModel):
@@ -284,14 +317,80 @@ def enqueue_source_page(
     return job_id
 
 
+def _fetch_catalog_page(
+    source_kind: SourceKind,
+    cursor: dict[str, JsonValue],
+    *,
+    dns_resolver: Literal["system", "cloudflare_doh"],
+    fetcher: SourceFetcher | None,
+    poster: SourcePoster | None,
+    clock: Callable[[], datetime],
+) -> tuple[CatalogPage, tuple[tuple[CatalogRequest, FetchResult], ...]]:
+    """One fixed request, or AVID tree/blob with one deadline and at most two requests."""
+    if source_kind == "avid_community" and cursor and set(cursor) != {"tree_sha", "record_offset"}:
+        raise SourceCatalogError("AVID page requires a pinned tree position")
+    request = build_catalog_request(source_kind, cursor)
+    content_types = CATALOG_CONTENT_TYPES[source_kind]
+    gateway = create_network_gateway(
+        NetworkPolicy(
+            allowed_domains=(urlsplit(CATALOG_SOURCES[source_kind].base_origin).hostname or "",),
+            allowed_content_types=content_types,
+            total_timeout_seconds=CATALOG_REQUEST_TIMEOUT_SECONDS,
+            dns_resolver=dns_resolver,
+        ),
+        max_concurrent_requests=1,
+    )
+    deadline = RequestDeadline(time.monotonic() + CATALOG_REQUEST_TIMEOUT_SECONDS)
+    responses: list[tuple[CatalogRequest, FetchResult]] = []
+
+    def read(current: CatalogRequest) -> FetchResult:
+        if len(responses) >= CATALOG_MAX_REQUESTS_PER_PAGE:
+            raise SourceCatalogError("catalog page request limit exceeded")
+        deadline.remaining_seconds()
+        if current.method == "POST":
+            if current.json_body is None:
+                raise SourceCatalogError("fixed POST body missing")
+            body = json.dumps(current.json_body, allow_nan=False, separators=(",", ":")).encode()
+            result = (
+                poster(current.url, body)
+                if poster
+                else gateway.post_json(current.url, body, deadline=deadline)
+            )
+        else:
+            result = (
+                fetcher(current.url)
+                if fetcher
+                else gateway.fetch(current.url, max_redirect_hops=0, deadline=deadline)
+            )
+        deadline.remaining_seconds()
+        _http_failure(result, clock=clock)
+        if result.content_type.split(";", 1)[0].strip().casefold() not in content_types:
+            raise UnsupportedContentTypeError("fixed source content type is not allowed")
+        responses.append((current, result))
+        return result
+
+    result = read(request)
+    if source_kind == "avid_community":
+        selected = select_avid_blob(result.body, cursor)
+        if selected is None:
+            return CatalogPage((), {}), tuple(responses)
+        blob_request = build_catalog_request(source_kind, {"blob_sha": selected.blob_sha})
+        blob = read(blob_request)
+        page = CatalogPage((normalize_avid_blob(selected, blob.body),), selected.next_cursor)
+    else:
+        page = normalize_catalog_page(source_kind, result.body, cursor, result.redacted_headers)
+    return page, tuple(responses)
+
+
 def build_source_page_handler(
     store: ContentStorage,
     *,
     dns_resolver: Literal["system", "cloudflare_doh"] = "system",
     fetcher: SourceFetcher | None = None,
+    poster: SourcePoster | None = None,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> JobHandler:
-    """worker 使用部署配置；只有测试显式注入 fetcher，不提供自动 fixture 后备。"""
+    """worker 使用部署配置；测试显式注入 fetcher/poster，不提供自动 fixture 后备。"""
     gateway = create_network_gateway(
         NetworkPolicy(
             allowed_domains=("services.nvd.nist.gov", "api.github.com"),
@@ -332,30 +431,67 @@ def build_source_page_handler(
             )
             if last_observed is not None and clock() < last_observed + timedelta(seconds=7):
                 raise JobExecutionError("source_poll_interval", retry_after_seconds=7)
-            url = source_page_url(request.source_kind, lease.cursor_json)
-            result = read_page(url)
-            _http_failure(result, clock=clock)
-            observed_at = clock()
-            saved = persist_source_response(
-                session,
-                store,
-                scope,
-                SourceResponse(request.source_kind, result.body, url, observed_at),
-                ingested_at=clock(),
-            )
-            following = _next_position(
-                request.source_kind, result.body, lease.cursor_json, result.redacted_headers
-            )
+            if request.source_kind == "nvd_ollama" or request.source_kind == "vllm_vendor":
+                url = source_page_url(request.source_kind, lease.cursor_json)
+                result = read_page(url)
+                _http_failure(result, clock=clock)
+                observed_at = clock()
+                saved = persist_source_response(
+                    session,
+                    store,
+                    scope,
+                    SourceResponse(request.source_kind, result.body, url, observed_at),
+                    ingested_at=clock(),
+                )
+                revision_ids = saved.revision_ids
+                response_hash = saved.response_content_hash
+                following = _next_position(
+                    request.source_kind, result.body, lease.cursor_json, result.redacted_headers
+                )
+            else:
+                page, responses = _fetch_catalog_page(
+                    request.source_kind,
+                    lease.cursor_json,
+                    dns_resolver=dns_resolver,
+                    fetcher=fetcher,
+                    poster=poster,
+                    clock=clock,
+                )
+                observed_at = clock()
+                response_hash = ""
+                for catalog_request, response in responses:
+                    content = register_response_content(session, store, response.body, observed_at)
+                    response_hash = content.content_hash
+                    attempt_id = record_fetch_attempt(
+                        session, source_id, observed_at, "succeeded", response.status_code
+                    )
+                    session.execute(
+                        update(fetch_attempts)
+                        .where(fetch_attempts.c.attempt_id == attempt_id)
+                        .values(response_content_hash=response_hash, final_url=catalog_request.url)
+                    )
+                catalog_saved = persist_catalog_documents(
+                    session,
+                    store,
+                    scope,
+                    request.source_kind,
+                    page.documents,
+                    response_hash=response_hash,
+                    observed_at=observed_at,
+                    ingested_at=clock(),
+                )
+                revision_ids = catalog_saved.revision_ids
+                following = page.next_cursor
             entries: tuple[dict[str, object], ...] = tuple(
                 {
                     "entry_id": revision_id,
                     "source_id": source_id,
                     "visibility": "public",
                     "tenant_id": None,
-                    "response_sha256": saved.response_content_hash,
+                    "response_sha256": response_hash,
                     "revision_id": revision_id,
                 }
-                for revision_id in saved.revision_ids
+                for revision_id in revision_ids
             )
 
             def persisted_entry(
@@ -401,7 +537,14 @@ def build_source_page_handler(
             raise JobExecutionError("source_network_policy_denied", blocked=True) from None
         except NetworkRequestError as error:
             raise JobExecutionError(error.code, retry_after_seconds=7) from None
-        except (SourceDocumentError, ValueError):
+        except (
+            SourceDocumentError,
+            ValueError,
+            AcademicContractError,
+            FeedParseError,
+            OsvContractError,
+            RepositoryFetchError,
+        ):
             raise JobExecutionError("source_response_invalid", blocked=True) from None
 
     return collect_page
