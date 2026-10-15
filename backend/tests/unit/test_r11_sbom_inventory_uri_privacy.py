@@ -207,7 +207,9 @@ def test_cdx_dangerous_ref_has_consistent_noncolliding_alias_and_v2_is_idempoten
     }
 
 
-@pytest.mark.parametrize("spoof", ["wrong_alias", "wrong_locator", "legacy_metadata"])
+@pytest.mark.parametrize(
+    "spoof", ["wrong_alias", "wrong_locator", "legacy_metadata", "null_uri_without_marker"]
+)
 def test_unbound_projection_prefix_is_not_trusted(spoof):
     private = "file:///C:/private/synthetic-parent"
     now = datetime(2026, 10, 16, 0, tzinfo=UTC)
@@ -229,7 +231,22 @@ def test_unbound_projection_prefix_is_not_trusted(spoof):
         recorded_at=now,
     )
     payload = freeze_sbom_sidecar(parsed.sbom).model_dump(mode="json")
-    if spoof == "wrong_alias":
+    if spoof == "null_uri_without_marker":
+        payload["redactions"] = []
+        payload["component_sources"][0]["source_ref"] = "public-ref"
+        payload["external_documents"] = [
+            {
+                "document_ref": "DocumentRef-external",
+                "document_uri": None,
+                "checksum": {
+                    "algorithm": "SHA256",
+                    "checksum_value": "c" * 64,
+                    "source_field_locator": "/externalDocumentRefs/0/checksum",
+                },
+                "source_field_locator": "/externalDocumentRefs/0",
+            }
+        ]
+    elif spoof == "wrong_alias":
         payload["redactions"][0]["replacement_ref"] = "redacted-ref:" + "a" * 64
     elif spoof == "wrong_locator":
         payload["redactions"][0]["source_field_locator"] = "/unrelated"

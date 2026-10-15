@@ -253,8 +253,11 @@ def safe_sbom_sidecar(
     for item in result.external_documents:
         uri = item.document_uri
         uri_locator = item.source_field_locator + "/spdxDocument"
-        if uri is None and uri_locator in old_redactions:
-            if old_redactions[uri_locator].replacement_ref is not None:
+        if uri is None:
+            if (
+                uri_locator not in old_redactions
+                or old_redactions[uri_locator].replacement_ref is not None
+            ):
                 raise SbomProjectionValidationError("invalid stored SBOM document marker")
             used_redactions.add(uri_locator)
         elif uri is not None and not _safe_http_uri(uri):
