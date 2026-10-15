@@ -36,6 +36,7 @@ from ai_intel.enrichment.persistence_models import enrichment_results
 from ai_intel.infrastructure.network import SENSITIVE_QUERY_KEYS
 from ai_intel.knowledge.models import document_revisions, documents, evidence, text_blocks
 from ai_intel.knowledge.persistence_models import (
+    claim_assertions,
     claim_evidence,
     claims,
     event_documents,
@@ -344,8 +345,14 @@ class KnowledgeReadService:
         )
         evidence_rows = self._evidence_rows(revision_ids=revision_ids)
         evidence_by_id = {item["evidence_id"]: item for item in evidence_rows}
-        claim_by_id = {item["claim_id"]: item for item in claim_rows}
         links: dict[str, list[UUID]] = {item["claim_id"]: [] for item in claim_rows}
+        declared_revisions = {item["claim_id"]: {item["source_revision_id"]} for item in claim_rows}
+        for claim_id, revision_id in self.session.execute(
+            select(claim_assertions.c.claim_id, claim_assertions.c.revision_id).where(
+                claim_assertions.c.claim_id.in_(tuple(links))
+            )
+        ):
+            declared_revisions[claim_id].add(revision_id)
         for claim_id, evidence_id in self.session.execute(
             select(claim_evidence.c.claim_id, claim_evidence.c.evidence_id)
             .where(claim_evidence.c.claim_id.in_(tuple(links)))
@@ -354,8 +361,7 @@ class KnowledgeReadService:
             if not isinstance(claim_id, str) or not isinstance(evidence_id, str):
                 raise KnowledgeProjectionError("claim reference unavailable")
             if evidence_id in evidence_by_id and (
-                evidence_by_id[evidence_id]["revision_id"]
-                == claim_by_id[claim_id]["source_revision_id"]
+                evidence_by_id[evidence_id]["revision_id"] in declared_revisions[claim_id]
             ):
                 links[claim_id].append(UUID(evidence_id))
         projected_claims = tuple(
