@@ -1,11 +1,11 @@
 """资产专用PG表提案；生产迁移由主控0018冻结，业务入口不自动建表。"""
 
 from sqlalchemy import (
+    DDL,
     Boolean,
     CheckConstraint,
     Column,
     DateTime,
-    DDL,
     ForeignKey,
     ForeignKeyConstraint,
     Index,

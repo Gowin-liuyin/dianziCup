@@ -18,6 +18,8 @@ snapshot→asset、previous→snapshot、asset current→snapshot均为包含ass
 
 全历史不按manifest hash唯一：A→B→A追加新版本，保留前驱。重复当前canonicalhash复用当前snapshot，写请求receipt但无change/epoch/job/outbox变化。请求同key同正文/参数返回原snapshot；即使已产生更新版本，重放不恢复旧current。不同正文或任一影响结果参数409。
 
+既有asset_id的display_name不同返回typed AssetNameConflictError/409，不创建snapshot、receipt或事件，不静默改名；明确元数据变更操作另批。当前与历史API的asset名称来自稳定资产身份，本切片不支持改名。
+
 锁序为事务内认证会话/用户共享锁→tenant请求advisory→asset advisory→assets FOR UPDATE→knowledge-publication advisory/scope epoch。所有事实、current、receipt、既有change_events/job_runs/outbox_events/publication_receipts同Session事务提交；复用save_change_publication，不进行外部IO或内部commit。
 
 ## 方法合同与HTTP边界
