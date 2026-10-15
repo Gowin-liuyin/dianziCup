@@ -1,0 +1,53 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________ test_falsey_fixture_gateway_never_constructs_real_gateway __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002D8C1765F40>
+
+    def test_falsey_fixture_gateway_never_constructs_real_gateway(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        class FalseyFixtureGateway(FixtureGateway):
+            def __bool__(self) -> bool:
+                return False
+    
+        gateway = FalseyFixtureGateway(
+            fixture_response(body=b'{"valid":true,"todayRemaining":2,"totalRemaining":10}')
+        )
+        real_factory = Mock(side_effect=AssertionError("fixture mode attempted real gateway creation"))
+        monkeypatch.setattr(relay, "create_network_gateway", real_factory)
+>       client = FofaRelayClient(fixture_config(), fixture_gateway=gateway, fixture_mode=True)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\contract\test_r13_fofa_relay_account_wire.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\assets\fofa_relay.py:178: in __init__
+    self._gateway: RelayGateway = fixture_gateway or create_network_gateway(
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\unittest\mock.py:1139: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\unittest\mock.py:1143: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Mock id='3129981951568'>
+args = (NetworkPolicy(allowed_domains=('fafaapi.info',), max_response_bytes=65536, allowed_content_types=('application/json',...conds=10, dns_resolver='cloudflare_doh', allowed_schemes=('https',)), OriginCredentials(origin='https://fafaapi.info'))
+kwargs = {'max_concurrent_requests': 1}
+effect = AssertionError('fixture mode attempted real gateway creation')
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+>               raise effect
+E               AssertionError: fixture mode attempted real gateway creation
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\unittest\mock.py:1198: AssertionError
+- generated xml file: D:\wt\r13-fofa-relay-config\reports\runs\recovery_r13_fofa_relay_config_fix1_20261016\regression_red.xml -
+=========================== short test summary info ===========================
+FAILED tests/contract/test_r13_fofa_relay_account_wire.py::test_falsey_fixture_gateway_never_constructs_real_gateway
+1 failed in 0.31s
