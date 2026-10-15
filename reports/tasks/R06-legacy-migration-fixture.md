@@ -55,7 +55,7 @@
 
 首次约束脚本 Windows 子进程 UTF-8 解码失败及 CRLF/Git blob 比较失败分别保留 `constraints`、`constraints_recheck` 红日志，修正脚本后真实通过。证据脚本 lint/format 的初始长行、动态导入和工作目录影响 import 分类等红日志也全部保留；未用测试 skip 或降低检查解决。pytest 保留既有 Starlette/httpx deprecation warning。未增加依赖或修改锁文件。
 
-`git diff 7b8103e6d91a7274bcfb661d8e6f1d5b7180be17 HEAD --check -- backend/tests/integration/test_r05_vector_persistence.py fixtures/recorded/r05_legacy_0013_vllm_public_v1.json` 退出 0。全部新增证据的 `git diff --cached --check` 退出 2：原红例 `red_one.log` 第 48/49 行及 `red_one.xml` 第 45/46 行保留 SQLAlchemy 原始 SQL 渲染的行尾空格，共 4 处；没有修改失败日志或扩大忽略规则以隐藏这项证据格式限制，产品/测试代码 diff 无空白错误。
+`git diff 7b8103e6d91a7274bcfb661d8e6f1d5b7180be17 HEAD --check -- backend/tests/integration/test_r05_vector_persistence.py fixtures/recorded/r05_legacy_0013_vllm_public_v1.json` 退出 0。全部新增证据的 `git diff --cached --check` 退出 1：原红例 `red_one.log` 第 48/49 行及 `red_one.xml` 第 45/46 行保留 SQLAlchemy 原始 SQL 渲染的行尾空格，共 4 处；没有修改失败日志或扩大忽略规则以隐藏这项证据格式限制，产品/测试代码 diff 无空白错误。
 
 ## 计划偏差、评分证据与交接
 
