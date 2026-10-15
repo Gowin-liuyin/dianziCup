@@ -19,3 +19,5 @@ PDF在固定独立子程序经私有stdin/stdout解析，无外部程序/附件�
 仅允许前向修复或停止新增解析并保留原始对象/版本；不得恢复生产接受TEXTLAYER假文本。未保存新证据前回退代码可用原版本读取历史，已保存新版本需继续保留pdf2/json2语义读取。影响T09/R04原文片段、R09资料和后续引用，必须经新独立review核对真正四页输入、缺页、边界、实际调用者及测试。此批仅awaiting_review，R04/T09/G-B未接受。
 
 2026-10-15T12:20:57+08:00 · 复现补充：唯一新增PDF fixture显式-text -diff，避免Windows autocrlf修改PDF xref偏移；不改用户其他PDF/Git配置。该规则不禁用源码或测试检查。
+
+2026-10-15T12:34:18+08:00 · 新独立初审确认JSON两项Must：json.dumps使合法字符串换行/quote/backslash转义而无法原值EvidenceSpan定位；孤立surrogate误parsed导致UTF8保存失败。最小修复仅字符串叶保留解码原值、键/值严格UTF8且NUL显式拒绝，不改原始对象或旧revision，新增完整Unicode跨度与surrogate/NUL键值六案；补PDF子程序坏IPC/超时kill-drain/并发归还及秘密环境不继承八案。这些是实际边界回归，不调整阈值/分母。修复后纯unit268passed、原60门实际61.42%、mypy64files0；首次Ruff含0012测试四个SQL长行失败，换行不改SQL后ruff_final0，失败日志保留。先前f2纯unit248passed但59.98%不足60，pytest-cov6按默认precision0取整导致返回0而终端仍FAIL；独立报告应保持该门失败，不能把255含合同61.10冒称纯unit通过。当前原始实际61.42高于60，仍需独立新SHA复核；工具舍入问题登记R20 CI严格原始覆盖率门，不依赖退出码自绿。

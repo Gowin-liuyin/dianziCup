@@ -85,6 +85,9 @@ def parse_html_document(content: bytes) -> ParseOutcome:
 def _unique_json_fields(pairs: list[tuple[str, object]]) -> dict[str, object]:
     result: dict[str, object] = {}
     for key, value in pairs:
+        key.encode("utf-8")
+        if "\x00" in key:
+            raise ValueError("JSON key contains unsupported NUL")
         if key in result:
             raise ValueError("duplicate JSON field")
         result[key] = value
@@ -113,9 +116,14 @@ def _json_segments(
     else:
         if isinstance(value, float) and not math.isfinite(value):
             raise ValueError("nonfinite JSON number")
-        segments.append(
-            ("field:" + pointer, pointer + ": " + json.dumps(value, ensure_ascii=False), None)
-        )
+        if isinstance(value, str):
+            value.encode("utf-8")
+            if "\x00" in value:
+                raise ValueError("JSON string contains unsupported NUL")
+            text = value
+        else:
+            text = json.dumps(value, ensure_ascii=False, allow_nan=False)
+        segments.append(("field:" + pointer, pointer + ": " + text, None))
 
 
 def parse_json_document(content: bytes) -> ParseOutcome:
@@ -134,7 +142,7 @@ def parse_json_document(content: bytes) -> ParseOutcome:
         )
         segments: list[tuple[str, str, int | None]] = []
         _json_segments(payload, "", 0, segments)
-    except (ValueError, UnicodeDecodeError, RecursionError):
+    except (ValueError, UnicodeError, RecursionError):
         return ParseOutcome(
             status="unparseable", notes=("invalid json",), parser_version=JSON_PARSER_VERSION
         )

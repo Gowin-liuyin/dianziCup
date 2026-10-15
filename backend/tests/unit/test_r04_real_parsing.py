@@ -182,3 +182,96 @@ def test_pdf_parser_capacity_and_input_limits_are_explicit() -> None:
     finally:
         pdf_text._PDF_CAPACITY.release()
         pdf_text._PDF_CAPACITY.release()
+
+
+def test_json_string_evidence_keeps_newlines_quotes_backslashes_and_non_bmp() -> None:
+    import json
+
+    quote = '中文\n版本 "1.2" 路径 C:\\app 😀'
+    outcome = parse_json_document(json.dumps({"description": quote}).encode())
+    assert outcome.status == "parsed"
+    span = locate_evidence_span(outcome.blocks, quote, block_id=outcome.blocks[0].block_id)
+    assert outcome.normalized_text[span.start_offset : span.end_offset] == quote
+    assert outcome.normalized_text.encode("utf-8").decode() == outcome.normalized_text
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b'{"description":"\\ud800"}',
+        b'{"description":"\\udfff"}',
+        b'{"\\ud800":"value"}',
+        b'{"description":"\\u0000"}',
+        b'{"\\u0000":"value"}',
+    ],
+)
+def test_json_rejects_text_that_cannot_be_saved_losslessly_in_pg_utf8(content: bytes) -> None:
+    outcome = parse_json_document(content)
+    assert outcome.status == "unparseable"
+    assert not outcome.blocks
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        b"broken-json",
+        b"[]",
+        b"{}",
+        b'{"pages":[],"notes":[1]}',
+        b'{"pages":[{"page_number":true,"text":"body"}],"notes":[]}',
+        b'{"pages":[{"page_number":-1,"text":"body"}],"notes":[]}',
+        b'{"pages":[{"page_number":1,"text":""}],"notes":[]}',
+    ],
+)
+def test_corrupt_child_protocol_cannot_publish_text(
+    monkeypatch: pytest.MonkeyPatch,
+    output: bytes,
+) -> None:
+    from ai_intel.ingestion.parsing import pdf_text
+
+    class ChildFixture:
+        returncode = 0
+
+        def communicate(self, content: bytes, timeout: int) -> tuple[bytes, None]:
+            assert content.startswith(b"%PDF-") and timeout == 20
+            return output, None
+
+    monkeypatch.setattr(pdf_text.subprocess, "Popen", lambda *args, **kwargs: ChildFixture())
+    outcome = parse_pdf_text_layer(b"%PDF-1.4")
+    assert outcome.status == "unparseable"
+    assert not outcome.blocks
+
+
+def test_timeout_kills_child_and_releases_capacity_without_passing_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import subprocess
+
+    from ai_intel.ingestion.parsing import pdf_text
+
+    calls: list[str] = []
+
+    class ChildFixture:
+        def communicate(self, content: bytes | None = None, timeout: int | None = None):
+            if content is not None:
+                calls.append("initial")
+                raise subprocess.TimeoutExpired("isolated-pdf-worker", 20)
+            calls.append("drained")
+            return b"", None
+
+        def kill(self) -> None:
+            calls.append("killed")
+
+    def spawn(arguments, **options):
+        assert arguments[-1] == "ai_intel.ingestion.parsing._pdf_worker"
+        assert "R04_TEST_SECRET" not in options["env"]
+        return ChildFixture()
+
+    monkeypatch.setenv("R04_TEST_SECRET", "isolated-synthetic-provider-secret")
+    monkeypatch.setattr(pdf_text.subprocess, "Popen", spawn)
+    assert parse_pdf_text_layer(b"%PDF-1.4").notes == ("pdf extraction timed out",)
+    assert calls == ["initial", "killed", "drained"]
+    assert pdf_text._PDF_CAPACITY.acquire(blocking=False)
+    assert pdf_text._PDF_CAPACITY.acquire(blocking=False)
+    pdf_text._PDF_CAPACITY.release()
+    pdf_text._PDF_CAPACITY.release()

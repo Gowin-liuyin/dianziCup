@@ -112,17 +112,22 @@ def test_0011_page_receipt_history_migrates_without_inventing_request_fingerprin
     with empty_schema_engine.begin() as connection:
         connection.execute(
             text(
-                "INSERT INTO sources(source_id,name,category,base_origin,visibility,created_at) VALUES ('legacy-source','legacy-source','vendor_advisory','https://example.invalid','public',CURRENT_TIMESTAMP)"
+                "INSERT INTO sources(source_id,name,category,base_origin,visibility,created_at) "
+                "VALUES ('legacy-source','legacy-source','vendor_advisory',"
+                "'https://example.invalid','public',CURRENT_TIMESTAMP)"
             )
         )
         connection.execute(
             text(
-                "INSERT INTO source_cursors(source_id,stream_kind,updated_at) VALUES ('legacy-source','live',CURRENT_TIMESTAMP)"
+                "INSERT INTO source_cursors(source_id,stream_kind,updated_at) "
+                "VALUES ('legacy-source','live',CURRENT_TIMESTAMP)"
             )
         )
         connection.execute(
             text(
-                "INSERT INTO source_page_receipts(source_id,stream_kind,page_key,input_cursor,output_cursor,revision_ids,failed_job_ids,entry_count,committed_at) VALUES ('legacy-source','live',:key,'{}','{}','[]','[]',0,CURRENT_TIMESTAMP)"
+                "INSERT INTO source_page_receipts(source_id,stream_kind,page_key,input_cursor,"
+                "output_cursor,revision_ids,failed_job_ids,entry_count,committed_at) "
+                "VALUES ('legacy-source','live',:key,'{}','{}','[]','[]',0,CURRENT_TIMESTAMP)"
             ),
             {"key": "a" * 64},
         )
@@ -130,7 +135,8 @@ def test_0011_page_receipt_history_migrates_without_inventing_request_fingerprin
     with empty_schema_engine.connect() as connection:
         old = connection.execute(
             text(
-                "SELECT page_key,entry_count,request_sha256 FROM source_page_receipts WHERE source_id='legacy-source'"
+                "SELECT page_key,entry_count,request_sha256 FROM source_page_receipts "
+                "WHERE source_id='legacy-source'"
             )
         ).one()
         assert old == ("a" * 64, 0, None)
