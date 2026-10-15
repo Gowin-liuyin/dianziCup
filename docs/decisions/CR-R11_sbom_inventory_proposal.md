@@ -49,3 +49,13 @@ URI仅离线判断，无DNS/HTTP：优先无credential、无query/fragment的HTT
 进一步实际probe确认PURL的编码version可携credential URI（qualifier/subpath原profile仍拒绝）；因此主控批准仅SBOM source_kind的公共snapshot purl只读隐藏为已有nullable None，覆盖POST新导入、幂等重放、指定/current/asset-list/history读取。私有canonical候选、component identity、raw/hash不变，JSON/CSV及旧DTO字段不变。sidecar从同次冻结snapshot payload标出该purl源位置，不读取raw或重跑parser。URI/path样式的未知JSONPointer键同样使用稳定安全locator占位；普通业务name/display或自由文字不使用万能secret黑名单。
 
 迁移：无表/DDL或批量回填；兼容schema1和schema2私有payload读取。新声明及旧原文均保持不可变；raw/fullJSON/combined/projection摘要不因展示限制改变。回滚须保留此安全view或停用SBOM/sidecar展示，不能重新上线会透传旧私有URI的旧读取。验证增加原3URI、编码PURL、URI键、private IP/query、schema1历史、schema2幂等、碰撞、伪metadata、analyst/ACL、raw/hash/replay/history和日志否定；保留原411分母和新独立审查，不改评分/阈值。生产0022、正式app、SBOM frontend/browser/live/manual仍独立待验。
+
+## 同批定向复核的编码与重复定位遗漏（主控批准）
+
+原reviewer在742冻结版本发现3个真实新失败：未知字段键的URI经过5层或8层percent编码后，四轮解码残余编码被误当普通定位符公开；schema2两条edge共享同一source定位，首条匹配alias已使用标记后，第二条改成安全外观的不同值仍200。b4已有None URI必须有精确标记的校验保留。作者先记录这3条最小unit红及新9条PG中的7红/2绿，再修展示层，不改原探针/已审parser或来源语义。
+
+解码仍最多四轮，每轮验证percent escape完整语法并用标准库严格UTF-8；非法编码或四轮后仍有percent编码一律不可展示，不无限解码、不只增加轮数。未知键占位hash使用JSONPointer反转义后的原字段字节，不以不同编码最终解出的相同URI合并位置。控制码/歧义编码同样给固定typed定位占位；普通合法Unicode键与业务名称保留。历史schema1通过同边界，已冻结schema2精确旧marker保持二次投影幂等，原raw/fullJSON/combined/projection摘要均不变。
+
+每次公开引用遇到typed replacement定位时都要求实际值与固定reason、完整alias精确匹配，先拒绝错值再作安全URI判断；同一原定位的每次引用值也须一致。合法重复同值保持可读和原拓扑，错值固定503，不由“此marker曾使用一次”免检。
+
+无新DTO字段、数据库迁移或回填；旧JSON/CSV不变。回滚仍须保留安全view或停用SBOM展示，不能恢复泄漏。新独立26条unit与9条真实PG覆盖四轮边界、5/8/12/64层、非法/截断percent、非法UTF-8/代理码/控制、合法Unicode、原键占位碰撞、schema1/2重复同值与错值；原411、前一轮33/22与原独审探针分别保留分母，不累加重复通过数。精确起止、红绿及未运行项见修复报告。

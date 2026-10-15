@@ -28,13 +28,18 @@ class SbomProjectionValidationError(ValueError):
     """冻结展示载荷的标记/引用不一致，不接受伪造的脱敏前缀声明。"""
 
 
-def _decoded_uri_text(value: str) -> str:
+def _decoded_uri_text(value: str) -> str | None:
+    """最多四轮严格UTF-8解码；未消解/非法percent编码不能据此判为公开定位。"""
     for _ in range(4):
-        decoded = unquote(value)
-        if decoded == value:
-            break
-        value = decoded
-    return value
+        if "%" not in value:
+            return value
+        if re.search(r"%(?![0-9a-fA-F]{2})", value):
+            return None
+        try:
+            value = unquote(value, encoding="utf-8", errors="strict")
+        except UnicodeDecodeError:
+            return None
+    return None if "%" in value else value
 
 
 def _safe_http_uri(value: str) -> bool:
@@ -84,7 +89,7 @@ def _safe_http_uri(value: str) -> bool:
         ):
             return False
         path = _decoded_uri_text(parsed.path)
-        return not any(ord(char) <= 32 or char in "\\:@?#%" for char in path)
+        return path is not None and not any(ord(char) <= 32 or char in "\\:@?#%" for char in path)
     except ValueError:
         return False
 
@@ -148,6 +153,7 @@ def safe_sbom_sidecar(
         raise SbomProjectionValidationError("invalid stored SBOM display markers")
     redactions = dict(old_redactions)
     used_redactions: set[str] = set()
+    referenced_values: dict[str, str] = {}
 
     def mark(locator: str, alias: str | None = None) -> None:
         redactions[locator] = SbomRedactionResponse(
@@ -158,13 +164,17 @@ def safe_sbom_sidecar(
         used_redactions.add(locator)
 
     def reference(value: str, locator: str) -> str:
-        if (
-            result.schema_version == "r11-sbom-sidecar-2"
-            and locator in old_redactions
-            and re.fullmatch(r"redacted-ref:[0-9a-f]{64}", value)
-            and old_redactions[locator].reason == "unsafe_uri_or_path"
-            and old_redactions[locator].replacement_ref == value
-        ):
+        if locator in referenced_values and referenced_values[locator] != value:
+            raise SbomProjectionValidationError("inconsistent stored SBOM source reference")
+        referenced_values[locator] = value
+        if result.schema_version == "r11-sbom-sidecar-2" and locator in old_redactions:
+            marker = old_redactions[locator]
+            if (
+                not re.fullmatch(r"redacted-ref:[0-9a-f]{64}", value)
+                or marker.reason != "unsafe_uri_or_path"
+                or marker.replacement_ref != value
+            ):
+                raise SbomProjectionValidationError("unbound stored SBOM display reference")
             used_redactions.add(locator)
             return value
         if _safe_reference(value):
@@ -189,14 +199,17 @@ def safe_sbom_sidecar(
         protected = []
         changed = False
         for field in fields:
-            decoded = _decoded_uri_text(field.replace("~1", "/").replace("~0", "~"))
-            if decoded.startswith(("/", "\\", "~/")) or re.match(
-                r"^[A-Za-z][A-Za-z0-9+.-]*:",
-                decoded,
+            original = field.replace("~1", "/").replace("~0", "~")
+            decoded = _decoded_uri_text(original)
+            if (
+                decoded is None
+                or any(ord(char) <= 31 or ord(char) == 127 for char in decoded)
+                or decoded.startswith(("/", "\\", "~/"))
+                or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", decoded)
             ):
                 if result.schema_version == "r11-sbom-sidecar-2":
                     raise SbomProjectionValidationError("unbound stored SBOM source locator")
-                field = "redacted-field:" + hashlib.sha256(decoded.encode()).hexdigest()
+                field = "redacted-field:" + hashlib.sha256(original.encode()).hexdigest()
                 changed = True
             protected.append(field)
         safe = "/".join(protected)
