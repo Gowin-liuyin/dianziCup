@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 import pytest
@@ -33,8 +34,11 @@ class FakeResponse:
     headers: dict[str, str] = field(default_factory=dict)
     chunks: list[bytes] = field(default_factory=list)
 
-    def iter_bytes(self) -> object:
+    def iter_bytes(self) -> Iterable[bytes]:
         return iter(self.chunks)
+
+    def close(self) -> None:
+        pass
 
 
 POLICY = NetworkPolicy(allowed_domains=("allowed.example",))
