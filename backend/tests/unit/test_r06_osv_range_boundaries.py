@@ -95,3 +95,76 @@ def test_bounded_query_does_not_skip_a_bad_second_record() -> None:
         bounded_package_query(
             lambda ecosystem, package: [{"id": "OSV-EXAMPLE"}, None], "Go", "example"
         )
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"aliases": None},
+        {"related": None},
+        {"upstream": None},
+        {"affected": None},
+        {"affected": [{"ranges": None}]},
+        {"affected": [{"ranges": [{"type": "SEMVER", "events": None}]}]},
+        {"affected": [{"versions": None}]},
+    ],
+    ids=["aliases", "related", "upstream", "affected", "ranges", "events", "versions"],
+)
+def test_explicit_null_arrays_are_rejected_instead_of_defaulted(
+    fields: dict[str, object],
+) -> None:
+    payload = {"id": "OSV-EXAMPLE", **fields}
+    with pytest.raises(OsvContractError):
+        normalize_osv_record(payload)
+    assert payload == {"id": "OSV-EXAMPLE", **fields}
+
+
+def test_absent_relationship_and_affected_arrays_remain_absent_in_raw() -> None:
+    record = normalize_osv_record({"id": "OSV-EXAMPLE"})
+    assert record.aliases == record.related == record.upstream == ()
+    assert record.affected == ()
+    assert set(record.raw_record) == {"id"}
+
+
+def test_absent_nested_arrays_do_not_invent_versions_or_boundaries() -> None:
+    payload = {"id": "OSV-EXAMPLE", "affected": [{}, {"ranges": [{"type": "SEMVER"}]}]}
+    record = normalize_osv_record(payload)
+    assert record.affected[0].range_branches == ()
+    assert record.affected[0].explicit_versions == ()
+    assert record.affected[1].range_branches[0].events == ()
+    assert record.affected[1].explicit_versions == ()
+    assert record.raw_record == payload
+    assert "versions" not in record.raw_record["affected"][0]
+
+
+def test_explicit_empty_arrays_are_distinct_from_malformed_null() -> None:
+    record = normalize_osv_record(
+        {
+            "id": "OSV-EXAMPLE",
+            "aliases": [],
+            "related": [],
+            "upstream": [],
+            "affected": [{"ranges": [], "versions": []}],
+        }
+    )
+    assert record.aliases == record.related == record.upstream == ()
+    assert record.affected[0].range_branches == record.affected[0].explicit_versions == ()
+    assert record.raw_record["aliases"] == []
+
+
+@pytest.mark.parametrize("range_type", ["SEMVER", "GIT", "FUTURE"])
+def test_null_events_in_second_branch_fail_the_whole_record(range_type: str) -> None:
+    with pytest.raises(OsvContractError):
+        normalize_osv_record(
+            {
+                "id": "OSV-EXAMPLE",
+                "affected": [
+                    {
+                        "ranges": [
+                            {"type": "SEMVER", "events": [{"introduced": "0"}]},
+                            {"type": range_type, "events": None},
+                        ]
+                    }
+                ],
+            }
+        )

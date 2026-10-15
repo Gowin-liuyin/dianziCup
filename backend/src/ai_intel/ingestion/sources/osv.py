@@ -65,8 +65,6 @@ class OsvRecord:
 
 
 def _string_tuple(value: object, field_name: str) -> tuple[str, ...]:
-    if value is None:
-        return ()
     if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
         raise OsvContractError(f"{field_name} must be an array of strings")
     return tuple(value)
@@ -91,8 +89,6 @@ def _timestamp(value: object, field_name: str) -> str | None:
 
 
 def _objects(value: object, field_name: str) -> list[dict[str, object]]:
-    if value is None:
-        return []
     if not isinstance(value, list) or len(value) > 1000:
         raise OsvContractError(f"{field_name} must be a bounded array")
     result: list[dict[str, object]] = []
@@ -119,14 +115,14 @@ def normalize_osv_record(payload: dict[str, object]) -> OsvRecord:
         r"1\.(0|[1-9]\d*)\.(0|[1-9]\d*)", schema_version
     ):
         raise OsvContractError("unsupported OSV schema major version or malformed version")
-    aliases = _string_tuple(payload.get("aliases"), "aliases")
-    related = _string_tuple(payload.get("related"), "related")
-    upstream = _string_tuple(payload.get("upstream"), "upstream")
+    aliases = _string_tuple(payload.get("aliases", []), "aliases")
+    related = _string_tuple(payload.get("related", []), "related")
+    upstream = _string_tuple(payload.get("upstream", []), "upstream")
     modified_at = _timestamp(payload.get("modified"), "modified")
     _timestamp(payload.get("published"), "published")
     withdrawn_at = _timestamp(payload.get("withdrawn"), "withdrawn")
     affected_packages: list[AffectedPackage] = []
-    for entry in _objects(payload.get("affected"), "affected"):
+    for entry in _objects(payload.get("affected", []), "affected"):
         package = entry.get("package")
         ecosystem: str | None = None
         package_name: str | None = None
@@ -139,12 +135,12 @@ def normalize_osv_record(payload: dict[str, object]) -> OsvRecord:
         ranges_type: str | None = None
         unsupported_scheme = False
         range_branches: list[PackageRange] = []
-        for version_range in _objects(entry.get("ranges"), "ranges"):
+        for version_range in _objects(entry.get("ranges", []), "ranges"):
             ranges_type = _optional_text(version_range.get("type"), "ranges.type")
             repository_uri = _optional_text(version_range.get("repo"), "ranges.repo")
             branch_unsupported = ranges_type not in ("SEMVER", "ECOSYSTEM", "GIT")
             branch_events: list[VersionRangeEvent] = []
-            for event in _objects(version_range.get("events"), "ranges.events"):
+            for event in _objects(version_range.get("events", []), "ranges.events"):
                 if len(event) != 1:
                     raise OsvContractError("range event must carry exactly one boundary")
                 boundary_type, boundary_value = next(iter(event.items()))
@@ -160,7 +156,7 @@ def normalize_osv_record(payload: dict[str, object]) -> OsvRecord:
             )
             events.extend(branch_events)
             unsupported_scheme = unsupported_scheme or branch_unsupported
-        explicit_versions = _string_tuple(entry.get("versions"), "versions")
+        explicit_versions = _string_tuple(entry.get("versions", []), "versions")
         affected_packages.append(
             AffectedPackage(
                 ecosystem=ecosystem,
