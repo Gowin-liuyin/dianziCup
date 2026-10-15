@@ -1,0 +1,48 @@
+.......F.......                                                          [100%]
+================================== FAILURES ===================================
+___________ test_t28_c05_unpublished_and_model_claim_never_confirm ____________
+
+pg_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-757/test_t28_c05_unpublished_and_m0')
+
+    def test_t28_c05_unpublished_and_model_claim_never_confirm(pg_engine, tmp_path):
+>       seeded = seed(pg_engine, tmp_path, origin="model_hypothesis")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r11_pg_assessments.py:431: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_r11_pg_assessments.py:205: in seed
+    KnowledgeRepository(session, author).publish(
+src\ai_intel\knowledge\persistence.py:499: in publish
+    self._validate_submission(submission, scope)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.knowledge.persistence.KnowledgeRepository object at 0x00000205CC1CC0B0>
+submission = ClaimSubmission(record=ClaimRecord(schema_version=2, claim_id=Identifier(value='dae41217-d420-4753-96dd-6bafff47aaab',...5c4-0f83ddb1bf3a', external_id=None), support_kind='supports', validation_status='validated'),), additional_sources=())
+scope = VisibilityScope(visibility='tenant', tenant_id='fixture-tenant-eb7ba48e7127469c888381ff7f0fd5f5')
+
+    def _validate_submission(self, submission: ClaimSubmission, scope: VisibilityScope) -> None:
+        record = submission.record
+        if record.scope != scope:
+            raise KnowledgePublicationError("publication requires a single visibility scope")
+        if record.schema_version == 1 and record.claim_status != ClaimStatus.UNVERIFIED:
+            raise KnowledgePublicationError("legacy claims must remain unverified")
+        if record.claim_status not in (ClaimStatus.SUPPORTED, ClaimStatus.UNVERIFIED):
+            raise KnowledgePublicationError("initial status must be supported or unverified")
+        if (
+            isinstance(record.object_value, (ScoreValue, CvssSignalValue))
+            and record.object_value.authority != submission.scoring_authority
+        ):
+            raise KnowledgePublicationError("score authority differs from source assertion")
+        if (
+            record.claim_origin == ClaimOrigin.MODEL_HYPOTHESIS
+            and record.claim_status != ClaimStatus.UNVERIFIED
+        ):
+>           raise KnowledgePublicationError("model hypothesis must remain unverified")
+E           ai_intel.knowledge.persistence.KnowledgePublicationError: model hypothesis must remain unverified
+
+src\ai_intel\knowledge\persistence.py:372: KnowledgePublicationError
+- generated xml file: D:\wt\r11-pg-assessments\reports\runs\recovery_r11_pg_assessments_20261016\pg_initial.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r11_pg_assessments.py::test_t28_c05_unpublished_and_model_claim_never_confirm
+1 failed, 14 passed in 3.37s

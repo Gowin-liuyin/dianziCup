@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="15" time="3.373" timestamp="2026-10-16T06:10:04.693900+08:00" hostname="yin"><testcase classname="tests.integration.test_r11_pg_assessments" name="test_t27_semantic_pending_independent_review_and_lifecycle" time="0.345" /><testcase classname="tests.integration.test_r11_pg_assessments" name="test_t28_c01_versions_evidence_and_scope_snapshot[1.4.1-supported_applicability]" time="0.199" /><testcase classname="tests.integration.test_r11_pg_assessments" name="test_t28_c01_versions_evidence_and_scope_snapshot[1.4.2-excluded_with_evidence]" time="0.190" /><testcase classname="tests.integration.test_r11_pg_assessments" name="test_t28_c01_versions_evidence_and_scope_snapshot[None-insufficient_evidence]" time="0.188" /><testcase classname="tests.integration.test_r11_pg_assessments" name="test_t28_c02_replay_cross_connections_does_not_restore_current" time="0.287" /><testcase classname="tests.integration.test_r11_pg_assessments" name="test_t28_c03_revision_between_prepare_and_commit_saves_stale" time="0.236" /><testcase classname="tests.integration.test_r11_pg_assessments" name="test_t28_c04_software_match_keeps_network_path_independent" time="0.185" /><testcase classname="tests.integration.test_r11_pg_assessments" name="test_t28_c05_unpublished_and_model_claim_never_confirm" time="0.032"><failure message="ai_intel.knowledge.persistence.KnowledgePublicationError: model hypothesis must remain unverified">pg_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-757/test_t28_c05_unpublished_and_m0')
+
+    def test_t28_c05_unpublished_and_model_claim_never_confirm(pg_engine, tmp_path):
+&gt;       seeded = seed(pg_engine, tmp_path, origin="model_hypothesis")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r11_pg_assessments.py:431: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_r11_pg_assessments.py:205: in seed
+    KnowledgeRepository(session, author).publish(
+src\ai_intel\knowledge\persistence.py:499: in publish
+    self._validate_submission(submission, scope)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;ai_intel.knowledge.persistence.KnowledgeRepository object at 0x00000205CC1CC0B0&gt;
+submission = ClaimSubmission(record=ClaimRecord(schema_version=2, claim_id=Identifier(value='dae41217-d420-4753-96dd-6bafff47aaab',...5c4-0f83ddb1bf3a', external_id=None), support_kind='supports', validation_status='validated'),), additional_sources=())
+scope = VisibilityScope(visibility='tenant', tenant_id='fixture-tenant-eb7ba48e7127469c888381ff7f0fd5f5')
+
+    def _validate_submission(self, submission: ClaimSubmission, scope: VisibilityScope) -&gt; None:
+        record = submission.record
+        if record.scope != scope:
+            raise KnowledgePublicationError("publication requires a single visibility scope")
+        if record.schema_version == 1 and record.claim_status != ClaimStatus.UNVERIFIED:
+            raise KnowledgePublicationError("legacy claims must remain unverified")
+        if record.claim_status not in (ClaimStatus.SUPPORTED, ClaimStatus.UNVERIFIED):
+            raise KnowledgePublicationError("initial status must be supported or unverified")
+        if (
+            isinstance(record.object_value, (ScoreValue, CvssSignalValue))
+            and record.object_value.authority != submission.scoring_authority
+        ):
+            raise KnowledgePublicationError("score authority differs from source assertion")
+        if (
+            record.claim_origin == ClaimOrigin.MODEL_HYPOTHESIS
+            and record.claim_status != ClaimStatus.UNVERIFIED
+        ):
+&gt;           raise KnowledgePublicationError("model hypothesis must remain unverified")
+E           ai_intel.knowledge.persistence.KnowledgePublicationError: model hypothesis must remain unverified
+
+src\ai_intel\knowledge\persistence.py:372: KnowledgePublicationError</failure></testcase><testcase classname="tests.integration.test_r11_pg_assessments" name="test_security_t28_c06_cross_tenant_and_viewer_do_not_leak" time="0.189" /><testcase classname="tests.integration.test_r11_pg_assessments" name="test_security_role_change_and_forged_preparation_write_no_result" time="0.163" /><testcase classname="tests.integration.test_r11_pg_assessments" name="test_security_source_acl_changes_block_current_and_history" time="0.222" /><testcase classname="tests.integration.test_r11_pg_assessments" name="test_security_unicode_quote_tamper_rolls_back_candidate" time="0.097" /><testcase classname="tests.integration.test_r11_pg_assessments" name="test_rule_content_and_result_immutable" time="0.166" /><testcase classname="tests.integration.test_r11_pg_assessments" name="test_assessment_transaction_rollback_leaves_no_partial_output" time="0.206" /><testcase classname="tests.integration.test_r11_pg_assessments" name="test_concurrent_normal_inventory_writer_serializes_then_old_commit_is_stale" time="0.289" /></testsuite></testsuites>
