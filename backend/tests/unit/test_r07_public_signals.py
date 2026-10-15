@@ -276,6 +276,18 @@ def test_same_standard_different_score_is_conflict_but_same_score_authorities_ar
     two = document(payload)
     assert attempts(one, two)["cvss"].status.value == "available"
     payload["cve"]["metrics"]["cvssMetricV31"][0]["cvssData"]["baseScore"] = 9.0
+    other_score = document(payload)
+    parallel = attempts(one, other_score)["cvss"]
+    assert parallel.status.value == "available" and len(parallel.candidates) == 2
+    assert {(c.value.authority, c.value.base_score) for c in parallel.candidates} == {
+        ("nvd@nist.gov", 9.8),
+        ("vendor@example.invalid", 9.0),
+    }
+    assert {e.revision_id for c in parallel.candidates for e in c.evidence} == {
+        one.revision_id,
+        other_score.revision_id,
+    }
+    payload["cve"]["metrics"]["cvssMetricV31"][0]["source"] = "nvd@nist.gov"
     assert attempts(one, document(payload))["cvss"].status.value == "conflict"
 
 

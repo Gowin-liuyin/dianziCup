@@ -1,0 +1,205 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> src\ai_intel\enrichment\publication.py:3:1
+   |
+ 1 |   """Publish bounded source-backed dimensions and retain model proposals as unverified."""
+ 2 |
+ 3 | / from dataclasses import dataclass
+ 4 | | from datetime import UTC, datetime
+ 5 | | from uuid import UUID, uuid4
+ 6 | |
+ 7 | | from pydantic import HttpUrl
+ 8 | | from sqlalchemy import select, text
+ 9 | | from sqlalchemy.orm import Session
+10 | |
+11 | | from ai_intel.domain.access import MANAGE_PUBLIC_SOURCES, WRITE_ASSET, AccessScope
+12 | | from ai_intel.domain.enums import ClaimOrigin, ClaimStatus, ConditionValue, DimensionStatus
+13 | | from ai_intel.domain.records import ClaimRecord
+14 | | from ai_intel.domain.values import Identifier, VisibilityScope
+15 | | from ai_intel.enrichment.contracts import (
+16 | |     DimensionAttempt, EnrichmentContext, EnrichmentDocument, EvidenceBoundCandidate,
+17 | | )
+18 | | from ai_intel.enrichment.inputs import LoadedEnrichmentInputs
+19 | | from ai_intel.enrichment.persistence import DimensionRepository, DimensionSubmission
+20 | | from ai_intel.enrichment.persistence_models import enrichment_results
+21 | | from ai_intel.enrichment.signals import enrich_structured_fields
+22 | | from ai_intel.knowledge.event_linking import EventRepository
+23 | | from ai_intel.knowledge.models import document_revisions, documents, text_blocks
+24 | | from ai_intel.knowledge.persistence import (
+25 | |     ClaimSubmission,
+26 | |     EvidenceLink,
+27 | |     KnowledgePublicationError,
+28 | |     KnowledgeRepository,
+29 | |     SupportingSource,
+30 | |     find_prior_publication,
+31 | |     knowledge_scope_key,
+32 | |     publication_payload_digest,
+33 | |     save_change_publication,
+34 | | )
+35 | | from ai_intel.knowledge.persistence_models import events, publication_receipts
+36 | | from ai_intel.knowledge.revisions import attach_evidence_span
+   | |_____________________________________________________________^
+help: Organize imports
+   |
+15 | from ai_intel.enrichment.contracts import (
+   -     DimensionAttempt, EnrichmentContext, EnrichmentDocument, EvidenceBoundCandidate,
+16 +     DimensionAttempt,
+17 +     EnrichmentContext,
+18 +     EnrichmentDocument,
+19 +     EvidenceBoundCandidate,
+20 | )
+   |
+
+E501 Line too long (102 > 100)
+  --> src\ai_intel\enrichment\publication.py:60:101
+   |
+58 |                     "revision_id": str(document.revision_id),
+59 |                     "content_sha256": document.content_sha256,
+60 |                     "blocks": [(str(block.block_id), block.text_sha256) for block in document.blocks],
+   |                                                                                                     ^^
+61 |                     "source_version": document.source_version,
+62 |                     "blocks_complete": document.blocks_complete,
+   |
+
+E501 Line too long (106 > 100)
+  --> src\ai_intel\enrichment\publication.py:70:101
+   |
+70 | def _require_current_inputs(session: Session, scope: AccessScope, loaded: LoadedEnrichmentInputs) -> None:
+   |                                                                                                     ^^^^^^
+71 |     current = EventRepository(session, scope).get_source_revisions(str(loaded.context.event_id))
+72 |     event = session.execute(
+   |
+
+E501 Line too long (104 > 100)
+  --> src\ai_intel\enrichment\publication.py:79:101
+   |
+77 |         or event["business_version"] != loaded.context.expected_event_version
+78 |         or set(current) != set(map(str, loaded.context.revision_ids))
+79 |         or VisibilityScope(visibility=event["visibility"], tenant_id=event["tenant_id"]) != loaded.scope
+   |                                                                                                     ^^^^
+80 |     ):
+81 |         raise EnrichmentPublicationError("enrichment_event_inputs_changed")
+   |
+
+E501 Line too long (130 > 100)
+   --> src\ai_intel\enrichment\publication.py:123:101
+    |
+121 |             raise EnrichmentPublicationError("candidate_revision_outside_inputs")
+122 |         block = next((block for block in document.blocks if block.block_id == quote.block_id), None)
+123 |         saved_block = session.execute(select(text_blocks).where(text_blocks.c.block_id == str(quote.block_id))).mappings().first()
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+124 |         if (
+125 |             block is None or saved_block is None
+    |
+
+E501 Line too long (104 > 100)
+   --> src\ai_intel\enrichment\publication.py:135:101
+    |
+133 |         evidence_id = attach_evidence_span(
+134 |             session, str(document.revision_id), block.start_offset + quote.start_offset,
+135 |             block.start_offset + quote.end_offset, block.json_pointer or "block:" + str(block.block_id),
+    |                                                                                                     ^^^^
+136 |             quote.quote_text, supported, loaded.scope.visibility, loaded.scope.tenant_id,
+137 |             recorded_at, block_id=str(block.block_id), quote_sha256=quote.quote_sha256,
+    |
+
+E501 Line too long (101 > 100)
+   --> src\ai_intel\enrichment\publication.py:160:101
+    |
+158 |     receipt = KnowledgeRepository(session, scope).publish(
+159 |         publication_key, loaded.scope,
+160 |         (ClaimSubmission(record=record, source_id=primary.source_id, revision_id=primary.revision_id,
+    |                                                                                                     ^
+161 |                          json_path=primary.json_path, scoring_authority=authority,
+162 |                          evidence_links=tuple(links), additional_sources=tuple(additional)),),
+    |
+
+E501 Line too long (105 > 100)
+   --> src\ai_intel\enrichment\publication.py:183:101
+    |
+181 |     loaded = LoadedEnrichmentInputs(
+182 |         EnrichmentContext.model_validate(loaded.context.model_dump()),
+183 |         tuple(EnrichmentDocument.model_validate(document.model_dump()) for document in loaded.documents),
+    |                                                                                                     ^^^^^
+184 |         VisibilityScope.model_validate(loaded.scope.model_dump()),
+185 |     )
+    |
+
+E501 Line too long (114 > 100)
+   --> src\ai_intel\enrichment\publication.py:201:101
+    |
+199 |     }
+200 |     scope_key = knowledge_scope_key(loaded.scope)
+201 |     prior = find_prior_publication(session, scope_key, workflow_key, publication_payload_digest(workflow_payload))
+    |                                                                                                     ^^^^^^^^^^^^^^
+202 |     if prior is not None:
+203 |         previous = []
+    |
+
+E501 Line too long (111 > 100)
+   --> src\ai_intel\enrichment\publication.py:223:101
+    |
+221 |                 for claim_id in identifiers
+222 |             )
+223 |             previous.append(PublishedEnrichmentDimension(attempt.dimension, row["result_id"], claim_ids, True))
+    |                                                                                                     ^^^^^^^^^^^
+224 |         return tuple(previous)
+225 |     _require_current_inputs(session, scope, loaded)
+    |
+
+E501 Line too long (116 > 100)
+   --> src\ai_intel\enrichment\publication.py:226:101
+    |
+224 |         return tuple(previous)
+225 |     _require_current_inputs(session, scope, loaded)
+226 |     trusted = {attempt.dimension: attempt for attempt in enrich_structured_fields(loaded.context, loaded.documents)}
+    |                                                                                                     ^^^^^^^^^^^^^^^^
+227 |     results = []
+228 |     for attempt in attempts:
+    |
+
+E501 Line too long (102 > 100)
+   --> src\ai_intel\enrichment\publication.py:237:101
+    |
+235 |             ))
+236 |         ):
+237 |             raise KnowledgePublicationError("non-structured enrichment cannot promote proposed facts")
+    |                                                                                                     ^^
+238 |         key = f"r07:{request_id}:{fingerprint[:16]}:{attempt.dimension}"
+239 |         with session.begin_nested():
+    |
+
+E501 Line too long (115 > 100)
+   --> src\ai_intel\enrichment\publication.py:245:101
+    |
+243 |                 claim_id, references = _publish_candidate(
+244 |                     session, scope, loaded, candidate, supported=source_supported,
+245 |                     publication_key=key + ":" + publication_payload_digest(candidate.model_dump(mode="json"))[:16],
+    |                                                                                                     ^^^^^^^^^^^^^^^
+246 |                     recorded_at=recorded_at,
+247 |                 )
+    |
+
+E501 Line too long (105 > 100)
+   --> src\ai_intel\enrichment\publication.py:252:101
+    |
+250 |             result = DimensionRepository(session, scope).publish(
+251 |                 key, DimensionSubmission(
+252 |                     event_id=loaded.context.event_id, dimension=attempt.dimension, status=attempt.status,
+    |                                                                                                     ^^^^^
+253 |                     expected_event_version=loaded.context.expected_event_version,
+254 |                     input_fingerprint=fingerprint,
+    |
+
+E501 Line too long (126 > 100)
+   --> src\ai_intel\enrichment\publication.py:262:101
+    |
+260 |                 ), recorded_at,
+261 |             )
+262 |             results.append(PublishedEnrichmentDimension(attempt.dimension, result.result_id, tuple(claim_ids), result.reused))
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+263 |     save_change_publication(
+264 |         session, loaded.scope, workflow_key, workflow_payload,
+    |
+
+Found 15 errors.
+[*] 1 fixable with the `--fix` option.

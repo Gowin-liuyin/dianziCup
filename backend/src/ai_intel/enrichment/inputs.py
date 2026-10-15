@@ -11,6 +11,7 @@ from sqlalchemy import select, text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
+from ai_intel.api.document_read_service import DocumentReadService, sources
 from ai_intel.domain.access import AccessScope
 from ai_intel.domain.enums import SourceCategory
 from ai_intel.domain.values import VisibilityScope
@@ -38,6 +39,42 @@ class LoadedEnrichmentInputs:
     context: EnrichmentContext
     documents: tuple[EnrichmentDocument, ...]
     scope: VisibilityScope
+
+
+def _require_input_scopes(
+    session: Session,
+    access_scope: AccessScope,
+    scope: VisibilityScope,
+    revision_ids: tuple[str, ...],
+) -> None:
+    """Validate every parent before IO; historical revisions retain the same ACL boundary."""
+    query = (
+        select(
+            document_revisions.c.revision_id,
+            document_revisions.c.visibility,
+            document_revisions.c.tenant_id,
+            documents.c.visibility.label("document_visibility"),
+            documents.c.tenant_id.label("document_tenant_id"),
+            sources.c.visibility.label("source_visibility"),
+            sources.c.tenant_id.label("source_tenant_id"),
+        )
+        .join(documents, documents.c.document_id == document_revisions.c.document_id)
+        .join(sources, sources.c.source_id == documents.c.source_id)
+        .where(document_revisions.c.revision_id.in_(revision_ids))
+    )
+    if scope.visibility == "public":
+        query = query.where(DocumentReadService._visible())
+    rows = tuple(session.execute(query).mappings())
+    if {row["revision_id"] for row in rows} != set(revision_ids):
+        raise EnrichmentInputError("source_scope_exceeds_event")
+    for row in rows:
+        for prefix in ("", "document_", "source_"):
+            source_scope = VisibilityScope(
+                visibility=row[prefix + "visibility"], tenant_id=row[prefix + "tenant_id"]
+            )
+            access_scope.enforce_visible(source_scope.visibility, source_scope.tenant_id)
+            if source_scope.visibility == "tenant" and source_scope != scope:
+                raise EnrichmentInputError("source_scope_exceeds_event")
 
 
 def _revision_blocks(
@@ -162,6 +199,7 @@ def load_event_enrichment_inputs(
     if event["status"] != "active" or not 1 <= len(revision_ids) <= 20:
         raise EnrichmentInputError("active_bounded_event_revisions_required")
     scope = VisibilityScope(visibility=event["visibility"], tenant_id=event["tenant_id"])
+    _require_input_scopes(session, access_scope, scope, revision_ids)
     rows = tuple(
         session.execute(
             select(

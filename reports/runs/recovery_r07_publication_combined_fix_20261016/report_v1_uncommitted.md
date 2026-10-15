@@ -1,0 +1,68 @@
+# R07 · 发布权限、锁顺序与评分机构组合修复
+
+文档首次创建时间：2026-10-16T04:13:21+08:00
+本次写作开始时间：2026-10-16T04:13:21+08:00
+本次写作结束时间：2026-10-16T04:13:21+08:00
+最后更新时间：2026-10-16T04:13:21+08:00
+证据截止时间：2026-10-16T04:13:21+08:00
+主控：/root；修复作者：r07_publication_acl_and_lock_fix、r07_cvss_authority_scope_fix、/root。
+独立reviewer：r07_publication_first_independent_review，原初审/新定向复核。
+任务状态：awaiting_review；实现状态：partial（仅发布服务切片完整）。
+工作分支：codex/r07-publication-fix-combination。
+已测/待审代码SHA：dc04d193185324f6913cde8efc40f4b238047dd8；代码tree：48690bfe3531d5095dc5c188f0fa26e62544f66e。
+提交/推送：本报告封存前尚未发生材料提交；0 push；整R07/G-C未验收。
+
+## 1. 用户问题、范围与行为
+
+R07/F2/P2/E1/T19–T23/T35富化发布必须受当前原文全来源ACL和版本约束。加载前检查来源、父文档与修订；即使候选为空、FAILED或重放历史也不能绕过父权限。已有来源事务按source→doc→scope顺序保存；发布先取全部排序source锁，再doc/revision，再scope/event，避免真实40P01。不同CVSS机构并列保存；同机构同版本的真实分歧仍conflict。模型提议保持pending/unverified，不转supported。
+
+root只另加内部发布收据schema2可读context，保存rule_version、event版本与来源roster，而不只保留不可解释hash。旧schema1只用于既有隔离测试，默认产品未装配该新发布入口；现有claims/public API不改。
+
+## 2. 文件与复用
+
+修改enrichment/inputs.py、publication.py、signals.py、直属unit/contract/PG测试与CR。复用DocumentReadService的可见性语义、现有PG事务/锁/事实/维度/receipt/outbox服务；source_documents.py没有改。完整输入名单与source主锁沿已有来源持久化定义统一，不另建事务/CRUD框架。可读context新增两行及一个真实PG验证是追溯规则版本所必需。
+
+ACL代码a80408fb35addf35c04a91d255f20fb9a987423e、材料b0a5b64014f89a689b6b1efcdd21e791b454c12f；机构代码2ba07cbfbdb5d24d0bf3214dcf522ddfce3ed184、材料fde252955fd88f537b844b0414d08967d0b2d67a。root组合20fb985后新增dc04。原两份public-signals fixture仅迁移已确认机构语义，完整旧文件/原红保留，case数量、金标/分母/门槛不改。
+
+## 3. 问题台账
+
+| 问题 | 输入/预期/实际与根因 | 修复/复验 | 当前状态 |
+|---|---|---|---|
+| PUB-ACL | source或doc父撤权仍读取对象/空FAILED发布；修订ACL不能替代整个父链 | a804全roster预检查、发布/历史再查；95PG包含新15 | 待独立复核结论 |
+| PUB-LOCK | 来源source→doc→scope与原发布scope→event→doc反序；真实40P01 | a804同序；原source writer已本来有source advisory不伪改 | 待独立新时序复核 |
+| PUB-CVSS | 不同authority 9.8/8.1被归conflict | 2ba把authority加入literal作用域；同authority真实冲突保留 | 待独立复核 |
+| PUB-PROVENANCE | schema1只有不可读输入digest，规则追溯缺可读context | dc04 schema2/context；真实PG红1/绿1 | 待独立复核 |
+
+前三项初次发现时间历史未在本报告记录，引用原独立G-C-R07-publication-review-1.md，不依据mtime补造。rootprovenance红/绿实际时间见下表。原旧锁屏障要求已取得scope后让source writer提交，与修后正确锁序互等；其红保留，不能称该旧探针全绿。独立reviewer另用真实pg_locks/blocking_pids核查新时序，报告单列，不由作者改旧probe。
+
+## 4. 实际验证
+
+cwd全部为`D:/wt/r07-pub-combined/backend`，PG为唯一隔离test_dianzi_r06_catalog_r07_pub_combined_20261016，真实PostgreSQL；source输入fixture明确合成，无外部模型/测绘/source请求。命令完整argv/退出码/源码状态在同名json，日志和JUnit原bytes保留。目标pytest使用显式--no-cov，仅限定行为检查，不当整仓原60覆盖门通过。
+
+| 检查 | 开始/结束(+08:00) | exit | 数量 | 原始日志 |
+|---|---|---:|---|---|
+| provenance_red | 2026-10-16T03:37:14+08:00 / 2026-10-16T03:37:19+08:00 | 1 | {'tests': 1, 'failures': 1, 'errors': 0, 'skipped': 0} | `reports/runs/recovery_r07_publication_combined_fix_20261016/provenance_red.log` |
+| provenance_green | 2026-10-16T03:51:15+08:00 / 2026-10-16T03:51:20+08:00 | 0 | {'tests': 1, 'failures': 0, 'errors': 0, 'skipped': 0} | `reports/runs/recovery_r07_publication_combined_fix_20261016/provenance_green.log` |
+| combined_frozen_unit | 2026-10-16T03:56:26+08:00 / 2026-10-16T03:56:32+08:00 | 0 | {'tests': 234, 'failures': 0, 'errors': 0, 'skipped': 0} | `reports/runs/recovery_r07_publication_combined_fix_20261016/combined_frozen_unit.log` |
+| combined_frozen_pg | 2026-10-16T03:56:27+08:00 / 2026-10-16T03:58:32+08:00 | 0 | {'tests': 95, 'failures': 0, 'errors': 0, 'skipped': 0} | `reports/runs/recovery_r07_publication_combined_fix_20261016/combined_frozen_pg.log` |
+| combined_frozen_ruff | 2026-10-16T03:56:26+08:00 / 2026-10-16T03:56:27+08:00 | 0 | 非pytest检查 | `reports/runs/recovery_r07_publication_combined_fix_20261016/combined_frozen_ruff.log` |
+| combined_frozen_format | 2026-10-16T03:56:26+08:00 / 2026-10-16T03:56:27+08:00 | 0 | 非pytest检查 | `reports/runs/recovery_r07_publication_combined_fix_20261016/combined_frozen_format.log` |
+| combined_frozen_mypy | 2026-10-16T03:56:26+08:00 / 2026-10-16T03:56:43+08:00 | 0 | 非pytest检查 | `reports/runs/recovery_r07_publication_combined_fix_20261016/combined_frozen_mypy.log` |
+
+234 unit/contract与95 PG均0fail/error/skip；PG执行122.94秒。provenance绿1包含在95，不相加。Ruff/format通过、mypy99源通过。此前root原发布71完整pure1992通过/1PDFguard失败保留，后续主控8a完整pure四CPU产品红未闭，本批没有复跑或签关闭CPU问题。
+
+unit/contract：本切片passed；integration：限定真实PG passed；security：父权限/事务负例包含PG，独立203全安全范围待报告引用；frontend/e2e/live/manual：not_run。默认API/worker仍未接新九维服务，真实模型、公开资料补充、Hunter/Quake持久发布由后续批次完成。
+
+## 5. 调用链、合同与限制
+
+官方CBM v0.11独有r07-pub-dc04-src，对dc04 backend/src固定源码建立/architecture/schema与五trace+rg共9命令exit0，原产物在fixed_index_commands.json。默认assets未索引，源码rg交叉；publish函数目前生产入口没有调用，不能由有定义/测试调用声称API/worker装配。来源writer共用source:主锁的源码及PG链实际核对，graph边不单独作正确性结论。
+
+CR-R07_publication_acl_lock_fix、CR-R07_cvss_authority_scope及CR-R07_multisource_enrichment_publication补充schema2记录本批兼容/迁移/回滚/测试影响；不更改原批准建设范围/官方要求/评分/盲测原则。无新增依赖、迁移或权限授予，回滚停止接线保留已持久历史，不用downgrade删证据。
+
+## 6. 结论与下一步
+
+作者只awaiting_review。旧三Must必须新独立reviewer对dc04复核及材料核验后才可登记切片限定通过；整R07仍partial。主控将服务与单维Generation真实客户端接持久PG工作流、API和默认worker，另行真实模型/浏览器/重启验收。此前历史和原红不被本批绿覆盖。
+
+## 7. 修订记录
+
+2026-10-16T04:13:21+08:00 /root首次编写本组合报告，实际数据由本run receipts/JUnit读取，原首次代码编写总时长历史未完整记录。2026-10-16T04:13:21+08:00 完成正文与证据表；下一材料提交与push日志独立，不使本文引用自身commit。

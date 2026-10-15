@@ -1,0 +1,340 @@
+backend/src\ai_intel\answering\service.py:22:from ai_intel.api.auth_state import lock_authenticated_scope
+backend/src\ai_intel\answering\service.py:69:def _lock_answer_scope(session: Session, scope: AccessScope, session_token: str) -> AccessScope:
+backend/src\ai_intel\answering\service.py:70:    current = lock_authenticated_scope(session.connection(), session_token, datetime.now(UTC))
+backend/src\ai_intel\answering\service.py:82:        _lock_answer_scope(session, scope, session_token)
+backend/src\ai_intel\answering\service.py:143:        _lock_answer_scope(session, scope, session_token)
+backend/src\ai_intel\answering\service.py:217:            raise QuestionFailure("question_scope_not_supported", 422)
+backend/src\ai_intel\answering\service.py:283:            current_scope = scope_provider()
+backend/src\ai_intel\answering\service.py:284:            if current_scope.user_id != scope.user_id or current_scope.tenant_id != scope.tenant_id:
+backend/src\ai_intel\answering\service.py:287:                current_scope = _lock_answer_scope(session, current_scope, session_token)
+backend/src\ai_intel\answering\service.py:290:                    current_scope,
+backend/src\ai_intel\workers\jobs.py:320:        raise JobPayloadUnavailableError("job_payload_scope_denied")
+backend/src\ai_intel\workers\jobs.py:345:            raise JobPayloadUnavailableError("job_payload_scope_denied")
+backend/src\ai_intel\workers\jobs.py:414:def cancel_job_with_scope(
+backend/src\ai_intel\workers\jobs.py:422:    row = read_job_with_scope(session, job_id, scope)
+backend/src\ai_intel\workers\jobs.py:441:def read_job_with_scope(session: Session, job_id: str, scope: AccessScope) -> dict[str, object]:
+backend/src\ai_intel\workers\executor.py:177:        raise JobExecutionError("source_scope_denied", blocked=True)
+backend/src\ai_intel\knowledge\revisions.py:346:def bump_scope_epoch(session: Session, scope_key: str, updated_at: datetime) -> int:
+backend/src\ai_intel\knowledge\persistence.py:51:from ai_intel.knowledge.revisions import bump_scope_epoch
+backend/src\ai_intel\knowledge\persistence.py:161:def knowledge_scope_key(scope: VisibilityScope) -> str:
+backend/src\ai_intel\knowledge\persistence.py:228:                func.hashtextextended("knowledge-publication:" + scope_key, 0),
+backend/src\ai_intel\knowledge\persistence.py:261:    scope_key = knowledge_scope_key(scope)
+backend/src\ai_intel\knowledge\persistence.py:262:    epoch = bump_scope_epoch(session, scope_key, created_at)
+backend/src\ai_intel\knowledge\persistence.py:331:    def __init__(self, session: Session, access_scope: AccessScope) -> None:
+backend/src\ai_intel\knowledge\persistence.py:333:        self.access_scope = access_scope
+backend/src\ai_intel\knowledge\persistence.py:336:        self.access_scope.requires(READ_PUBLIC)
+backend/src\ai_intel\knowledge\persistence.py:338:        if self.access_scope.tenant_id is not None and READ_ASSET in self.access_scope.permissions:
+backend/src\ai_intel\knowledge\persistence.py:343:                    claims.c.tenant_id == self.access_scope.tenant_id,
+backend/src\ai_intel\knowledge\persistence.py:348:    def _require_write_scope(self, scope: VisibilityScope) -> None:
+backend/src\ai_intel\knowledge\persistence.py:350:            self.access_scope.requires(MANAGE_PUBLIC_SOURCES)
+backend/src\ai_intel\knowledge\persistence.py:352:            self.access_scope.enforce_visible(scope.visibility, scope.tenant_id)
+backend/src\ai_intel\knowledge\persistence.py:353:            self.access_scope.requires(WRITE_ASSET)
+backend/src\ai_intel\knowledge\persistence.py:397:            for source_scope in (source_row, revision_row):
+backend/src\ai_intel\knowledge\persistence.py:398:                self.access_scope.enforce_visible(str(source_scope[0]), source_scope[1])
+backend/src\ai_intel\knowledge\persistence.py:399:                if source_scope[0] == "tenant" and (
+backend/src\ai_intel\knowledge\persistence.py:400:                    scope.visibility != "tenant" or scope.tenant_id != source_scope[1]
+backend/src\ai_intel\knowledge\persistence.py:415:            self.access_scope.enforce_visible(str(target[0]), target[1])
+backend/src\ai_intel\knowledge\persistence.py:437:            self.access_scope.enforce_visible(str(row["visibility"]), row["tenant_id"])
+backend/src\ai_intel\knowledge\persistence.py:470:        self._require_write_scope(scope)
+backend/src\ai_intel\knowledge\persistence.py:485:        scope_key = knowledge_scope_key(scope)
+backend/src\ai_intel\knowledge\persistence.py:647:                scope_key=knowledge_scope_key(scope),
+backend/src\ai_intel\knowledge\persistence.py:665:                    entities.c.scope_key == knowledge_scope_key(scope),
+backend/src\ai_intel\knowledge\persistence.py:692:            self.access_scope.enforce_visible(str(row["visibility"]), row["tenant_id"])
+backend/src\ai_intel\knowledge\persistence.py:734:        self.access_scope.requires(READ_PUBLIC)
+backend/src\ai_intel\knowledge\persistence.py:738:        if self.access_scope.tenant_id is not None and READ_ASSET in self.access_scope.permissions:
+backend/src\ai_intel\knowledge\persistence.py:743:                    entities.c.tenant_id == self.access_scope.tenant_id,
+backend/src\ai_intel\knowledge\persistence.py:825:            left_source: str = self.session.execute(
+backend/src\ai_intel\knowledge\persistence.py:830:            right_source: str = self.session.execute(
+backend/src\ai_intel\knowledge\persistence.py:921:        self.access_scope.requires(READ_PUBLIC)
+backend/src\ai_intel\knowledge\persistence.py:923:        if self.access_scope.tenant_id is not None and READ_ASSET in self.access_scope.permissions:
+backend/src\ai_intel\knowledge\persistence.py:928:                    evidence.c.tenant_id == self.access_scope.tenant_id,
+backend/src\ai_intel\knowledge\event_linking.py:30:    knowledge_scope_key,
+backend/src\ai_intel\knowledge\event_linking.py:87:    def __init__(self, session: Session, access_scope: AccessScope) -> None:
+backend/src\ai_intel\knowledge\event_linking.py:89:        self.access_scope = access_scope
+backend/src\ai_intel\knowledge\event_linking.py:91:    def _require_scope(self, scope: VisibilityScope) -> None:
+backend/src\ai_intel\knowledge\event_linking.py:93:            self.access_scope.requires(MANAGE_PUBLIC_SOURCES)
+backend/src\ai_intel\knowledge\event_linking.py:95:            self.access_scope.enforce_visible(scope.visibility, scope.tenant_id)
+backend/src\ai_intel\knowledge\event_linking.py:96:            self.access_scope.requires(WRITE_ASSET)
+backend/src\ai_intel\knowledge\event_linking.py:99:        self.access_scope.requires(READ_PUBLIC)
+backend/src\ai_intel\knowledge\event_linking.py:101:        if self.access_scope.tenant_id is not None and READ_ASSET in self.access_scope.permissions:
+backend/src\ai_intel\knowledge\event_linking.py:106:                    events.c.tenant_id == self.access_scope.tenant_id,
+backend/src\ai_intel\knowledge\event_linking.py:125:        self._require_scope(scope)
+backend/src\ai_intel\knowledge\event_linking.py:145:                self.session, knowledge_scope_key(scope), publication_key, digest
+backend/src\ai_intel\knowledge\event_linking.py:165:                    self.access_scope.enforce_visible(
+backend/src\ai_intel\knowledge\event_linking.py:176:                                event_external_ids.c.scope_key == knowledge_scope_key(scope),
+backend/src\ai_intel\knowledge\event_linking.py:211:                            scope_key=knowledge_scope_key(scope),
+backend/src\ai_intel\knowledge\event_linking.py:220:                    existing["scope_key"] != knowledge_scope_key(scope)
+backend/src\ai_intel\knowledge\event_linking.py:256:                            scope_key=knowledge_scope_key(scope),
+backend/src\ai_intel\knowledge\event_linking.py:308:        self._require_scope(scope)
+backend/src\ai_intel\knowledge\event_linking.py:315:                uuid5(NAMESPACE_URL, knowledge_scope_key(scope) + ":" + publication_key)
+backend/src\ai_intel\knowledge\event_linking.py:325:                self.session, knowledge_scope_key(scope), publication_key, digest
+backend/src\ai_intel\knowledge\event_linking.py:424:        self._require_scope(scope)
+backend/src\ai_intel\knowledge\event_linking.py:437:                self.session, knowledge_scope_key(scope), publication_key, digest
+backend/src\ai_intel\knowledge\claims.py:75:        self, left_id: str, right_id: str, reason_same_scope_exclusive: bool
+backend/src\ai_intel\knowledge\claims.py:78:        if not reason_same_scope_exclusive:
+backend/src\ai_intel\infrastructure\database.py:50:def session_scope(engine: Engine) -> Iterator[Session]:
+backend/tests\security\test_r02_auth_state_boundaries.py:83:    own_scope = AccessScope.for_authenticated_user(
+backend/tests\security\test_r02_auth_state_boundaries.py:86:    own = case.service.read_audit_events(own_scope).events
+backend/tests\security\test_r02_auth_state_boundaries.py:89:    other_scope = AccessScope.for_authenticated_user(
+backend/tests\security\test_r02_auth_state_boundaries.py:92:    assert len(case.service.read_audit_events(other_scope).events) == 1
+backend/tests\security\test_r02_auth_state_boundaries.py:216:def test_me_current_scope_and_forged_identity_422(security_case: SecurityCase) -> None:
+backend/tests\security\test_t06_authentication_and_scope.py:93:    scope = service.build_access_scope(session_token)
+backend/tests\security\test_t06_authentication_and_scope.py:174:    source: str, expected: bool
+backend/tests\security\test_t06_authentication_and_scope.py:210:def test_tenant_admin_permission_table_and_scope_epoch_role_separation() -> None:
+backend/tests\integration\test_r03_schema_migration.py:22:        index["name"] == "uq_job_scoped_idempotency" and index["unique"] for index in unique_indexes
+backend/src\ai_intel\ingestion\source_polling.py:98:    session: Session, access_scope: AccessScope, observed_at: datetime
+backend/src\ai_intel\ingestion\source_polling.py:101:    access_scope.requires(MANAGE_PUBLIC_SOURCES)
+backend/src\ai_intel\ingestion\source_polling.py:102:    if access_scope.role != Role.SYSTEM_ADMIN or access_scope.tenant_id is not None:
+backend/src\ai_intel\ingestion\source_polling.py:127:        ensure_source_registration(session, access_scope, source_kind, observed_at)
+backend/tests\security\test_r01_http_authentication.py:99:def test_me_returns_authenticated_scope_and_explicit_fixture_mode() -> None:
+backend/tests\security\test_r01_tls_failure_privacy.py:46:    source: str,
+backend/src\ai_intel\ingestion\source_jobs.py:414:            raise JobExecutionError("source_scope_denied", blocked=True)
+backend/src\ai_intel\ingestion\source_jobs.py:518:                    result_ref="pg:source:" + source_id,
+backend/src\ai_intel\ingestion\source_jobs.py:535:            return JobExecutionResult(result_ref="pg:source:" + source_id)
+backend/tests\integration\test_r03_jobs_pg.py:26:from ai_intel.knowledge.revisions import bump_scope_epoch
+backend/tests\integration\test_r03_jobs_pg.py:75:def test_same_scope_key_is_concurrent_but_cross_scope_and_type_are_independent(
+backend/tests\integration\test_r03_jobs_pg.py:209:def test_payload_scope_digest_legacy_and_change_reference_are_checked(migrated_engine) -> None:
+backend/tests\integration\test_r03_jobs_pg.py:231:                epoch=bump_scope_epoch(session, "public", NOW),
+backend/tests\integration\test_r02_relation_identity_regressions.py:15:    publisher_scope,
+backend/tests\integration\test_r02_relation_identity_regressions.py:58:        repository = EventRepository(session, publisher_scope(first.scope))
+backend/tests\integration\test_r02_relation_identity_regressions.py:158:        repository = Repository(session, publisher_scope(first.record.scope))
+backend/tests\integration\test_r02_relation_identity_regressions.py:200:        repository = Repository(session, publisher_scope(model_claim.record.scope))
+backend/src\ai_intel\ingestion\source_documents.py:362:    access_scope: AccessScope,
+backend/src\ai_intel\ingestion\source_documents.py:367:    _require_public_administrator(access_scope)
+backend/src\ai_intel\ingestion\source_documents.py:373:        select(func.pg_advisory_xact_lock(func.hashtextextended("source:" + source_id, 0)))
+backend/src\ai_intel\ingestion\source_documents.py:398:    access_scope: AccessScope,
+backend/src\ai_intel\ingestion\source_documents.py:404:    _require_public_administrator(access_scope)
+backend/src\ai_intel\ingestion\source_documents.py:411:            session, access_scope, response.source_kind, ingested_at
+backend/src\ai_intel\ingestion\source_documents.py:423:                access_scope,
+backend/tests\contract\test_r01_quality_checks.py:106:def test_all_runs_every_scope_even_after_a_failure(monkeypatch, capsys) -> None:
+backend/tests\contract\test_r01_quality_checks.py:108:    actual_runner = dev.run_scope_checks
+backend/tests\contract\test_r01_quality_checks.py:110:    def record_scope(scope, timeout_seconds=600, fixture_only=False):
+backend/tests\contract\test_r01_quality_checks.py:114:    monkeypatch.setattr(dev, "run_scope_checks", record_scope)
+backend/src\ai_intel\ingestion\source_catalog.py:42:    content_scope: str
+backend/src\ai_intel\ingestion\source_catalog.py:55:    key: str, name: str, category: SourceCategory, origin: str, content_scope: str
+backend/src\ai_intel\ingestion\source_catalog.py:58:        str(uuid5(NAMESPACE_URL, "dianzi:source:" + key.replace("_", "-"))),
+backend/src\ai_intel\ingestion\source_catalog.py:62:        content_scope,
+backend/tests\security\test_r03_executor_authorization.py:15:from ai_intel.workers.jobs import read_job_with_scope
+backend/tests\security\test_r03_executor_authorization.py:20:@pytest.mark.parametrize("spoof_scope", [True, False])
+backend/tests\security\test_r03_executor_authorization.py:23:    spoof_scope,
+backend/tests\security\test_r03_executor_authorization.py:37:        if spoof_scope:
+backend/tests\security\test_r03_executor_authorization.py:54:            "invalid_job_payload" if spoof_scope else "source_scope_denied"
+backend/tests\security\test_r03_executor_authorization.py:66:            read_job_with_scope(session, job_id, outsider)
+backend/tests\integration\test_r02_knowledge_revisions.py:64:    bump_scope_epoch,
+backend/tests\integration\test_r02_knowledge_revisions.py:212:def test_two_connections_increment_scope_without_lost_update(migrated_engine) -> None:
+backend/tests\integration\test_r02_knowledge_revisions.py:219:            return bump_scope_epoch(session, scope_key, NOW)
+backend/tests\integration\test_r02_knowledge_revisions.py:296:def publisher_scope(visibility):
+backend/tests\integration\test_r02_knowledge_revisions.py:306:        return KnowledgeRepository(session, publisher_scope(submission.record.scope)).publish(
+backend/tests\integration\test_r02_knowledge_revisions.py:324:        repository = KnowledgeRepository(session, publisher_scope(first.record.scope))
+backend/tests\integration\test_r02_knowledge_revisions.py:441:def test_tenant_claims_not_read_searched_or_exported_to_unauthorized_scope(
+backend/tests\integration\test_r02_knowledge_revisions.py:498:        repo = KnowledgeRepository(session, publisher_scope(hypothesis.record.scope))
+backend/tests\integration\test_r02_knowledge_revisions.py:607:        repo = KnowledgeRepository(session, publisher_scope(original.record.scope))
+backend/tests\integration\test_r02_knowledge_revisions.py:652:        repo = KnowledgeRepository(session, publisher_scope(submission.record.scope))
+backend/tests\integration\test_r02_knowledge_revisions.py:689:        repo = EventRepository(session, publisher_scope(source.record.scope))
+backend/tests\integration\test_r02_knowledge_revisions.py:731:        EventRepository(session, publisher_scope(first.scope)).publish_events(
+backend/tests\integration\test_r02_knowledge_revisions.py:740:        repo = EventRepository(session, publisher_scope(first.scope))
+backend/tests\integration\test_r02_knowledge_revisions.py:812:        repo = EventRepository(session, publisher_scope(first.scope))
+backend/tests\integration\test_r02_knowledge_revisions.py:876:        record = KnowledgeRepository(session, publisher_scope(submission.record.scope)).get_claim(
+backend/tests\integration\test_r02_knowledge_revisions.py:896:        repo = KnowledgeRepository(session, publisher_scope(submission.record.scope))
+backend/tests\integration\test_r02_knowledge_revisions.py:965:        repo = KnowledgeRepository(session, publisher_scope(first.record.scope))
+backend/tests\integration\test_r02_knowledge_revisions.py:1004:        repo = KnowledgeRepository(session, publisher_scope(first.record.scope))
+backend/tests\unit\test_r02_knowledge_publication_contract.py:28:    knowledge_scope_key,
+backend/tests\unit\test_r02_knowledge_publication_contract.py:103:def test_scope_key_and_digest_are_stable_without_mutating_inputs():
+backend/tests\unit\test_r02_knowledge_publication_contract.py:104:    assert knowledge_scope_key(VisibilityScope(visibility="public")) == "public"
+backend/tests\unit\test_r02_knowledge_publication_contract.py:106:        knowledge_scope_key(VisibilityScope(visibility="tenant", tenant_id="test-a"))
+backend/tests\unit\test_r02_knowledge_publication_contract.py:151:    "role,tenant,target_scope,error",
+backend/tests\unit\test_r02_knowledge_publication_contract.py:168:def test_write_access_fails_before_database_query(role, tenant, target_scope, error):
+backend/tests\unit\test_r02_knowledge_publication_contract.py:174:            repo.publish("key", target_scope, (fixture_submission(target_scope),), created_at=NOW)
+backend/tests\unit\test_r02_knowledge_publication_contract.py:399:def test_event_scope_permission_and_invalid_empty_publication_fail_without_io():
+backend/src\ai_intel\enrichment\signal_sources.py:263:            "query_scope": "single_cve" if signal == "epss" else "complete_catalog",
+backend/src\ai_intel\enrichment\signal_sources.py:288:        or selection.get("query_scope")
+backend/tests\contract\test_t22_research_and_document_links.py:96:def test_unconfirmed_clause_scope_gives_quote_and_limit_not_ruling_t22_c06() -> None:
+backend/tests\integration\test_r03_cursor_persistence.py:292:def test_durable_same_source_scope_recovery_job_allows_page_advance(cursor_engine):
+backend/tests\integration\test_r03_cursor_persistence.py:479:def test_configured_source_scope_controls_claim_not_request_scope(cursor_engine, scope):
+backend/tests\integration\test_r03_cursor_persistence.py:489:def test_payload_cannot_reassign_source_or_tenant_scope(cursor_engine):
+backend/src\ai_intel\enrichment\signals.py:548:def _scope(candidate: EvidenceBoundCandidate, cvss_targets: dict[UUID, str]) -> tuple[str, ...]:
+backend/src\ai_intel\enrichment\signals.py:580:        values[_scope(candidate, collected.cvss_targets)].add(compared)
+backend/src\ai_intel\enrichment\signals.py:630:def enrich_structured_fields(
+backend/tests\integration\test_r02_dimension_persistence.py:14:from test_r02_knowledge_revisions import prepared_submission, publish_submission, publisher_scope
+backend/tests\integration\test_r02_dimension_persistence.py:44:        EventRepository(session, publisher_scope(claim.record.scope)).publish_events(
+backend/tests\integration\test_r02_dimension_persistence.py:70:    return submission, publisher_scope(claim.record.scope)
+backend/tests\unit\test_r06_feed_parsers.py:212:def test_rss_description_identity_and_original_time_scope() -> None:
+backend/tests\integration\test_r02_dimension_migration.py:29:                "reference_ids,source_scope,input_fingerprint,recorded_at,is_current,error_code) "
+backend/src\ai_intel\enrichment\publication.py:33:    _require_input_scopes,
+backend/src\ai_intel\enrichment\publication.py:38:from ai_intel.enrichment.signals import enrich_structured_fields
+backend/src\ai_intel\enrichment\publication.py:48:    knowledge_scope_key,
+backend/src\ai_intel\enrichment\publication.py:117:            select(func.pg_advisory_xact_lock(func.hashtextextended("source:" + source_id, 0)))
+backend/src\ai_intel\enrichment\publication.py:163:    _require_input_scopes(session, scope, loaded.scope, tuple(current))
+backend/src\ai_intel\enrichment\publication.py:321:def publish_enrichment_attempts(
+backend/src\ai_intel\enrichment\publication.py:357:    scope_key = knowledge_scope_key(loaded.scope)
+backend/src\ai_intel\enrichment\publication.py:360:    _require_input_scopes(
+backend/src\ai_intel\enrichment\publication.py:415:        for attempt in enrich_structured_fields(loaded.context, loaded.documents)
+backend/src\ai_intel\enrichment\persistence_models.py:19:    Column("source_scope", JSONB(), nullable=False),
+backend/tests\contract\test_r07_public_signal_sources.py:123:def test_kev_selection_keeps_original_scope_and_not_found():
+backend/tests\contract\test_r07_public_signal_sources.py:128:    assert payload["selection"]["query_scope"] == "complete_catalog"
+backend/src\ai_intel\enrichment\persistence.py:31:    knowledge_scope_key,
+backend/src\ai_intel\enrichment\persistence.py:89:    def __init__(self, session: Session, access_scope: AccessScope) -> None:
+backend/src\ai_intel\enrichment\persistence.py:91:        self.scope = access_scope
+backend/src\ai_intel\enrichment\persistence.py:206:                self.session, knowledge_scope_key(visibility), key, digest
+backend/src\ai_intel\enrichment\persistence.py:246:                    source_scope=list(map(str, submission.source_ids)),
+backend/tests\integration\test_r06_source_polling_pg.py:171:        assert row["result_ref"].startswith("pg:source:")
+backend/src\ai_intel\enrichment\knowledge_cards.py:65:    return f"scope stated by source: {card.scope_text}"
+backend/tests\unit\test_r06_document_contracts.py:71:def test_document_projection_rejects_unsupported_precision_scope_and_fields(change):
+backend/tests\unit\test_t06_access_scope_boundaries.py:22:def build_scope(role: Role, tenant_id: str | None) -> AccessScope:
+backend/tests\unit\test_t06_access_scope_boundaries.py:29:    analyst = build_scope(Role.ANALYST, "tenant-alpha")
+backend/tests\unit\test_t06_access_scope_boundaries.py:30:    tenant_admin = build_scope(Role.TENANT_ADMIN, "tenant-alpha")
+backend/tests\unit\test_t06_access_scope_boundaries.py:41:    scope = build_scope(Role.ANALYST, "tenant-alpha")
+backend/tests\unit\test_t06_access_scope_boundaries.py:48:    stateless = build_scope(Role.SYSTEM_ADMIN, None)
+backend/src\ai_intel\ingestion\sources\standards.py:108:def describe_scope_limitation(document: PolicyDocument) -> str:
+backend/src\ai_intel\ingestion\sources\standards.py:113:    return f"scope stated by source: {document.scope_text}"
+backend/src\ai_intel\enrichment\inputs.py:44:def _require_input_scopes(
+backend/src\ai_intel\enrichment\inputs.py:46:    access_scope: AccessScope,
+backend/src\ai_intel\enrichment\inputs.py:69:        raise EnrichmentInputError("source_scope_exceeds_event")
+backend/src\ai_intel\enrichment\inputs.py:72:            source_scope = VisibilityScope(
+backend/src\ai_intel\enrichment\inputs.py:75:            access_scope.enforce_visible(source_scope.visibility, source_scope.tenant_id)
+backend/src\ai_intel\enrichment\inputs.py:76:            if source_scope.visibility == "tenant" and source_scope != scope:
+backend/src\ai_intel\enrichment\inputs.py:77:                raise EnrichmentInputError("source_scope_exceeds_event")
+backend/src\ai_intel\enrichment\inputs.py:121:        raise EnrichmentInputError("source_scope_exceeds_event")
+backend/src\ai_intel\enrichment\inputs.py:187:def load_event_enrichment_inputs(
+backend/src\ai_intel\enrichment\inputs.py:190:    access_scope: AccessScope,
+backend/src\ai_intel\enrichment\inputs.py:195:    revision_ids = EventRepository(session, access_scope).get_source_revisions(str(event_id))
+backend/src\ai_intel\enrichment\inputs.py:202:    _require_input_scopes(session, access_scope, scope, revision_ids)
+backend/tests\contract\test_t15_standards_policy_connectors.py:9:    describe_scope_limitation,
+backend/tests\contract\test_t15_standards_policy_connectors.py:112:def test_unknown_scope_cites_clauses_without_legal_judgment_t15_c06() -> None:
+backend/tests\contract\test_t15_standards_policy_connectors.py:117:    limitation = describe_scope_limitation(doc)
+backend/tests\contract\test_t15_standards_policy_connectors.py:124:    assert describe_scope_limitation(scoped) == "scope stated by source: applies to X"
+backend/tests\integration\test_r04_source_jobs_pg.py:152:            == "pg:source:" + cursor["source_id"]
+backend/src\ai_intel\enrichment\impact.py:21:    source: str
+backend/src\ai_intel\enrichment\impact.py:34:    source: str
+backend/tests\integration\test_t21_claims_entities_conflicts.py:56:def test_same_scope_exclusive_versions_become_disputed_not_vote_t21_c03() -> None:
+backend/tests\integration\test_t21_claims_entities_conflicts.py:61:    assert ledger.register_dispute("c1", "c2", reason_same_scope_exclusive=True) == "disputed"
+backend/tests\integration\test_t21_claims_entities_conflicts.py:64:    assert ledger.register_dispute("c1", "c2", reason_same_scope_exclusive=False) == "parallel_kept"
+backend/tests\integration\test_r06_document_api_pg.py:222:def test_document_revocation_between_initial_scope_and_pg_lock_is_rejected(
+backend/tests\integration\test_r06_document_api_pg.py:226:    original = auth.build_access_scope
+backend/tests\integration\test_r06_document_api_pg.py:228:    def revoked_scope(token):
+backend/tests\integration\test_r06_document_api_pg.py:233:    monkeypatch.setattr(auth, "build_access_scope", revoked_scope)
+backend/tests\integration\test_r04_source_http_idempotency_pg.py:115:def test_authorization_change_after_initial_scope_is_rejected_before_commit(
+backend/tests\integration\test_r04_source_http_idempotency_pg.py:121:    original = auth.build_access_scope
+backend/tests\integration\test_r04_source_http_idempotency_pg.py:123:    def revoke_after_scope(token):
+backend/tests\integration\test_r04_source_http_idempotency_pg.py:136:    monkeypatch.setattr(auth, "build_access_scope", revoke_after_scope)
+backend/tests\unit\test_t04_domain_contracts.py:52:def test_public_scope_with_tenant_id_is_rejected() -> None:
+backend/tests\unit\test_t04_domain_contracts.py:58:def test_tenant_scope_without_tenant_id_is_rejected() -> None:
+backend/tests\unit\test_r05_grounded_answer.py:349:def test_security_same_subject_scope_or_cropped_predicate_still_fails_verification(
+backend/tests\unit\test_r05_grounded_answer.py:366:def test_security_scope_ambiguity_and_injection_do_not_override_verifier_or_add_call(monkeypatch):
+backend/tests\integration\test_t07_jobs_and_outbox.py:22:    cancel_job_with_scope,
+backend/tests\integration\test_t07_jobs_and_outbox.py:25:    read_job_with_scope,
+backend/tests\integration\test_t07_jobs_and_outbox.py:166:            read_job_with_scope(connection, job_id, outsider)
+backend/tests\integration\test_t07_jobs_and_outbox.py:170:            cancel_job_with_scope(connection, job_id, outsider, now)
+backend/tests\unit\test_r06_source_polling.py:41:def test_untrusted_scope_cannot_even_query_scheduler_database(role):
+backend/tests\integration\test_r04_source_documents.py:420:def test_nonpublic_scope_and_malicious_url_cannot_create_source_records(page_engine, tmp_path):
+backend/tests\integration\test_r04_source_documents.py:441:def test_existing_registered_source_scope_is_never_overwritten(page_engine, tmp_path):
+backend/tests\unit\test_t02_project_skeleton.py:34:def test_unimplemented_scope_exits_nonzero_without_pass(monkeypatch, tmp_path, capsys) -> None:
+backend/tests\unit\test_t02_project_skeleton.py:45:def test_unknown_scope_is_rejected_with_argument_error() -> None:
+backend/tests\unit\test_r06_source_catalog.py:47:    assert CATALOG_SOURCES["nist_ai_rmf"].content_scope == "voluntary_framework"
+backend/tests\integration\test_t05_persistence_and_raw_store.py:36:    bump_scope_epoch,
+backend/tests\integration\test_t05_persistence_and_raw_store.py:230:def test_save_revision_scope_mismatch_is_rejected(migrated_engine, tmp_path) -> None:
+backend/tests\integration\test_t05_persistence_and_raw_store.py:520:def test_scope_epoch_bumps_for_cache_invalidation(migrated_engine) -> None:
+backend/tests\integration\test_t05_persistence_and_raw_store.py:525:        first = bump_scope_epoch(connection, scope_key, now)
+backend/tests\integration\test_t05_persistence_and_raw_store.py:526:        second = bump_scope_epoch(connection, scope_key, now)
+backend/tests\unit\test_r07_public_signals_fix1.py:107:def test_unsupported_vendor_cve_is_rejected_without_changing_supported_scope():
+backend/tests\integration\test_r05_question_api_pg.py:444:def test_unsupported_r12_scope_is_rejected_without_pg_answer_or_model(question_api):
+backend/tests\integration\test_r05_question_api_pg.py:459:            "question_scope_not_supported",
+backend/tests\unit\test_r07_public_signals.py:16:from ai_intel.enrichment.signals import enrich_structured_fields
+backend/tests\unit\test_r07_public_signals.py:92:    attempts = {a.dimension: a for a in enrich_structured_fields(context(source), (source,))}
+backend/tests\unit\test_r07_public_signals.py:112:    attempts = enrich_structured_fields(context(source, cves=()), (source,))
+backend/tests\unit\test_r07_public_signals.py:117:    return {a.dimension: a for a in enrich_structured_fields(context(*sources, cves=cves), sources)}
+backend/tests\unit\test_r07_public_signals.py:214:def test_complete_empty_epss_is_scoped_not_found_with_time():
+backend/tests\unit\test_r07_public_signals.py:336:def test_cross_cve_payload_and_source_uri_scope_fail():
+backend/tests\unit\test_r07_public_signals.py:348:        enrich_structured_fields(EnrichmentContext.model_validate(wrong), (source,))
+backend/tests\unit\test_r07_public_signals.py:350:        enrich_structured_fields(context(source), (source, source))
+backend/tests\unit\test_r07_public_signals.py:405:        {"query_scope": "all_cves"},
+backend/tests\unit\test_r07_public_signals.py:408:def test_selected_scope_and_matching_cve_are_required(change):
+backend/src\ai_intel\ingestion\cursor_repository.py:281:    def _source_scope(self) -> tuple[str, str | None]:
+backend/src\ai_intel\ingestion\cursor_repository.py:346:            self._source_scope()
+backend/src\ai_intel\ingestion\cursor_repository.py:454:            self._source_scope()
+backend/src\ai_intel\ingestion\cursor_repository.py:474:            self._source_scope()
+backend/src\ai_intel\ingestion\cursor_repository.py:608:            visibility, tenant_id = self._source_scope()
+backend/tests\integration\test_r07_signal_claim_values_pg.py:8:from test_r02_knowledge_revisions import prepared_submission, publish_submission, publisher_scope
+backend/tests\integration\test_r07_signal_claim_values_pg.py:67:        stored = KnowledgeRepository(session, publisher_scope(submission.record.scope)).get_claim(
+backend/tests\integration\test_r07_signal_claim_values_pg.py:100:        restored = KnowledgeRepository(session, publisher_scope(submission.record.scope)).get_claim(
+backend/tests\integration\test_r04_knowledge_api_pg.py:560:        "build_access_scope",
+backend/tests\integration\test_r04_knowledge_api_pg.py:589:                source_scope=[revision["source_id"]],
+backend/tests\unit\test_r04_source_documents.py:222:def test_query_order_can_change_without_broadening_scope():
+backend/tests\unit\test_r04_source_documents.py:263:def test_source_registration_denies_scope_before_any_io():
+backend/tests\integration\test_r04_api_review_regressions.py:154:@pytest.mark.parametrize("column_name", ["source_scope", "claim_ids", "reference_ids"])
+backend/tests\integration\test_r07_cvss_authority_scope_fix_pg.py:18:from ai_intel.enrichment.inputs import load_event_enrichment_inputs
+backend/tests\integration\test_r07_cvss_authority_scope_fix_pg.py:19:from ai_intel.enrichment.signals import enrich_structured_fields
+backend/tests\integration\test_r07_cvss_authority_scope_fix_pg.py:62:        loaded = load_event_enrichment_inputs(
+backend/tests\integration\test_r07_cvss_authority_scope_fix_pg.py:65:    attempts = enrich_structured_fields(loaded.context, loaded.documents)
+backend/src\ai_intel\api\authentication.py:361:    def build_access_scope(self, session_token: str) -> AccessScope:
+backend/tests\integration\test_r07_composed_claims_pg.py:26:def composition(engine, tmp_path, *, target_scope=None):
+backend/tests\integration\test_r07_composed_claims_pg.py:28:    second = signal_submission(engine, tmp_path / "secondary", SIGNALS[3], scope=target_scope)
+backend/tests\integration\test_r07_composed_claims_pg.py:70:        target_scope=VisibilityScope(visibility="tenant", tenant_id="fixture-owner"),
+backend/tests\integration\test_r06_source_worker_api_pg.py:21:    legacy_source_http.test_authorization_change_after_initial_scope_is_rejected_before_commit
+backend/tests\integration\test_r06_source_worker_api_pg.py:29:test_legacy_source_scope = (
+backend/tests\integration\test_r06_source_worker_api_pg.py:32:test_legacy_actor_scope = (
+backend/tests\integration\test_r06_source_worker_api_pg.py:160:    build_scope = auth.build_access_scope
+backend/tests\integration\test_r06_source_worker_api_pg.py:162:    def changed_scope(token):
+backend/tests\integration\test_r06_source_worker_api_pg.py:163:        scope = build_scope(token)
+backend/tests\integration\test_r06_source_worker_api_pg.py:175:    monkeypatch.setattr(auth, "build_access_scope", changed_scope)
+backend/tests\integration\test_r07_literature_target_scope_pg.py:64:@pytest.mark.parametrize("claim_scope,target_scope", [(PUBLIC, OWNER), (OWNER, OTHER)])
+backend/tests\integration\test_r07_literature_target_scope_pg.py:66:    catalog_engine, tmp_path, claim_scope, target_scope
+backend/tests\integration\test_r07_literature_target_scope_pg.py:68:    document_id, revision_id = target_identity(catalog_engine, tmp_path / "target", target_scope)
+backend/tests\integration\test_r07_literature_target_scope_pg.py:73:        scope=claim_scope,
+backend/tests\integration\test_r07_literature_target_scope_pg.py:102:    "claim_scope,target_scope", [(PUBLIC, PUBLIC), (OWNER, OWNER), (OWNER, PUBLIC)]
+backend/tests\integration\test_r07_literature_target_scope_pg.py:105:    catalog_engine, tmp_path, claim_scope, target_scope
+backend/tests\integration\test_r07_literature_target_scope_pg.py:107:    document_id, revision_id = target_identity(catalog_engine, tmp_path / "target", target_scope)
+backend/tests\integration\test_r07_literature_target_scope_pg.py:112:        scope=claim_scope,
+backend/src\ai_intel\api\auth_state.py:76:def lock_authenticated_scope(
+backend/tests\integration\test_r07_enrichment_publication_pg.py:20:from ai_intel.enrichment.inputs import load_event_enrichment_inputs
+backend/tests\integration\test_r07_enrichment_publication_pg.py:22:from ai_intel.enrichment.publication import EnrichmentPublicationError, publish_enrichment_attempts
+backend/tests\integration\test_r07_enrichment_publication_pg.py:23:from ai_intel.enrichment.signals import enrich_structured_fields
+backend/tests\integration\test_r07_enrichment_publication_pg.py:36:        loaded = load_event_enrichment_inputs(session, store, ADMIN, event_id, "fixture-publish-1")
+backend/tests\integration\test_r07_enrichment_publication_pg.py:37:    attempts = enrich_structured_fields(loaded.context, loaded.documents)
+backend/tests\integration\test_r07_enrichment_publication_pg.py:45:        return publish_enrichment_attempts(
+backend/tests\integration\test_r07_enrichment_publication_pg.py:228:    attempts = enrich_structured_fields(altered.context, altered.documents)
+backend/tests\integration\test_r07_enrichment_publication_pg.py:240:    attempts = enrich_structured_fields(altered.context, altered.documents)
+backend/tests\integration\test_r07_enrichment_publication_pg.py:298:        original = load_event_enrichment_inputs(session, store, ADMIN, event_id, "fixture-roster-1")
+backend/tests\integration\test_r07_enrichment_publication_pg.py:326:        loaded = load_event_enrichment_inputs(session, store, ADMIN, event_id, "fixture-roster-1")
+backend/src\ai_intel\api\document_routes.py:16:from ai_intel.api.auth_state import lock_authenticated_scope
+backend/src\ai_intel\api\document_routes.py:62:            initial = authentication.build_access_scope(token)
+backend/src\ai_intel\api\document_routes.py:66:                current = lock_authenticated_scope(session.connection(), token, datetime.now(UTC))
+backend/tests\integration\test_r07_publication_acl_lock_fix_pg.py:23:from ai_intel.enrichment.inputs import EnrichmentInputError, load_event_enrichment_inputs
+backend/tests\integration\test_r07_publication_acl_lock_fix_pg.py:25:from ai_intel.enrichment.publication import EnrichmentPublicationError, publish_enrichment_attempts
+backend/tests\integration\test_r07_publication_acl_lock_fix_pg.py:26:from ai_intel.enrichment.signals import enrich_structured_fields
+backend/tests\integration\test_r07_publication_acl_lock_fix_pg.py:51:        original = load_event_enrichment_inputs(session, store, ADMIN, event_id, "acl-lock-fix-1")
+backend/tests\integration\test_r07_publication_acl_lock_fix_pg.py:78:            original = load_event_enrichment_inputs(
+backend/tests\integration\test_r07_publication_acl_lock_fix_pg.py:127:        return publish_enrichment_attempts(
+backend/tests\integration\test_r07_publication_acl_lock_fix_pg.py:150:        load_event_enrichment_inputs(
+backend/tests\integration\test_r07_publication_acl_lock_fix_pg.py:173:    attempts = enrich_structured_fields(loaded.context, loaded.documents)
+backend/tests\integration\test_r07_publication_acl_lock_fix_pg.py:191:        load_event_enrichment_inputs(
+backend/tests\integration\test_r07_publication_acl_lock_fix_pg.py:198:    actual_source = "source:" + str(loaded.documents[0].source_id)
+backend/tests\integration\test_r07_publication_acl_lock_fix_pg.py:213:                if isinstance(key, str) and key.startswith("source:")
+backend/tests\integration\test_r07_publication_acl_lock_fix_pg.py:235:    attempts = enrich_structured_fields(loaded.context, loaded.documents)
+backend/tests\integration\test_r07_publication_acl_lock_fix_pg.py:245:    contended_source = "source:" + next(
+backend/tests\integration\test_r07_publication_acl_lock_fix_pg.py:260:            if isinstance(key, str) and key.startswith("source:"):
+backend/tests\integration\test_r07_publication_acl_lock_fix_pg.py:286:                    publish_enrichment_attempts(
+backend/tests\integration\test_r07_publication_acl_lock_fix_pg.py:338:        {"source:" + str(document.source_id) for document in loaded.documents}
+backend/tests\integration\test_r07_enrichment_inputs_pg.py:12:from ai_intel.enrichment.inputs import EnrichmentInputError, load_event_enrichment_inputs
+backend/tests\integration\test_r07_enrichment_inputs_pg.py:36:        loaded = load_event_enrichment_inputs(session, store, ADMIN, event_id, "r07-fixture-1")
+backend/tests\integration\test_r07_enrichment_inputs_pg.py:49:def test_scope_denied_before_object_store_is_read(catalog_engine, tmp_path):
+backend/tests\integration\test_r07_enrichment_inputs_pg.py:60:        load_event_enrichment_inputs(session, UnreadableStore(), outsider, event_id, "rule")
+backend/tests\integration\test_r07_enrichment_inputs_pg.py:69:        load_event_enrichment_inputs(session, store, ADMIN, event_id, "rule")
+backend/tests\integration\test_r07_enrichment_inputs_pg.py:77:        load_event_enrichment_inputs(session, store, ADMIN, event_id, "rule")
+backend/tests\integration\test_r07_enrichment_inputs_pg.py:86:        load_event_enrichment_inputs(session, store, ADMIN, event_id, "rule")
+backend/tests\integration\test_r07_enrichment_inputs_pg.py:94:        load_event_enrichment_inputs(session, store, ADMIN, event_id, "rule")
+backend/tests\integration\test_r07_enrichment_inputs_pg.py:102:        load_event_enrichment_inputs(session, store, ADMIN, event_id, "rule")
+backend/tests\integration\test_r07_enrichment_inputs_pg.py:115:        load_event_enrichment_inputs(session, UnreadableStore(), ADMIN, event_id, "rule")
+backend/tests\integration\test_r07_enrichment_inputs_pg.py:123:        loaded = load_event_enrichment_inputs(session, store, ADMIN, event_id, "rule")
+backend/tests\integration\test_r07_enrichment_inputs_pg.py:135:        load_event_enrichment_inputs(session, LyingStore(), ADMIN, event_id, "rule")
+backend/src\ai_intel\api\knowledge_routes.py:60:            scope = authentication.build_access_scope(token)
+backend/src\ai_intel\api\knowledge_read_service.py:568:            for name in ("source_scope", "claim_ids", "reference_ids"):
+backend/src\ai_intel\api\knowledge_read_service.py:579:        source_ids = {source_id for row in rows for source_id in row["source_scope"]}
+backend/src\ai_intel\api\knowledge_read_service.py:632:                or any(item not in visible_sources for item in row["source_scope"])
+backend/src\ai_intel\api\source_routes.py:20:from ai_intel.api.auth_state import lock_authenticated_scope
+backend/src\ai_intel\api\source_routes.py:90:        scope = authentication.build_access_scope(token)
+backend/src\ai_intel\api\source_routes.py:128:    def lock_source_scope(session: Session, request: Request, initial: AccessScope) -> AccessScope:
+backend/src\ai_intel\api\source_routes.py:130:        current = lock_authenticated_scope(
+backend/src\ai_intel\api\source_routes.py:159:                scope = lock_source_scope(session, request, scope)
+backend/src\ai_intel\api\source_routes.py:204:                lock_source_scope(session, request, scope)
+backend/src\ai_intel\api\question_routes.py:78:        scope = authentication.build_access_scope(token)

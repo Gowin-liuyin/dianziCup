@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="2" time="7.639" timestamp="2026-10-16T01:52:51.238937+08:00" hostname="yin"><testcase classname="tests.integration.test_r07_enrichment_publication_pg" name="test_source_snapshot_revision_roster_cannot_omit_or_repeat_sources[missing]" time="3.025"><failure message="ai_intel.enrichment.inputs.EnrichmentInputError: event_identifier_unverified">catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_publication_20261016?options=-c+search_path%3Dtest_r06_catalog_cc338f240d39437b9e9302da845746c2+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-629/test_source_snapshot_revision_0')
+roster = 'missing'
+
+    @pytest.mark.parametrize("roster", ["missing", "duplicated"])
+    def test_source_snapshot_revision_roster_cannot_omit_or_repeat_sources(catalog_engine, tmp_path, roster):
+        loaded, _ = inputs(catalog_engine, tmp_path)
+        altered = replace(loaded, documents=() if roster == "missing" else loaded.documents * 2)
+        failed = DimensionAttempt(dimension="versions", status=DimensionStatus.FAILED,
+                                  error_code="model_timeout")
+        before = counts(catalog_engine)
+        with pytest.raises(EnrichmentPublicationError, match="roster_changed"):
+&gt;           publish(catalog_engine, altered, (failed,), at=loaded.documents[0].observed_at)
+
+tests\integration\test_r07_enrichment_publication_pg.py:280: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_r07_enrichment_publication_pg.py:42: in publish
+    return publish_enrichment_attempts(
+src\ai_intel\enrichment\publication.py:360: in publish_enrichment_attempts
+    _require_current_inputs(session, scope, loaded)
+src\ai_intel\enrichment\publication.py:170: in _require_current_inputs
+    if loaded.context.external_cve_ids != _explicit_cve_ids(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+session = &lt;sqlalchemy.orm.session.Session object at 0x000001E0DC321D30&gt;
+event_id = UUID('5a731f03-38c2-5ead-bb66-2d241b0ed112'), loaded = ()
+
+    def _explicit_cve_ids(
+        session: Session, event_id: UUID, loaded: tuple[EnrichmentDocument, ...]
+    ) -&gt; tuple[str, ...]:
+        identifiers: tuple[str, ...] = tuple(
+            session.scalars(
+                select(event_external_ids.c.id_value)
+                .where(
+                    event_external_ids.c.event_id == str(event_id),
+                    event_external_ids.c.id_type == "cve",
+                )
+                .order_by(event_external_ids.c.id_value)
+            )
+        )
+        for identifier in identifiers:
+            supported = any(
+                any(
+                    block.json_pointer == pointer and block.text == pointer + ": " + identifier
+                    for block in document.blocks
+                )
+                for document in loaded
+                if (pointer := CVE_FIELD_BY_SOURCE_ID.get(document.source_id)) is not None
+            )
+            if not supported:
+&gt;               raise EnrichmentInputError("event_identifier_unverified")
+E               ai_intel.enrichment.inputs.EnrichmentInputError: event_identifier_unverified
+
+src\ai_intel\enrichment\inputs.py:146: EnrichmentInputError</failure></testcase><testcase classname="tests.integration.test_r07_enrichment_publication_pg" name="test_source_snapshot_revision_roster_cannot_omit_or_repeat_sources[duplicated]" time="2.921"><failure message="ai_intel.enrichment.signal_sources.PublicSignalError: document_revision_outside_context">catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_publication_20261016?options=-c+search_path%3Dtest_r06_catalog_b5187eace741443d8d1b4f2cb5c93283+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-629/test_source_snapshot_revision_1')
+roster = 'duplicated'
+
+    @pytest.mark.parametrize("roster", ["missing", "duplicated"])
+    def test_source_snapshot_revision_roster_cannot_omit_or_repeat_sources(catalog_engine, tmp_path, roster):
+        loaded, _ = inputs(catalog_engine, tmp_path)
+        altered = replace(loaded, documents=() if roster == "missing" else loaded.documents * 2)
+        failed = DimensionAttempt(dimension="versions", status=DimensionStatus.FAILED,
+                                  error_code="model_timeout")
+        before = counts(catalog_engine)
+        with pytest.raises(EnrichmentPublicationError, match="roster_changed"):
+&gt;           publish(catalog_engine, altered, (failed,), at=loaded.documents[0].observed_at)
+
+tests\integration\test_r07_enrichment_publication_pg.py:280: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_r07_enrichment_publication_pg.py:42: in publish
+    return publish_enrichment_attempts(
+src\ai_intel\enrichment\publication.py:363: in publish_enrichment_attempts
+    for attempt in enrich_structured_fields(loaded.context, loaded.documents)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+context = EnrichmentContext(event_id=UUID('5a731f03-38c2-5ead-bb66-2d241b0ed112'), expected_event_version=1, revision_ids=(UUID('22034a11-ebcf-45dd-8cbb-9fa18f8920e4'),), external_cve_ids=('CVE-2024-28224',), rule_version='fixture-publish-1')
+documents = (EnrichmentDocument(revision_id=UUID('22034a11-ebcf-45dd-8cbb-9fa18f8920e4'), document_id=UUID('6821e324-4068-53f4-927...-research/?research=Technical+advisories","source":"af854a3a-2127-422b-91ae-364da2661108","tags":["Broken Link"]}]}}'))
+
+    def enrich_structured_fields(
+        context: EnrichmentContext, documents: tuple[EnrichmentDocument, ...]
+    ) -&gt; tuple[DimensionAttempt, ...]:
+        """Propose values; publication validates scope, current revisions and stored raw hashes."""
+        if (
+            not 1 &lt;= len(documents) &lt;= 20
+            or len({document.revision_id for document in documents}) != len(documents)
+            or any(document.revision_id not in context.revision_ids for document in documents)
+        ):
+&gt;           raise PublicSignalError("document_revision_outside_context")
+E           ai_intel.enrichment.signal_sources.PublicSignalError: document_revision_outside_context
+
+src\ai_intel\enrichment\signals.py:639: PublicSignalError</failure></testcase></testsuite></testsuites>

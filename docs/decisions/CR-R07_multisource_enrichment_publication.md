@@ -10,10 +10,16 @@ ClaimSubmission原只声明一个revision，复合来源的候选证据不能逐
 符合认证ACL与派生scope，并至少有自己的证据。证据不能落在未声明来源中。
 旧schema1/2不接受该扩展。空additional_sources不进入序列化/指纹，旧请求幂等含义保持。
 没有新增事实数据库；PG既有claim_assertions/claim_evidence/publication_receipts为权威。
+逐维工作流的change_events.payload使用内部schema2，保存完整EnrichmentContext及其
+rule_version，不以无法恢复规则标签的输入hash代替可读来源。该写服务尚未接入产品，
+原schema1仅存在于隔离测试；无生产回执迁移，旧记录保留而不覆盖。
+这不改变ClaimSubmission schema1/2或其空additional_sources的原指纹。
 
 输入服务只载入事件的当前可见PG修订，先ACL再对象IO，限制20修订、每件2MiB、合计8MiB，
 逐件核对象hash/size与保存块坐标。CVE只取PG标识且需已注册NVD/厂商原文明确字段支持。
 部分解析/截断保留不完整，不转换成全库not_found。
+首次对象IO前，整份修订清单必须通过来源、文档、修订三级ACL及派生范围校验；
+公开输入复用DocumentReadService的严格公开条件，不能因旧修订仍为public而越过父级撤权。
 
 发布时再次核事件版本、current修订、来源/URI/完整性/版本/观测时间/实际块与CVE；
 载入文档必须与当前事件的完整修订集合一一相等；遗漏来源、空文档或重复修订拒绝，
@@ -23,6 +29,17 @@ public结构字段重新计算后逐值匹配才能发布supported，模型候�
 请求与所有候选的PG幂等回执同事务提交；重复请求返回原历史标识，不新增事实。
 改变输入不能复用旧身份；新请求遇版本变化拒绝。合法failed维度与成功维度同次保存。
 非法或越权候选整次拒绝，防止用局部成功掩盖边界破坏。
+发布在读取回执前重查三级ACL，历史重放允许current变化，但不豁免当前权限；
+全清单复查包括没有candidate的合法failed维度，不能仅检查被候选引用的文档。
+
+来源更新与富化发布统一依赖顺序为source advisory、document/revision、publication scope、event。
+富化预锁的来源从PG事件关联及真实文档映射取得，多个来源和文档按标识排序，
+不信任候选或model_copy提供的source_id；持锁后再次核对映射，随后保留current CAS。
+既有persist_source_response已在ensure_source_registration取得同一source advisory键；
+生产catalog调用方也先登记来源。直接catalog持久化不取得publication scope锁，
+save_document_revision仅锁document/content；EventRepository在scope后锁event，不反向锁文档。
+source父行使用FOR SHARE，保持ACL至提交并兼容文档外键的KEY SHARE。
+不通过捕获40P01伪造成功、禁用并发、提高超时或无界重试掩盖锁环。
 
 ## 兼容性、迁移与回滚
 

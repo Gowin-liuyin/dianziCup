@@ -6,9 +6,10 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from pydantic import HttpUrl
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
+from ai_intel.api.document_read_service import sources
 from ai_intel.domain.access import MANAGE_PUBLIC_SOURCES, WRITE_ASSET, AccessScope
 from ai_intel.domain.enums import (
     ClaimOrigin,
@@ -29,6 +30,7 @@ from ai_intel.enrichment.inputs import (
     CVE_FIELD_BY_SOURCE_ID,
     LoadedEnrichmentInputs,
     _explicit_cve_ids,
+    _require_input_scopes,
     _revision_blocks,
 )
 from ai_intel.enrichment.persistence import DimensionRepository, DimensionSubmission
@@ -47,7 +49,7 @@ from ai_intel.knowledge.persistence import (
     publication_payload_digest,
     save_change_publication,
 )
-from ai_intel.knowledge.persistence_models import events, publication_receipts
+from ai_intel.knowledge.persistence_models import event_documents, events, publication_receipts
 from ai_intel.knowledge.revisions import attach_evidence_span
 
 
@@ -94,6 +96,43 @@ def input_fingerprint(loaded: LoadedEnrichmentInputs) -> str:
     )
 
 
+def _lock_input_parents(session: Session, loaded: LoadedEnrichmentInputs) -> None:
+    """Match source writers: actual PG source, document/revision, publication, then event."""
+    revision_ids = tuple(map(str, loaded.context.revision_ids))
+    parent_query = (
+        select(document_revisions.c.revision_id, documents.c.source_id)
+        .join(document_revisions, document_revisions.c.document_id == documents.c.document_id)
+        .join(event_documents, event_documents.c.revision_id == document_revisions.c.revision_id)
+        .where(
+            event_documents.c.event_id == str(loaded.context.event_id),
+            document_revisions.c.revision_id.in_(revision_ids),
+        )
+    )
+    parent_rows = tuple(session.execute(parent_query).mappings())
+    if {row["revision_id"] for row in parent_rows} != set(revision_ids):
+        raise EnrichmentPublicationError("enrichment_source_roster_changed")
+    source_ids = sorted({row["source_id"] for row in parent_rows})
+    for source_id in source_ids:
+        session.execute(
+            select(func.pg_advisory_xact_lock(func.hashtextextended("source:" + source_id, 0)))
+        )
+    session.execute(
+        select(sources.c.source_id)
+        .where(sources.c.source_id.in_(source_ids))
+        .order_by(sources.c.source_id)
+        .with_for_update(read=True)
+    ).all()
+    session.execute(
+        select(document_revisions.c.revision_id)
+        .join(documents, documents.c.document_id == document_revisions.c.document_id)
+        .where(document_revisions.c.revision_id.in_(revision_ids))
+        .order_by(documents.c.document_id, document_revisions.c.revision_id)
+        .with_for_update(of=(documents, document_revisions))
+    ).all()
+    if set(session.execute(parent_query).mappings()) != set(parent_rows):
+        raise EnrichmentPublicationError("enrichment_source_revision_changed")
+
+
 def _require_current_inputs(
     session: Session, scope: AccessScope, loaded: LoadedEnrichmentInputs
 ) -> None:
@@ -121,6 +160,7 @@ def _require_current_inputs(
         or len(set(loaded.context.revision_ids)) != len(loaded.context.revision_ids)
     ):
         raise EnrichmentPublicationError("enrichment_source_roster_changed")
+    _require_input_scopes(session, scope, loaded.scope, tuple(current))
     for document in loaded.documents:
         revision = (
             session.execute(
@@ -309,11 +349,17 @@ def publish_enrichment_attempts(
     fingerprint = input_fingerprint(loaded)
     workflow_key = "enrichment:" + str(request_id)
     workflow_payload = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "context": loaded.context.model_dump(mode="json"),
         "input_fingerprint": fingerprint,
         "attempts": [attempt.model_dump(mode="json") for attempt in attempts],
     }
     scope_key = knowledge_scope_key(loaded.scope)
+    _lock_input_parents(session, loaded)
+    EventRepository(session, scope).get_source_revisions(str(loaded.context.event_id))
+    _require_input_scopes(
+        session, scope, loaded.scope, tuple(map(str, loaded.context.revision_ids))
+    )
     prior = find_prior_publication(
         session, scope_key, workflow_key, publication_payload_digest(workflow_payload)
     )
