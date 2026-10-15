@@ -1,0 +1,1185 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="15" skipped="0" tests="15" time="2.762" timestamp="2026-10-16T06:08:55.344260+08:00" hostname="yin"><testcase classname="tests.integration.test_r11_pg_assessments" name="test_t27_semantic_pending_independent_review_and_lifecycle" time="0.439"><failure message="TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'">pg_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_t27_semantic_pending_inde0')
+
+    def test_t27_semantic_pending_independent_review_and_lifecycle(pg_engine, tmp_path):
+&gt;       seeded = seed(pg_engine, tmp_path)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r11_pg_assessments.py:316: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+directory = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_t27_semantic_pending_inde0')
+
+    def seed(engine, directory, *, leaf=None, origin="source_explicit", public=False):
+        tenant = "fixture-tenant-" + uuid4().hex
+        author, author_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        reviewer, reviewer_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        asset_actor, asset_token = actor(engine, tenant)
+        source_id, document_id, event_id, claim_id = (str(uuid4()) for _ in range(4))
+        scope = VisibilityScope(
+            visibility="public" if public else "tenant", tenant_id=None if public else tenant
+        )
+        store = ContentStore(directory)
+        quote = "#x1F600必要条件：组件 fixture 版本 [1.0,1.4.2)，完整受影响范围。"
+        body = "前缀：" + quote + "后缀。"
+        payload = body.encode()
+        with Session(engine) as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) "
+                    "VALUES (:id,:name,'vendor_advisory','https://example.invalid',:visibility,:tenant,:time)"
+                ),
+                dict(
+                    id=source_id,
+                    name="fixture-source-" + source_id,
+                    visibility=scope.visibility,
+                    tenant=scope.tenant_id,
+                    time=STAMP,
+                ),
+            )
+            content = register_response_content(session, store, payload, STAMP)
+            session.execute(
+                insert(documents).values(
+                    document_id=document_id,
+                    source_id=source_id,
+                    kind="advisory",
+                    title="Synthetic rule evidence",
+                    retrieved_at=STAMP,
+                    content_hash=content.content_hash,
+                    visibility=scope.visibility,
+                    tenant_id=scope.tenant_id,
+                    schema_version=2,
+                )
+            )
+            revision = save_document_revision(
+                session, store, document_id, payload, scope.visibility, scope.tenant_id, STAMP
+            )
+            session.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == revision.revision_id)
+                .values(parse_status="parsed")
+            )
+            block_id = register_source_revision_blocks(
+                session,
+                revision.revision_id,
+&gt;               (SourceRevisionBlock(0, 0, len(body), body, hashlib.sha256(payload).hexdigest()),),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                scope.visibility,
+                scope.tenant_id,
+                STAMP,
+            )[0]
+E           TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'
+
+tests\integration\test_r11_pg_assessments.py:148: TypeError</failure></testcase><testcase classname="tests.integration.test_r11_pg_assessments" name="test_t28_c01_versions_evidence_and_scope_snapshot[1.4.1-supported_applicability]" time="0.064"><failure message="TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'">pg_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_t28_c01_versions_evidence0')
+version = '1.4.1', expected = 'supported_applicability'
+
+    @pytest.mark.parametrize(
+        ("version", "expected"),
+        [
+            ("1.4.1", "supported_applicability"),
+            ("1.4.2", "excluded_with_evidence"),
+            (None, "insufficient_evidence"),
+        ],
+    )
+    def test_t28_c01_versions_evidence_and_scope_snapshot(pg_engine, tmp_path, version, expected):
+&gt;       seeded = seed(pg_engine, tmp_path)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r11_pg_assessments.py:348: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+directory = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_t28_c01_versions_evidence0')
+
+    def seed(engine, directory, *, leaf=None, origin="source_explicit", public=False):
+        tenant = "fixture-tenant-" + uuid4().hex
+        author, author_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        reviewer, reviewer_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        asset_actor, asset_token = actor(engine, tenant)
+        source_id, document_id, event_id, claim_id = (str(uuid4()) for _ in range(4))
+        scope = VisibilityScope(
+            visibility="public" if public else "tenant", tenant_id=None if public else tenant
+        )
+        store = ContentStore(directory)
+        quote = "#x1F600必要条件：组件 fixture 版本 [1.0,1.4.2)，完整受影响范围。"
+        body = "前缀：" + quote + "后缀。"
+        payload = body.encode()
+        with Session(engine) as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) "
+                    "VALUES (:id,:name,'vendor_advisory','https://example.invalid',:visibility,:tenant,:time)"
+                ),
+                dict(
+                    id=source_id,
+                    name="fixture-source-" + source_id,
+                    visibility=scope.visibility,
+                    tenant=scope.tenant_id,
+                    time=STAMP,
+                ),
+            )
+            content = register_response_content(session, store, payload, STAMP)
+            session.execute(
+                insert(documents).values(
+                    document_id=document_id,
+                    source_id=source_id,
+                    kind="advisory",
+                    title="Synthetic rule evidence",
+                    retrieved_at=STAMP,
+                    content_hash=content.content_hash,
+                    visibility=scope.visibility,
+                    tenant_id=scope.tenant_id,
+                    schema_version=2,
+                )
+            )
+            revision = save_document_revision(
+                session, store, document_id, payload, scope.visibility, scope.tenant_id, STAMP
+            )
+            session.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == revision.revision_id)
+                .values(parse_status="parsed")
+            )
+            block_id = register_source_revision_blocks(
+                session,
+                revision.revision_id,
+&gt;               (SourceRevisionBlock(0, 0, len(body), body, hashlib.sha256(payload).hexdigest()),),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                scope.visibility,
+                scope.tenant_id,
+                STAMP,
+            )[0]
+E           TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'
+
+tests\integration\test_r11_pg_assessments.py:148: TypeError</failure></testcase><testcase classname="tests.integration.test_r11_pg_assessments" name="test_t28_c01_versions_evidence_and_scope_snapshot[1.4.2-excluded_with_evidence]" time="0.066"><failure message="TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'">pg_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_t28_c01_versions_evidence1')
+version = '1.4.2', expected = 'excluded_with_evidence'
+
+    @pytest.mark.parametrize(
+        ("version", "expected"),
+        [
+            ("1.4.1", "supported_applicability"),
+            ("1.4.2", "excluded_with_evidence"),
+            (None, "insufficient_evidence"),
+        ],
+    )
+    def test_t28_c01_versions_evidence_and_scope_snapshot(pg_engine, tmp_path, version, expected):
+&gt;       seeded = seed(pg_engine, tmp_path)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r11_pg_assessments.py:348: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+directory = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_t28_c01_versions_evidence1')
+
+    def seed(engine, directory, *, leaf=None, origin="source_explicit", public=False):
+        tenant = "fixture-tenant-" + uuid4().hex
+        author, author_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        reviewer, reviewer_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        asset_actor, asset_token = actor(engine, tenant)
+        source_id, document_id, event_id, claim_id = (str(uuid4()) for _ in range(4))
+        scope = VisibilityScope(
+            visibility="public" if public else "tenant", tenant_id=None if public else tenant
+        )
+        store = ContentStore(directory)
+        quote = "#x1F600必要条件：组件 fixture 版本 [1.0,1.4.2)，完整受影响范围。"
+        body = "前缀：" + quote + "后缀。"
+        payload = body.encode()
+        with Session(engine) as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) "
+                    "VALUES (:id,:name,'vendor_advisory','https://example.invalid',:visibility,:tenant,:time)"
+                ),
+                dict(
+                    id=source_id,
+                    name="fixture-source-" + source_id,
+                    visibility=scope.visibility,
+                    tenant=scope.tenant_id,
+                    time=STAMP,
+                ),
+            )
+            content = register_response_content(session, store, payload, STAMP)
+            session.execute(
+                insert(documents).values(
+                    document_id=document_id,
+                    source_id=source_id,
+                    kind="advisory",
+                    title="Synthetic rule evidence",
+                    retrieved_at=STAMP,
+                    content_hash=content.content_hash,
+                    visibility=scope.visibility,
+                    tenant_id=scope.tenant_id,
+                    schema_version=2,
+                )
+            )
+            revision = save_document_revision(
+                session, store, document_id, payload, scope.visibility, scope.tenant_id, STAMP
+            )
+            session.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == revision.revision_id)
+                .values(parse_status="parsed")
+            )
+            block_id = register_source_revision_blocks(
+                session,
+                revision.revision_id,
+&gt;               (SourceRevisionBlock(0, 0, len(body), body, hashlib.sha256(payload).hexdigest()),),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                scope.visibility,
+                scope.tenant_id,
+                STAMP,
+            )[0]
+E           TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'
+
+tests\integration\test_r11_pg_assessments.py:148: TypeError</failure></testcase><testcase classname="tests.integration.test_r11_pg_assessments" name="test_t28_c01_versions_evidence_and_scope_snapshot[None-insufficient_evidence]" time="0.096"><failure message="TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'">pg_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_t28_c01_versions_evidence2')
+version = None, expected = 'insufficient_evidence'
+
+    @pytest.mark.parametrize(
+        ("version", "expected"),
+        [
+            ("1.4.1", "supported_applicability"),
+            ("1.4.2", "excluded_with_evidence"),
+            (None, "insufficient_evidence"),
+        ],
+    )
+    def test_t28_c01_versions_evidence_and_scope_snapshot(pg_engine, tmp_path, version, expected):
+&gt;       seeded = seed(pg_engine, tmp_path)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r11_pg_assessments.py:348: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+directory = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_t28_c01_versions_evidence2')
+
+    def seed(engine, directory, *, leaf=None, origin="source_explicit", public=False):
+        tenant = "fixture-tenant-" + uuid4().hex
+        author, author_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        reviewer, reviewer_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        asset_actor, asset_token = actor(engine, tenant)
+        source_id, document_id, event_id, claim_id = (str(uuid4()) for _ in range(4))
+        scope = VisibilityScope(
+            visibility="public" if public else "tenant", tenant_id=None if public else tenant
+        )
+        store = ContentStore(directory)
+        quote = "#x1F600必要条件：组件 fixture 版本 [1.0,1.4.2)，完整受影响范围。"
+        body = "前缀：" + quote + "后缀。"
+        payload = body.encode()
+        with Session(engine) as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) "
+                    "VALUES (:id,:name,'vendor_advisory','https://example.invalid',:visibility,:tenant,:time)"
+                ),
+                dict(
+                    id=source_id,
+                    name="fixture-source-" + source_id,
+                    visibility=scope.visibility,
+                    tenant=scope.tenant_id,
+                    time=STAMP,
+                ),
+            )
+            content = register_response_content(session, store, payload, STAMP)
+            session.execute(
+                insert(documents).values(
+                    document_id=document_id,
+                    source_id=source_id,
+                    kind="advisory",
+                    title="Synthetic rule evidence",
+                    retrieved_at=STAMP,
+                    content_hash=content.content_hash,
+                    visibility=scope.visibility,
+                    tenant_id=scope.tenant_id,
+                    schema_version=2,
+                )
+            )
+            revision = save_document_revision(
+                session, store, document_id, payload, scope.visibility, scope.tenant_id, STAMP
+            )
+            session.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == revision.revision_id)
+                .values(parse_status="parsed")
+            )
+            block_id = register_source_revision_blocks(
+                session,
+                revision.revision_id,
+&gt;               (SourceRevisionBlock(0, 0, len(body), body, hashlib.sha256(payload).hexdigest()),),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                scope.visibility,
+                scope.tenant_id,
+                STAMP,
+            )[0]
+E           TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'
+
+tests\integration\test_r11_pg_assessments.py:148: TypeError</failure></testcase><testcase classname="tests.integration.test_r11_pg_assessments" name="test_t28_c02_replay_cross_connections_does_not_restore_current" time="0.071"><failure message="TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'">pg_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_t28_c02_replay_cross_conn0')
+
+    def test_t28_c02_replay_cross_connections_does_not_restore_current(pg_engine, tmp_path):
+&gt;       seeded = seed(pg_engine, tmp_path)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r11_pg_assessments.py:376: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+directory = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_t28_c02_replay_cross_conn0')
+
+    def seed(engine, directory, *, leaf=None, origin="source_explicit", public=False):
+        tenant = "fixture-tenant-" + uuid4().hex
+        author, author_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        reviewer, reviewer_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        asset_actor, asset_token = actor(engine, tenant)
+        source_id, document_id, event_id, claim_id = (str(uuid4()) for _ in range(4))
+        scope = VisibilityScope(
+            visibility="public" if public else "tenant", tenant_id=None if public else tenant
+        )
+        store = ContentStore(directory)
+        quote = "#x1F600必要条件：组件 fixture 版本 [1.0,1.4.2)，完整受影响范围。"
+        body = "前缀：" + quote + "后缀。"
+        payload = body.encode()
+        with Session(engine) as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) "
+                    "VALUES (:id,:name,'vendor_advisory','https://example.invalid',:visibility,:tenant,:time)"
+                ),
+                dict(
+                    id=source_id,
+                    name="fixture-source-" + source_id,
+                    visibility=scope.visibility,
+                    tenant=scope.tenant_id,
+                    time=STAMP,
+                ),
+            )
+            content = register_response_content(session, store, payload, STAMP)
+            session.execute(
+                insert(documents).values(
+                    document_id=document_id,
+                    source_id=source_id,
+                    kind="advisory",
+                    title="Synthetic rule evidence",
+                    retrieved_at=STAMP,
+                    content_hash=content.content_hash,
+                    visibility=scope.visibility,
+                    tenant_id=scope.tenant_id,
+                    schema_version=2,
+                )
+            )
+            revision = save_document_revision(
+                session, store, document_id, payload, scope.visibility, scope.tenant_id, STAMP
+            )
+            session.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == revision.revision_id)
+                .values(parse_status="parsed")
+            )
+            block_id = register_source_revision_blocks(
+                session,
+                revision.revision_id,
+&gt;               (SourceRevisionBlock(0, 0, len(body), body, hashlib.sha256(payload).hexdigest()),),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                scope.visibility,
+                scope.tenant_id,
+                STAMP,
+            )[0]
+E           TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'
+
+tests\integration\test_r11_pg_assessments.py:148: TypeError</failure></testcase><testcase classname="tests.integration.test_r11_pg_assessments" name="test_t28_c03_revision_between_prepare_and_commit_saves_stale" time="0.056"><failure message="TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'">pg_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_t28_c03_revision_between_0')
+
+    def test_t28_c03_revision_between_prepare_and_commit_saves_stale(pg_engine, tmp_path):
+&gt;       seeded = seed(pg_engine, tmp_path)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r11_pg_assessments.py:394: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+directory = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_t28_c03_revision_between_0')
+
+    def seed(engine, directory, *, leaf=None, origin="source_explicit", public=False):
+        tenant = "fixture-tenant-" + uuid4().hex
+        author, author_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        reviewer, reviewer_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        asset_actor, asset_token = actor(engine, tenant)
+        source_id, document_id, event_id, claim_id = (str(uuid4()) for _ in range(4))
+        scope = VisibilityScope(
+            visibility="public" if public else "tenant", tenant_id=None if public else tenant
+        )
+        store = ContentStore(directory)
+        quote = "#x1F600必要条件：组件 fixture 版本 [1.0,1.4.2)，完整受影响范围。"
+        body = "前缀：" + quote + "后缀。"
+        payload = body.encode()
+        with Session(engine) as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) "
+                    "VALUES (:id,:name,'vendor_advisory','https://example.invalid',:visibility,:tenant,:time)"
+                ),
+                dict(
+                    id=source_id,
+                    name="fixture-source-" + source_id,
+                    visibility=scope.visibility,
+                    tenant=scope.tenant_id,
+                    time=STAMP,
+                ),
+            )
+            content = register_response_content(session, store, payload, STAMP)
+            session.execute(
+                insert(documents).values(
+                    document_id=document_id,
+                    source_id=source_id,
+                    kind="advisory",
+                    title="Synthetic rule evidence",
+                    retrieved_at=STAMP,
+                    content_hash=content.content_hash,
+                    visibility=scope.visibility,
+                    tenant_id=scope.tenant_id,
+                    schema_version=2,
+                )
+            )
+            revision = save_document_revision(
+                session, store, document_id, payload, scope.visibility, scope.tenant_id, STAMP
+            )
+            session.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == revision.revision_id)
+                .values(parse_status="parsed")
+            )
+            block_id = register_source_revision_blocks(
+                session,
+                revision.revision_id,
+&gt;               (SourceRevisionBlock(0, 0, len(body), body, hashlib.sha256(payload).hexdigest()),),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                scope.visibility,
+                scope.tenant_id,
+                STAMP,
+            )[0]
+E           TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'
+
+tests\integration\test_r11_pg_assessments.py:148: TypeError</failure></testcase><testcase classname="tests.integration.test_r11_pg_assessments" name="test_t28_c04_software_match_keeps_network_path_independent" time="0.096"><failure message="TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'">pg_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_t28_c04_software_match_ke0')
+
+    def test_t28_c04_software_match_keeps_network_path_independent(pg_engine, tmp_path):
+&gt;       seeded = seed(pg_engine, tmp_path)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r11_pg_assessments.py:417: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+directory = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_t28_c04_software_match_ke0')
+
+    def seed(engine, directory, *, leaf=None, origin="source_explicit", public=False):
+        tenant = "fixture-tenant-" + uuid4().hex
+        author, author_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        reviewer, reviewer_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        asset_actor, asset_token = actor(engine, tenant)
+        source_id, document_id, event_id, claim_id = (str(uuid4()) for _ in range(4))
+        scope = VisibilityScope(
+            visibility="public" if public else "tenant", tenant_id=None if public else tenant
+        )
+        store = ContentStore(directory)
+        quote = "#x1F600必要条件：组件 fixture 版本 [1.0,1.4.2)，完整受影响范围。"
+        body = "前缀：" + quote + "后缀。"
+        payload = body.encode()
+        with Session(engine) as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) "
+                    "VALUES (:id,:name,'vendor_advisory','https://example.invalid',:visibility,:tenant,:time)"
+                ),
+                dict(
+                    id=source_id,
+                    name="fixture-source-" + source_id,
+                    visibility=scope.visibility,
+                    tenant=scope.tenant_id,
+                    time=STAMP,
+                ),
+            )
+            content = register_response_content(session, store, payload, STAMP)
+            session.execute(
+                insert(documents).values(
+                    document_id=document_id,
+                    source_id=source_id,
+                    kind="advisory",
+                    title="Synthetic rule evidence",
+                    retrieved_at=STAMP,
+                    content_hash=content.content_hash,
+                    visibility=scope.visibility,
+                    tenant_id=scope.tenant_id,
+                    schema_version=2,
+                )
+            )
+            revision = save_document_revision(
+                session, store, document_id, payload, scope.visibility, scope.tenant_id, STAMP
+            )
+            session.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == revision.revision_id)
+                .values(parse_status="parsed")
+            )
+            block_id = register_source_revision_blocks(
+                session,
+                revision.revision_id,
+&gt;               (SourceRevisionBlock(0, 0, len(body), body, hashlib.sha256(payload).hexdigest()),),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                scope.visibility,
+                scope.tenant_id,
+                STAMP,
+            )[0]
+E           TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'
+
+tests\integration\test_r11_pg_assessments.py:148: TypeError</failure></testcase><testcase classname="tests.integration.test_r11_pg_assessments" name="test_t28_c05_unpublished_and_model_claim_never_confirm" time="0.068"><failure message="TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'">pg_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_t28_c05_unpublished_and_m0')
+
+    def test_t28_c05_unpublished_and_model_claim_never_confirm(pg_engine, tmp_path):
+&gt;       seeded = seed(pg_engine, tmp_path, origin="model_hypothesis")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r11_pg_assessments.py:429: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+directory = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_t28_c05_unpublished_and_m0')
+
+    def seed(engine, directory, *, leaf=None, origin="source_explicit", public=False):
+        tenant = "fixture-tenant-" + uuid4().hex
+        author, author_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        reviewer, reviewer_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        asset_actor, asset_token = actor(engine, tenant)
+        source_id, document_id, event_id, claim_id = (str(uuid4()) for _ in range(4))
+        scope = VisibilityScope(
+            visibility="public" if public else "tenant", tenant_id=None if public else tenant
+        )
+        store = ContentStore(directory)
+        quote = "#x1F600必要条件：组件 fixture 版本 [1.0,1.4.2)，完整受影响范围。"
+        body = "前缀：" + quote + "后缀。"
+        payload = body.encode()
+        with Session(engine) as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) "
+                    "VALUES (:id,:name,'vendor_advisory','https://example.invalid',:visibility,:tenant,:time)"
+                ),
+                dict(
+                    id=source_id,
+                    name="fixture-source-" + source_id,
+                    visibility=scope.visibility,
+                    tenant=scope.tenant_id,
+                    time=STAMP,
+                ),
+            )
+            content = register_response_content(session, store, payload, STAMP)
+            session.execute(
+                insert(documents).values(
+                    document_id=document_id,
+                    source_id=source_id,
+                    kind="advisory",
+                    title="Synthetic rule evidence",
+                    retrieved_at=STAMP,
+                    content_hash=content.content_hash,
+                    visibility=scope.visibility,
+                    tenant_id=scope.tenant_id,
+                    schema_version=2,
+                )
+            )
+            revision = save_document_revision(
+                session, store, document_id, payload, scope.visibility, scope.tenant_id, STAMP
+            )
+            session.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == revision.revision_id)
+                .values(parse_status="parsed")
+            )
+            block_id = register_source_revision_blocks(
+                session,
+                revision.revision_id,
+&gt;               (SourceRevisionBlock(0, 0, len(body), body, hashlib.sha256(payload).hexdigest()),),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                scope.visibility,
+                scope.tenant_id,
+                STAMP,
+            )[0]
+E           TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'
+
+tests\integration\test_r11_pg_assessments.py:148: TypeError</failure></testcase><testcase classname="tests.integration.test_r11_pg_assessments" name="test_security_t28_c06_cross_tenant_and_viewer_do_not_leak" time="0.103"><failure message="TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'">pg_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_security_t28_c06_cross_te0')
+
+    def test_security_t28_c06_cross_tenant_and_viewer_do_not_leak(pg_engine, tmp_path):
+&gt;       seeded = seed(pg_engine, tmp_path)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r11_pg_assessments.py:444: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+directory = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_security_t28_c06_cross_te0')
+
+    def seed(engine, directory, *, leaf=None, origin="source_explicit", public=False):
+        tenant = "fixture-tenant-" + uuid4().hex
+        author, author_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        reviewer, reviewer_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        asset_actor, asset_token = actor(engine, tenant)
+        source_id, document_id, event_id, claim_id = (str(uuid4()) for _ in range(4))
+        scope = VisibilityScope(
+            visibility="public" if public else "tenant", tenant_id=None if public else tenant
+        )
+        store = ContentStore(directory)
+        quote = "#x1F600必要条件：组件 fixture 版本 [1.0,1.4.2)，完整受影响范围。"
+        body = "前缀：" + quote + "后缀。"
+        payload = body.encode()
+        with Session(engine) as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) "
+                    "VALUES (:id,:name,'vendor_advisory','https://example.invalid',:visibility,:tenant,:time)"
+                ),
+                dict(
+                    id=source_id,
+                    name="fixture-source-" + source_id,
+                    visibility=scope.visibility,
+                    tenant=scope.tenant_id,
+                    time=STAMP,
+                ),
+            )
+            content = register_response_content(session, store, payload, STAMP)
+            session.execute(
+                insert(documents).values(
+                    document_id=document_id,
+                    source_id=source_id,
+                    kind="advisory",
+                    title="Synthetic rule evidence",
+                    retrieved_at=STAMP,
+                    content_hash=content.content_hash,
+                    visibility=scope.visibility,
+                    tenant_id=scope.tenant_id,
+                    schema_version=2,
+                )
+            )
+            revision = save_document_revision(
+                session, store, document_id, payload, scope.visibility, scope.tenant_id, STAMP
+            )
+            session.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == revision.revision_id)
+                .values(parse_status="parsed")
+            )
+            block_id = register_source_revision_blocks(
+                session,
+                revision.revision_id,
+&gt;               (SourceRevisionBlock(0, 0, len(body), body, hashlib.sha256(payload).hexdigest()),),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                scope.visibility,
+                scope.tenant_id,
+                STAMP,
+            )[0]
+E           TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'
+
+tests\integration\test_r11_pg_assessments.py:148: TypeError</failure></testcase><testcase classname="tests.integration.test_r11_pg_assessments" name="test_security_role_change_and_forged_preparation_write_no_result" time="0.085"><failure message="TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'">pg_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_security_role_change_and_0')
+
+    def test_security_role_change_and_forged_preparation_write_no_result(pg_engine, tmp_path):
+&gt;       seeded = seed(pg_engine, tmp_path)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r11_pg_assessments.py:460: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+directory = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_security_role_change_and_0')
+
+    def seed(engine, directory, *, leaf=None, origin="source_explicit", public=False):
+        tenant = "fixture-tenant-" + uuid4().hex
+        author, author_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        reviewer, reviewer_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        asset_actor, asset_token = actor(engine, tenant)
+        source_id, document_id, event_id, claim_id = (str(uuid4()) for _ in range(4))
+        scope = VisibilityScope(
+            visibility="public" if public else "tenant", tenant_id=None if public else tenant
+        )
+        store = ContentStore(directory)
+        quote = "#x1F600必要条件：组件 fixture 版本 [1.0,1.4.2)，完整受影响范围。"
+        body = "前缀：" + quote + "后缀。"
+        payload = body.encode()
+        with Session(engine) as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) "
+                    "VALUES (:id,:name,'vendor_advisory','https://example.invalid',:visibility,:tenant,:time)"
+                ),
+                dict(
+                    id=source_id,
+                    name="fixture-source-" + source_id,
+                    visibility=scope.visibility,
+                    tenant=scope.tenant_id,
+                    time=STAMP,
+                ),
+            )
+            content = register_response_content(session, store, payload, STAMP)
+            session.execute(
+                insert(documents).values(
+                    document_id=document_id,
+                    source_id=source_id,
+                    kind="advisory",
+                    title="Synthetic rule evidence",
+                    retrieved_at=STAMP,
+                    content_hash=content.content_hash,
+                    visibility=scope.visibility,
+                    tenant_id=scope.tenant_id,
+                    schema_version=2,
+                )
+            )
+            revision = save_document_revision(
+                session, store, document_id, payload, scope.visibility, scope.tenant_id, STAMP
+            )
+            session.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == revision.revision_id)
+                .values(parse_status="parsed")
+            )
+            block_id = register_source_revision_blocks(
+                session,
+                revision.revision_id,
+&gt;               (SourceRevisionBlock(0, 0, len(body), body, hashlib.sha256(payload).hexdigest()),),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                scope.visibility,
+                scope.tenant_id,
+                STAMP,
+            )[0]
+E           TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'
+
+tests\integration\test_r11_pg_assessments.py:148: TypeError</failure></testcase><testcase classname="tests.integration.test_r11_pg_assessments" name="test_security_source_acl_changes_block_current_and_history" time="0.067"><failure message="TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'">pg_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_security_source_acl_chang0')
+
+    def test_security_source_acl_changes_block_current_and_history(pg_engine, tmp_path):
+&gt;       seeded = seed(pg_engine, tmp_path, public=True)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r11_pg_assessments.py:482: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+directory = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_security_source_acl_chang0')
+
+    def seed(engine, directory, *, leaf=None, origin="source_explicit", public=False):
+        tenant = "fixture-tenant-" + uuid4().hex
+        author, author_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        reviewer, reviewer_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        asset_actor, asset_token = actor(engine, tenant)
+        source_id, document_id, event_id, claim_id = (str(uuid4()) for _ in range(4))
+        scope = VisibilityScope(
+            visibility="public" if public else "tenant", tenant_id=None if public else tenant
+        )
+        store = ContentStore(directory)
+        quote = "#x1F600必要条件：组件 fixture 版本 [1.0,1.4.2)，完整受影响范围。"
+        body = "前缀：" + quote + "后缀。"
+        payload = body.encode()
+        with Session(engine) as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) "
+                    "VALUES (:id,:name,'vendor_advisory','https://example.invalid',:visibility,:tenant,:time)"
+                ),
+                dict(
+                    id=source_id,
+                    name="fixture-source-" + source_id,
+                    visibility=scope.visibility,
+                    tenant=scope.tenant_id,
+                    time=STAMP,
+                ),
+            )
+            content = register_response_content(session, store, payload, STAMP)
+            session.execute(
+                insert(documents).values(
+                    document_id=document_id,
+                    source_id=source_id,
+                    kind="advisory",
+                    title="Synthetic rule evidence",
+                    retrieved_at=STAMP,
+                    content_hash=content.content_hash,
+                    visibility=scope.visibility,
+                    tenant_id=scope.tenant_id,
+                    schema_version=2,
+                )
+            )
+            revision = save_document_revision(
+                session, store, document_id, payload, scope.visibility, scope.tenant_id, STAMP
+            )
+            session.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == revision.revision_id)
+                .values(parse_status="parsed")
+            )
+            block_id = register_source_revision_blocks(
+                session,
+                revision.revision_id,
+&gt;               (SourceRevisionBlock(0, 0, len(body), body, hashlib.sha256(payload).hexdigest()),),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                scope.visibility,
+                scope.tenant_id,
+                STAMP,
+            )[0]
+E           TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'
+
+tests\integration\test_r11_pg_assessments.py:148: TypeError</failure></testcase><testcase classname="tests.integration.test_r11_pg_assessments" name="test_security_unicode_quote_tamper_rolls_back_candidate" time="0.053"><failure message="TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'">pg_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_security_unicode_quote_ta0')
+
+    def test_security_unicode_quote_tamper_rolls_back_candidate(pg_engine, tmp_path):
+&gt;       seeded = seed(pg_engine, tmp_path)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r11_pg_assessments.py:506: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+directory = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_security_unicode_quote_ta0')
+
+    def seed(engine, directory, *, leaf=None, origin="source_explicit", public=False):
+        tenant = "fixture-tenant-" + uuid4().hex
+        author, author_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        reviewer, reviewer_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        asset_actor, asset_token = actor(engine, tenant)
+        source_id, document_id, event_id, claim_id = (str(uuid4()) for _ in range(4))
+        scope = VisibilityScope(
+            visibility="public" if public else "tenant", tenant_id=None if public else tenant
+        )
+        store = ContentStore(directory)
+        quote = "#x1F600必要条件：组件 fixture 版本 [1.0,1.4.2)，完整受影响范围。"
+        body = "前缀：" + quote + "后缀。"
+        payload = body.encode()
+        with Session(engine) as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) "
+                    "VALUES (:id,:name,'vendor_advisory','https://example.invalid',:visibility,:tenant,:time)"
+                ),
+                dict(
+                    id=source_id,
+                    name="fixture-source-" + source_id,
+                    visibility=scope.visibility,
+                    tenant=scope.tenant_id,
+                    time=STAMP,
+                ),
+            )
+            content = register_response_content(session, store, payload, STAMP)
+            session.execute(
+                insert(documents).values(
+                    document_id=document_id,
+                    source_id=source_id,
+                    kind="advisory",
+                    title="Synthetic rule evidence",
+                    retrieved_at=STAMP,
+                    content_hash=content.content_hash,
+                    visibility=scope.visibility,
+                    tenant_id=scope.tenant_id,
+                    schema_version=2,
+                )
+            )
+            revision = save_document_revision(
+                session, store, document_id, payload, scope.visibility, scope.tenant_id, STAMP
+            )
+            session.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == revision.revision_id)
+                .values(parse_status="parsed")
+            )
+            block_id = register_source_revision_blocks(
+                session,
+                revision.revision_id,
+&gt;               (SourceRevisionBlock(0, 0, len(body), body, hashlib.sha256(payload).hexdigest()),),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                scope.visibility,
+                scope.tenant_id,
+                STAMP,
+            )[0]
+E           TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'
+
+tests\integration\test_r11_pg_assessments.py:148: TypeError</failure></testcase><testcase classname="tests.integration.test_r11_pg_assessments" name="test_rule_content_and_result_immutable" time="0.060"><failure message="TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'">pg_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_rule_content_and_result_i0')
+
+    def test_rule_content_and_result_immutable(pg_engine, tmp_path):
+&gt;       seeded = seed(pg_engine, tmp_path)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r11_pg_assessments.py:520: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+directory = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_rule_content_and_result_i0')
+
+    def seed(engine, directory, *, leaf=None, origin="source_explicit", public=False):
+        tenant = "fixture-tenant-" + uuid4().hex
+        author, author_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        reviewer, reviewer_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        asset_actor, asset_token = actor(engine, tenant)
+        source_id, document_id, event_id, claim_id = (str(uuid4()) for _ in range(4))
+        scope = VisibilityScope(
+            visibility="public" if public else "tenant", tenant_id=None if public else tenant
+        )
+        store = ContentStore(directory)
+        quote = "#x1F600必要条件：组件 fixture 版本 [1.0,1.4.2)，完整受影响范围。"
+        body = "前缀：" + quote + "后缀。"
+        payload = body.encode()
+        with Session(engine) as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) "
+                    "VALUES (:id,:name,'vendor_advisory','https://example.invalid',:visibility,:tenant,:time)"
+                ),
+                dict(
+                    id=source_id,
+                    name="fixture-source-" + source_id,
+                    visibility=scope.visibility,
+                    tenant=scope.tenant_id,
+                    time=STAMP,
+                ),
+            )
+            content = register_response_content(session, store, payload, STAMP)
+            session.execute(
+                insert(documents).values(
+                    document_id=document_id,
+                    source_id=source_id,
+                    kind="advisory",
+                    title="Synthetic rule evidence",
+                    retrieved_at=STAMP,
+                    content_hash=content.content_hash,
+                    visibility=scope.visibility,
+                    tenant_id=scope.tenant_id,
+                    schema_version=2,
+                )
+            )
+            revision = save_document_revision(
+                session, store, document_id, payload, scope.visibility, scope.tenant_id, STAMP
+            )
+            session.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == revision.revision_id)
+                .values(parse_status="parsed")
+            )
+            block_id = register_source_revision_blocks(
+                session,
+                revision.revision_id,
+&gt;               (SourceRevisionBlock(0, 0, len(body), body, hashlib.sha256(payload).hexdigest()),),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                scope.visibility,
+                scope.tenant_id,
+                STAMP,
+            )[0]
+E           TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'
+
+tests\integration\test_r11_pg_assessments.py:148: TypeError</failure></testcase><testcase classname="tests.integration.test_r11_pg_assessments" name="test_assessment_transaction_rollback_leaves_no_partial_output" time="0.052"><failure message="TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'">pg_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_assessment_transaction_ro0')
+
+    def test_assessment_transaction_rollback_leaves_no_partial_output(pg_engine, tmp_path):
+&gt;       seeded = seed(pg_engine, tmp_path)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r11_pg_assessments.py:551: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+directory = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_assessment_transaction_ro0')
+
+    def seed(engine, directory, *, leaf=None, origin="source_explicit", public=False):
+        tenant = "fixture-tenant-" + uuid4().hex
+        author, author_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        reviewer, reviewer_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        asset_actor, asset_token = actor(engine, tenant)
+        source_id, document_id, event_id, claim_id = (str(uuid4()) for _ in range(4))
+        scope = VisibilityScope(
+            visibility="public" if public else "tenant", tenant_id=None if public else tenant
+        )
+        store = ContentStore(directory)
+        quote = "#x1F600必要条件：组件 fixture 版本 [1.0,1.4.2)，完整受影响范围。"
+        body = "前缀：" + quote + "后缀。"
+        payload = body.encode()
+        with Session(engine) as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) "
+                    "VALUES (:id,:name,'vendor_advisory','https://example.invalid',:visibility,:tenant,:time)"
+                ),
+                dict(
+                    id=source_id,
+                    name="fixture-source-" + source_id,
+                    visibility=scope.visibility,
+                    tenant=scope.tenant_id,
+                    time=STAMP,
+                ),
+            )
+            content = register_response_content(session, store, payload, STAMP)
+            session.execute(
+                insert(documents).values(
+                    document_id=document_id,
+                    source_id=source_id,
+                    kind="advisory",
+                    title="Synthetic rule evidence",
+                    retrieved_at=STAMP,
+                    content_hash=content.content_hash,
+                    visibility=scope.visibility,
+                    tenant_id=scope.tenant_id,
+                    schema_version=2,
+                )
+            )
+            revision = save_document_revision(
+                session, store, document_id, payload, scope.visibility, scope.tenant_id, STAMP
+            )
+            session.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == revision.revision_id)
+                .values(parse_status="parsed")
+            )
+            block_id = register_source_revision_blocks(
+                session,
+                revision.revision_id,
+&gt;               (SourceRevisionBlock(0, 0, len(body), body, hashlib.sha256(payload).hexdigest()),),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                scope.visibility,
+                scope.tenant_id,
+                STAMP,
+            )[0]
+E           TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'
+
+tests\integration\test_r11_pg_assessments.py:148: TypeError</failure></testcase><testcase classname="tests.integration.test_r11_pg_assessments" name="test_concurrent_normal_inventory_writer_serializes_then_old_commit_is_stale" time="0.068"><failure message="TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'">pg_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_concurrent_normal_invento0')
+
+    def test_concurrent_normal_inventory_writer_serializes_then_old_commit_is_stale(
+        pg_engine, tmp_path
+    ):
+&gt;       seeded = seed(pg_engine, tmp_path)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r11_pg_assessments.py:576: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_assessment_20261016?options=-csearch_path%3Dr11_assessment_6863ecb87fd84cfd84682638e1276bc4+-cstatement_timeout%3D15000+-clock_timeout%3D5000)
+directory = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-751/test_concurrent_normal_invento0')
+
+    def seed(engine, directory, *, leaf=None, origin="source_explicit", public=False):
+        tenant = "fixture-tenant-" + uuid4().hex
+        author, author_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        reviewer, reviewer_token = actor(
+            engine, None if public else tenant, Role.SYSTEM_ADMIN if public else Role.TENANT_ADMIN
+        )
+        asset_actor, asset_token = actor(engine, tenant)
+        source_id, document_id, event_id, claim_id = (str(uuid4()) for _ in range(4))
+        scope = VisibilityScope(
+            visibility="public" if public else "tenant", tenant_id=None if public else tenant
+        )
+        store = ContentStore(directory)
+        quote = "#x1F600必要条件：组件 fixture 版本 [1.0,1.4.2)，完整受影响范围。"
+        body = "前缀：" + quote + "后缀。"
+        payload = body.encode()
+        with Session(engine) as session, session.begin():
+            session.execute(
+                text(
+                    "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) "
+                    "VALUES (:id,:name,'vendor_advisory','https://example.invalid',:visibility,:tenant,:time)"
+                ),
+                dict(
+                    id=source_id,
+                    name="fixture-source-" + source_id,
+                    visibility=scope.visibility,
+                    tenant=scope.tenant_id,
+                    time=STAMP,
+                ),
+            )
+            content = register_response_content(session, store, payload, STAMP)
+            session.execute(
+                insert(documents).values(
+                    document_id=document_id,
+                    source_id=source_id,
+                    kind="advisory",
+                    title="Synthetic rule evidence",
+                    retrieved_at=STAMP,
+                    content_hash=content.content_hash,
+                    visibility=scope.visibility,
+                    tenant_id=scope.tenant_id,
+                    schema_version=2,
+                )
+            )
+            revision = save_document_revision(
+                session, store, document_id, payload, scope.visibility, scope.tenant_id, STAMP
+            )
+            session.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == revision.revision_id)
+                .values(parse_status="parsed")
+            )
+            block_id = register_source_revision_blocks(
+                session,
+                revision.revision_id,
+&gt;               (SourceRevisionBlock(0, 0, len(body), body, hashlib.sha256(payload).hexdigest()),),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                scope.visibility,
+                scope.tenant_id,
+                STAMP,
+            )[0]
+E           TypeError: SourceRevisionBlock.__init__() missing 3 required positional arguments: 'block_type', 'page_number', and 'json_pointer'
+
+tests\integration\test_r11_pg_assessments.py:148: TypeError</failure></testcase></testsuite></testsuites>
