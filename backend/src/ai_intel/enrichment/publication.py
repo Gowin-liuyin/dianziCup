@@ -115,6 +115,12 @@ def _require_current_inputs(
         != loaded.scope
     ):
         raise EnrichmentPublicationError("enrichment_event_inputs_changed")
+    if (
+        len(loaded.documents) != len(current)
+        or {str(document.revision_id) for document in loaded.documents} != set(current)
+        or len(set(loaded.context.revision_ids)) != len(loaded.context.revision_ids)
+    ):
+        raise EnrichmentPublicationError("enrichment_source_roster_changed")
     for document in loaded.documents:
         revision = (
             session.execute(

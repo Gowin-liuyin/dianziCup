@@ -9,18 +9,21 @@ import pytest
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 from test_r06_catalog_documents_pg import catalog_engine as catalog_engine
+from test_r06_source_worker_pg import handler_for, queue, run
 from test_r07_enrichment_inputs_pg import ADMIN, seeded_event
 
 from ai_intel.api.knowledge_read_service import KnowledgeReadService
 from ai_intel.domain.access import AccessScope, PermissionDeniedError, Role
 from ai_intel.domain.enums import ClaimOrigin, DimensionStatus
+from ai_intel.domain.values import Identifier
 from ai_intel.enrichment.contracts import DimensionAttempt, EvidenceBoundCandidate
 from ai_intel.enrichment.inputs import load_event_enrichment_inputs
 from ai_intel.enrichment.persistence_models import enrichment_results
 from ai_intel.enrichment.publication import EnrichmentPublicationError, publish_enrichment_attempts
 from ai_intel.enrichment.signals import enrich_structured_fields
 from ai_intel.infrastructure.outbox import IdempotencyConflictError
-from ai_intel.knowledge.models import evidence, scope_epochs
+from ai_intel.knowledge.event_linking import EventIdentifier, EventRepository, EventSubmission
+from ai_intel.knowledge.models import document_revisions, evidence, scope_epochs
 from ai_intel.knowledge.persistence import KnowledgePublicationError
 from ai_intel.knowledge.persistence_models import claims, events
 
@@ -267,3 +270,71 @@ def test_concurrent_duplicate_request_has_one_set_of_facts(catalog_engine, tmp_p
         (r.result_id, r.claim_ids) for r in results[1]
     ]
     assert sorted(all(r.reused for r in result) for result in results) == [False, True]
+
+
+@pytest.mark.parametrize("roster", ["missing", "duplicated"])
+def test_source_snapshot_revision_roster_cannot_omit_or_repeat_sources(
+    catalog_engine, tmp_path, roster
+):
+    loaded, _ = inputs(catalog_engine, tmp_path)
+    altered = replace(loaded, documents=() if roster == "missing" else loaded.documents * 2)
+    failed = DimensionAttempt(
+        dimension="versions", status=DimensionStatus.FAILED, error_code="model_timeout"
+    )
+    before = counts(catalog_engine)
+    with pytest.raises(EnrichmentPublicationError, match="roster_changed"):
+        publish(catalog_engine, altered, (failed,), at=loaded.documents[0].observed_at)
+    assert counts(catalog_engine) == before
+
+
+def test_source_snapshot_cannot_drop_one_of_two_current_pg_revisions(catalog_engine, tmp_path):
+    store, event_id = seeded_event(catalog_engine, tmp_path)
+    job_id = queue(catalog_engine, "vllm_vendor")
+    assert run(catalog_engine, job_id, handler_for(store, "vllm_vendor")) in {
+        "succeeded",
+        "partial",
+    }
+    with Session(catalog_engine) as session, session.begin():
+        original = load_event_enrichment_inputs(session, store, ADMIN, event_id, "fixture-roster-1")
+        revision_ids = tuple(
+            session.scalars(
+                select(document_revisions.c.revision_id).where(
+                    document_revisions.c.is_current.is_(True)
+                )
+            )
+        )
+        assert len(revision_ids) == 2
+        EventRepository(session, ADMIN).publish_events(
+            "fixture-roster-association-" + str(uuid4()),
+            original.scope,
+            (
+                EventSubmission(
+                    event_id=Identifier(value=str(event_id)),
+                    event_type="vulnerability",
+                    title="Synthetic two-source snapshot association",
+                    scope=original.scope,
+                    external_ids=tuple(
+                        EventIdentifier(id_type="cve", id_value=value)
+                        for value in original.context.external_cve_ids
+                    ),
+                    source_revision_ids=tuple(Identifier(value=value) for value in revision_ids),
+                ),
+            ),
+            original.documents[0].observed_at,
+        )
+    with Session(catalog_engine) as session:
+        loaded = load_event_enrichment_inputs(session, store, ADMIN, event_id, "fixture-roster-1")
+    assert len(loaded.documents) == len(loaded.context.revision_ids) == 2
+    nvd_document = next(
+        document
+        for document in loaded.documents
+        if any(block.json_pointer == "/cve/id" for block in document.blocks)
+    )
+    altered = replace(loaded, documents=(nvd_document,))
+    failed = DimensionAttempt(
+        dimension="versions", status=DimensionStatus.FAILED, error_code="model_timeout"
+    )
+    before = counts(catalog_engine)
+    with pytest.raises(EnrichmentPublicationError, match="roster_changed"):
+        publish(catalog_engine, altered, (failed,), at=nvd_document.observed_at)
+    assert counts(catalog_engine) == before
