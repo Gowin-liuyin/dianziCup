@@ -13,6 +13,7 @@ from ai_intel.ingestion.parsing.text_blocks import ParseOutcome, build_blocks_fr
 
 PDF_PARSER_VERSION = "pdf-2.0.0"
 MAX_PDF_BYTES = 32 * 1024 * 1024
+WINDOWS_CREATE_NO_WINDOW = 0x08000000
 _PDF_CAPACITY = BoundedSemaphore(2)
 
 
@@ -49,7 +50,7 @@ def parse_pdf_text_layer(content: bytes) -> ParseOutcome:
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             env=environment,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            creationflags=WINDOWS_CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
         try:
             output, _ = process.communicate(content, timeout=20)
