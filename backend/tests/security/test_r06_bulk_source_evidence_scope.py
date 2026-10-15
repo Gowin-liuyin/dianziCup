@@ -40,15 +40,19 @@ def test_scope_or_revision_rejection_has_no_block_or_evidence_effect(
             "public_from_tenant": TenantScopeViolation,
             "other_tenant": TenantScopeViolation,
         }[invalid]
+        visibility = "public"
+        tenant_id = None
+        if invalid == "tenant":
+            visibility, tenant_id = "tenant", "other"
+        elif invalid == "other_tenant":
+            visibility, tenant_id = "tenant", "different"
         with pytest.raises(expected):
             register_source_revision_blocks(
                 session,
                 "does-not-exist" if invalid == "missing" else revision_id,
                 (source_block(),),
-                "tenant" if invalid in {"tenant", "other_tenant"} else "public",
-                "different"
-                if invalid == "other_tenant"
-                else ("other" if invalid == "tenant" else None),
+                visibility,
+                tenant_id,
                 NOW,
                 attach_full_block_evidence=True,
             )
