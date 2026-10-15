@@ -49,6 +49,22 @@ describe("workbench shell", () => {
     expect(screen.getByText(/页面不会通过动画递增进度/)).toBeTruthy();
   });
 
+  it("routes sources to the permission-gated scheduler without admin requests for guests", async () => {
+    const fetchFixture = vi.fn(async (input: RequestInfo | URL) => {
+      if (input === "/v1/auth/me") return new Response(JSON.stringify({ error: { code: "unauthenticated" } }), { status: 401 });
+      if (input === "/v1/health/live") return new Response(JSON.stringify({ status: "live" }));
+      if (input === "/v1/health/ready") return new Response(JSON.stringify({ status: "ready", reason: "isolated fixture", dependencies: {} }));
+      throw new Error("Unexpected isolated source management request");
+    });
+    vi.stubGlobal("fetch", fetchFixture);
+    window.history.replaceState(null, "", "/#sources");
+    render(<App />);
+    await screen.findByRole("heading", { name: "没有来源调度权限" });
+    expect(screen.getByRole("link", { name: "来源监测" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("button", { name: "提交本轮采集" })).toBeNull();
+    expect(fetchFixture.mock.calls).toHaveLength(3);
+  });
+
   it.each([["events", "情报工作区"], ["sources", "来源与采集"]])("keeps the %s workspace while the skip link focuses main content", (page, heading) => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => undefined)));
     window.history.replaceState(null, "", `/#${page}`);

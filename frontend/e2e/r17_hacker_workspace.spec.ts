@@ -29,7 +29,24 @@ test("R17-C01/C04 real auth, research navigation and explanatory unavailable sta
   for (const [label, title] of [["来源监测", "来源与采集"], ["知识图谱", "关联研究"], ["引用问答", "证据问答"], ["资产自查", "版本与资产"], ["任务轨迹", "调查与任务"], ["变化与推荐", "变化与关注"], ["证据报告", "报告与交付"]]) {
     await page.getByRole("link", { name: label, exact: true }).click();
     await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
-    await expect(page.getByText("本页能力待接通", { exact: true })).toBeVisible();
+    if (label === "来源监测") {
+      const canSchedule = await page.evaluate(async () => {
+        const response = await fetch("/v1/auth/me", { credentials: "include", cache: "no-store" });
+        if (!response.ok) throw new Error("Cannot verify current source administration scope");
+        const snapshot: unknown = await response.json();
+        if (typeof snapshot !== "object" || snapshot === null || !("role" in snapshot) || !("tenant_id" in snapshot)) throw new Error("Invalid source administration snapshot");
+        return snapshot.role === "system_admin" && snapshot.tenant_id === null;
+      });
+      if (canSchedule) {
+        await expect(page.getByRole("heading", { name: "提交采集轮次", exact: true })).toBeVisible();
+        await expect(page.getByRole("button", { name: "提交本轮采集", exact: true })).toBeEnabled();
+      } else {
+        await expect(page.getByRole("heading", { name: "没有来源调度权限", exact: true })).toBeVisible();
+        await expect(page.getByRole("button", { name: "提交本轮采集", exact: true })).toHaveCount(0);
+      }
+    } else {
+      await expect(page.getByText("本页能力待接通", { exact: true })).toBeVisible();
+    }
   }
   await page.getByRole("link", { name: "会话与权限", exact: true }).click();
   await page.getByRole("button", { name: "退出登录", exact: true }).click();
