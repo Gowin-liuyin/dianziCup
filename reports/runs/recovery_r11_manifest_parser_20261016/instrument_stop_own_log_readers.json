@@ -1,0 +1,15 @@
+{
+  "command": [
+    "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    "$ownedProcessIds = @(36188,35712,20308,46396); foreach ($ownedProcessId in $ownedProcessIds) { $processBefore = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $ownedProcessId); if ($null -eq $processBefore) { @{pid=$ownedProcessId;outcome='already_exited'} | ConvertTo-Json -Compress; continue }; if ($processBefore.CommandLine -notlike '*Get-Content reports/runs/recovery_r11_manifest_parser_20261016/green_boundary.stdout.log*') { throw ('owned commandline mismatch: ' + $ownedProcessId) }; $processCheck = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $ownedProcessId); if ($processBefore.CreationDate -ne $processCheck.CreationDate -or $processBefore.CommandLine -ne $processCheck.CommandLine -or $processBefore.ParentProcessId -ne $processCheck.ParentProcessId) { throw 'process identity changed' }; $identity = @{pid=$ownedProcessId;started_at=$processBefore.CreationDate;parent_pid=$processBefore.ParentProcessId;command_line=$processBefore.CommandLine}; Stop-Process -Id $ownedProcessId -ErrorAction Stop; $identity.outcome='stopped_own_log_reader'; $identity.stop_exit_code=0; $identity | ConvertTo-Json -Compress }"
+  ],
+  "cwd": "D:\\dianzi-wt-r11-manifest-parser\\backend",
+  "started_at": "2026-10-16T01:57:44.731443+08:00",
+  "ended_at": "2026-10-16T01:57:49.548988+08:00",
+  "exit_code": 0,
+  "sha": "e91db79889972c24a209997b4dcec5731d0c809f",
+  "data_mode": "explicit synthetic unit/contract/security fixture; no external IO"
+}
