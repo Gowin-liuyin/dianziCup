@@ -369,3 +369,79 @@ def test_entity_like_literals_in_text_are_not_expanded() -> None:
     assert parse_arxiv_atom(payload).records[0].abstract == (
         "<!DOCTYPE harmless> & named entity text"
     )
+
+
+@pytest.mark.parametrize("total,start,size", [(100, 0, 10), (100, 90, 10), (11, 9, 10)])
+def test_incomplete_arxiv_page_is_not_a_usable_discovery_result(
+    total: int, start: int, size: int
+) -> None:
+    with pytest.raises(AcademicContractError):
+        parse_arxiv_atom(atom_page(total=total, start=start, size=size))
+
+
+@pytest.mark.parametrize("offset", ["+1260", "-1260", "+2260", "-0060", "+2400"])
+def test_rss_numeric_timezone_fields_have_valid_ranges(offset: str) -> None:
+    payload = rss_page().replace(b"-0400", offset.encode())
+    with pytest.raises(FeedParseError):
+        parse_trailofbits_rss(payload)
+
+
+@pytest.mark.parametrize(
+    "offset,expected",
+    [
+        ("+0000", "2026-10-14T07:00:00Z"),
+        ("-0400", "2026-10-14T11:00:00Z"),
+        ("+0059", "2026-10-14T06:01:00Z"),
+        ("-0001", "2026-10-14T07:01:00Z"),
+        ("+2359", "2026-10-13T07:01:00Z"),
+        ("GMT", "2026-10-14T07:00:00Z"),
+        ("-0400 (source reference +1260)", "2026-10-14T11:00:00Z"),
+    ],
+)
+def test_rss_valid_offsets_and_comments_keep_standard_library_semantics(
+    offset: str, expected: str
+) -> None:
+    payload = rss_page().replace(b"-0400", offset.encode())
+    assert parse_trailofbits_rss(payload)[0].published_at == expected
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        ("<id>https://arxiv.org/api/test</id>", "<id>https://arxiv.org/api/&#127;</id>"),
+        ("https://arxiv.org/pdf/2609.05903v2", "https://arxiv.org/pdf/2609.05903v2&#127;"),
+        ("http://arxiv.org/abs/2609.05903v2", "http://arxiv.org/abs/2609.05903v2&#127;"),
+    ],
+    ids=["feed-id", "pdf-link", "entry-id"],
+)
+def test_arxiv_del_is_rejected_by_all_official_uri_paths(
+    replacement: tuple[str, str],
+) -> None:
+    with pytest.raises(AcademicContractError):
+        parse_arxiv_atom(atom_page().decode().replace(*replacement).encode())
+
+
+@pytest.mark.parametrize("value", ["Publisher licence&#127;", "https://publisher.invalid/&#127;"])
+def test_arxiv_del_is_rejected_in_text_or_uri_licence_identifiers(value: str) -> None:
+    with pytest.raises(AcademicContractError):
+        parse_arxiv_atom(atom_page(atom_entry(extra=f"<arxiv:license>{value}</arxiv:license>")))
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        (
+            "<link>https://blog.trailofbits.com/</link>",
+            "<link>https://blog.trailofbits.com/&#127;</link>",
+        ),
+        (
+            "https://blog.trailofbits.com/2026/10/14/article/",
+            "https://blog.trailofbits.com/article/&#127;",
+        ),
+        ("opaque-guid", "https://blog.trailofbits.com/article/&#127;"),
+    ],
+    ids=["channel-link", "article-link", "guid"],
+)
+def test_rss_del_is_rejected_by_all_official_uri_paths(replacement: tuple[str, str]) -> None:
+    with pytest.raises(FeedParseError):
+        parse_trailofbits_rss(rss_page().decode().replace(*replacement).encode())
