@@ -2,6 +2,8 @@
 
 状态：awaiting_review；作者 r06_document_workspace；基线 1ca2ea34c224e23776431fa6eac5fe6549d8c65f。仅本切片，整 R06/R09/R17 不因此完成。
 
+源码冻结 aa17db32c314555363bb4bca3105c2b434939b29；末版unit295、四browser、lint/typecheck/build均在19:39真实复跑通过，见任务报告与source_freeze.json。本文后续仅补冻结元数据。
+
 ## 先调研与范围
 
 读取 AGENTS、执行地图、R06/R17 卡、03/05 合同及当前任务状态。R06/R17 当前 partial。已有 React 18 / Vite / TypeScript strict / 原生 CSS；统一 fetchJson、Cookie 会话、auth generation、ErrorPanel / EmptyState / StatusBadge 可复用。当前用户未提交的评审日志留在主树，独立工作树不操作它们。frontend 独占，后端/共享合同/progress 由主控维护。

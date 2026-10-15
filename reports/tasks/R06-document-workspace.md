@@ -4,6 +4,8 @@
 
 作者：r06_document_workspace。工作树 D:/dianzi-worktrees/r06-document-workspace，分支 codex/r06-document-workspace，基线 1ca2ea34c224e23776431fa6eac5fe6549d8c65f。没有提交后端、锁文件、共享 schema、progress 或主树未提交日志；没有 push。
 
+源码冻结：aa17db32c314555363bb4bca3105c2b434939b29。source_freeze.json 记录该commit所改源码/设计的 Git blob、实际工作树SHA256与字节数；后续元数据提交不改源码。主控可 cherry-pick 此源码提交及紧随元数据提交，不需复制整个工作树。
+
 ## 实现和调用方
 
 新增研究导航「资料库」，已有登录/来源/问答及 hash 深链保留。资料标题关键词、六类文档/八来源类别筛选、opaque cursor 下一页与回首页；列表仅显示本页数量。详情读取所选版本标题、四来源时间、日期精度、许可、覆盖范围与 source_notes。版本历史分页可加载后续版本；正文使用原 EvidenceResponse，后续证据请求固定首次响应 revision_id，去重/归属/模式/不前进游标异常拒绝，换版本卸载旧正文。
@@ -36,6 +38,8 @@
 | DIANZI_E2E_FRONTEND_URL=http://127.0.0.1:25376 node node_modules/@playwright/test/cli.js test --config=playwright.documents.config.ts | Edge 4/4，0失败/skip/flaky；服务由Playwright独占启动/关闭；所有/v1请求测试内显式拦截 | e2e_report.json、e2e_delivery.log |
 
 主要最终时间窗（+08:00）：unit 19:39:21.8776787–19:39:47.4573030；lint/typecheck/build顺序执行19:39:21.8040969–19:39:37.6152329；browser19:39:21.8882061–19:39:33.1334992。此前 unit_frozen/e2e_frozen 等中间记录仍保留。截图最终版本已重新实际查看，四来源时间全部可见。
+
+冻结源码/设计/任务报告的 `git diff --check aa17db32^ aa17db32 -- frontend docs/design/recovery/r06_document_workspace.md reports/tasks/R06-document-workspace.md` 实际exit0，见source_diff_check.log。若对整个证据包检查，原生 Playwright 失败日志与error-context.md含trailing whitespace，因此整包check会非零；原日志不清洗、不改工具输出，未添加忽略规则。生成的tsconfig.tsbuildinfo已恢复基线字节，编译产物不进入源码差异。
 
 默认browser首跑exit1，3项均缺 Chromium headless1248执行文件，保留e2e_missing_browser_report.json/e2e_first.log，不算业务失败/skip。改用本机Edge后首轮1过2失败；e2e_edge_first_report.json、e2e_edge_first_artifacts/、e2e_edge.log保留。1366 exact-label缺陷用显式 aria-label 修复；夹具换状态需reload而非同页hash，修正后四项全跑通过，没有删题/降门槛。测试日志目录第一次相对路径建错导致npm未执行，随后重建正确日志根并记录实际运行；误建空目录与junction已核对完整绝对路径后删除，未操作目标 node_modules 内容。
 
