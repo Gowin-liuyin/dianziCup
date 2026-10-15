@@ -69,6 +69,28 @@ class AtlasMappingValue(SignalValue):
 
 
 class VersionInterval(SignalValue):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "allOf": [
+                {
+                    "not": {
+                        "required": ["fixed", "last_affected"],
+                        "properties": {
+                            "fixed": {"type": "string"},
+                            "last_affected": {"type": "string"},
+                        },
+                    }
+                },
+                {
+                    "anyOf": [
+                        {"required": [field], "properties": {field: {"type": "string"}}}
+                        for field in ("introduced", "fixed", "last_affected")
+                    ]
+                },
+            ]
+        }
+    )
+
     introduced: Label | None = None
     fixed: Label | None = None
     last_affected: Label | None = None
@@ -98,6 +120,26 @@ class VersionAssertionValue(SignalValue):
 
 
 class LiteratureReferenceValue(SignalValue):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "oneOf": [
+                {
+                    "properties": {
+                        "target_document_id": {"type": "null"},
+                        "target_revision_id": {"type": "null"},
+                    }
+                },
+                {
+                    "required": ["target_document_id", "target_revision_id"],
+                    "properties": {
+                        "target_document_id": {"type": "string"},
+                        "target_revision_id": {"type": "string"},
+                    },
+                },
+            ]
+        }
+    )
+
     kind: Literal["literature_reference"] = "literature_reference"
     uri: HttpUrl
     title: Annotated[str, Field(min_length=1, max_length=500)]

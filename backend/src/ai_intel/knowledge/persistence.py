@@ -24,7 +24,7 @@ from ai_intel.domain.access import (
     AccessScope,
     CrossTenantAccessError,
 )
-from ai_intel.domain.enrichment_values import CvssSignalValue
+from ai_intel.domain.enrichment_values import CvssSignalValue, LiteratureReferenceValue
 from ai_intel.domain.enums import ClaimOrigin, ClaimStatus
 from ai_intel.domain.records import ClaimRecord, EvidenceRecord, ScoreValue, StrictRecord
 from ai_intel.domain.values import Identifier, UtcTimestamp, VisibilityScope
@@ -366,6 +366,23 @@ class KnowledgeRepository:
                 scope.visibility != "tenant" or scope.tenant_id != source_scope[1]
             ):
                 raise KnowledgePublicationError("derived visibility exceeds source scope")
+        if (
+            isinstance(record.object_value, LiteratureReferenceValue)
+            and record.object_value.target_document_id is not None
+        ):
+            target = self.session.execute(
+                select(document_revisions.c.visibility, document_revisions.c.tenant_id).where(
+                    document_revisions.c.document_id == str(record.object_value.target_document_id),
+                    document_revisions.c.revision_id == str(record.object_value.target_revision_id),
+                )
+            ).first()
+            if target is None:
+                raise CrossTenantAccessError("resource not found")
+            self.access_scope.enforce_visible(str(target[0]), target[1])
+            if target[0] == "tenant" and (
+                scope.visibility != "tenant" or scope.tenant_id != target[1]
+            ):
+                raise KnowledgePublicationError("derived visibility exceeds reference target scope")
         verified_support = False
         for link in submission.evidence_links:
             row = (

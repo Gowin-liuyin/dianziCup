@@ -21,3 +21,9 @@ PG现有 `object_json`、`value_kind`、`schema_version` 保存完整结构，�
 涉及R07及T13/T19/T20/T22/T23/T41的账本输入，R08聚合统计复用结构；不代表这些原T卡全部完成。复用既有Pydantic判别联合、JSON Schema、SQLAlchemy事务/发布收据、权限与证据账本，不新增依赖、通用服务或迁移。
 
 验证包含九类v3 roundtrip、谓词/版本错配拒绝、v1/v2原合同和JSON Schema一致性；真实隔离PG中新session重读、重放、跨租户/写权限拒绝、CVSS机构冲突回滚，以及大结构显示截断但完整JSONB不变。源真实性、语义支持、九维自动发布/更新重判、API/worker/UI接线及模型/live须后续独立验证，不从本切片推定通过。原始失败与修复日志均保留，实际时刻、SHA及命令见R07-core报告。
+
+## 独立审查修订 · 2026-10-16T00:00:53+08:00
+
+独立初审909e4d60确认三项阻断，修复限定现有v3合同：版本区间fixed/last_affected互斥且至少一项真实边界、文献目标UUID成对均补入可表达的JSON Schema；原Pydantic业务拒绝条件不变。知识发布事务另外核实文献target_document_id与target_revision_id真实配对、访问权限及派生可见范围，禁止公共claim携带私有目标身份引用。原审查只证明私有UUID泄露，未证私有正文泄露，不扩大结论。新检查拒绝后claims/assertions/evidence/receipt/change/job/outbox/epoch无副作用；public→public、同tenant、private→public引用仍可正常重放。
+
+无数据库/依赖迁移；v1/v2/default2和HTTP2保持。JSON Schema是结构边界，不能表达quote SHA或语义支持等计算验证，仍须运行时验证，不能泛称两者全部语义相等。原review负例/失败不改，需原独立reviewer固定新代码定向复核后方可合入。
