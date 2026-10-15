@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import uuid4
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from sqlalchemy import and_, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import RowMapping
@@ -63,6 +63,15 @@ class EvidenceLink(StrictRecord):
     validation_status: Literal["validated", "unverified"]
 
 
+class SupportingSource(StrictRecord):
+    """An additional fixed source revision for an explicitly composed v3 assertion."""
+
+    source_id: Identifier
+    revision_id: Identifier
+    json_path: str = Field(min_length=1, max_length=2000)
+    scoring_authority: str = Field(default="", max_length=500)
+
+
 class ClaimSubmission(StrictRecord):
     """单字段断言与具体来源修订, 不接受来源未说明的事实写入。"""
 
@@ -72,6 +81,21 @@ class ClaimSubmission(StrictRecord):
     json_path: str = Field(min_length=1, max_length=2000)
     scoring_authority: str = Field(default="", max_length=500)
     evidence_links: tuple[EvidenceLink, ...] = Field(min_length=1)
+    additional_sources: tuple[SupportingSource, ...] = Field(
+        default=(), max_length=19, exclude_if=lambda sources: not sources
+    )
+
+    @model_validator(mode="after")
+    def validate_composed_sources(self) -> ClaimSubmission:
+        if self.additional_sources and self.record.schema_version != 3:
+            raise ValueError("additional sources require an explicit v3 claim")
+        revisions = [
+            self.revision_id.value,
+            *(s.revision_id.value for s in self.additional_sources),
+        ]
+        if len(set(revisions)) != len(revisions):
+            raise ValueError("each supporting revision must be declared once")
+        return self
 
 
 class StoredEvidence(StrictRecord):
@@ -346,26 +370,36 @@ class KnowledgeRepository:
             and record.claim_status != ClaimStatus.UNVERIFIED
         ):
             raise KnowledgePublicationError("model hypothesis must remain unverified")
-        source_row = self.session.execute(
-            text("SELECT visibility,tenant_id FROM sources WHERE source_id=:source_id"),
-            {"source_id": submission.source_id.value},
-        ).first()
-        revision_row = self.session.execute(
-            select(document_revisions.c.visibility, document_revisions.c.tenant_id)
-            .join(documents, documents.c.document_id == document_revisions.c.document_id)
-            .where(
-                document_revisions.c.revision_id == submission.revision_id.value,
-                documents.c.source_id == submission.source_id.value,
-            )
-        ).first()
-        if source_row is None or revision_row is None:
-            raise CrossTenantAccessError("resource not found")
-        for source_scope in (source_row, revision_row):
-            self.access_scope.enforce_visible(str(source_scope[0]), source_scope[1])
-            if source_scope[0] == "tenant" and (
-                scope.visibility != "tenant" or scope.tenant_id != source_scope[1]
-            ):
-                raise KnowledgePublicationError("derived visibility exceeds source scope")
+        assertions = (
+            SupportingSource(
+                source_id=submission.source_id,
+                revision_id=submission.revision_id,
+                json_path=submission.json_path,
+                scoring_authority=submission.scoring_authority,
+            ),
+            *submission.additional_sources,
+        )
+        for assertion in assertions:
+            source_row = self.session.execute(
+                text("SELECT visibility,tenant_id FROM sources WHERE source_id=:source_id"),
+                {"source_id": assertion.source_id.value},
+            ).first()
+            revision_row = self.session.execute(
+                select(document_revisions.c.visibility, document_revisions.c.tenant_id)
+                .join(documents, documents.c.document_id == document_revisions.c.document_id)
+                .where(
+                    document_revisions.c.revision_id == assertion.revision_id.value,
+                    documents.c.source_id == assertion.source_id.value,
+                )
+            ).first()
+            if source_row is None or revision_row is None:
+                raise CrossTenantAccessError("resource not found")
+            for source_scope in (source_row, revision_row):
+                self.access_scope.enforce_visible(str(source_scope[0]), source_scope[1])
+                if source_scope[0] == "tenant" and (
+                    scope.visibility != "tenant" or scope.tenant_id != source_scope[1]
+                ):
+                    raise KnowledgePublicationError("derived visibility exceeds source scope")
         if (
             isinstance(record.object_value, LiteratureReferenceValue)
             and record.object_value.target_document_id is not None
@@ -384,12 +418,14 @@ class KnowledgeRepository:
             ):
                 raise KnowledgePublicationError("derived visibility exceeds reference target scope")
         verified_support = False
+        declared_revisions = {assertion.revision_id.value for assertion in assertions}
+        used_revisions: set[str] = set()
         for link in submission.evidence_links:
             row = (
                 self.session.execute(
                     select(evidence).where(
                         evidence.c.evidence_id == link.evidence_id.value,
-                        evidence.c.revision_id == submission.revision_id.value,
+                        evidence.c.revision_id.in_(declared_revisions),
                     )
                 )
                 .mappings()
@@ -397,6 +433,7 @@ class KnowledgeRepository:
             )
             if row is None:
                 raise CrossTenantAccessError("resource not found")
+            used_revisions.add(str(row["revision_id"]))
             self.access_scope.enforce_visible(str(row["visibility"]), row["tenant_id"])
             if row["visibility"] == "tenant" and (
                 scope.visibility != "tenant" or scope.tenant_id != row["tenant_id"]
@@ -414,6 +451,8 @@ class KnowledgeRepository:
                 and row["supports_claim"]
             ):
                 verified_support = True
+        if used_revisions != declared_revisions:
+            raise KnowledgePublicationError("every declared source requires its own evidence")
         if record.claim_status == ClaimStatus.SUPPORTED and not verified_support:
             raise KnowledgePublicationError("supported claim requires verified semantic support")
 
@@ -542,17 +581,30 @@ class KnowledgeRepository:
                 is_current=True,
             )
         )
-        self.session.execute(
-            claim_assertions.insert().values(
-                assertion_id=str(uuid4()),
-                claim_id=record.claim_id.value,
-                source_id=submission.source_id.value,
-                revision_id=submission.revision_id.value,
+        assertions = (
+            SupportingSource(
+                source_id=submission.source_id,
+                revision_id=submission.revision_id,
                 json_path=submission.json_path,
                 scoring_authority=submission.scoring_authority,
-                assertion_kind=record.claim_origin.value,
-                created_at=created_at,
-            )
+            ),
+            *submission.additional_sources,
+        )
+        self.session.execute(
+            claim_assertions.insert(),
+            [
+                {
+                    "assertion_id": str(uuid4()),
+                    "claim_id": record.claim_id.value,
+                    "source_id": assertion.source_id.value,
+                    "revision_id": assertion.revision_id.value,
+                    "json_path": assertion.json_path,
+                    "scoring_authority": assertion.scoring_authority,
+                    "assertion_kind": record.claim_origin.value,
+                    "created_at": created_at,
+                }
+                for assertion in assertions
+            ],
         )
         for link in submission.evidence_links:
             self.session.execute(
