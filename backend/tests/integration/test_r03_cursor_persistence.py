@@ -68,7 +68,7 @@ def cursor_engine(isolated_test_database_url: str):
             == engine.url.database
         )
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-            "0011_job_delivery_and_cursors"
+            "0012_source_page_fingerprint"
         )
     try:
         yield engine
@@ -570,6 +570,7 @@ def test_completed_window_replay_and_overlap_revision_keep_history_without_dupli
             output_cursor={},
             is_last_page=True,
             persist_entry=lambda session, entry: callbacks.append(entry),
+            watermark=NOW - timedelta(days=1),
         )
         assert repeated.reused and repeated.revision_ids == final.revision_ids
         repository.release(lease)

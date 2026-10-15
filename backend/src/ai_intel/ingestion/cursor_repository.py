@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -28,6 +29,7 @@ from ai_intel.knowledge.models import (
     documents,
     job_payloads,
     job_runs,
+    outbox_events,
     source_cursors,
     source_page_receipts,
 )
@@ -35,6 +37,80 @@ from ai_intel.knowledge.models import (
 StreamKind = Literal["live", "backfill"]
 CURSOR_ADAPTER = TypeAdapter(dict[str, JsonValue])
 MAX_CURSOR_BYTES = 65536
+MAX_PAGE_REQUEST_BYTES = 1048576
+MAX_JSON_DEPTH = 16
+MAX_JSON_NODES = 10000
+MAX_PENDING_RECOVERY_JOBS = 1000
+
+
+def _canonical_page_json(value: object) -> bytes:
+    """只接受有界原生JSON值；不通过字符串化或类型转换丢掉请求字段。"""
+    node_count = 0
+
+    def validate(item: object, depth: int) -> None:
+        nonlocal node_count
+        node_count += 1
+        if depth > MAX_JSON_DEPTH or node_count > MAX_JSON_NODES:
+            raise ValueError("page JSON exceeds bounded depth or node count")
+        if item is None or type(item) in (bool, int, str):
+            return
+        if type(item) is float and isinstance(item, float):
+            if not math.isfinite(item):
+                raise ValueError("page JSON requires finite numbers")
+            return
+        if type(item) is dict and isinstance(item, dict):
+            for key, child in item.items():
+                if type(key) is not str:
+                    raise ValueError("page JSON requires string keys")
+                validate(child, depth + 1)
+            return
+        if type(item) is list and isinstance(item, list):
+            for child in item:
+                validate(child, depth + 1)
+            return
+        raise ValueError("page JSON contains an unsupported value")
+
+    validate(value, 0)
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    if len(encoded) > MAX_PAGE_REQUEST_BYTES:
+        raise ValueError("page JSON exceeds maximum size 1 MiB")
+    return encoded
+
+
+def page_request_digest(
+    lease: SourceCursorLease,
+    input_cursor: dict[str, JsonValue],
+    output_cursor: dict[str, JsonValue],
+    entries: tuple[dict[str, object], ...],
+    is_last_page: bool,
+    watermark_published_at: datetime | None,
+) -> str:
+    """服务端完整请求指纹；对象key顺序归一，条目/列表顺序与所有字段保留。"""
+    if type(entries) is not tuple or any(type(entry) is not dict for entry in entries):
+        raise ValueError("page entries require a tuple of JSON objects")
+    if type(is_last_page) is not bool:
+        raise ValueError("explicit page completion required")
+    payload = {
+        "fingerprint_version": "page-request-1",
+        "source_id": lease.source_id,
+        "stream_kind": lease.stream_kind,
+        "window_start": _aware_time(lease.window_start).isoformat() if lease.window_start else None,
+        "window_end": _aware_time(lease.window_end).isoformat(),
+        "input_cursor": input_cursor,
+        "output_cursor": output_cursor,
+        "entries": list(entries),
+        "is_last_page": is_last_page,
+        "watermark_published_at": (
+            _aware_time(watermark_published_at).isoformat() if watermark_published_at else None
+        ),
+    }
+    return hashlib.sha256(_canonical_page_json(payload)).hexdigest()
 
 
 class SourceLeaseLostError(CursorCommitError):
@@ -94,6 +170,7 @@ def _aware_time(value: datetime) -> datetime:
 
 
 def _cursor(value: object) -> dict[str, JsonValue]:
+    _canonical_page_json(value)
     validated = CURSOR_ADAPTER.validate_python(value, strict=True)
     encoded = json.dumps(validated, sort_keys=True, allow_nan=False).encode("utf-8")
     if len(encoded) > MAX_CURSOR_BYTES:
@@ -101,14 +178,24 @@ def _cursor(value: object) -> dict[str, JsonValue]:
     return CURSOR_ADAPTER.validate_json(encoded, strict=True)
 
 
-def _cursor_state(value: object) -> tuple[dict[str, JsonValue], bool, datetime | None]:
+def _cursor_state(
+    value: object,
+) -> tuple[dict[str, JsonValue], bool, datetime | None, list[dict[str, str]] | None]:
     """旧裸游标只视为未完成；不能从空游标猜测窗口已经采集成功。"""
-    state = _cursor(value)
+    _canonical_page_json(value)
+    state = CURSOR_ADAPTER.validate_python(value, strict=True)
     if "window_complete" not in state:
-        return state, False, None
+        return _cursor(state), False, None, None
     if (
         not {"position", "window_complete"}.issubset(state)
-        or set(state) - {"position", "window_complete", "pending_watermark_published_at"}
+        or set(state)
+        - {
+            "position",
+            "window_complete",
+            "pending_watermark_published_at",
+            "recovery_tracking_version",
+            "pending_recovery_job_ids",
+        }
         or type(state["window_complete"]) is not bool
     ):
         raise CursorCommitError("invalid persisted cursor envelope")
@@ -116,7 +203,27 @@ def _cursor_state(value: object) -> tuple[dict[str, JsonValue], bool, datetime |
     if pending is not None and not isinstance(pending, str):
         raise CursorCommitError("invalid pending source watermark")
     pending_time = _aware_time(datetime.fromisoformat(pending)) if pending is not None else None
-    return _cursor(state["position"]), state["window_complete"] is True, pending_time
+    references = None
+    if {"recovery_tracking_version", "pending_recovery_job_ids"} & set(state):
+        if (
+            type(state.get("recovery_tracking_version")) is not int
+            or state.get("recovery_tracking_version") != 1
+        ):
+            raise CursorCommitError("invalid recovery reference tracking version")
+        raw_references = state.get("pending_recovery_job_ids")
+        if not isinstance(raw_references, list) or len(raw_references) > MAX_PENDING_RECOVERY_JOBS:
+            raise CursorCommitError("invalid or unbounded recovery references")
+        references = []
+        for reference in raw_references:
+            if not isinstance(reference, dict) or set(reference) != {"job_id", "entry_id"}:
+                raise CursorCommitError("invalid recovery reference identity")
+            references.append(
+                {
+                    "job_id": _identity(reference["job_id"], "job_id"),
+                    "entry_id": _identity(reference["entry_id"], "entry_id"),
+                }
+            )
+    return _cursor(state["position"]), state["window_complete"] is True, pending_time, references
 
 
 def _identity(value: object, label: str) -> str:
@@ -263,7 +370,7 @@ class SourceCursorRepository:
             if expiry is not None and expiry > now:
                 return None
             unfinished_window = _optional_time(row, "window_end")
-            position, window_complete, _ = _cursor_state(row["cursor_json"])
+            position, window_complete, _, _ = _cursor_state(row["cursor_json"])
             values: dict[str, object] = {
                 "lease_owner": lease_owner,
                 "lease_expires_at": now + expires_delta,
@@ -279,6 +386,8 @@ class SourceCursorRepository:
                         "position": position,
                         "window_complete": False,
                         "pending_watermark_published_at": None,
+                        "recovery_tracking_version": 1,
+                        "pending_recovery_job_ids": [],
                     },
                 )
             claimed = (
@@ -421,6 +530,7 @@ class SourceCursorRepository:
                 select(job_runs, job_payloads.c.payload)
                 .join(job_payloads, job_payloads.c.job_id == job_runs.c.job_id)
                 .where(job_runs.c.job_id == job_id)
+                .with_for_update(of=job_runs)
             )
             .mappings()
             .first()
@@ -428,9 +538,16 @@ class SourceCursorRepository:
         if (
             job is None
             or job["tenant_id"] != tenant_id
-            or job["status"] in {"succeeded", "cancelled"}
+            or job["status"] not in {"queued", "retry_wait", "running"}
+            or not 0 <= _integer(job, "attempt_count") < _integer(job, "max_attempts") <= 10
         ):
             raise CursorCommitError("recovery job unavailable in configured source scope")
+        if job["status"] == "retry_wait" and _optional_time(job, "next_retry_at") is None:
+            raise CursorCommitError("recovery job has no durable retry schedule")
+        if job["status"] == "running" and (
+            not job["lease_owner"] or _optional_time(job, "lease_expires_at") is None
+        ):
+            raise CursorCommitError("recovery job has no recoverable lease")
         payload = job["payload"]
         if (
             not isinstance(payload, bytes)
@@ -438,6 +555,16 @@ class SourceCursorRepository:
             or hashlib.sha256(payload).hexdigest() != job["payload_sha256"]
         ):
             raise CursorCommitError("recovery job payload is not durable")
+        delivery = self.session.execute(
+            select(outbox_events.c.event_id)
+            .where(
+                outbox_events.c.job_id == job_id,
+                outbox_events.c.payload_ref == job["payload_ref"],
+            )
+            .limit(1)
+        ).first()
+        if delivery is None:
+            raise CursorCommitError("recovery job has no durable delivery")
         try:
             identity = json.loads(payload)
         except (ValueError, UnicodeDecodeError):
@@ -469,6 +596,14 @@ class SourceCursorRepository:
             watermark_published_at = _aware_time(watermark_published_at)
             if watermark_published_at > lease.window_end:
                 raise ValueError("watermark exceeds frozen source window")
+        request_sha256 = page_request_digest(
+            lease,
+            input_cursor,
+            output_cursor,
+            entries,
+            is_last_page,
+            watermark_published_at,
+        )
         with self.session.begin_nested():
             visibility, tenant_id = self._source_scope()
             row = self._lock_lease(lease)
@@ -485,27 +620,48 @@ class SourceCursorRepository:
                 .first()
             )
             if existing is not None:
-                if (
-                    existing["input_cursor"] != input_cursor
-                    or existing["output_cursor"] != output_cursor
-                    or existing["entry_count"] != len(entries)
-                ):
+                if existing["request_sha256"] is None:
+                    raise CursorCommitError("legacy_page_receipt_unverifiable")
+                if existing["request_sha256"] != request_sha256:
                     raise CursorCommitError("page receipt conflicts with replay")
                 return self._receipt(existing, reused=True)
-            current_cursor, window_complete, pending_watermark = _cursor_state(row["cursor_json"])
+            current_cursor, window_complete, pending_watermark, pending_recovery = _cursor_state(
+                row["cursor_json"]
+            )
             if window_complete or current_cursor != input_cursor:
                 raise StaleSourceCursorError("input cursor no longer current")
+            if pending_recovery is None:
+                raise CursorCommitError("legacy_window_recovery_unverifiable")
             if pending_watermark is not None and pending_watermark > lease.window_end:
                 raise CursorCommitError("pending watermark exceeds frozen source window")
             revision_ids: list[str] = []
             failed_job_ids: list[str] = []
+            persisted_entries: list[tuple[PersistedPageEntry, str]] = []
             for entry, entry_id in zip(entries, entry_ids, strict=True):
                 saved = persist_entry(self.session, entry)
                 self._verify_persisted_entry(saved, entry_id, visibility, tenant_id)
+                persisted_entries.append((saved, entry_id))
                 if saved.revision_id is not None:
                     revision_ids.append(saved.revision_id)
                 elif saved.failed_job_id is not None:
                     failed_job_ids.append(saved.failed_job_id)
+                    reference = {"job_id": saved.failed_job_id, "entry_id": entry_id}
+                    if reference not in pending_recovery:
+                        pending_recovery.append(reference)
+                        if len(pending_recovery) > MAX_PENDING_RECOVERY_JOBS:
+                            raise CursorCommitError(
+                                "window recovery references exceed bounded limit"
+                            )
+            for saved, entry_id in persisted_entries:
+                self._verify_persisted_entry(saved, entry_id, visibility, tenant_id)
+            if is_last_page:
+                for reference in pending_recovery:
+                    self._verify_persisted_entry(
+                        PersistedPageEntry(failed_job_id=reference["job_id"]),
+                        reference["entry_id"],
+                        visibility,
+                        tenant_id,
+                    )
             self._verify_lease(row, lease)
             now = _aware_time(self.clock())
             if lease.stream_kind == "live" and watermark_published_at is not None:
@@ -521,11 +677,17 @@ class SourceCursorRepository:
                         if pending_watermark is not None and not is_last_page
                         else None
                     ),
+                    "recovery_tracking_version": 1,
+                    "pending_recovery_job_ids": [] if is_last_page else pending_recovery,
                 },
                 "last_successful_page": _integer(row, "last_successful_page") + 1,
                 "updated_at": now,
             }
             current_watermark = _optional_time(row, "watermark_published_at")
+            try:
+                _canonical_page_json(values["cursor_json"])
+            except ValueError:
+                raise CursorCommitError("window recovery references exceed bounded JSON") from None
             if lease.stream_kind == "live" and is_last_page and pending_watermark is not None:
                 values["watermark_published_at"] = max(
                     pending_watermark, current_watermark or pending_watermark
@@ -550,6 +712,7 @@ class SourceCursorRepository:
                         revision_ids=revision_ids,
                         failed_job_ids=failed_job_ids,
                         entry_count=len(entries),
+                        request_sha256=request_sha256,
                         committed_at=now,
                     )
                     .returning(source_page_receipts)
