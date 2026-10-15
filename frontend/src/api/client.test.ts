@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiProblem, getCsrfToken, getCurrentUser, getReadiness, getSessionSnapshot, loginSession, logoutSession } from "./client";
+import { ApiProblem, fetchJson, getCsrfToken, getCurrentUser, getReadiness, getSessionSnapshot, loginSession, logoutSession } from "./client";
 
 const fixtureUser = { user_id: "fixture-user", tenant_id: "fixture-tenant", role: "analyst", permissions: ["read:public"], permission_version: 1, data_mode: "fixture" };
 const fixtureNonce = randomBytes(32).toString("hex");
@@ -88,6 +88,27 @@ describe("strict R01 HTTP boundary — synthetic response fixtures", () => {
     const assertion = expect(request).rejects.toMatchObject({ code: "request_timeout", retryable: true });
     await vi.advanceTimersByTimeAsync(10_000);
     await assertion;
+  });
+
+  it("keeps an explicit question budget bounded without changing the default", async () => {
+    vi.useFakeTimers();
+    let requestSignal: AbortSignal | null | undefined;
+    vi.stubGlobal("fetch", vi.fn((_input: RequestInfo | URL, options?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      requestSignal = options?.signal;
+      requestSignal?.addEventListener("abort", () => reject(new DOMException("fixture abort", "AbortError")), { once: true });
+    })));
+    const assertion = expect(fetchJson("/v1/questions", {}, undefined, [], 90_000)).rejects.toMatchObject({ code: "request_timeout", retryable: true });
+    await vi.advanceTimersByTimeAsync(10_001);
+    expect(requestSignal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(79_999);
+    await assertion;
+  });
+
+  it.each([0, 120_001, Number.NaN])("rejects an unbounded or invalid request budget %s before I/O", async (budget) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(fetchJson("/v1/questions", {}, undefined, [], budget)).rejects.toBeInstanceOf(RangeError);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

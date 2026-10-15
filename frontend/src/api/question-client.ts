@@ -9,7 +9,7 @@ export async function submitQuestion(submission: QuestionSubmission, isCurrent: 
   if (signal?.aborted || !isCurrent()) throw new ApiProblem(0, "request_canceled", false);
   const csrf = await getCsrfToken(signal);
   if (signal?.aborted || !isCurrent()) throw new ApiProblem(0, "request_canceled", false);
-  return parseQuestionAnswer(await fetchJson("/v1/questions", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, "Idempotency-Key": idempotencyKey }, body }, signal));
+  return parseQuestionAnswer(await fetchJson("/v1/questions", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, "Idempotency-Key": idempotencyKey }, body }, signal, [], 90_000));
 }
 
 export async function getAnswer(answerId: string, signal?: AbortSignal): Promise<QuestionAnswer> {

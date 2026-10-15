@@ -5,8 +5,23 @@ import type { QuestionSubmission } from "./question-contracts";
 
 const submission: QuestionSubmission = { body: { question: "隔离问题", mode: "library", event_ids: [ids.event] }, idempotencyKey: "isolated-key" };
 function response(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status }); }
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 describe("question client — isolated fixture, not live", () => {
+  it("allows a bounded cold question to complete after the normal ten-second HTTP budget", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options: RequestInit = {}) => {
+      if (String(input).endsWith("csrf")) return response({ csrf_token: "isolated-token", header_name: "X-CSRF-Token" });
+      return new Promise<Response>((resolve, reject) => {
+        const timer = setTimeout(() => resolve(response(questionAnswerFixture())), 12_000);
+        options.signal?.addEventListener("abort", () => { clearTimeout(timer); reject(new DOMException("fixture abort", "AbortError")); }, { once: true });
+      });
+    }));
+    const request = submitQuestion(submission, () => true);
+    const assertion = expect(request).resolves.toMatchObject({ answer_id: ids.answer });
+    await vi.advanceTimersByTimeAsync(12_000);
+    await assertion;
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
   it("sends exact frozen body, cookie credentials, CSRF and request key", async () => {
     const calls: { path: string; options: RequestInit }[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options: RequestInit = {}) => { calls.push({ path: String(input), options }); return response(String(input).endsWith("csrf") ? { csrf_token: "isolated-token", header_name: "X-CSRF-Token" } : questionAnswerFixture()); }));
