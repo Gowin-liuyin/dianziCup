@@ -9,12 +9,16 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
+    Identity,
     Integer,
+    LargeBinary,
     MetaData,
     Table,
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 
 metadata = MetaData()
 
@@ -138,7 +142,7 @@ job_runs = Table(
     Column("tenant_id", Text(), nullable=True),
     Column("job_type", Text(), nullable=False),
     Column("status", Text(), nullable=False),
-    Column("idempotency_key", Text(), nullable=True, unique=True),
+    Column("idempotency_key", Text(), nullable=True),
     Column("payload_sha256", Text(), nullable=True),
     Column("payload_ref", Text(), nullable=False),
     Column("attempt_count", Integer(), nullable=False, server_default="0"),
@@ -147,6 +151,11 @@ job_runs = Table(
     Column("lease_expires_at", DateTime(timezone=True), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column("next_retry_at", DateTime(timezone=True)),
+    Column("started_at", DateTime(timezone=True)),
+    Column("finished_at", DateTime(timezone=True)),
+    Column("error_code", Text()),
+    Column("result_ref", Text()),
     CheckConstraint(
         "status IN ('queued','running','retry_wait','waiting_approval',"
         "'succeeded','partial','failed','cancelled','blocked')",
@@ -163,6 +172,62 @@ outbox_events = Table(
     Column("payload_ref", Text(), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("published_at", DateTime(timezone=True), nullable=True),
+    Column("delivery_attempts", Integer(), nullable=False, server_default="0"),
+    Column("next_delivery_at", DateTime(timezone=True)),
+    Column("last_error_code", Text()),
+)
+
+job_payloads = Table(
+    "job_payloads",
+    metadata,
+    Column("job_id", Text(), ForeignKey("job_runs.job_id"), primary_key=True),
+    Column("payload", LargeBinary(), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+job_transitions = Table(
+    "job_transitions",
+    metadata,
+    Column("transition_sequence", BigInteger(), Identity(always=True), primary_key=True),
+    Column("job_id", Text(), ForeignKey("job_runs.job_id"), nullable=False),
+    Column("attempt_count", Integer(), nullable=False),
+    Column("from_status", Text(), nullable=False),
+    Column("to_status", Text(), nullable=False),
+    Column("reason", Text(), nullable=False),
+    Column("changed_at", DateTime(timezone=True), nullable=False),
+)
+
+source_cursors = Table(
+    "source_cursors",
+    metadata,
+    Column("source_id", Text(), ForeignKey("sources.source_id"), primary_key=True),
+    Column("stream_kind", Text(), primary_key=True),
+    Column("cursor_json", JSONB(), nullable=False),
+    Column("window_start", DateTime(timezone=True)),
+    Column("window_end", DateTime(timezone=True)),
+    Column("watermark_published_at", DateTime(timezone=True)),
+    Column("last_successful_page", Integer(), nullable=False),
+    Column("lease_owner", Text()),
+    Column("lease_expires_at", DateTime(timezone=True)),
+    Column("generation", Integer(), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+source_page_receipts = Table(
+    "source_page_receipts",
+    metadata,
+    Column("source_id", Text(), primary_key=True),
+    Column("stream_kind", Text(), primary_key=True),
+    Column("page_key", Text(), primary_key=True),
+    Column("input_cursor", JSONB(), nullable=False),
+    Column("output_cursor", JSONB(), nullable=False),
+    Column("revision_ids", JSONB(), nullable=False),
+    Column("failed_job_ids", JSONB(), nullable=False),
+    Column("entry_count", Integer(), nullable=False),
+    Column("committed_at", DateTime(timezone=True), nullable=False),
+    ForeignKeyConstraint(
+        ["source_id", "stream_kind"], ["source_cursors.source_id", "source_cursors.stream_kind"]
+    ),
 )
 
 fetch_attempts = Table(
