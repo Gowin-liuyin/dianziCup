@@ -14,6 +14,7 @@ from ai_intel.ingestion.sources.repository import (
 )
 
 MAX_RELEASE_BYTES = 2 * 1024 * 1024
+MAX_RELEASE_JSON_NODES = 50000
 MAX_RELEASE_RECORDS = 100
 
 
@@ -22,7 +23,11 @@ def parse_github_releases(payload: bytes) -> tuple[RepositoryRecord, ...]:
     if not isinstance(payload, bytes) or not 1 <= len(payload) <= MAX_RELEASE_BYTES:
         raise RepositoryFetchError("release response outside byte limit")
     try:
-        document = strict_json_object(b'{"releases":' + payload + b"}", MAX_RELEASE_BYTES + 13)
+        document = strict_json_object(
+            b'{"releases":' + payload + b"}",
+            MAX_RELEASE_BYTES + 13,
+            maximum_nodes=MAX_RELEASE_JSON_NODES,
+        )
     except (ValueError, UnicodeError, RecursionError):
         raise RepositoryFetchError("invalid release JSON response") from None
     entries = document.get("releases")
