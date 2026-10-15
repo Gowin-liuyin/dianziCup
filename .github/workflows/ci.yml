@@ -26,9 +26,9 @@ jobs:
       - name: Static checks
         working-directory: backend
         run: |
-          uv run --locked ruff check . ../scripts/dev.py
-          uv run --locked ruff format --check . ../scripts/dev.py
-          uv run --locked mypy src ../scripts/dev.py
+          uv run --locked ruff check . ../scripts/dev.py ../scripts/prepare_search_tls_test.py
+          uv run --locked ruff format --check . ../scripts/dev.py ../scripts/prepare_search_tls_test.py
+          uv run --locked mypy src ../scripts/dev.py ../scripts/prepare_search_tls_test.py
       - name: Create disposable test configuration
         run: |
           python - <<'PY'
@@ -71,6 +71,13 @@ jobs:
           docker compose --project-name "$DIANZI_TEST_COMPOSE_PROJECT"
           -f "$DIANZI_TEST_COMPOSE_FILE" --profile core --profile search
           up -d --wait --wait-timeout 180
+      - name: Create dedicated secure search TLS fixture
+        run: |
+          docker pull opensearchproject/opensearch@sha256:7b9517dff561f54456fad947f11820fa595a340fd1034fc63d57b77f724b3f8f
+          python scripts/prepare_search_tls_test.py create \
+            --run-id "r01_tls_ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}" \
+            --private-directory "${RUNNER_TEMP}/dianzi-tls-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --github-env "$GITHUB_ENV"
       - name: Unit tests with actual test counts
         run: python scripts/dev.py check --scope unit --timeout-seconds 600
       - name: Contract tests including real PostgreSQL
@@ -82,6 +89,12 @@ jobs:
       - name: Integration tests including Compose lifecycle
         if: ${{ !cancelled() }}
         run: python scripts/dev.py check --scope integration --timeout-seconds 600
+      - name: Stop only the dedicated TLS fixture and preserve volumes
+        if: always()
+        run: |
+          python scripts/prepare_search_tls_test.py cleanup \
+            --run-id "r01_tls_ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}" \
+            --private-directory "${RUNNER_TEMP}/dianzi-tls-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
       - name: Stop only this test project and preserve volumes
         if: always()
         run: |

@@ -1,0 +1,51 @@
+services:
+  opensearch:
+    image: opensearchproject/opensearch@sha256:7b9517dff561f54456fad947f11820fa595a340fd1034fc63d57b77f724b3f8f
+    user: "1000:1000"
+    mem_limit: 2g
+    cpus: 0.5
+    pids_limit: 256
+    labels:
+      io.dianzi.search-tls.run-id: ${TEST_SEARCH_TLS_RUN_ID:?Set isolated TLS run ID}
+    environment:
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+      OPENSEARCH_USERNAME: ${TEST_SEARCH_TLS_USERNAME:?Set health-only test username}
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${TEST_SEARCH_TLS_PASSWORD:?Set random test password}
+      DISABLE_PERFORMANCE_ANALYZER_AGENT_CLI: "true"
+    ports:
+      - "127.0.0.1:${TEST_SEARCH_TLS_PORT:?Set exclusive HTTPS port}:9200"
+    volumes:
+      - type: bind
+        source: ./opensearch/opensearch.yml
+        target: /usr/share/opensearch/config/opensearch.yml
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${TEST_SEARCH_TLS_CA_FILE:?Set external CA file}
+        target: /usr/share/opensearch/config/tls/root-ca.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${TEST_SEARCH_TLS_NODE_CERT:?Set external node certificate}
+        target: /usr/share/opensearch/config/tls/node.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${TEST_SEARCH_TLS_NODE_KEY:?Set external PKCS8 node key}
+        target: /usr/share/opensearch/config/tls/node-key.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - search_tls_data:/usr/share/opensearch/data
+    networks: [private]
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS --cacert /usr/share/opensearch/config/tls/root-ca.pem -u "$${OPENSEARCH_USERNAME}:$${OPENSEARCH_INITIAL_ADMIN_PASSWORD}" https://localhost:9200/_cluster/health >/dev/null']
+      interval: 5s
+      timeout: 4s
+      retries: 36
+      start_period: 20s
+networks:
+  private:
+    internal: true
+volumes:
+  search_tls_data:

@@ -57,10 +57,21 @@ def configuration_environment() -> dict[str, str]:
         TEST_REDIS_URL=f"redis://:{redis_password}@127.0.0.1:26383/0",
         TEST_OPENSEARCH_URL="http://127.0.0.1:29201",
     )
+    return environment
+
+
+def render_configuration(
+    filename: str, environment: dict[str, str], profile: str = "*"
+) -> subprocess.CompletedProcess[str]:
+    """使用真实 Compose 解析 include/override 和 profile，无 shell/eval。"""
+    prefix = json.loads(os.environ.get("DIANZI_DOCKER_COMMAND_JSON", '["docker"]'))
+    compose_path = COMPOSE_DIRECTORY / filename
+    argument = str(compose_path)
+    environment = environment.copy()
     transferred_names = {
         name
         for name in environment
-        if name.startswith(("COMPOSE_", "POSTGRES_", "REDIS_", "OPENSEARCH_", "TEST_"))
+        if name.startswith(("COMPOSE_", "POSTGRES_", "REDIS_", "OPENSEARCH_", "TEST_", "SECURE_"))
         or name
         in {
             "COMPOSE_DISABLE_ENV_FILE",
@@ -76,16 +87,6 @@ def configuration_environment() -> dict[str, str]:
         }
     }
     environment["WSLENV"] = ":".join(sorted(transferred_names))
-    return environment
-
-
-def render_configuration(
-    filename: str, environment: dict[str, str], profile: str = "*"
-) -> subprocess.CompletedProcess[str]:
-    """使用真实 Compose 解析 include/override 和 profile，无 shell/eval。"""
-    prefix = json.loads(os.environ.get("DIANZI_DOCKER_COMMAND_JSON", '["docker"]'))
-    compose_path = COMPOSE_DIRECTORY / filename
-    argument = str(compose_path)
     if Path(prefix[0]).name.lower() == "wsl.exe":
         windows_path = PureWindowsPath(compose_path.resolve())
         argument = f"/mnt/{windows_path.drive[0].lower()}/" + "/".join(windows_path.parts[1:])

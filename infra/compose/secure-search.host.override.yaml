@@ -1,0 +1,12 @@
+services:
+  opensearch:
+    network_mode: host
+    networks: !reset []
+    ports: !reset []
+    environment:
+      network.host: 127.0.0.1
+      network.publish_host: 127.0.0.1
+      http.port: ${SECURE_OPENSEARCH_PORT:?Set an exclusive HTTPS port}
+      transport.port: ${SECURE_OPENSEARCH_TRANSPORT_PORT:?Set an exclusive transport port}
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS --cacert /usr/share/opensearch/config/tls/root-ca.pem -u "$${OPENSEARCH_USERNAME}:$${OPENSEARCH_INITIAL_ADMIN_PASSWORD}" https://localhost:${SECURE_OPENSEARCH_PORT:?Set an exclusive HTTPS port}/_cluster/health >/dev/null']

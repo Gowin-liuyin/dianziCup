@@ -11,7 +11,10 @@ x-backend: &backend
     DATA_MODE: live
     DATABASE_URL: ${COMPOSE_DATABASE_URL:?Inject the application PostgreSQL URL}
     REDIS_URL: ${COMPOSE_REDIS_URL:?Inject the authenticated Redis URL}
-    OPENSEARCH_URL: ${OPENSEARCH_URL:-}
+    OPENSEARCH_URL: ${OPENSEARCH_URL:-https://opensearch:9200}
+    OPENSEARCH_USERNAME: ${COMPOSE_OPENSEARCH_USERNAME:-}
+    OPENSEARCH_PASSWORD: ${COMPOSE_OPENSEARCH_PASSWORD:-${OPENSEARCH_INITIAL_ADMIN_PASSWORD:?Inject search credential}}
+    OPENSEARCH_CA_FILE: /run/ai-intel/search/root-ca.pem
     ALLOWED_ORIGINS: ${COMPOSE_ALLOWED_ORIGINS:?Set exact frontend origins as JSON}
     RAW_CONTENT_DIRECTORY: /var/lib/ai-intel/raw
   networks: [private]
@@ -20,7 +23,13 @@ x-backend: &backend
   tmpfs: [/tmp]
   security_opt: [no-new-privileges:true]
   cap_drop: [ALL]
-  volumes: [raw_content:/var/lib/ai-intel/raw]
+  volumes:
+    - raw_content:/var/lib/ai-intel/raw
+    - type: bind
+      source: ${OPENSEARCH_CA_HOST_FILE:-/dev/null}
+      target: /run/ai-intel/search/root-ca.pem
+      read_only: true
+      bind: {create_host_path: false}
 
 services:
   postgres:
@@ -66,14 +75,38 @@ services:
     environment:
       discovery.type: single-node
       OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD:?Inject search credential}
+      OPENSEARCH_USERNAME: ${COMPOSE_OPENSEARCH_USERNAME:-}
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
       OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
       DISABLE_PERFORMANCE_ANALYZER_AGENT_CLI: "true"
       node.store.allow_mmap: "false"
     ports: ["127.0.0.1:${OPENSEARCH_PORT:?Set an exclusive search port}:9200"]
     networks: [private]
-    volumes: [opensearch_data:/usr/share/opensearch/data]
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+      - ./opensearch/opensearch.yml:/usr/share/opensearch/config/opensearch.yml:ro
+      - type: bind
+        source: ${OPENSEARCH_CA_HOST_FILE:-/dev/null}
+        target: /usr/share/opensearch/config/tls/root-ca.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${OPENSEARCH_NODE_CERT_HOST_FILE:-/dev/null}
+        target: /usr/share/opensearch/config/tls/node.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${OPENSEARCH_NODE_KEY_HOST_FILE:-/dev/null}
+        target: /usr/share/opensearch/config/tls/node-key.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${OPENSEARCH_SECURITY_CONFIG_HOST_DIRECTORY:-/dev/null}
+        target: /usr/share/opensearch/config/opensearch-security
+        read_only: true
+        bind: {create_host_path: false}
     healthcheck:
-      test: [CMD-SHELL, 'curl -fsSk -u "admin:$${OPENSEARCH_INITIAL_ADMIN_PASSWORD}" https://localhost:9200/_cluster/health >/dev/null']
+      test: [CMD-SHELL, 'curl -fsS --cacert /usr/share/opensearch/config/tls/root-ca.pem -u "$${OPENSEARCH_USERNAME}:$${OPENSEARCH_INITIAL_ADMIN_PASSWORD}" https://localhost:9200/_cluster/health >/dev/null']
       interval: 5s
       timeout: 5s
       retries: 24

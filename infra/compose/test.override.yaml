@@ -10,6 +10,7 @@ services:
       REDIS_PASSWORD: ${TEST_REDIS_PASSWORD:?Inject a random test credential}
     ports: !override ["127.0.0.1:${TEST_REDIS_PORT:?Set an exclusive test port}:6379"]
   opensearch:
+    volumes: !override [opensearch_data:/usr/share/opensearch/data]
     environment:
       DISABLE_INSTALL_DEMO_CONFIG: "true"
       DISABLE_SECURITY_PLUGIN: "true"
@@ -19,6 +20,9 @@ services:
   api:
     image: ${TEST_BACKEND_IMAGE:-dianzi-backend:test}
     environment:
+      OPENSEARCH_USERNAME: !reset null
+      OPENSEARCH_PASSWORD: !reset null
+      OPENSEARCH_CA_FILE: !reset null
       APP_ENV: test
       DATABASE_URL: postgresql+psycopg://${TEST_POSTGRES_USER:?Set test user}:${TEST_POSTGRES_PASSWORD:?Inject test credential}@postgres:5432/test_dianzi_${DIANZI_TEST_RUN_ID:?Set test run ID}
       REDIS_URL: redis://:${TEST_REDIS_PASSWORD:?Inject test credential}@redis:6379/0
@@ -26,6 +30,9 @@ services:
   worker:
     image: ${TEST_BACKEND_IMAGE:-dianzi-backend:test}
     environment:
+      OPENSEARCH_USERNAME: !reset null
+      OPENSEARCH_PASSWORD: !reset null
+      OPENSEARCH_CA_FILE: !reset null
       APP_ENV: test
       DATABASE_URL: postgresql+psycopg://${TEST_POSTGRES_USER:?Set test user}:${TEST_POSTGRES_PASSWORD:?Inject test credential}@postgres:5432/test_dianzi_${DIANZI_TEST_RUN_ID:?Set test run ID}
       REDIS_URL: redis://:${TEST_REDIS_PASSWORD:?Inject test credential}@redis:6379/0
@@ -33,6 +40,9 @@ services:
   scheduler:
     image: ${TEST_BACKEND_IMAGE:-dianzi-backend:test}
     environment:
+      OPENSEARCH_USERNAME: !reset null
+      OPENSEARCH_PASSWORD: !reset null
+      OPENSEARCH_CA_FILE: !reset null
       APP_ENV: test
       DATABASE_URL: postgresql+psycopg://${TEST_POSTGRES_USER:?Set test user}:${TEST_POSTGRES_PASSWORD:?Inject test credential}@postgres:5432/test_dianzi_${DIANZI_TEST_RUN_ID:?Set test run ID}
       REDIS_URL: redis://:${TEST_REDIS_PASSWORD:?Inject test credential}@redis:6379/0
