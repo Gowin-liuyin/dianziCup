@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import queue
 import subprocess
 import sys
@@ -111,9 +110,8 @@ def test_real_product_worker_starts_guard_and_job_cleans_it_on_exit(caller: str)
         "time.sleep(0.4)\n"
         "print('WORK_COMPLETED',flush=True)\n"
     )
-    executable = os.path.join(sys.base_prefix, "python.exe") if os.name == "nt" else sys.executable
     with subprocess.Popen(
-        [executable, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        [sys.executable, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.PIPE
     ) as worker:
         assert worker.stdout is not None
         ready_lines: queue.Queue[bytes] = queue.Queue()
@@ -147,8 +145,8 @@ def test_real_product_worker_starts_guard_and_job_cleans_it_on_exit(caller: str)
             finally:
                 kernel.CloseHandle(guard_handle)
         else:
-            assert first_line == b"NATIVE_RLIMIT\n"
             stdout, stderr = worker.communicate(timeout=8)
+            assert first_line == b"NATIVE_RLIMIT\n", stderr
     assert worker.returncode == 0, stderr
     assert b"WORK_COMPLETED" in stdout
 
