@@ -57,6 +57,8 @@ AVID 初始目录请求后先选择固定 tree/blob；第二次 GET 仅由已验
 
 CBM 0.11 独立 `backend/src` 索引/handler trace 及源码 rg caller evidence 在本 run 目录；没有索引秘密或 holdout。日志仅有已知 Starlette/httpx deprecation warning，不把 warning/fixture 当 live。初次日志目录不存在导致命令未执行的启动错误不计业务红例；建立自有 runner 后才封存 red_source_keys。Ruff 初始格式/导入问题经格式化与最终 checks 解决，没有忽略规则。
 
+冻结代码的 `git diff 86e1fd504263844091a7c00415551ad3e8dc4a0c 52433474f66a900c56ee6d5478337b0ec83d6eda --check` 为 exit 0。包含报告证据的 `git diff 86e1fd504263844091a7c00415551ad3e8dc4a0c 02f834aec1bafe5ce63acae2c0d891f523be2444 --check` 为 exit 1：原始 `pg_initial.log/xml` 六处和 `pg_recheck.log/xml` 两处 pytest 失败输出 `E     ` 带尾随空格。八处均仅属于封存红日志；保留实际失败输出，没有改写日志或新增忽略规则。
+
 ## 限制、评分与交接
 
 本包支持 E1 原子任务/恢复/权限、F1 八类别九通道的代码接线与可追溯原文输入、P1 有界分页/退避的工程证据；离线测试与录制输入不计真实来源覆盖、实时延迟、持续运行、准确率或性能达标。NIST 测试 PDF 是明确 synthetic text-layer fixture，不冒称真实 48 页 NIST live。资料元数据/原始时间精度保持 frozen normalizer 语义，法律适用性、资产影响与知识卡不由本接线自动推断。
