@@ -31,8 +31,15 @@ from ai_intel.ingestion.source_catalog import (
     parse_source_timestamp,
 )
 from ai_intel.ingestion.sources.arxiv_atom import parse_arxiv_atom
-from ai_intel.ingestion.sources.avid_records import normalize_avid_vulnerability
-from ai_intel.ingestion.sources.github_releases import parse_github_releases
+from ai_intel.ingestion.sources.avid_records import (
+    is_avid_screenshot_reference,
+    normalize_avid_vulnerability,
+)
+from ai_intel.ingestion.sources.github_releases import (
+    MAX_RELEASE_BYTES,
+    MAX_RELEASE_JSON_NODES,
+    parse_github_releases,
+)
 from ai_intel.ingestion.sources.osv import normalize_osv_record
 from ai_intel.ingestion.sources.trailofbits_rss import parse_trailofbits_rss
 
@@ -174,6 +181,14 @@ def normalize_avid_blob(selection: AvidBlobSelection, body: bytes) -> Normalized
     published = raw.get("published_date")
     if published is not None and not isinstance(published, str):
         raise SourceCatalogError("AVID publication date is not text")
+    source_notes: list[JsonValue] = [
+        "已校验固定Git blob原文；仅日期精度，不推测UTC时区；社区记录不代表资产影响确认。"
+    ]
+    references = raw.get("references", [])
+    if isinstance(references, list) and any(
+        is_avid_screenshot_reference(item) for item in references
+    ):
+        source_notes.append("仓库截图仅保留引用元数据；未获取或读取图片，不作为漏洞或PoC成功证据。")
     return NormalizedSourceDocument(
         article.article_id,
         DocumentKind.ARTICLE,
@@ -184,16 +199,14 @@ def normalize_avid_blob(selection: AvidBlobSelection, body: bytes) -> Normalized
         None,
         None,
         {
-            "source_adapter_version": "catalog-pages-1",
+            "source_adapter_version": "catalog-pages-3",
             "content_coverage": "full_text",
             "published_at_raw": published,
             "published_precision": "calendar_date" if published else "unknown",
             "referenced_advisory_ids": list(article.referenced_advisory_ids),
             "git_tree_sha": selection.tree_sha,
             "git_blob_sha": selection.blob_sha,
-            "source_notes": [
-                "已校验固定Git blob原文；仅日期精度，不推测UTC时区；社区记录不代表资产影响确认。"
-            ],
+            "source_notes": source_notes,
         },
         selection.path,
     )
@@ -323,7 +336,11 @@ def _release_page(
 ) -> CatalogPage:
     build_catalog_request("ollama_releases", cursor)
     records = parse_github_releases(body)
-    raw = strict_json_object(b'{"items":' + body + b"}", 3 * 1024 * 1024)["items"]
+    raw = strict_json_object(
+        b'{"items":' + body + b"}",
+        MAX_RELEASE_BYTES + 10,
+        maximum_nodes=MAX_RELEASE_JSON_NODES,
+    )["items"]
     if not isinstance(raw, list):
         raise SourceCatalogError("release raw page unavailable")
     documents = []

@@ -18,6 +18,15 @@ MAX_AVID_BYTES = 2 * 1024 * 1024
 AVID_IDENTIFIER = re.compile(r"AVID-[0-9]{4}-V[0-9]{3,6}")
 CVE_IDENTIFIER = re.compile(r"CVE-[0-9]{4}-[0-9]{4,}")
 GHSA_IDENTIFIER = re.compile(r"GHSA-[23456789cfghjmpqrvwx]{4}(?:-[23456789cfghjmpqrvwx]{4}){2}")
+AVID_SCREENSHOT_PATH = re.compile(r"\.\./img/R[0-9]{5}\.png")
+
+
+def is_avid_screenshot_reference(reference: object) -> bool:
+    """Recognize the known repository screenshot context without resolving or fetching it."""
+    if not isinstance(reference, dict) or reference.get("type") != "screenshot":
+        return False
+    uri = reference.get("url")
+    return isinstance(uri, str) and AVID_SCREENSHOT_PATH.fullmatch(uri) is not None
 
 
 def _description(value: object, field_name: str, *, required: bool) -> str | None:
@@ -115,6 +124,8 @@ def normalize_avid_vulnerability(payload: bytes) -> CommunityArticle:
         for field in ("type", "label"):
             if not isinstance(reference.get(field), str):
                 raise RepositoryFetchError(f"AVID reference {field} must be text")
+        if is_avid_screenshot_reference(reference):
+            continue
         related_identifier = _reference_identifier(reference.get("url"))
         if related_identifier is not None and related_identifier not in references:
             references.append(related_identifier)
