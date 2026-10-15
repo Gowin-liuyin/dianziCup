@@ -119,9 +119,9 @@ def validate_candidates(document: dict[str, object]) -> list[dict[str, object]]:
         identifiers.add(case_id)
         split = string_value(case["split"])
         validate_time(case["source_snapshot_time"])
-        identities = ["family:" + string_value(case["event_family_id"])]
+        identities = [string_value(case["event_family_id"])]
         for alias in list_value(case["family_aliases"]):
-            identities.append("event:" + string_value(alias))
+            identities.append(string_value(alias))
         for reference in object_list(case["input_refs"]):
             if reference["path"] is not None:
                 safe_reference_path(reference["path"])
@@ -143,9 +143,7 @@ def validate_candidates(document: dict[str, object]) -> list[dict[str, object]]:
                 or parsed.fragment
             ):
                 raise PreparationError("PUBLIC_PROVENANCE_REQUIRED")
-            identities.extend(
-                ["uri:" + uri, "document:" + string_value(source["document_id"])]
-            )
+            identities.extend([uri, string_value(source["document_id"])])
         for evidence in object_list(case["evidence"]):
             validate_time(evidence["verified_at"])
             quote = string_value(evidence["quote_text"])
@@ -247,18 +245,17 @@ def inspect_annotations(
         ]
         if len(records) > 2:
             raise PreparationError("EXACTLY_TWO_ANNOTATORS_REQUIRED")
-        if len(records) < 2:
-            continue
-        states["awaiting_human_label"] -= 1
         checks = [item for item in identity_checks if item["case_id"] == case_id]
         decisions = [item for item in adjudications if item["case_id"] == case_id]
         if len(checks) > 1 or len(decisions) > 1:
             raise PreparationError("DUPLICATE_REVIEW_RECORD")
+        if len(records) < 2:
+            if checks or decisions:
+                raise PreparationError("REVIEW_REQUIRES_TWO_CURRENT_LABELS")
+            continue
+        states["awaiting_human_label"] -= 1
         hashes = {digest(record) for record in records}
         disagree = records[0]["label"] != records[1]["label"]
-        if disagree and not decisions:
-            states["awaiting_adjudication"] += 1
-            continue
         if decisions:
             decision = decisions[0]
             validate_time(decision["recorded_at"])
@@ -269,20 +266,24 @@ def inspect_annotations(
             }:
                 raise PreparationError("ADJUDICATION_INVALID_OR_STALE")
             validate_label(object_value(decision["label"]), case)
-        if not checks:
+        if checks:
+            check = checks[0]
+            validate_time(check["verified_at"])
+            if (
+                {string_value(item) for item in list_value(check["annotator_ids"])}
+                != {record["annotator_id"] for record in records}
+                or {string_value(item) for item in list_value(check["label_sha256s"])}
+                != hashes
+                or check["verified_by"]
+                in {record["annotator_id"] for record in records}
+            ):
+                raise PreparationError("IDENTITY_ATTESTATION_INVALID_OR_STALE")
+        if disagree and not decisions:
+            states["awaiting_adjudication"] += 1
+        elif not checks:
             states["awaiting_identity_verification"] += 1
-            continue
-        check = checks[0]
-        validate_time(check["verified_at"])
-        if (
-            {string_value(item) for item in list_value(check["annotator_ids"])}
-            != {record["annotator_id"] for record in records}
-            or {string_value(item) for item in list_value(check["label_sha256s"])}
-            != hashes
-            or check["verified_by"] in {record["annotator_id"] for record in records}
-        ):
-            raise PreparationError("IDENTITY_ATTESTATION_INVALID_OR_STALE")
-        states["ready_for_manual_review"] += 1
+        else:
+            states["ready_for_manual_review"] += 1
     if any(
         item["case_id"] not in current_cases for item in adjudications + identity_checks
     ):
@@ -319,16 +320,28 @@ def summarize(
 
 
 def protected_roots(extra_roots: list[Path]) -> list[Path]:
-    common = subprocess.run(
-        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+    """Read all current registered worktrees; resolve junctions and fail closed without Git."""
+    try:
+        registry = subprocess.run(
+            ["git", "worktree", "list", "--porcelain", "-z"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError, UnicodeError):
+        raise PreparationError("REPOSITORY_WORKTREE_REGISTRY_UNAVAILABLE") from None
+    worktrees = [
+        Path(field.removeprefix("worktree ")).resolve()
+        for field in registry.split("\0")
+        if field.startswith("worktree ")
+    ]
+    if not worktrees:
+        raise PreparationError("REPOSITORY_WORKTREE_REGISTRY_UNAVAILABLE")
     return [
         ROOT,
-        Path(common).resolve().parent,
+        *worktrees,
         *(path.resolve() for path in extra_roots),
     ]
 
