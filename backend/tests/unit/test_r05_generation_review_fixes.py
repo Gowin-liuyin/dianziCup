@@ -124,3 +124,41 @@ def test_recursive_model_definitions_are_checked_without_loop(monkeypatch):
     client, calls = prepared(monkeypatch, responses=[wire(raw=json.dumps(body))])
     assert client.generate(request(), Recursive).value.model_dump() == body
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("root_extra", ["ignore", "allow", "forbid"])
+@pytest.mark.parametrize("child", [IgnoreTyped, IgnoreDataclass])
+def test_deferred_schema_cannot_skip_effective_extra_policy(monkeypatch, root_extra, child):
+    schema = create_model(
+        "DeferredOverrideRoot",
+        __config__=ConfigDict(extra=root_extra, defer_build=True),
+        nested=(child, ...),
+    )
+    client, calls = prepared(monkeypatch)
+    with pytest.raises(GenerationFailure, match="model_schema_must_forbid_extra"):
+        client.generate(request(), schema)
+    assert calls == []
+
+
+def test_deferred_strict_schema_builds_and_retains_fields(monkeypatch):
+    schema = create_model(
+        "DeferredStrictRoot",
+        __config__=ConfigDict(extra="forbid", defer_build=True),
+        nested=(ForbidTyped, ...),
+    )
+    body = {"nested": {"required": 2}}
+    client, calls = prepared(monkeypatch, responses=[wire(raw=json.dumps(body))])
+    assert client.generate(request(), schema).value.model_dump() == body
+    assert len(calls) == 1
+
+
+def test_unresolved_deferred_schema_fails_before_network(monkeypatch):
+    schema = create_model(
+        "UnresolvedDeferredRoot",
+        __config__=ConfigDict(extra="forbid", defer_build=True),
+        nested=("MissingGenerationResponseType", ...),
+    )
+    client, calls = prepared(monkeypatch)
+    with pytest.raises(GenerationFailure, match="model_schema_must_forbid_extra"):
+        client.generate(request(), schema)
+    assert calls == []

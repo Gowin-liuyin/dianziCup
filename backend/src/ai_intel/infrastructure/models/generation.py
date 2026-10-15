@@ -12,7 +12,15 @@ from datetime import UTC, datetime
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PydanticUserError,
+    SecretStr,
+    ValidationError,
+    field_validator,
+)
 
 from ai_intel.infrastructure.models.clients import enforce_egress_policy
 from ai_intel.infrastructure.models.json_output import strict_json_object
@@ -135,6 +143,11 @@ class GenerationFailure(RuntimeError):
 def require_strict_schema(response_schema: type[BaseModel]) -> None:
     """检查Pydantic实际验证图，包含继承配置、容器和递归引用的定义。"""
 
+    try:
+        if response_schema.model_rebuild(raise_errors=False) is False:
+            raise GenerationFailure("model_schema_must_forbid_extra")
+    except (PydanticUserError, NameError, TypeError, RecursionError):
+        raise GenerationFailure("model_schema_must_forbid_extra") from None
     pending: list[object] = [response_schema.__pydantic_core_schema__]
     checked: set[int] = set()
     while pending:
