@@ -10,6 +10,7 @@ from threading import Barrier
 from uuid import uuid4
 
 import pytest
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Engine
@@ -17,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from ai_intel.domain.access import AccessScope, CrossTenantAccessError, PermissionDeniedError, Role
 from ai_intel.infrastructure.content_store import ContentStore
+from ai_intel.infrastructure.database import MIGRATIONS_DIR
 from ai_intel.infrastructure.outbox import enqueue_job
 from ai_intel.ingestion.cursor_repository import (
     PersistedPageEntry,
@@ -68,7 +70,7 @@ def cursor_engine(isolated_test_database_url: str):
             == engine.url.database
         )
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-            "0012_source_page_fingerprint"
+            ScriptDirectory(str(MIGRATIONS_DIR)).get_current_head()
         )
     try:
         yield engine

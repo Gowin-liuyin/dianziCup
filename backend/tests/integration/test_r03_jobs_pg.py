@@ -23,6 +23,7 @@ from ai_intel.knowledge.models import (
     outbox_events,
 )
 from ai_intel.knowledge.persistence_models import change_events
+from ai_intel.knowledge.revisions import bump_scope_epoch
 from ai_intel.workers.executor import (
     JobExecutionError,
     JobExecutionResult,
@@ -227,7 +228,7 @@ def test_payload_scope_digest_legacy_and_change_reference_are_checked(migrated_e
             insert(change_events).values(
                 change_id=change_id,
                 scope_key="public",
-                epoch=1,
+                epoch=bump_scope_epoch(session, "public", NOW),
                 change_type="fixture",
                 entity_ids=[],
                 payload={"change": "safe"},

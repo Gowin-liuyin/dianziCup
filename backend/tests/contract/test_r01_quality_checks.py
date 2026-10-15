@@ -185,6 +185,7 @@ def test_failed_pytest_case_redacts_connection_in_terminal_and_junit(tmp_path) -
             "--noconftest",
             "-p",
             "conftest",
+            f"--rootdir={probe.parent}",
             str(probe),
             "-o",
             "addopts=",
