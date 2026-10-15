@@ -1,0 +1,915 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="11" skipped="0" tests="31" time="35.827" timestamp="2026-10-16T04:37:35.638905+08:00" hostname="yin"><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_source_relation_polarity_does_not_change_supported_pg_facts[atlas-Untrusted instructions do not enter a model input.-False]" time="1.409" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_source_relation_polarity_does_not_change_supported_pg_facts[atlas-\u4e0d\u53ef\u4fe1\u6307\u4ee4\u4e0d\u4f1a\u8fdb\u5165\u6a21\u578b\u8f93\u5165\u3002-False]" time="0.978" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_source_relation_polarity_does_not_change_supported_pg_facts[atlas-The mechanism is unconfirmed; the model input path is unknown.-False]" time="0.913" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_source_relation_polarity_does_not_change_supported_pg_facts[atlas-\u653b\u51fb\u673a\u5236\u5c1a\u672a\u786e\u8ba4\uff0c\u8f93\u5165\u8def\u5f84\u672a\u77e5\u3002-False]" time="1.162" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_source_relation_polarity_does_not_change_supported_pg_facts[atlas-Untrusted instructions are not sanitized and enter a model input.-True]" time="1.024" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_source_relation_polarity_does_not_change_supported_pg_facts[atlas-Untrusted instructions not only enter a model input but also override instructions.-True]" time="0.877" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_source_relation_polarity_does_not_change_supported_pg_facts[atlas-\u672a\u7ecf\u8fc7\u6ee4\u7684\u5916\u90e8\u6307\u4ee4\u8fdb\u5165\u6a21\u578b\u8f93\u5165\u3002-True]" time="0.825" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_source_relation_polarity_does_not_change_supported_pg_facts[atlas-\u5916\u90e8\u6307\u4ee4\u4e0d\u4ec5\u8fdb\u5165\u6a21\u578b\u8f93\u5165\uff0c\u800c\u4e14\u8986\u76d6\u5df2\u6709\u6307\u4ee4\u3002-True]" time="0.893" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_source_relation_polarity_does_not_change_supported_pg_facts[paper-This paper does not analyze the vulnerability; it analyzes another package.-False]" time="0.837"><failure message="AssertionError: assert ('supported' == 'supported'&#10;  &#10;    supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...ackage.', ...}&#10;  &#10;  Omitting 8 identical items, use -vv to show&#10;  Left contains 1 more item:&#10;  {'limitations': []}&#10;  Use -v to get more diff)">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_44216fd6e273480fbbd5c8fcca811f07+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-704/test_source_relation_polarity_8')
+kind = 'paper'
+statement = 'This paper does not analyze the vulnerability; it analyzes another package.'
+supported = False
+
+    @pytest.mark.parametrize(
+        "kind,statement,supported",
+        [
+            ("atlas", "Untrusted instructions do not enter a model input.", False),
+            ("atlas", "不可信指令不会进入模型输入。", False),
+            ("atlas", "The mechanism is unconfirmed; the model input path is unknown.", False),
+            ("atlas", "攻击机制尚未确认，输入路径未知。", False),
+            ("atlas", "Untrusted instructions are not sanitized and enter a model input.", True),
+            (
+                "atlas",
+                "Untrusted instructions not only enter a model input but also override instructions.",
+                True,
+            ),
+            ("atlas", "未经过滤的外部指令进入模型输入。", True),
+            ("atlas", "外部指令不仅进入模型输入，而且覆盖已有指令。", True),
+            (
+                "paper",
+                "This paper does not analyze the vulnerability; it analyzes another package.",
+                False,
+            ),
+            (
+                "paper",
+                "Analysis of this vulnerability is unconfirmed; the mechanism is unknown.",
+                False,
+            ),
+            ("paper", "本文没有分析该漏洞，仅分析另一个组件。", False),
+            ("paper", "该论文与本事件的分析关系尚未确认。", False),
+            ("paper", "This paper analyzes the vulnerability but does not execute the PoC.", True),
+            (
+                "paper",
+                "This paper not only analyzes the vulnerability but also preserves prerequisites.",
+                True,
+            ),
+            ("paper", "本文分析该漏洞，但没有执行概念验证程序。", True),
+            ("paper", "本文不仅分析该漏洞，也保留攻击前提。", True),
+            (
+                "paper",
+                "This paper analyzes the vulnerability; the analysis is not supported by evidence.",
+                False,
+            ),
+        ],
+    )
+    def test_source_relation_polarity_does_not_change_supported_pg_facts(
+        graph_engine, tmp_path, kind, statement, supported
+    ):
+        event_id = uuid4()
+        sentence = SOURCE_IDENTIFIER + ": " + statement
+        value = (
+            {**ATLAS, "mechanism": sentence}
+            if kind == "atlas"
+            else {**paper_value(graph_engine, tmp_path / "paper"), "support_summary": sentence}
+        )
+        source = publish_fact(graph_engine, tmp_path / "source", event_id, value)
+        publish_event(graph_engine, event_id, [source])
+        snapshot = read_graph(graph_engine, event_id)
+        relation = "mapped_atlas" if kind == "atlas" else "related_paper"
+        assert any(edge.relation_type == relation for edge in snapshot.edges) is supported
+        assert snapshot.rule_version == "r10-graph-1.2.0"
+        with graph_engine.connect() as reader:
+            row = (
+                reader.execute(select(claims).where(claims.c.claim_id == source.record.claim_id.value))
+                .mappings()
+                .one()
+            )
+&gt;       assert row["claim_status"] == "supported" and row["object_json"] == value
+E       AssertionError: assert ('supported' == 'supported'
+E         
+E           supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...ackage.', ...}
+E         
+E         Omitting 8 identical items, use -vv to show
+E         Left contains 1 more item:
+E         {'limitations': []}
+E         Use -v to get more diff)
+
+tests\integration\test_r10_graph_fix2_pg.py:98: AssertionError</failure></testcase><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_source_relation_polarity_does_not_change_supported_pg_facts[paper-Analysis of this vulnerability is unconfirmed; the mechanism is unknown.-False]" time="0.797"><failure message="AssertionError: assert ('supported' == 'supported'&#10;  &#10;    supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...nknown.', ...}&#10;  &#10;  Omitting 8 identical items, use -vv to show&#10;  Left contains 1 more item:&#10;  {'limitations': []}&#10;  Use -v to get more diff)">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_20f642f813554d8ea1de722131ab8502+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-704/test_source_relation_polarity_9')
+kind = 'paper'
+statement = 'Analysis of this vulnerability is unconfirmed; the mechanism is unknown.'
+supported = False
+
+    @pytest.mark.parametrize(
+        "kind,statement,supported",
+        [
+            ("atlas", "Untrusted instructions do not enter a model input.", False),
+            ("atlas", "不可信指令不会进入模型输入。", False),
+            ("atlas", "The mechanism is unconfirmed; the model input path is unknown.", False),
+            ("atlas", "攻击机制尚未确认，输入路径未知。", False),
+            ("atlas", "Untrusted instructions are not sanitized and enter a model input.", True),
+            (
+                "atlas",
+                "Untrusted instructions not only enter a model input but also override instructions.",
+                True,
+            ),
+            ("atlas", "未经过滤的外部指令进入模型输入。", True),
+            ("atlas", "外部指令不仅进入模型输入，而且覆盖已有指令。", True),
+            (
+                "paper",
+                "This paper does not analyze the vulnerability; it analyzes another package.",
+                False,
+            ),
+            (
+                "paper",
+                "Analysis of this vulnerability is unconfirmed; the mechanism is unknown.",
+                False,
+            ),
+            ("paper", "本文没有分析该漏洞，仅分析另一个组件。", False),
+            ("paper", "该论文与本事件的分析关系尚未确认。", False),
+            ("paper", "This paper analyzes the vulnerability but does not execute the PoC.", True),
+            (
+                "paper",
+                "This paper not only analyzes the vulnerability but also preserves prerequisites.",
+                True,
+            ),
+            ("paper", "本文分析该漏洞，但没有执行概念验证程序。", True),
+            ("paper", "本文不仅分析该漏洞，也保留攻击前提。", True),
+            (
+                "paper",
+                "This paper analyzes the vulnerability; the analysis is not supported by evidence.",
+                False,
+            ),
+        ],
+    )
+    def test_source_relation_polarity_does_not_change_supported_pg_facts(
+        graph_engine, tmp_path, kind, statement, supported
+    ):
+        event_id = uuid4()
+        sentence = SOURCE_IDENTIFIER + ": " + statement
+        value = (
+            {**ATLAS, "mechanism": sentence}
+            if kind == "atlas"
+            else {**paper_value(graph_engine, tmp_path / "paper"), "support_summary": sentence}
+        )
+        source = publish_fact(graph_engine, tmp_path / "source", event_id, value)
+        publish_event(graph_engine, event_id, [source])
+        snapshot = read_graph(graph_engine, event_id)
+        relation = "mapped_atlas" if kind == "atlas" else "related_paper"
+        assert any(edge.relation_type == relation for edge in snapshot.edges) is supported
+        assert snapshot.rule_version == "r10-graph-1.2.0"
+        with graph_engine.connect() as reader:
+            row = (
+                reader.execute(select(claims).where(claims.c.claim_id == source.record.claim_id.value))
+                .mappings()
+                .one()
+            )
+&gt;       assert row["claim_status"] == "supported" and row["object_json"] == value
+E       AssertionError: assert ('supported' == 'supported'
+E         
+E           supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...nknown.', ...}
+E         
+E         Omitting 8 identical items, use -vv to show
+E         Left contains 1 more item:
+E         {'limitations': []}
+E         Use -v to get more diff)
+
+tests\integration\test_r10_graph_fix2_pg.py:98: AssertionError</failure></testcase><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_source_relation_polarity_does_not_change_supported_pg_facts[paper-\u672c\u6587\u6ca1\u6709\u5206\u6790\u8be5\u6f0f\u6d1e\uff0c\u4ec5\u5206\u6790\u53e6\u4e00\u4e2a\u7ec4\u4ef6\u3002-False]" time="0.806"><failure message="AssertionError: assert ('supported' == 'supported'&#10;  &#10;    supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...析另一个组件。', ...}&#10;  &#10;  Omitting 8 identical items, use -vv to show&#10;  Left contains 1 more item:&#10;  {'limitations': []}&#10;  Use -v to get more diff)">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_14c99a1fa289487d97b58d70d0e705af+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-704/test_source_relation_polarity_10')
+kind = 'paper', statement = '本文没有分析该漏洞，仅分析另一个组件。', supported = False
+
+    @pytest.mark.parametrize(
+        "kind,statement,supported",
+        [
+            ("atlas", "Untrusted instructions do not enter a model input.", False),
+            ("atlas", "不可信指令不会进入模型输入。", False),
+            ("atlas", "The mechanism is unconfirmed; the model input path is unknown.", False),
+            ("atlas", "攻击机制尚未确认，输入路径未知。", False),
+            ("atlas", "Untrusted instructions are not sanitized and enter a model input.", True),
+            (
+                "atlas",
+                "Untrusted instructions not only enter a model input but also override instructions.",
+                True,
+            ),
+            ("atlas", "未经过滤的外部指令进入模型输入。", True),
+            ("atlas", "外部指令不仅进入模型输入，而且覆盖已有指令。", True),
+            (
+                "paper",
+                "This paper does not analyze the vulnerability; it analyzes another package.",
+                False,
+            ),
+            (
+                "paper",
+                "Analysis of this vulnerability is unconfirmed; the mechanism is unknown.",
+                False,
+            ),
+            ("paper", "本文没有分析该漏洞，仅分析另一个组件。", False),
+            ("paper", "该论文与本事件的分析关系尚未确认。", False),
+            ("paper", "This paper analyzes the vulnerability but does not execute the PoC.", True),
+            (
+                "paper",
+                "This paper not only analyzes the vulnerability but also preserves prerequisites.",
+                True,
+            ),
+            ("paper", "本文分析该漏洞，但没有执行概念验证程序。", True),
+            ("paper", "本文不仅分析该漏洞，也保留攻击前提。", True),
+            (
+                "paper",
+                "This paper analyzes the vulnerability; the analysis is not supported by evidence.",
+                False,
+            ),
+        ],
+    )
+    def test_source_relation_polarity_does_not_change_supported_pg_facts(
+        graph_engine, tmp_path, kind, statement, supported
+    ):
+        event_id = uuid4()
+        sentence = SOURCE_IDENTIFIER + ": " + statement
+        value = (
+            {**ATLAS, "mechanism": sentence}
+            if kind == "atlas"
+            else {**paper_value(graph_engine, tmp_path / "paper"), "support_summary": sentence}
+        )
+        source = publish_fact(graph_engine, tmp_path / "source", event_id, value)
+        publish_event(graph_engine, event_id, [source])
+        snapshot = read_graph(graph_engine, event_id)
+        relation = "mapped_atlas" if kind == "atlas" else "related_paper"
+        assert any(edge.relation_type == relation for edge in snapshot.edges) is supported
+        assert snapshot.rule_version == "r10-graph-1.2.0"
+        with graph_engine.connect() as reader:
+            row = (
+                reader.execute(select(claims).where(claims.c.claim_id == source.record.claim_id.value))
+                .mappings()
+                .one()
+            )
+&gt;       assert row["claim_status"] == "supported" and row["object_json"] == value
+E       AssertionError: assert ('supported' == 'supported'
+E         
+E           supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...析另一个组件。', ...}
+E         
+E         Omitting 8 identical items, use -vv to show
+E         Left contains 1 more item:
+E         {'limitations': []}
+E         Use -v to get more diff)
+
+tests\integration\test_r10_graph_fix2_pg.py:98: AssertionError</failure></testcase><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_source_relation_polarity_does_not_change_supported_pg_facts[paper-\u8be5\u8bba\u6587\u4e0e\u672c\u4e8b\u4ef6\u7684\u5206\u6790\u5173\u7cfb\u5c1a\u672a\u786e\u8ba4\u3002-False]" time="1.033"><failure message="AssertionError: assert ('supported' == 'supported'&#10;  &#10;    supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...关系尚未确认。', ...}&#10;  &#10;  Omitting 8 identical items, use -vv to show&#10;  Left contains 1 more item:&#10;  {'limitations': []}&#10;  Use -v to get more diff)">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_a417d74a88d1483cb5a44cedfbc6c0b4+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-704/test_source_relation_polarity_11')
+kind = 'paper', statement = '该论文与本事件的分析关系尚未确认。', supported = False
+
+    @pytest.mark.parametrize(
+        "kind,statement,supported",
+        [
+            ("atlas", "Untrusted instructions do not enter a model input.", False),
+            ("atlas", "不可信指令不会进入模型输入。", False),
+            ("atlas", "The mechanism is unconfirmed; the model input path is unknown.", False),
+            ("atlas", "攻击机制尚未确认，输入路径未知。", False),
+            ("atlas", "Untrusted instructions are not sanitized and enter a model input.", True),
+            (
+                "atlas",
+                "Untrusted instructions not only enter a model input but also override instructions.",
+                True,
+            ),
+            ("atlas", "未经过滤的外部指令进入模型输入。", True),
+            ("atlas", "外部指令不仅进入模型输入，而且覆盖已有指令。", True),
+            (
+                "paper",
+                "This paper does not analyze the vulnerability; it analyzes another package.",
+                False,
+            ),
+            (
+                "paper",
+                "Analysis of this vulnerability is unconfirmed; the mechanism is unknown.",
+                False,
+            ),
+            ("paper", "本文没有分析该漏洞，仅分析另一个组件。", False),
+            ("paper", "该论文与本事件的分析关系尚未确认。", False),
+            ("paper", "This paper analyzes the vulnerability but does not execute the PoC.", True),
+            (
+                "paper",
+                "This paper not only analyzes the vulnerability but also preserves prerequisites.",
+                True,
+            ),
+            ("paper", "本文分析该漏洞，但没有执行概念验证程序。", True),
+            ("paper", "本文不仅分析该漏洞，也保留攻击前提。", True),
+            (
+                "paper",
+                "This paper analyzes the vulnerability; the analysis is not supported by evidence.",
+                False,
+            ),
+        ],
+    )
+    def test_source_relation_polarity_does_not_change_supported_pg_facts(
+        graph_engine, tmp_path, kind, statement, supported
+    ):
+        event_id = uuid4()
+        sentence = SOURCE_IDENTIFIER + ": " + statement
+        value = (
+            {**ATLAS, "mechanism": sentence}
+            if kind == "atlas"
+            else {**paper_value(graph_engine, tmp_path / "paper"), "support_summary": sentence}
+        )
+        source = publish_fact(graph_engine, tmp_path / "source", event_id, value)
+        publish_event(graph_engine, event_id, [source])
+        snapshot = read_graph(graph_engine, event_id)
+        relation = "mapped_atlas" if kind == "atlas" else "related_paper"
+        assert any(edge.relation_type == relation for edge in snapshot.edges) is supported
+        assert snapshot.rule_version == "r10-graph-1.2.0"
+        with graph_engine.connect() as reader:
+            row = (
+                reader.execute(select(claims).where(claims.c.claim_id == source.record.claim_id.value))
+                .mappings()
+                .one()
+            )
+&gt;       assert row["claim_status"] == "supported" and row["object_json"] == value
+E       AssertionError: assert ('supported' == 'supported'
+E         
+E           supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...关系尚未确认。', ...}
+E         
+E         Omitting 8 identical items, use -vv to show
+E         Left contains 1 more item:
+E         {'limitations': []}
+E         Use -v to get more diff)
+
+tests\integration\test_r10_graph_fix2_pg.py:98: AssertionError</failure></testcase><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_source_relation_polarity_does_not_change_supported_pg_facts[paper-This paper analyzes the vulnerability but does not execute the PoC.-True]" time="0.876"><failure message="AssertionError: assert ('supported' == 'supported'&#10;  &#10;    supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...he PoC.', ...}&#10;  &#10;  Omitting 8 identical items, use -vv to show&#10;  Left contains 1 more item:&#10;  {'limitations': []}&#10;  Use -v to get more diff)">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_a92fe7966096432fafddde2be2bbb119+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-704/test_source_relation_polarity_12')
+kind = 'paper'
+statement = 'This paper analyzes the vulnerability but does not execute the PoC.'
+supported = True
+
+    @pytest.mark.parametrize(
+        "kind,statement,supported",
+        [
+            ("atlas", "Untrusted instructions do not enter a model input.", False),
+            ("atlas", "不可信指令不会进入模型输入。", False),
+            ("atlas", "The mechanism is unconfirmed; the model input path is unknown.", False),
+            ("atlas", "攻击机制尚未确认，输入路径未知。", False),
+            ("atlas", "Untrusted instructions are not sanitized and enter a model input.", True),
+            (
+                "atlas",
+                "Untrusted instructions not only enter a model input but also override instructions.",
+                True,
+            ),
+            ("atlas", "未经过滤的外部指令进入模型输入。", True),
+            ("atlas", "外部指令不仅进入模型输入，而且覆盖已有指令。", True),
+            (
+                "paper",
+                "This paper does not analyze the vulnerability; it analyzes another package.",
+                False,
+            ),
+            (
+                "paper",
+                "Analysis of this vulnerability is unconfirmed; the mechanism is unknown.",
+                False,
+            ),
+            ("paper", "本文没有分析该漏洞，仅分析另一个组件。", False),
+            ("paper", "该论文与本事件的分析关系尚未确认。", False),
+            ("paper", "This paper analyzes the vulnerability but does not execute the PoC.", True),
+            (
+                "paper",
+                "This paper not only analyzes the vulnerability but also preserves prerequisites.",
+                True,
+            ),
+            ("paper", "本文分析该漏洞，但没有执行概念验证程序。", True),
+            ("paper", "本文不仅分析该漏洞，也保留攻击前提。", True),
+            (
+                "paper",
+                "This paper analyzes the vulnerability; the analysis is not supported by evidence.",
+                False,
+            ),
+        ],
+    )
+    def test_source_relation_polarity_does_not_change_supported_pg_facts(
+        graph_engine, tmp_path, kind, statement, supported
+    ):
+        event_id = uuid4()
+        sentence = SOURCE_IDENTIFIER + ": " + statement
+        value = (
+            {**ATLAS, "mechanism": sentence}
+            if kind == "atlas"
+            else {**paper_value(graph_engine, tmp_path / "paper"), "support_summary": sentence}
+        )
+        source = publish_fact(graph_engine, tmp_path / "source", event_id, value)
+        publish_event(graph_engine, event_id, [source])
+        snapshot = read_graph(graph_engine, event_id)
+        relation = "mapped_atlas" if kind == "atlas" else "related_paper"
+        assert any(edge.relation_type == relation for edge in snapshot.edges) is supported
+        assert snapshot.rule_version == "r10-graph-1.2.0"
+        with graph_engine.connect() as reader:
+            row = (
+                reader.execute(select(claims).where(claims.c.claim_id == source.record.claim_id.value))
+                .mappings()
+                .one()
+            )
+&gt;       assert row["claim_status"] == "supported" and row["object_json"] == value
+E       AssertionError: assert ('supported' == 'supported'
+E         
+E           supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...he PoC.', ...}
+E         
+E         Omitting 8 identical items, use -vv to show
+E         Left contains 1 more item:
+E         {'limitations': []}
+E         Use -v to get more diff)
+
+tests\integration\test_r10_graph_fix2_pg.py:98: AssertionError</failure></testcase><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_source_relation_polarity_does_not_change_supported_pg_facts[paper-This paper not only analyzes the vulnerability but also preserves prerequisites.-True]" time="0.998"><failure message="AssertionError: assert ('supported' == 'supported'&#10;  &#10;    supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...isites.', ...}&#10;  &#10;  Omitting 8 identical items, use -vv to show&#10;  Left contains 1 more item:&#10;  {'limitations': []}&#10;  Use -v to get more diff)">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_a3b644f825b3494e94f41b9fa2116da7+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-704/test_source_relation_polarity_13')
+kind = 'paper'
+statement = 'This paper not only analyzes the vulnerability but also preserves prerequisites.'
+supported = True
+
+    @pytest.mark.parametrize(
+        "kind,statement,supported",
+        [
+            ("atlas", "Untrusted instructions do not enter a model input.", False),
+            ("atlas", "不可信指令不会进入模型输入。", False),
+            ("atlas", "The mechanism is unconfirmed; the model input path is unknown.", False),
+            ("atlas", "攻击机制尚未确认，输入路径未知。", False),
+            ("atlas", "Untrusted instructions are not sanitized and enter a model input.", True),
+            (
+                "atlas",
+                "Untrusted instructions not only enter a model input but also override instructions.",
+                True,
+            ),
+            ("atlas", "未经过滤的外部指令进入模型输入。", True),
+            ("atlas", "外部指令不仅进入模型输入，而且覆盖已有指令。", True),
+            (
+                "paper",
+                "This paper does not analyze the vulnerability; it analyzes another package.",
+                False,
+            ),
+            (
+                "paper",
+                "Analysis of this vulnerability is unconfirmed; the mechanism is unknown.",
+                False,
+            ),
+            ("paper", "本文没有分析该漏洞，仅分析另一个组件。", False),
+            ("paper", "该论文与本事件的分析关系尚未确认。", False),
+            ("paper", "This paper analyzes the vulnerability but does not execute the PoC.", True),
+            (
+                "paper",
+                "This paper not only analyzes the vulnerability but also preserves prerequisites.",
+                True,
+            ),
+            ("paper", "本文分析该漏洞，但没有执行概念验证程序。", True),
+            ("paper", "本文不仅分析该漏洞，也保留攻击前提。", True),
+            (
+                "paper",
+                "This paper analyzes the vulnerability; the analysis is not supported by evidence.",
+                False,
+            ),
+        ],
+    )
+    def test_source_relation_polarity_does_not_change_supported_pg_facts(
+        graph_engine, tmp_path, kind, statement, supported
+    ):
+        event_id = uuid4()
+        sentence = SOURCE_IDENTIFIER + ": " + statement
+        value = (
+            {**ATLAS, "mechanism": sentence}
+            if kind == "atlas"
+            else {**paper_value(graph_engine, tmp_path / "paper"), "support_summary": sentence}
+        )
+        source = publish_fact(graph_engine, tmp_path / "source", event_id, value)
+        publish_event(graph_engine, event_id, [source])
+        snapshot = read_graph(graph_engine, event_id)
+        relation = "mapped_atlas" if kind == "atlas" else "related_paper"
+        assert any(edge.relation_type == relation for edge in snapshot.edges) is supported
+        assert snapshot.rule_version == "r10-graph-1.2.0"
+        with graph_engine.connect() as reader:
+            row = (
+                reader.execute(select(claims).where(claims.c.claim_id == source.record.claim_id.value))
+                .mappings()
+                .one()
+            )
+&gt;       assert row["claim_status"] == "supported" and row["object_json"] == value
+E       AssertionError: assert ('supported' == 'supported'
+E         
+E           supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...isites.', ...}
+E         
+E         Omitting 8 identical items, use -vv to show
+E         Left contains 1 more item:
+E         {'limitations': []}
+E         Use -v to get more diff)
+
+tests\integration\test_r10_graph_fix2_pg.py:98: AssertionError</failure></testcase><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_source_relation_polarity_does_not_change_supported_pg_facts[paper-\u672c\u6587\u5206\u6790\u8be5\u6f0f\u6d1e\uff0c\u4f46\u6ca1\u6709\u6267\u884c\u6982\u5ff5\u9a8c\u8bc1\u7a0b\u5e8f\u3002-True]" time="0.826"><failure message="AssertionError: assert ('supported' == 'supported'&#10;  &#10;    supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...概念验证程序。', ...}&#10;  &#10;  Omitting 8 identical items, use -vv to show&#10;  Left contains 1 more item:&#10;  {'limitations': []}&#10;  Use -v to get more diff)">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_436dc8e45cd14d7ca73d6f2b9f7b1d61+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-704/test_source_relation_polarity_14')
+kind = 'paper', statement = '本文分析该漏洞，但没有执行概念验证程序。', supported = True
+
+    @pytest.mark.parametrize(
+        "kind,statement,supported",
+        [
+            ("atlas", "Untrusted instructions do not enter a model input.", False),
+            ("atlas", "不可信指令不会进入模型输入。", False),
+            ("atlas", "The mechanism is unconfirmed; the model input path is unknown.", False),
+            ("atlas", "攻击机制尚未确认，输入路径未知。", False),
+            ("atlas", "Untrusted instructions are not sanitized and enter a model input.", True),
+            (
+                "atlas",
+                "Untrusted instructions not only enter a model input but also override instructions.",
+                True,
+            ),
+            ("atlas", "未经过滤的外部指令进入模型输入。", True),
+            ("atlas", "外部指令不仅进入模型输入，而且覆盖已有指令。", True),
+            (
+                "paper",
+                "This paper does not analyze the vulnerability; it analyzes another package.",
+                False,
+            ),
+            (
+                "paper",
+                "Analysis of this vulnerability is unconfirmed; the mechanism is unknown.",
+                False,
+            ),
+            ("paper", "本文没有分析该漏洞，仅分析另一个组件。", False),
+            ("paper", "该论文与本事件的分析关系尚未确认。", False),
+            ("paper", "This paper analyzes the vulnerability but does not execute the PoC.", True),
+            (
+                "paper",
+                "This paper not only analyzes the vulnerability but also preserves prerequisites.",
+                True,
+            ),
+            ("paper", "本文分析该漏洞，但没有执行概念验证程序。", True),
+            ("paper", "本文不仅分析该漏洞，也保留攻击前提。", True),
+            (
+                "paper",
+                "This paper analyzes the vulnerability; the analysis is not supported by evidence.",
+                False,
+            ),
+        ],
+    )
+    def test_source_relation_polarity_does_not_change_supported_pg_facts(
+        graph_engine, tmp_path, kind, statement, supported
+    ):
+        event_id = uuid4()
+        sentence = SOURCE_IDENTIFIER + ": " + statement
+        value = (
+            {**ATLAS, "mechanism": sentence}
+            if kind == "atlas"
+            else {**paper_value(graph_engine, tmp_path / "paper"), "support_summary": sentence}
+        )
+        source = publish_fact(graph_engine, tmp_path / "source", event_id, value)
+        publish_event(graph_engine, event_id, [source])
+        snapshot = read_graph(graph_engine, event_id)
+        relation = "mapped_atlas" if kind == "atlas" else "related_paper"
+        assert any(edge.relation_type == relation for edge in snapshot.edges) is supported
+        assert snapshot.rule_version == "r10-graph-1.2.0"
+        with graph_engine.connect() as reader:
+            row = (
+                reader.execute(select(claims).where(claims.c.claim_id == source.record.claim_id.value))
+                .mappings()
+                .one()
+            )
+&gt;       assert row["claim_status"] == "supported" and row["object_json"] == value
+E       AssertionError: assert ('supported' == 'supported'
+E         
+E           supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...概念验证程序。', ...}
+E         
+E         Omitting 8 identical items, use -vv to show
+E         Left contains 1 more item:
+E         {'limitations': []}
+E         Use -v to get more diff)
+
+tests\integration\test_r10_graph_fix2_pg.py:98: AssertionError</failure></testcase><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_source_relation_polarity_does_not_change_supported_pg_facts[paper-\u672c\u6587\u4e0d\u4ec5\u5206\u6790\u8be5\u6f0f\u6d1e\uff0c\u4e5f\u4fdd\u7559\u653b\u51fb\u524d\u63d0\u3002-True]" time="0.975"><failure message="AssertionError: assert ('supported' == 'supported'&#10;  &#10;    supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...保留攻击前提。', ...}&#10;  &#10;  Omitting 8 identical items, use -vv to show&#10;  Left contains 1 more item:&#10;  {'limitations': []}&#10;  Use -v to get more diff)">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_1cebca7395db4a0eaad92745c433c782+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-704/test_source_relation_polarity_15')
+kind = 'paper', statement = '本文不仅分析该漏洞，也保留攻击前提。', supported = True
+
+    @pytest.mark.parametrize(
+        "kind,statement,supported",
+        [
+            ("atlas", "Untrusted instructions do not enter a model input.", False),
+            ("atlas", "不可信指令不会进入模型输入。", False),
+            ("atlas", "The mechanism is unconfirmed; the model input path is unknown.", False),
+            ("atlas", "攻击机制尚未确认，输入路径未知。", False),
+            ("atlas", "Untrusted instructions are not sanitized and enter a model input.", True),
+            (
+                "atlas",
+                "Untrusted instructions not only enter a model input but also override instructions.",
+                True,
+            ),
+            ("atlas", "未经过滤的外部指令进入模型输入。", True),
+            ("atlas", "外部指令不仅进入模型输入，而且覆盖已有指令。", True),
+            (
+                "paper",
+                "This paper does not analyze the vulnerability; it analyzes another package.",
+                False,
+            ),
+            (
+                "paper",
+                "Analysis of this vulnerability is unconfirmed; the mechanism is unknown.",
+                False,
+            ),
+            ("paper", "本文没有分析该漏洞，仅分析另一个组件。", False),
+            ("paper", "该论文与本事件的分析关系尚未确认。", False),
+            ("paper", "This paper analyzes the vulnerability but does not execute the PoC.", True),
+            (
+                "paper",
+                "This paper not only analyzes the vulnerability but also preserves prerequisites.",
+                True,
+            ),
+            ("paper", "本文分析该漏洞，但没有执行概念验证程序。", True),
+            ("paper", "本文不仅分析该漏洞，也保留攻击前提。", True),
+            (
+                "paper",
+                "This paper analyzes the vulnerability; the analysis is not supported by evidence.",
+                False,
+            ),
+        ],
+    )
+    def test_source_relation_polarity_does_not_change_supported_pg_facts(
+        graph_engine, tmp_path, kind, statement, supported
+    ):
+        event_id = uuid4()
+        sentence = SOURCE_IDENTIFIER + ": " + statement
+        value = (
+            {**ATLAS, "mechanism": sentence}
+            if kind == "atlas"
+            else {**paper_value(graph_engine, tmp_path / "paper"), "support_summary": sentence}
+        )
+        source = publish_fact(graph_engine, tmp_path / "source", event_id, value)
+        publish_event(graph_engine, event_id, [source])
+        snapshot = read_graph(graph_engine, event_id)
+        relation = "mapped_atlas" if kind == "atlas" else "related_paper"
+        assert any(edge.relation_type == relation for edge in snapshot.edges) is supported
+        assert snapshot.rule_version == "r10-graph-1.2.0"
+        with graph_engine.connect() as reader:
+            row = (
+                reader.execute(select(claims).where(claims.c.claim_id == source.record.claim_id.value))
+                .mappings()
+                .one()
+            )
+&gt;       assert row["claim_status"] == "supported" and row["object_json"] == value
+E       AssertionError: assert ('supported' == 'supported'
+E         
+E           supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...保留攻击前提。', ...}
+E         
+E         Omitting 8 identical items, use -vv to show
+E         Left contains 1 more item:
+E         {'limitations': []}
+E         Use -v to get more diff)
+
+tests\integration\test_r10_graph_fix2_pg.py:98: AssertionError</failure></testcase><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_source_relation_polarity_does_not_change_supported_pg_facts[paper-This paper analyzes the vulnerability; the analysis is not supported by evidence.-False]" time="0.851"><failure message="AssertionError: assert ('supported' == 'supported'&#10;  &#10;    supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...idence.', ...}&#10;  &#10;  Omitting 8 identical items, use -vv to show&#10;  Left contains 1 more item:&#10;  {'limitations': []}&#10;  Use -v to get more diff)">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_a19eaa87c8944976aa2c5586145610c8+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-704/test_source_relation_polarity_16')
+kind = 'paper'
+statement = 'This paper analyzes the vulnerability; the analysis is not supported by evidence.'
+supported = False
+
+    @pytest.mark.parametrize(
+        "kind,statement,supported",
+        [
+            ("atlas", "Untrusted instructions do not enter a model input.", False),
+            ("atlas", "不可信指令不会进入模型输入。", False),
+            ("atlas", "The mechanism is unconfirmed; the model input path is unknown.", False),
+            ("atlas", "攻击机制尚未确认，输入路径未知。", False),
+            ("atlas", "Untrusted instructions are not sanitized and enter a model input.", True),
+            (
+                "atlas",
+                "Untrusted instructions not only enter a model input but also override instructions.",
+                True,
+            ),
+            ("atlas", "未经过滤的外部指令进入模型输入。", True),
+            ("atlas", "外部指令不仅进入模型输入，而且覆盖已有指令。", True),
+            (
+                "paper",
+                "This paper does not analyze the vulnerability; it analyzes another package.",
+                False,
+            ),
+            (
+                "paper",
+                "Analysis of this vulnerability is unconfirmed; the mechanism is unknown.",
+                False,
+            ),
+            ("paper", "本文没有分析该漏洞，仅分析另一个组件。", False),
+            ("paper", "该论文与本事件的分析关系尚未确认。", False),
+            ("paper", "This paper analyzes the vulnerability but does not execute the PoC.", True),
+            (
+                "paper",
+                "This paper not only analyzes the vulnerability but also preserves prerequisites.",
+                True,
+            ),
+            ("paper", "本文分析该漏洞，但没有执行概念验证程序。", True),
+            ("paper", "本文不仅分析该漏洞，也保留攻击前提。", True),
+            (
+                "paper",
+                "This paper analyzes the vulnerability; the analysis is not supported by evidence.",
+                False,
+            ),
+        ],
+    )
+    def test_source_relation_polarity_does_not_change_supported_pg_facts(
+        graph_engine, tmp_path, kind, statement, supported
+    ):
+        event_id = uuid4()
+        sentence = SOURCE_IDENTIFIER + ": " + statement
+        value = (
+            {**ATLAS, "mechanism": sentence}
+            if kind == "atlas"
+            else {**paper_value(graph_engine, tmp_path / "paper"), "support_summary": sentence}
+        )
+        source = publish_fact(graph_engine, tmp_path / "source", event_id, value)
+        publish_event(graph_engine, event_id, [source])
+        snapshot = read_graph(graph_engine, event_id)
+        relation = "mapped_atlas" if kind == "atlas" else "related_paper"
+        assert any(edge.relation_type == relation for edge in snapshot.edges) is supported
+        assert snapshot.rule_version == "r10-graph-1.2.0"
+        with graph_engine.connect() as reader:
+            row = (
+                reader.execute(select(claims).where(claims.c.claim_id == source.record.claim_id.value))
+                .mappings()
+                .one()
+            )
+&gt;       assert row["claim_status"] == "supported" and row["object_json"] == value
+E       AssertionError: assert ('supported' == 'supported'
+E         
+E           supported and {'kind': 'lit...nalysis', ...} == {'kind': 'lit...idence.', ...}
+E         
+E         Omitting 8 identical items, use -vv to show
+E         Left contains 1 more item:
+E         {'limitations': []}
+E         Use -v to get more diff)
+
+tests\integration\test_r10_graph_fix2_pg.py:98: AssertionError</failure></testcase><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_non_candidate_claim_writer_cannot_delay_visible_graph[False-viewer-tenant-other-False]" time="1.219" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_non_candidate_claim_writer_cannot_delay_visible_graph[False-analyst-tenant-other-False]" time="1.279" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_non_candidate_claim_writer_cannot_delay_visible_graph[False-analyst-tenant-owner-False]" time="1.311" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_non_candidate_claim_writer_cannot_delay_visible_graph[False-analyst-public-None-False]" time="1.032" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_non_candidate_claim_writer_cannot_delay_visible_graph[True-analyst-tenant-other-False]" time="1.053" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_non_candidate_claim_writer_cannot_delay_visible_graph[True-analyst-public-None-False]" time="1.214" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_non_candidate_claim_writer_cannot_delay_visible_graph[False-viewer-tenant-other-True]" time="1.344" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_non_candidate_claim_writer_cannot_delay_visible_graph[True-analyst-tenant-other-True]" time="1.437" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_new_visible_input_after_rr_is_found_by_complete_fresh_read[False-claim]" time="1.934" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_new_visible_input_after_rr_is_found_by_complete_fresh_read[False-evidence]" time="1.554"><failure message="assert (True and 503 == 409)&#10; +  where 503 = &lt;Response [503 Service Unavailable]&gt;.status_code">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_c729b899b3c94ce5ad0577b067e4e7f8+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-704/test_new_visible_input_after_r1')
+register_sensitive_failure_value = &lt;function register_sensitive_failure_value.&lt;locals&gt;.register at 0x000001B4001E4400&gt;
+addition = 'evidence', bump_epoch = False
+
+    @pytest.mark.parametrize("addition", ["claim", "evidence", "association"])
+    @pytest.mark.parametrize("bump_epoch", [False, True])
+    def test_new_visible_input_after_rr_is_found_by_complete_fresh_read(
+        graph_engine, tmp_path, register_sensitive_failure_value, addition, bump_epoch
+    ):
+        event_id = uuid4()
+        source = publish_fact(graph_engine, tmp_path / "source", event_id, VERSION)
+        publish_event(graph_engine, event_id, [source])
+        extra = (
+            publish_fact(graph_engine, tmp_path / "extra", event_id, VERSION)
+            if addition == "association"
+            else None
+        )
+        before = read_graph(graph_engine, event_id)
+        assert before.edges
+        client, *_ = client_for(graph_engine, register_sensitive_failure_value)
+        inserted = False
+    
+        def mutate(connection, cursor, statement, parameters, context, executemany):
+            nonlocal inserted
+            if inserted or not statement.lstrip().startswith("SELECT events."):
+                return
+            inserted = True
+            with Session(graph_engine) as writer, writer.begin():
+                previous_epoch = writer.scalar(
+                    text("SELECT epoch FROM scope_epochs WHERE scope_key='public'")
+                )
+                if addition == "claim":
+                    record = ClaimRecord.model_validate(
+                        source.record.model_copy(
+                            update={
+                                "claim_id": Identifier(value=str(uuid4())),
+                                "asserted_at": NOW + timedelta(seconds=1),
+                            }
+                        ).model_dump()
+                    )
+                    KnowledgeRepository(writer, publisher_scope(source.record.scope)).publish(
+                        "fixture-new-visible-" + uuid4().hex,
+                        source.record.scope,
+                        (source.model_copy(update={"record": record}),),
+                        created_at=NOW,
+                    )
+                elif addition == "evidence":
+                    span = (
+                        writer.execute(
+                            select(evidence).where(
+                                evidence.c.evidence_id == source.evidence_links[0].evidence_id.value
+                            )
+                        )
+                        .mappings()
+                        .one()
+                    )
+                    saved = attach_evidence_span(
+                        writer.connection(),
+                        span["revision_id"],
+                        span["start_offset"],
+                        span["end_offset"],
+                        span["locator"],
+                        span["quote"],
+                        True,
+                        span["visibility"],
+                        span["tenant_id"],
+                        NOW,
+                        block_id=span["block_id"],
+                        verified_at=NOW,
+                    )
+                    assert saved != span["evidence_id"]
+                    writer.execute(
+                        claim_evidence.insert().values(
+                            claim_id=source.record.claim_id.value,
+                            evidence_id=saved,
+                            support_kind="supports",
+                            validation_status="validated",
+                        )
+                    )
+                else:
+                    writer.execute(
+                        event_documents.insert().values(
+                            event_id=str(event_id),
+                            revision_id=extra.revision_id.value,
+                            active=True,
+                            associated_at=NOW,
+                        )
+                    )
+                writer.execute(
+                    text("UPDATE scope_epochs SET epoch=:epoch WHERE scope_key='public'"),
+                    {"epoch": previous_epoch + int(bump_epoch)},
+                )
+    
+        event.listen(graph_engine, "after_cursor_execute", mutate)
+        try:
+            response = client.get(f"/v1/events/{event_id}/graph")
+&gt;           assert inserted and response.status_code == 409
+E           assert (True and 503 == 409)
+E            +  where 503 = &lt;Response [503 Service Unavailable]&gt;.status_code
+
+tests\integration\test_r10_graph_fix2_pg.py:288: AssertionError</failure></testcase><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_new_visible_input_after_rr_is_found_by_complete_fresh_read[False-association]" time="1.501" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_new_visible_input_after_rr_is_found_by_complete_fresh_read[True-claim]" time="1.398" /><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_new_visible_input_after_rr_is_found_by_complete_fresh_read[True-evidence]" time="1.083"><failure message="assert (True and 503 == 409)&#10; +  where 503 = &lt;Response [503 Service Unavailable]&gt;.status_code">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_bcb7dbc75c6d4d49bc5a9fe7703e33c8+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-704/test_new_visible_input_after_r4')
+register_sensitive_failure_value = &lt;function register_sensitive_failure_value.&lt;locals&gt;.register at 0x000001B400B15D00&gt;
+addition = 'evidence', bump_epoch = True
+
+    @pytest.mark.parametrize("addition", ["claim", "evidence", "association"])
+    @pytest.mark.parametrize("bump_epoch", [False, True])
+    def test_new_visible_input_after_rr_is_found_by_complete_fresh_read(
+        graph_engine, tmp_path, register_sensitive_failure_value, addition, bump_epoch
+    ):
+        event_id = uuid4()
+        source = publish_fact(graph_engine, tmp_path / "source", event_id, VERSION)
+        publish_event(graph_engine, event_id, [source])
+        extra = (
+            publish_fact(graph_engine, tmp_path / "extra", event_id, VERSION)
+            if addition == "association"
+            else None
+        )
+        before = read_graph(graph_engine, event_id)
+        assert before.edges
+        client, *_ = client_for(graph_engine, register_sensitive_failure_value)
+        inserted = False
+    
+        def mutate(connection, cursor, statement, parameters, context, executemany):
+            nonlocal inserted
+            if inserted or not statement.lstrip().startswith("SELECT events."):
+                return
+            inserted = True
+            with Session(graph_engine) as writer, writer.begin():
+                previous_epoch = writer.scalar(
+                    text("SELECT epoch FROM scope_epochs WHERE scope_key='public'")
+                )
+                if addition == "claim":
+                    record = ClaimRecord.model_validate(
+                        source.record.model_copy(
+                            update={
+                                "claim_id": Identifier(value=str(uuid4())),
+                                "asserted_at": NOW + timedelta(seconds=1),
+                            }
+                        ).model_dump()
+                    )
+                    KnowledgeRepository(writer, publisher_scope(source.record.scope)).publish(
+                        "fixture-new-visible-" + uuid4().hex,
+                        source.record.scope,
+                        (source.model_copy(update={"record": record}),),
+                        created_at=NOW,
+                    )
+                elif addition == "evidence":
+                    span = (
+                        writer.execute(
+                            select(evidence).where(
+                                evidence.c.evidence_id == source.evidence_links[0].evidence_id.value
+                            )
+                        )
+                        .mappings()
+                        .one()
+                    )
+                    saved = attach_evidence_span(
+                        writer.connection(),
+                        span["revision_id"],
+                        span["start_offset"],
+                        span["end_offset"],
+                        span["locator"],
+                        span["quote"],
+                        True,
+                        span["visibility"],
+                        span["tenant_id"],
+                        NOW,
+                        block_id=span["block_id"],
+                        verified_at=NOW,
+                    )
+                    assert saved != span["evidence_id"]
+                    writer.execute(
+                        claim_evidence.insert().values(
+                            claim_id=source.record.claim_id.value,
+                            evidence_id=saved,
+                            support_kind="supports",
+                            validation_status="validated",
+                        )
+                    )
+                else:
+                    writer.execute(
+                        event_documents.insert().values(
+                            event_id=str(event_id),
+                            revision_id=extra.revision_id.value,
+                            active=True,
+                            associated_at=NOW,
+                        )
+                    )
+                writer.execute(
+                    text("UPDATE scope_epochs SET epoch=:epoch WHERE scope_key='public'"),
+                    {"epoch": previous_epoch + int(bump_epoch)},
+                )
+    
+        event.listen(graph_engine, "after_cursor_execute", mutate)
+        try:
+            response = client.get(f"/v1/events/{event_id}/graph")
+&gt;           assert inserted and response.status_code == 409
+E           assert (True and 503 == 409)
+E            +  where 503 = &lt;Response [503 Service Unavailable]&gt;.status_code
+
+tests\integration\test_r10_graph_fix2_pg.py:288: AssertionError</failure></testcase><testcase classname="tests.integration.test_r10_graph_fix2_pg" name="test_new_visible_input_after_rr_is_found_by_complete_fresh_read[True-association]" time="1.385" /></testsuite></testsuites>

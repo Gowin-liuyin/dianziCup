@@ -1,0 +1,1902 @@
+diff --git a/backend/src/ai_intel/api/graph_routes.py b/backend/src/ai_intel/api/graph_routes.py
+index e9b64ba..6912771 100644
+--- a/backend/src/ai_intel/api/graph_routes.py
++++ b/backend/src/ai_intel/api/graph_routes.py
+@@ -1,16 +1,18 @@
+ """证据图只读路由工厂；会话、隔离事务与固定错误沿用知识 API 的边界。"""
+ 
+ from collections.abc import Callable
++from datetime import UTC, datetime
+ from typing import Annotated
+ from uuid import UUID
+ 
+ from fastapi import APIRouter, Query, Request
+-from fastapi.responses import Response
++from fastapi.responses import JSONResponse, Response
+ from sqlalchemy.engine import Engine
+ from sqlalchemy.exc import SQLAlchemyError
+ from sqlalchemy.orm import Session
+ 
+ from ai_intel.api.auth_routes import SESSION_COOKIE_NAME
++from ai_intel.api.auth_state import lock_authenticated_scope
+ from ai_intel.api.authentication import (
+     AuthenticationSessionService,
+     InvalidCredentialsError,
+@@ -18,7 +20,11 @@ from ai_intel.api.authentication import (
+ )
+ from ai_intel.api.problems import problem_response
+ from ai_intel.domain.access import READ_PUBLIC, CrossTenantAccessError, PermissionDeniedError
+-from ai_intel.knowledge.evidence_graph import EvidenceGraphReadService, GraphSnapshot
++from ai_intel.knowledge.evidence_graph import (
++    EvidenceGraphReadService,
++    GraphSnapshot,
++    GraphSnapshotChangedError,
++)
+ 
+ 
+ def build_graph_router(
+@@ -53,9 +59,28 @@ def build_graph_router(
+                 )
+             with Session(engine) as session:
+                 session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+-                return EvidenceGraphReadService(session, scope).event_graph(
+-                    event_id, max_nodes, max_edges
+-                )
++                reader = EvidenceGraphReadService(session, scope)
++                epochs = reader.read_scope_epochs()
++                candidate = reader.event_graph(event_id, max_nodes, max_edges)
++                candidate_input = reader.input_sha256
++            with Session(engine) as session, session.begin():
++                session.connection(execution_options={"isolation_level": "READ COMMITTED"})
++                current = lock_authenticated_scope(session.connection(), token, datetime.now(UTC))
++                if current != scope:
++                    raise PermissionDeniedError("graph authorization changed")
++                current.requires(READ_PUBLIC)
++                reader = EvidenceGraphReadService(session, current)
++                reader.lock_graph_inputs(event_id)
++                refreshed = reader.event_graph(event_id, max_nodes, max_edges)
++                current_epochs = reader.read_scope_epochs(lock=True)
++                if (
++                    candidate_input is None
++                    or reader.input_sha256 != candidate_input
++                    or current_epochs != epochs
++                    or refreshed.content_sha256 != candidate.content_sha256
++                ):
++                    raise GraphSnapshotChangedError("graph snapshot changed")
++                return JSONResponse(content=refreshed.model_dump(mode="json"))
+         except (SessionExpiredError, InvalidCredentialsError):
+             return problem_response(request, 401, "session_expired", "session is not valid")
+         except PermissionDeniedError:
+@@ -66,6 +91,10 @@ def build_graph_router(
+             return problem_response(
+                 request, 404, "not_found", "requested resource is not available"
+             )
++        except GraphSnapshotChangedError:
++            return problem_response(
++                request, 409, "graph_snapshot_changed", "graph changed before response", True
++            )
+         except (SQLAlchemyError, ValueError):
+             return problem_response(
+                 request, 503, "graph_unavailable", "graph database is unavailable", True
+diff --git a/backend/src/ai_intel/knowledge/evidence_graph.py b/backend/src/ai_intel/knowledge/evidence_graph.py
+index c7a70db..109a67f 100644
+--- a/backend/src/ai_intel/knowledge/evidence_graph.py
++++ b/backend/src/ai_intel/knowledge/evidence_graph.py
+@@ -4,11 +4,12 @@ from __future__ import annotations
+ 
+ import hashlib
+ import json
++import re
+ from typing import Literal
+ from uuid import NAMESPACE_URL, UUID, uuid5
+ 
+-from pydantic import Field
+-from sqlalchemy import Text, and_, column, or_, select, table
++from pydantic import Field, ValidationError
++from sqlalchemy import Text, and_, column, literal, or_, select, table
+ from sqlalchemy.engine import RowMapping
+ from sqlalchemy.orm import Session
+ from sqlalchemy.sql.elements import ColumnElement
+@@ -16,22 +17,42 @@ from sqlalchemy.sql.selectable import FromClause
+ 
+ from ai_intel.domain.access import READ_ASSET, READ_PUBLIC, AccessScope, CrossTenantAccessError
+ from ai_intel.domain.enrichment_values import (
++    ArtifactReferenceValue,
+     AtlasMappingValue,
+     LiteratureReferenceValue,
+     VersionAssertionValue,
+ )
++from ai_intel.domain.enums import ClaimOrigin
+ from ai_intel.domain.records import StrictRecord
+ from ai_intel.domain.values import VisibilityScope
+-from ai_intel.knowledge.models import document_revisions, documents, evidence, text_blocks
++from ai_intel.enrichment.contracts import (
++    CandidateEvidence,
++    EnrichmentBlock,
++    EnrichmentDocument,
++    EvidenceBoundCandidate,
++)
++from ai_intel.enrichment.field_sources import (
++    FieldEvidenceError,
++    is_atlas_taxonomy,
++    validate_field_candidate,
++)
++from ai_intel.knowledge.models import (
++    document_revisions,
++    documents,
++    evidence,
++    scope_epochs,
++    text_blocks,
++)
+ from ai_intel.knowledge.persistence_models import (
+     claim_assertions,
+     claim_evidence,
+     claims,
+     event_documents,
++    event_external_ids,
+     events,
+ )
+ 
+-GRAPH_RULE_VERSION: Literal["r10-graph-1.0.0"] = "r10-graph-1.0.0"
++GRAPH_RULE_VERSION: Literal["r10-graph-1.1.0"] = "r10-graph-1.1.0"
+ MAX_SUPPORT_ROWS = 2000
+ RelationType = Literal[
+     "same_event",
+@@ -50,8 +71,24 @@ RELATION_TYPES: tuple[RelationType, ...] = (
+     "component_version_vulnerability",
+ )
+ sources = table(
+-    "sources", column("source_id", Text), column("visibility", Text), column("tenant_id", Text)
++    "sources",
++    column("source_id", Text),
++    column("visibility", Text),
++    column("tenant_id", Text),
++    column("category", Text),
++)
++GraphValue = (
++    VersionAssertionValue
++    | AtlasMappingValue
++    | LiteratureReferenceValue
++    | ArtifactReferenceValue
++    | str
+ )
++DocumentCache = dict[UUID, tuple[EnrichmentDocument, VisibilityScope] | None]
++
++
++class GraphSnapshotChangedError(RuntimeError):
++    """候选图在返回围栏前失效；不能把旧快照包装成当前结果。"""
+ 
+ 
+ class GraphNode(StrictRecord):
+@@ -70,7 +107,7 @@ class GraphEdge(StrictRecord):
+     source_revision_ids: tuple[UUID, ...] = Field(min_length=1, max_length=MAX_SUPPORT_ROWS)
+     evidence_span_ids: tuple[UUID, ...] = Field(min_length=1, max_length=MAX_SUPPORT_ROWS)
+     supporting_claim_ids: tuple[UUID, ...] = Field(min_length=1, max_length=MAX_SUPPORT_ROWS)
+-    rule_or_model_version: Literal["r10-graph-1.0.0"] = GRAPH_RULE_VERSION
++    rule_or_model_version: Literal["r10-graph-1.1.0"] = GRAPH_RULE_VERSION
+     reason: str = Field(min_length=1, max_length=2500)
+     status: Literal["supported"] = "supported"
+ 
+@@ -85,7 +122,7 @@ class GraphSnapshot(StrictRecord):
+     schema_version: Literal[1] = 1
+     event_id: UUID
+     business_version: int = Field(strict=True, ge=1)
+-    rule_version: Literal["r10-graph-1.0.0"] = GRAPH_RULE_VERSION
++    rule_version: Literal["r10-graph-1.1.0"] = GRAPH_RULE_VERSION
+     nodes: tuple[GraphNode, ...] = Field(min_length=1, max_length=200)
+     edges: tuple[GraphEdge, ...] = Field(max_length=400)
+     truncated: bool
+@@ -134,6 +171,24 @@ def _verified_span(row: RowMapping) -> bool:
+     )
+ 
+ 
++def _narrow_scope(scopes: tuple[VisibilityScope, ...]) -> VisibilityScope:
++    private = {scope.tenant_id for scope in scopes if scope.visibility == "tenant"}
++    if len(private) > 1:
++        raise ValueError("incompatible graph scopes")
++    return (
++        VisibilityScope(visibility="tenant", tenant_id=private.pop())
++        if private
++        else VisibilityScope(visibility="public")
++    )
++
++
++def _has_identifier(identifier: str, quote: str) -> bool:
++    return (
++        re.search(r"(?<![\w.+-])" + re.escape(identifier) + r"(?![\w.+-])", quote, re.IGNORECASE)
++        is not None
++    )
++
++
+ class EvidenceGraphReadService:
+     """认证范围内投影固定六类关系；语义支持只读取 PG 已核验的发布记录。"""
+ 
+@@ -141,6 +196,7 @@ class EvidenceGraphReadService:
+         scope.requires(READ_PUBLIC)
+         self.session = session
+         self.scope = scope
++        self.input_sha256: str | None = None
+ 
+     def _visible(self, relation: FromClause) -> ColumnElement[bool]:
+         public = and_(relation.c.visibility == "public", relation.c.tenant_id.is_(None))
+@@ -205,16 +261,21 @@ class EvidenceGraphReadService:
+                 claims.c.predicate,
+                 claims.c.value_kind,
+                 claims.c.object_json,
++                claims.c.object_value,
++                claim_assertions.c.json_path.label("assertion_path"),
+                 document_revisions.c.revision_id,
++                documents.c.document_id,
+                 documents.c.title,
+                 evidence.c.evidence_id,
+                 evidence.c.quote,
+                 evidence.c.quote_sha256,
+                 evidence.c.start_offset,
+                 evidence.c.end_offset,
++                evidence.c.block_id,
+                 text_blocks.c.start_offset.label("block_start"),
+                 text_blocks.c.block_text,
+                 text_blocks.c.text_sha256,
++                text_blocks.c.json_pointer,
+                 *_scope_columns(claims, "claim_"),
+                 *_scope_columns(document_revisions, "revision_"),
+                 *_scope_columns(documents, "document_"),
+@@ -235,7 +296,7 @@ class EvidenceGraphReadService:
+                 claims.c.freshness != "stale",
+                 claims.c.provenance_status == "source_verified",
+                 claims.c.claim_origin.in_(
+-                    ("source_explicit", "structured_source", "human_confirmed")
++                    ("source_explicit", "structured_source", "rule_derived", "human_confirmed")
+                 ),
+                 claim_evidence.c.support_kind == "supports",
+                 claim_evidence.c.validation_status == "validated",
+@@ -249,30 +310,459 @@ class EvidenceGraphReadService:
+         )
+         return list(self.session.execute(query).mappings())
+ 
+-    def _paper_scope(self, value: LiteratureReferenceValue) -> VisibilityScope | None:
+-        if value.target_document_id is None or value.reference_kind != "paper":
+-            return None
+-        if value.relation == "background":
+-            return None
++    def read_scope_epochs(self, *, lock: bool = False) -> tuple[tuple[str, int], ...]:
++        keys = ["public"]
++        if self.scope.tenant_id is not None and READ_ASSET in self.scope.permissions:
++            keys.append("tenant:" + self.scope.tenant_id)
++        query = (
++            select(scope_epochs.c.scope_key, scope_epochs.c.epoch)
++            .where(scope_epochs.c.scope_key.in_(keys))
++            .order_by(scope_epochs.c.scope_key)
++        )
++        if lock:
++            query = query.with_for_update(read=True)
++        result: list[tuple[str, int]] = []
++        for key, epoch in self.session.execute(query):
++            if not isinstance(key, str) or not isinstance(epoch, int) or isinstance(epoch, bool):
++                raise ValueError("scope epoch invalid")
++            result.append((key, epoch))
++        return tuple(result)
++
++    def lock_graph_inputs(self, event_id: UUID) -> None:
++        """先锁事实父链，再由调用者取 epoch 锁；不在持 epoch 时倒序取父锁。"""
++        if (
++            self.session.scalar(
++                select(events.c.event_id).where(
++                    events.c.event_id == str(event_id), self._visible(events)
++                )
++            )
++            is None
++        ):
++            raise CrossTenantAccessError("resource not found")
++        revisions: list[str] = list(
++            self.session.scalars(
++                select(event_documents.c.revision_id)
++                .where(event_documents.c.event_id == str(event_id))
++                .order_by(event_documents.c.revision_id)
++                .limit(MAX_SUPPORT_ROWS + 1)
++            )
++        )
++        claim_rows = list(
++            self.session.execute(
++                select(claims.c.claim_id, claims.c.object_json)
++                .where(claims.c.subject == str(event_id))
++                .order_by(claims.c.claim_id)
++                .limit(MAX_SUPPORT_ROWS + 1)
++            )
++        )
++        if len(revisions) > MAX_SUPPORT_ROWS or len(claim_rows) > MAX_SUPPORT_ROWS:
++            raise GraphSnapshotChangedError("graph inputs exceed validity fence")
++        revision_ids = set(revisions)
++        for _claim_id, value in claim_rows:
++            if (
++                isinstance(value, dict)
++                and value.get("kind") == "literature_reference"
++                and value.get("target_revision_id") is not None
++            ):
++                revision_ids.add(str(UUID(value["target_revision_id"])))
++        parents = list(
++            self.session.execute(
++                select(
++                    document_revisions.c.revision_id, documents.c.document_id, documents.c.source_id
++                )
++                .select_from(document_revisions.join(documents))
++                .where(document_revisions.c.revision_id.in_(revision_ids))
++            )
++        )
++        for relation, key, identifiers in (
++            (sources, sources.c.source_id, {item.source_id for item in parents}),
++            (documents, documents.c.document_id, {item.document_id for item in parents}),
++            (document_revisions, document_revisions.c.revision_id, revision_ids),
++            (events, events.c.event_id, {str(event_id)}),
++            (claims, claims.c.claim_id, {item.claim_id for item in claim_rows}),
++        ):
++            self.session.execute(
++                select(key)
++                .select_from(relation)
++                .where(key.in_(identifiers))
++                .order_by(key)
++                .with_for_update(read=True)
++            ).all()
++        evidence_ids: tuple[str, ...] = tuple(
++            self.session.scalars(
++                select(evidence.c.evidence_id)
++                .where(evidence.c.revision_id.in_(revision_ids))
++                .order_by(evidence.c.evidence_id)
++                .limit(MAX_SUPPORT_ROWS + 1)
++            )
++        )
++        if len(evidence_ids) > MAX_SUPPORT_ROWS:
++            raise GraphSnapshotChangedError("graph evidence exceeds validity fence")
++        self.session.execute(
++            select(evidence.c.evidence_id)
++            .where(evidence.c.evidence_id.in_(evidence_ids))
++            .order_by(evidence.c.evidence_id)
++            .with_for_update(read=True)
++        ).all()
++        block_ids: tuple[str, ...] = tuple(
++            self.session.scalars(
++                select(text_blocks.c.block_id)
++                .where(text_blocks.c.revision_id.in_(revision_ids))
++                .order_by(text_blocks.c.block_id)
++                .limit(MAX_SUPPORT_ROWS + 1)
++            )
++        )
++        if len(block_ids) > MAX_SUPPORT_ROWS:
++            raise GraphSnapshotChangedError("graph blocks exceed validity fence")
++        self.session.execute(
++            select(text_blocks.c.block_id)
++            .where(text_blocks.c.block_id.in_(block_ids))
++            .order_by(text_blocks.c.block_id)
++            .with_for_update(read=True)
++        ).all()
++        for relation, key in (
++            (event_documents, event_documents.c.revision_id),
++            (claim_assertions, claim_assertions.c.assertion_id),
++            (claim_evidence, claim_evidence.c.evidence_id),
++        ):
++            predicate = (
++                relation.c.event_id == str(event_id)
++                if relation is event_documents
++                else relation.c.claim_id.in_({item.claim_id for item in claim_rows})
++            )
++            self.session.execute(
++                select(key).where(predicate).order_by(key).with_for_update(read=True)
++            ).all()
++
++    def _load_document(
++        self, revision_id: UUID, cache: DocumentCache
++    ) -> tuple[EnrichmentDocument, VisibilityScope] | None:
++        if revision_id in cache:
++            return cache[revision_id]
+         row = (
+             self.session.execute(
+                 select(
++                    document_revisions,
++                    documents.c.kind,
++                    documents.c.document_id,
++                    documents.c.source_id,
++                    sources.c.category,
+                     *_scope_columns(document_revisions, "revision_"),
+                     *_scope_columns(documents, "document_"),
+                     *_scope_columns(sources, "source_"),
+                 )
+                 .select_from(self._revision_join())
+                 .where(
+-                    document_revisions.c.revision_id == str(value.target_revision_id),
+-                    document_revisions.c.document_id == str(value.target_document_id),
+-                    documents.c.kind == "paper",
+-                    self._current_revision(),
++                    document_revisions.c.revision_id == str(revision_id), self._current_revision()
+                 )
+             )
+             .mappings()
+             .first()
+         )
+-        return _scope_of(row, ("revision_", "document_", "source_")) if row is not None else None
++        cache[revision_id] = None
++        if row is None:
++            return None
++        from ai_intel.api.knowledge_read_service import safe_source_uri
++
++        uri = safe_source_uri(row["canonical_uri"])
++        if uri is None:
++            return None
++        blocks = list(
++            self.session.execute(
++                select(text_blocks)
++                .where(text_blocks.c.revision_id == str(revision_id))
++                .order_by(text_blocks.c.ordinal)
++                .limit(201)
++            ).mappings()
++        )
++        if not blocks or len(blocks) > 200:
++            return None
++        metadata = row["source_metadata"]
++        try:
++            document = EnrichmentDocument.model_validate(
++                {
++                    "revision_id": revision_id,
++                    "document_id": row["document_id"],
++                    "source_id": row["source_id"],
++                    "document_kind": row["kind"],
++                    "source_category": row["category"],
++                    "canonical_uri": uri,
++                    "source_record_id": metadata.get("source_record_id", str(uri)),
++                    "content_sha256": row["content_hash"],
++                    "blocks": tuple(
++                        EnrichmentBlock(
++                            block_id=item["block_id"],
++                            start_offset=item["start_offset"],
++                            text=item["block_text"],
++                            text_sha256=item["text_sha256"],
++                            json_pointer=item["json_pointer"],
++                            page_number=item["page_number"],
++                        )
++                        for item in blocks
++                    ),
++                    "blocks_complete": metadata.get(
++                        "blocks_complete", row["parse_status"] == "parsed"
++                    ),
++                    "content_coverage": metadata.get("content_coverage", "unknown"),
++                    "source_version": metadata.get("source_version"),
++                    "observed_at": row["first_observed_at"],
++                }
++            )
++        except ValidationError:
++            return None
++        result = (document, _scope_of(row, ("revision_", "document_", "source_")))
++        cache[revision_id] = result
++        return result
++
++    def _event_bound(
++        self,
++        rows: tuple[RowMapping, ...],
++        all_rows: tuple[RowMapping, ...],
++        identifiers: tuple[str, ...],
++    ) -> bool:
++        if identifiers:
++            return any(
++                _has_identifier(identifier, row["quote"])
++                for identifier in identifiers
++                for row in rows
++            )
++        same_revision = tuple(
++            row for row in all_rows if row["revision_id"] == rows[0]["revision_id"]
++        )
++        products = tuple(
++            row["object_value"]
++            for row in same_revision
++            if row["predicate"] == "affected_product" and row["object_value"] == row["quote"]
++        )
++        excerpts = tuple(
++            row["object_value"]
++            for row in same_revision
++            if row["predicate"] == "source_excerpt" and row["object_value"] == row["quote"]
++        )
++        return any(
++            _has_identifier(product, excerpt)
++            and re.search(
++                r"vulnerab|affected|security|injection|受影响|漏洞|安全|注入",
++                excerpt,
++                re.IGNORECASE,
++            )
++            for product in products
++            for excerpt in excerpts
++        )
++
++    def _validated_support(
++        self,
++        rows: tuple[RowMapping, ...],
++        all_rows: tuple[RowMapping, ...],
++        identifiers: tuple[str, ...],
++        cache: DocumentCache,
++        event_id: UUID,
++    ) -> tuple[GraphValue, tuple[RowMapping, ...], VisibilityScope] | None:
++        row = rows[0]
++        scope = _narrow_scope(
++            tuple(
++                _scope_of(item, ("claim_", "revision_", "document_", "source_", "evidence_"))
++                for item in rows
++            )
++        )
++        if row["schema_version"] != 3:
++            return (
++                (row["object_value"], rows, scope)
++                if self._event_bound(rows, all_rows, identifiers)
++                and any(row["object_value"] in item["quote"] for item in rows)
++                else None
++            )
++        if row["predicate"] != row["value_kind"]:
++            raise ValueError("graph fact value disagrees with predicate")
++        value: GraphValue
++        candidate_value: (
++            VersionAssertionValue
++            | AtlasMappingValue
++            | LiteratureReferenceValue
++            | ArtifactReferenceValue
++        )
++        if row["predicate"] == "version_assertion":
++            value = VersionAssertionValue.model_validate(row["object_json"])
++            candidate_value = value.model_copy(update={"comparison_support": "unknown"})
++            dimension: Literal["versions", "atlas", "literature", "poc"] = "versions"
++        elif row["predicate"] == "atlas_mapping":
++            value = AtlasMappingValue.model_validate(row["object_json"])
++            candidate_value = value
++            dimension = "atlas"
++        elif row["predicate"] == "literature_reference":
++            value = LiteratureReferenceValue.model_validate(row["object_json"])
++            candidate_value = value.model_copy(
++                update={"target_document_id": None, "target_revision_id": None}
++            )
++            dimension = "literature"
++        elif row["predicate"] == "artifact_reference":
++            value = ArtifactReferenceValue.model_validate(row["object_json"])
++            candidate_value = value.model_copy(update={"static_status": "candidate_found"})
++            dimension = "poc"
++        else:
++            return None
++        if identifiers:
++            core = ""
++            if isinstance(value, VersionAssertionValue):
++                core = value.raw_expression
++            elif isinstance(value, AtlasMappingValue):
++                core = value.mechanism
++            elif isinstance(value, LiteratureReferenceValue):
++                core = value.support_summary
++            owner_paths = {"/id", "/ghsa_id", "/cve/id", "/cveMetadata/cveId"}
++            field_binding = any(
++                item["revision_id"] == row["revision_id"]
++                and item["json_pointer"] in owner_paths
++                and item["assertion_path"] == item["json_pointer"]
++                and item["quote"].strip().casefold()
++                in {identifier.casefold() for identifier in identifiers}
++                for item in all_rows
++            )
++            artifact_binding = isinstance(value, ArtifactReferenceValue) and any(
++                str(value.uri) in item["quote"]
++                and value.title in item["quote"]
++                and any(_has_identifier(identifier, item["quote"]) for identifier in identifiers)
++                for item in rows
++            )
++            if (
++                not field_binding
++                and not artifact_binding
++                and not any(_has_identifier(identifier, core) for identifier in identifiers)
++            ):
++                return None
++        elif not self._event_bound(rows, all_rows, identifiers):
++            return None
++        loaded = self._load_document(UUID(row["revision_id"]), cache)
++        if loaded is None or len(rows) > 20:
++            return None
++        selected = [loaded[0]]
++        proof = list(rows)
++        scopes = [scope, loaded[1]]
++        if isinstance(value, LiteratureReferenceValue) and value.target_revision_id is not None:
++            target = self._load_document(value.target_revision_id, cache)
++            if target is None or target[0].document_id != value.target_document_id:
++                return None
++            selected.append(target[0])
++            scopes.append(target[1])
++        if isinstance(value, AtlasMappingValue):
++            taxonomy_ids: tuple[str, ...] = tuple(
++                self.session.scalars(
++                    select(document_revisions.c.revision_id)
++                    .select_from(
++                        event_documents.join(
++                            self._revision_join(),
++                            event_documents.c.revision_id == document_revisions.c.revision_id,
++                        )
++                    )
++                    .where(
++                        event_documents.c.event_id == str(event_id),
++                        event_documents.c.active.is_(True),
++                        self._current_revision(),
++                        document_revisions.c.canonical_uri.in_(
++                            (
++                                f"https://raw.githubusercontent.com/mitre/atlas-data/{value.taxonomy_version}/dist/ATLAS.yaml",
++                                f"https://github.com/mitre/atlas-data/blob/{value.taxonomy_version}/dist/ATLAS.yaml",
++                            )
++                        ),
++                    )
++                    .limit(2)
++                )
++            )
++            if len(taxonomy_ids) != 1:
++                return None
++            taxonomy = self._load_document(UUID(taxonomy_ids[0]), cache)
++            if taxonomy is None or not is_atlas_taxonomy(taxonomy[0]):
++                return None
++            selected.append(taxonomy[0])
++            scopes.append(taxonomy[1])
++            taxonomy_rows = list(
++                self.session.execute(
++                    select(
++                        literal(row["claim_id"]).label("claim_id"),
++                        evidence.c.revision_id,
++                        evidence.c.evidence_id,
++                        evidence.c.block_id,
++                        evidence.c.quote,
++                        evidence.c.quote_sha256,
++                        evidence.c.start_offset,
++                        evidence.c.end_offset,
++                        text_blocks.c.start_offset.label("block_start"),
++                        text_blocks.c.block_text,
++                        text_blocks.c.text_sha256,
++                        *_scope_columns(evidence, "evidence_"),
++                    )
++                    .select_from(
++                        evidence.join(
++                            text_blocks,
++                            and_(
++                                evidence.c.block_id == text_blocks.c.block_id,
++                                evidence.c.revision_id == text_blocks.c.revision_id,
++                            ),
++                        )
++                    )
++                    .where(
++                        evidence.c.revision_id == taxonomy_ids[0],
++                        self._visible(evidence),
++                        evidence.c.coordinate_version == "fulltext_unicode_v1",
++                        evidence.c.verified_at.is_not(None),
++                        evidence.c.quote.contains(value.technique_id, autoescape=True),
++                    )
++                    .order_by(evidence.c.evidence_id)
++                    .limit(21)
++                ).mappings()
++            )
++            taxonomy_rows = [item for item in taxonomy_rows if _verified_span(item)]
++            if not taxonomy_rows or len(rows) + len(taxonomy_rows) > 20:
++                return None
++            proof.extend(taxonomy_rows)
++            scopes.extend(_scope_of(item, ("evidence_",)) for item in taxonomy_rows)
++        try:
++            candidate = EvidenceBoundCandidate(
++                dimension=dimension,
++                value=candidate_value,
++                origin=ClaimOrigin.SOURCE_EXPLICIT,
++                evidence=tuple(
++                    CandidateEvidence(
++                        revision_id=item["revision_id"],
++                        block_id=item["block_id"],
++                        start_offset=item["start_offset"] - item["block_start"],
++                        end_offset=item["end_offset"] - item["block_start"],
++                        quote_text=item["quote"],
++                        quote_sha256=item["quote_sha256"],
++                    )
++                    for item in proof
++                ),
++            )
++            checked = validate_field_candidate(candidate, tuple(selected))
++        except (FieldEvidenceError, ValidationError):
++            return None
++        if isinstance(value, LiteratureReferenceValue) and (
++            not isinstance(checked.value, LiteratureReferenceValue)
++            or checked.value.target_document_id != value.target_document_id
++            or checked.value.target_revision_id != value.target_revision_id
++        ):
++            return None
++        return value, tuple(proof), _narrow_scope(tuple(scopes))
++
++    def _paper_scope(
++        self,
++        value: LiteratureReferenceValue,
++        cache: DocumentCache,
++    ) -> VisibilityScope | None:
++        if value.target_document_id is None or value.reference_kind != "paper":
++            return None
++        if value.relation == "background":
++            return None
++        if value.target_revision_id is None:
++            return None
++        target = self._load_document(value.target_revision_id, cache)
++        if (
++            target is None
++            or target[0].document_id != value.target_document_id
++            or target[0].document_kind != "paper"
++        ):
++            return None
++        return target[1]
+ 
+     def event_graph(
+         self, event_id: UUID, max_nodes: int = 200, max_edges: int = 400
+@@ -301,6 +791,22 @@ class EvidenceGraphReadService:
+         edges: dict[UUID, GraphEdge] = {}
+         rows = self._support_rows(event_id) if event["status"] == "active" else []
+         truncated = len(rows) > MAX_SUPPORT_ROWS
++        valid_rows = tuple(row for row in rows[:MAX_SUPPORT_ROWS] if _verified_span(row))
++        grouped: dict[str, list[RowMapping]] = {}
++        for row in valid_rows:
++            grouped.setdefault(row["claim_id"], []).append(row)
++        identifiers: tuple[str, ...] = tuple(
++            self.session.scalars(
++                select(event_external_ids.c.id_value).where(
++                    event_external_ids.c.event_id == str(event_id),
++                    event_external_ids.c.scope_key == event["scope_key"],
++                )
++            )
++        )
++        document_cache: DocumentCache = {}
++        proof_rows: tuple[RowMapping, ...] = ()
++        claim_rows: tuple[RowMapping, ...] = ()
++        proof_inputs: list[object] = []
+ 
+         def add_edge(
+             relation_type: RelationType,
+@@ -317,8 +823,9 @@ class EvidenceGraphReadService:
+             nodes[subject.id] = subject
+             nodes[target.id] = target
+             previous = edges.get(edge_id)
+-            revision_ids = {UUID(row["revision_id"])}
+-            evidence_ids = {UUID(row["evidence_id"])}
++            supporting_rows = claim_rows if relation_type == "same_event" else proof_rows
++            revision_ids = {UUID(item["revision_id"]) for item in supporting_rows}
++            evidence_ids = {UUID(item["evidence_id"]) for item in supporting_rows}
+             claim_ids = {UUID(row["claim_id"])}
+             if previous:
+                 revision_ids.update(previous.source_revision_ids)
+@@ -336,12 +843,22 @@ class EvidenceGraphReadService:
+                 reason=reason,
+             )
+ 
+-        for row in rows[:MAX_SUPPORT_ROWS]:
+-            if not _verified_span(row):
++        for group in grouped.values():
++            claim_rows = tuple(group)
++            support = self._validated_support(
++                claim_rows, valid_rows, identifiers, document_cache, event_id
++            )
++            proof_inputs.append(
++                [
++                    group[0]["claim_id"],
++                    None if support is None else [dict(item) for item in support[1]],
++                ]
++            )
++            if support is None:
+                 continue
+-            scope = _scope_of(row, ("claim_", "revision_", "document_", "source_", "evidence_"))
+-            if event_scope.visibility == "tenant":
+-                scope = event_scope
++            value, proof_rows, scope = support
++            scope = _narrow_scope((scope, event_scope))
++            row = group[0]
+             revision = GraphNode(
+                 id=_identity("source_revision", scope, row["revision_id"]),
+                 kind="source_revision",
+@@ -353,11 +870,8 @@ class EvidenceGraphReadService:
+             )
+             if event["event_type"] != "vulnerability" or row["schema_version"] != 3:
+                 continue
+-            value = row["object_json"]
+-            if row["predicate"] != row["value_kind"]:
+-                raise ValueError("graph fact value disagrees with predicate")
+-            if row["predicate"] == "version_assertion":
+-                version = VersionAssertionValue.model_validate(value)
++            if isinstance(value, VersionAssertionValue):
++                version = value
+                 if (
+                     version.comparison_support != "supported"
+                     or version.scheme == "unknown"
+@@ -394,8 +908,8 @@ class EvidenceGraphReadService:
+                         scope=scope,
+                     )
+                     add_edge("remediated_by", root, remediation, scope, row, action)
+-            elif row["predicate"] == "atlas_mapping":
+-                atlas = AtlasMappingValue.model_validate(value)
++            elif isinstance(value, AtlasMappingValue):
++                atlas = value
+                 technique = GraphNode(
+                     id=_identity("atlas", scope, [atlas.technique_id, atlas.taxonomy_version]),
+                     kind="atlas",
+@@ -403,9 +917,9 @@ class EvidenceGraphReadService:
+                     scope=scope,
+                 )
+                 add_edge("mapped_atlas", root, technique, scope, row, atlas.mechanism)
+-            elif row["predicate"] == "literature_reference":
+-                literature = LiteratureReferenceValue.model_validate(value)
+-                target_scope = self._paper_scope(literature)
++            elif isinstance(value, LiteratureReferenceValue):
++                literature = value
++                target_scope = self._paper_scope(literature, document_cache)
+                 if target_scope is None:
+                     continue
+                 if target_scope.visibility == "tenant":
+@@ -458,6 +972,26 @@ class EvidenceGraphReadService:
+             "gaps": [gap.model_dump(mode="json") for gap in gaps],
+         }
+         serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
++        input_state = {
++            "event": dict(event),
++            "rows": [dict(item) for item in rows],
++            "identifiers": sorted(identifiers),
++            "proofs": proof_inputs,
++            "documents": [
++                [
++                    str(key),
++                    None
++                    if value is None
++                    else [value[0].model_dump(mode="json"), value[1].model_dump(mode="json")],
++                ]
++                for key, value in sorted(document_cache.items())
++            ],
++        }
++        self.input_sha256 = hashlib.sha256(
++            json.dumps(
++                input_state, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
++            ).encode()
++        ).hexdigest()
+         return GraphSnapshot.model_validate(
+             {**payload, "content_sha256": hashlib.sha256(serialized.encode()).hexdigest()}
+         )
+diff --git a/backend/tests/integration/test_r10_evidence_graph_pg.py b/backend/tests/integration/test_r10_evidence_graph_pg.py
+index 2ccfb15..933276a 100644
+--- a/backend/tests/integration/test_r10_evidence_graph_pg.py
++++ b/backend/tests/integration/test_r10_evidence_graph_pg.py
+@@ -1,6 +1,9 @@
+ """隔离真实 PG 的合成发布与只读 HTTP 回归；fixture 结果不计 live。"""
+ 
++import hashlib
+ import secrets
++import tempfile
++from pathlib import Path
+ from uuid import UUID, uuid4
+ 
+ import pytest
+@@ -27,38 +30,173 @@ from ai_intel.api.graph_routes import build_graph_router
+ from ai_intel.domain.access import AccessScope, CrossTenantAccessError, Role
+ from ai_intel.domain.records import ClaimRecord
+ from ai_intel.domain.values import VisibilityScope
++from ai_intel.infrastructure.content_store import ContentStore
+ from ai_intel.infrastructure.database import run_migrations
+-from ai_intel.knowledge.event_linking import EventRepository, EventSubmission
++from ai_intel.knowledge.event_linking import EventIdentifier, EventRepository, EventSubmission
+ from ai_intel.knowledge.evidence_graph import EvidenceGraphReadService
+-from ai_intel.knowledge.models import document_revisions, documents, evidence
++from ai_intel.knowledge.models import document_revisions, documents, evidence, text_blocks
++from ai_intel.knowledge.persistence import EvidenceLink
+ from ai_intel.knowledge.persistence_models import (
+     claim_assertions,
+     claim_evidence,
+     claims,
+     event_documents,
+ )
++from ai_intel.knowledge.revisions import attach_evidence_span, register_response_content
+ 
+ pytestmark = pytest.mark.real_pg
++SOURCE_IDENTIFIER = "GHSA-2345-6789-cfgh"
++TAXONOMY_COMMIT = "a" * 40
++FIXTURE_RAW_DIRECTORY = Path(tempfile.gettempdir()) / "dianzi-r10-graph-fixture-raw"
+ VERSION = {
+     "kind": "version_assertion",
+     "package_key": "fixture-package",
+     "ecosystem": "PyPI",
+     "scheme": "pep440",
+-    "raw_expression": ">=1.0,<1.4.2",
++    "raw_expression": "GHSA-2345-6789-cfgh PyPI fixture-package affected versions: >=1.0,<1.4.2",
+     "intervals": [{"introduced": "1.0", "fixed": "1.4.2"}],
+     "comparison_support": "supported",
+-    "vendor_fix": "厂商要求升级到 1.4.2",
+-    "mitigations": ["限制不可信输入"],
++    "vendor_fix": "Fixed in 1.4.2 for GHSA-2345-6789-cfgh.",
++    "mitigations": ["Mitigation: limit untrusted inputs for GHSA-2345-6789-cfgh."],
+ }
+ ATLAS = {
+     "kind": "atlas_mapping",
+     "technique_id": "AML.T0051",
+-    "taxonomy_version": "fixture-taxonomy-20261016",
+-    "mechanism": "来源明确描述不可信输入进入提示词上下文",
+-    "prerequisites": ["攻击者可以提交不可信输入"],
++    "taxonomy_version": TAXONOMY_COMMIT,
++    "mechanism": "GHSA-2345-6789-cfgh: Untrusted instructions enter a model input.",
++    "prerequisites": ["Attacker can submit untrusted input."],
+ }
+ 
+ 
++def store_fixture_original(connection, revision_id):
++    blocks = list(
++        connection.execute(
++            select(text_blocks)
++            .where(text_blocks.c.revision_id == revision_id)
++            .order_by(text_blocks.c.start_offset)
++        ).mappings()
++    )
++    normalized = ""
++    for block in blocks:
++        assert block["start_offset"] >= len(normalized)
++        normalized += " " * (block["start_offset"] - len(normalized)) + block["block_text"]
++    stored = register_response_content(
++        connection, ContentStore(FIXTURE_RAW_DIRECTORY), normalized.encode(), NOW
++    )
++    connection.execute(
++        update(document_revisions)
++        .where(document_revisions.c.revision_id == revision_id)
++        .values(
++            content_hash=stored.content_hash,
++            parser_version="fixture-text-1.1",
++            normalizer_version="fixture-unicode-1.1",
++        )
++    )
++    document_id = connection.scalar(
++        select(document_revisions.c.document_id).where(
++            document_revisions.c.revision_id == revision_id
++        )
++    )
++    connection.execute(
++        update(documents)
++        .where(documents.c.document_id == document_id)
++        .values(content_hash=stored.content_hash)
++    )
++
++
++def replace_source_body(
++    engine,
++    submission,
++    lines,
++    *,
++    kind="advisory",
++    category="vendor_advisory",
++    uri=None,
++    source_version=None,
++):
++    body = "\n".join(lines)
++    with engine.begin() as connection:
++        first_evidence = submission.evidence_links[0].evidence_id.value
++        block_id = connection.scalar(
++            select(evidence.c.block_id).where(evidence.c.evidence_id == first_evidence)
++        )
++        connection.execute(
++            update(text_blocks)
++            .where(text_blocks.c.block_id == block_id)
++            .values(
++                block_text=body,
++                text_sha256=hashlib.sha256(body.encode()).hexdigest(),
++                end_offset=100 + len(body),
++            )
++        )
++        connection.execute(
++            update(evidence)
++            .where(evidence.c.evidence_id == first_evidence)
++            .values(
++                quote=lines[0],
++                quote_sha256=hashlib.sha256(lines[0].encode()).hexdigest(),
++                end_offset=100 + len(lines[0]),
++            )
++        )
++        links = [
++            EvidenceLink(
++                evidence_id={"value": first_evidence},
++                support_kind="supports",
++                validation_status="validated",
++            )
++        ]
++        offset = 100 + len(lines[0]) + 1
++        for line in lines[1:]:
++            span_id = attach_evidence_span(
++                connection,
++                submission.revision_id.value,
++                offset,
++                offset + len(line),
++                "fixture source line",
++                line,
++                True,
++                submission.record.scope.visibility,
++                submission.record.scope.tenant_id,
++                NOW,
++                block_id=block_id,
++                verified_at=NOW,
++            )
++            links.append(
++                EvidenceLink(
++                    evidence_id={"value": span_id},
++                    support_kind="supports",
++                    validation_status="validated",
++                )
++            )
++            offset += len(line) + 1
++        connection.execute(
++            update(documents)
++            .where(documents.c.source_id == submission.source_id.value)
++            .values(kind=kind)
++        )
++        connection.execute(
++            text("UPDATE sources SET category=:category WHERE source_id=:id"),
++            {"category": category, "id": submission.source_id.value},
++        )
++        connection.execute(
++            update(document_revisions)
++            .where(document_revisions.c.revision_id == submission.revision_id.value)
++            .values(
++                parse_status="parsed",
++                canonical_uri=uri
++                or "https://example.invalid/advisory/" + submission.revision_id.value,
++                source_metadata={
++                    "is_synthetic": True,
++                    "content_coverage": "full_text",
++                    "blocks_complete": True,
++                    "source_version": source_version,
++                },
++            )
++        )
++        store_fixture_original(connection, submission.revision_id.value)
++    return submission.model_copy(update={"evidence_links": tuple(links)})
++
++
+ @pytest.fixture
+ def graph_engine(isolated_test_database_url):
+     url = make_url(isolated_test_database_url)
+@@ -104,18 +242,45 @@ def publish_fact(engine, path, event_id, value, *, scope=None, hypothesis=False)
+         }
+     )
+     submission = template.model_copy(update={"record": record})
+-    with engine.begin() as connection:
+-        connection.execute(
+-            update(document_revisions)
+-            .where(document_revisions.c.revision_id == submission.revision_id.value)
+-            .values(parse_status="parsed")
++    if value["kind"] == "version_assertion":
++        lines = [
++            value["raw_expression"],
++            *([value["vendor_fix"]] if value.get("vendor_fix") else []),
++            *value.get("mitigations", []),
++        ]
++    elif value["kind"] == "atlas_mapping":
++        lines = [value["mechanism"], *value["prerequisites"]]
++        taxonomy = prepared_submission(engine, path / "taxonomy", scope=scope)
++        replace_source_body(
++            engine,
++            taxonomy,
++            ["AML.T0051: Prompt injection technique."],
++            kind="standard",
++            category="technical_standard",
++            uri=f"https://raw.githubusercontent.com/mitre/atlas-data/{TAXONOMY_COMMIT}/dist/ATLAS.yaml",
++            source_version=TAXONOMY_COMMIT,
+         )
++    elif value["kind"] == "literature_reference":
++        lines = [value["support_summary"], value["title"] + " " + str(value["uri"])]
++    else:
++        lines = ["GHSA-2345-6789-cfgh: " + str(value)]
++    submission = replace_source_body(engine, submission, lines)
+     publish_submission(engine, submission)
+     return submission
+ 
+ 
+ def publish_event(engine, event_id, submissions, *, scope=None):
+     visibility = scope or VisibilityScope(visibility="public")
++    revision_ids = [item.revision_id for item in submissions]
++    with Session(engine) as reader:
++        for revision_id in reader.scalars(
++            select(document_revisions.c.revision_id).where(
++                document_revisions.c.canonical_uri
++                == f"https://raw.githubusercontent.com/mitre/atlas-data/{TAXONOMY_COMMIT}/dist/ATLAS.yaml",
++                document_revisions.c.is_current.is_(True),
++            )
++        ):
++            revision_ids.append({"value": revision_id})
+     with Session(engine) as session, session.begin():
+         EventRepository(session, publisher_scope(visibility)).publish_events(
+             "fixture-r10-event-" + uuid4().hex,
+@@ -126,7 +291,8 @@ def publish_event(engine, event_id, submissions, *, scope=None):
+                     event_type="vulnerability",
+                     title="合成证据图事件",
+                     scope=visibility,
+-                    source_revision_ids=tuple(item.revision_id for item in submissions),
++                    external_ids=(EventIdentifier(id_type="ghsa", id_value=SOURCE_IDENTIFIER),),
++                    source_revision_ids=tuple(revision_ids),
+                 ),
+             ),
+             NOW,
+@@ -142,6 +308,17 @@ def read_graph(engine, event_id, *, scope=None, max_nodes=200, max_edges=400):
+ 
+ def paper_value(engine, path):
+     target = prepared_submission(engine, path)
++    replace_source_body(
++        engine,
++        target,
++        [
++            "合成分析论文",
++            "Analysis of GHSA-2345-6789-cfgh in fixture-package: untrusted model input.",
++        ],
++        kind="paper",
++        category="academic_paper",
++        uri="https://example.invalid/fixture-paper",
++    )
+     with engine.begin() as connection:
+         document_id = connection.scalar(
+             select(document_revisions.c.document_id).where(
+@@ -162,7 +339,9 @@ def paper_value(engine, path):
+         "title": "合成分析论文",
+         "reference_kind": "paper",
+         "relation": "analysis",
+-        "support_summary": "该论文明确分析本事件的输入路径与同一组件",
++        "support_summary": (
++            "Analysis of GHSA-2345-6789-cfgh in fixture-package: untrusted model input."
++        ),
+         "target_document_id": document_id,
+         "target_revision_id": target.revision_id.value,
+     }
+@@ -300,10 +479,19 @@ def test_same_names_in_distinct_ecosystems_and_ranges_remain_separate(graph_engi
+     event_id = uuid4()
+     values = [
+         VERSION,
+-        {**VERSION, "ecosystem": "npm", "scheme": "semver"},
+         {
+             **VERSION,
+-            "raw_expression": ">=2,<2.4",
++            "ecosystem": "npm",
++            "scheme": "semver",
++            "raw_expression": (
++                "GHSA-2345-6789-cfgh npm fixture-package affected versions: >=1.0,<1.4.2"
++            ),
++        },
++        {
++            **VERSION,
++            "raw_expression": (
++                "GHSA-2345-6789-cfgh PyPI fixture-package affected versions: >=2,<2.4"
++            ),
+             "intervals": [{"introduced": "2", "fixed": "2.4"}],
+         },
+     ]
+@@ -455,7 +643,9 @@ def test_private_graph_and_nested_sources_do_not_cross_tenants_or_promote_scope(
+                 event_id,
+                 scope=AccessScope.for_authenticated_user("fixture-user", tenant, role),
+             )
+-    public_id = UUID(seed_event(graph_engine, [submission.revision_id.value]))
++    public_id = UUID(
++        seed_event(graph_engine, [submission.revision_id.value], external_id=SOURCE_IDENTIFIER)
++    )
+     assert read_graph(graph_engine, public_id).edges == ()
+     with graph_engine.begin() as connection:
+         connection.execute(
+@@ -567,7 +757,7 @@ def test_real_session_rest_factory_bounds_acl_errors_and_database_failure(
+         client.cookies.set(SESSION_COOKIE_NAME, session_token)
+         response = client.get(path)
+         assert response.status_code == 200 and response.json()["business_version"] == 1
+-        assert response.json()["rule_version"] == "r10-graph-1.0.0"
++        assert response.json()["rule_version"] == "r10-graph-1.1.0"
+         assert client.get(f"/v1/events/{uuid4()}/graph").status_code == 404
+         assert client.get("/v1/events/not-a-uuid/graph").status_code == 422
+         for parameters in (
+diff --git a/backend/tests/integration/test_r10_graph_validity_pg.py b/backend/tests/integration/test_r10_graph_validity_pg.py
+new file mode 100644
+index 0000000..702b5d0
+--- /dev/null
++++ b/backend/tests/integration/test_r10_graph_validity_pg.py
+@@ -0,0 +1,650 @@
++"""真实 PG 原文关系、提交前撤权围栏与请求内目标缓存；输入均为合成 fixture。"""
++
++import hashlib
++import json
++import os
++import secrets
++import time
++from concurrent.futures import ThreadPoolExecutor
++from datetime import datetime, timedelta
++from pathlib import Path
++from threading import Event
++from uuid import uuid4
++
++import pytest
++from fastapi import FastAPI
++from fastapi.testclient import TestClient
++from pydantic import SecretStr
++from sqlalchemy import event, select, text, update
++from sqlalchemy.orm import Session
++from test_r02_knowledge_revisions import (
++    NOW,
++    prepared_submission,
++    publish_submission,
++    publisher_scope,
++)
++from test_r10_evidence_graph_pg import (
++    ATLAS,
++    FIXTURE_RAW_DIRECTORY,
++    SOURCE_IDENTIFIER,
++    VERSION,
++    paper_value,
++    publish_event,
++    publish_fact,
++    read_graph,
++    replace_source_body,
++    store_fixture_original,
++)
++from test_r10_evidence_graph_pg import (
++    graph_engine as graph_engine,
++)
++
++from ai_intel.api.auth_routes import SESSION_COOKIE_NAME
++from ai_intel.api.auth_state import PgAuthenticationStateStore
++from ai_intel.api.authentication import AuthenticationSessionService, DatabaseUserDirectory
++from ai_intel.api.graph_routes import build_graph_router
++from ai_intel.domain.access import Role
++from ai_intel.domain.records import ClaimRecord
++from ai_intel.domain.values import Identifier, VisibilityScope
++from ai_intel.infrastructure.content_store import ContentStore
++from ai_intel.knowledge.models import document_revisions, documents, evidence
++from ai_intel.knowledge.persistence import EvidenceLink, KnowledgeRepository
++from ai_intel.knowledge.persistence_models import claims, event_external_ids
++from ai_intel.knowledge.revisions import add_text_block, attach_evidence_span
++
++pytestmark = pytest.mark.real_pg
++
++
++def test_semantic_fixture_original_bytes_match_all_published_quote_coordinates(
++    graph_engine, tmp_path
++):
++    event_id = uuid4()
++    source = publish_fact(graph_engine, tmp_path, event_id, VERSION)
++    with Session(graph_engine) as reader:
++        content_hash = reader.scalar(
++            select(document_revisions.c.content_hash).where(
++                document_revisions.c.revision_id == source.revision_id.value
++            )
++        )
++        spans = list(
++            reader.execute(
++                select(evidence.c.start_offset, evidence.c.end_offset, evidence.c.quote).where(
++                    evidence.c.revision_id == source.revision_id.value
++                )
++            )
++        )
++    original = ContentStore(FIXTURE_RAW_DIRECTORY).read_verified(content_hash).decode()
++    assert all(original[start:end] == quote for start, end, quote in spans)
++    assert SOURCE_IDENTIFIER in original and "fixture-package" in original
++    assert str(event_id) not in original
++
++
++def client_for(engine, register, role=Role.VIEWER):
++    auth = AuthenticationSessionService(
++        DatabaseUserDirectory(engine),
++        ("http://localhost:5173",),
++        False,
++        state_store=PgAuthenticationStateStore(engine),
++    )
++    username = "fixture-r10-validity-" + uuid4().hex
++    password = secrets.token_urlsafe(32)
++    register(SecretStr(password))
++    auth.create_precreated_user(username, password, "owner", role)
++    session_token, _ = auth.login(username, password, "http://localhost:5173", uuid4().hex)
++    register(SecretStr(session_token))
++    app = FastAPI()
++    app.include_router(build_graph_router(lambda: auth, engine), prefix="/v1")
++    client = TestClient(app)
++    client.cookies.set(SESSION_COOKIE_NAME, session_token)
++    return client, username, auth, session_token
++
++
++def record_response(case, response, before_hash, **fields):
++    path = os.environ.get("R10_OBSERVATIONS_PATH")
++    if path:
++        value = {
++            "case": case,
++            "recorded_at": datetime.now().astimezone().isoformat(),
++            "status": response.status_code,
++            "body": response.json(),
++            "body_sha256": hashlib.sha256(response.content).hexdigest(),
++            "candidate_content_sha256": before_hash,
++            **fields,
++        }
++        with Path(path).open("a", encoding="utf-8") as stream:
++            stream.write(json.dumps(value, ensure_ascii=False, sort_keys=True) + "\n")
++
++
++@pytest.mark.parametrize(
++    "change", ["source", "document", "revision", "claim", "epoch", "event_version"]
++)
++@pytest.mark.parametrize("bump_epoch", [False, True])
++def test_committed_mutation_after_rr_event_read_cannot_escape_http_fence(
++    graph_engine, tmp_path, register_sensitive_failure_value, change, bump_epoch
++):
++    event_id = uuid4()
++    submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
++    publish_event(graph_engine, event_id, [submission])
++    before = read_graph(graph_engine, event_id)
++    assert before.edges
++    client, _username, _auth, _session_token = client_for(
++        graph_engine, register_sensitive_failure_value
++    )
++    changed = False
++
++    def mutate(connection, cursor, statement, parameters, context, executemany):
++        nonlocal changed
++        if changed or not statement.lstrip().startswith("SELECT events."):
++            return
++        changed = True
++        with graph_engine.begin() as writer:
++            if change == "source":
++                writer.execute(
++                    text(
++                        "UPDATE sources SET visibility='tenant',tenant_id='other' "
++                        "WHERE source_id=:id"
++                    ),
++                    {"id": submission.source_id.value},
++                )
++            elif change == "document":
++                writer.execute(
++                    update(documents)
++                    .where(documents.c.source_id == submission.source_id.value)
++                    .values(visibility="tenant", tenant_id="other")
++                )
++            elif change == "revision":
++                writer.execute(
++                    update(document_revisions)
++                    .where(document_revisions.c.revision_id == submission.revision_id.value)
++                    .values(visibility="tenant", tenant_id="other")
++                )
++            elif change == "claim":
++                writer.execute(
++                    update(claims)
++                    .where(claims.c.claim_id == submission.record.claim_id.value)
++                    .values(claim_status="withdrawn")
++                )
++            elif change == "event_version":
++                writer.execute(
++                    text(
++                        "UPDATE events SET business_version=business_version+1 WHERE event_id=:id"
++                    ),
++                    {"id": str(event_id)},
++                )
++            if bump_epoch or change == "epoch":
++                writer.execute(
++                    text("UPDATE scope_epochs SET epoch=epoch+1 WHERE scope_key='public'")
++                )
++
++    event.listen(graph_engine, "after_cursor_execute", mutate)
++    try:
++        response = client.get(f"/v1/events/{event_id}/graph")
++    finally:
++        event.remove(graph_engine, "after_cursor_execute", mutate)
++        client.close()
++    assert changed and response.status_code == 409
++    assert response.json()["error"]["code"] == "graph_snapshot_changed"
++    assert "edges" not in response.json()
++    record_response("fresh_" + change, response, before.content_sha256, bump_epoch=bump_epoch)
++
++
++@pytest.mark.parametrize("change", ["role", "tenant", "session"])
++def test_authentication_mutation_during_candidate_read_denies_private_http(
++    graph_engine, tmp_path, register_sensitive_failure_value, change
++):
++    event_id = uuid4()
++    private = VisibilityScope(visibility="tenant", tenant_id="owner")
++    submission = publish_fact(graph_engine, tmp_path, event_id, VERSION, scope=private)
++    publish_event(graph_engine, event_id, [submission], scope=private)
++    client, username, auth, session_token = client_for(
++        graph_engine, register_sensitive_failure_value, Role.ANALYST
++    )
++    changed = False
++
++    def mutate(connection, cursor, statement, parameters, context, executemany):
++        nonlocal changed
++        if changed or not statement.lstrip().startswith("SELECT events."):
++            return
++        changed = True
++        if change == "session":
++            auth.logout(session_token)
++        else:
++            assignment = "role='viewer'" if change == "role" else "tenant_id='other'"
++            with graph_engine.begin() as writer:
++                writer.execute(
++                    text("UPDATE users SET " + assignment + " WHERE username=:username"),
++                    {"username": username},
++                )
++
++    event.listen(graph_engine, "after_cursor_execute", mutate)
++    try:
++        response = client.get(f"/v1/events/{event_id}/graph")
++    finally:
++        event.remove(graph_engine, "after_cursor_execute", mutate)
++        client.close()
++    assert changed and response.status_code == (401 if change == "session" else 403)
++    assert "edges" not in response.json()
++    record_response("authentication_" + change, response, None)
++
++
++def test_parent_writer_can_commit_epoch_while_reader_waits_without_inverse_lock_order(
++    graph_engine, tmp_path, register_sensitive_failure_value
++):
++    event_id = uuid4()
++    submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
++    publish_event(graph_engine, event_id, [submission])
++    client, *_ = client_for(graph_engine, register_sensitive_failure_value)
++    reached_parent_lock = Event()
++    sql_states = []
++
++    def observe_error(context):
++        code = getattr(context.original_exception, "sqlstate", None)
++        if isinstance(code, str):
++            sql_states.append(code)
++
++    def observe(connection, cursor, statement, parameters, context, executemany):
++        if "FROM sources" in statement and "FOR SHARE" in statement:
++            reached_parent_lock.set()
++
++    event.listen(graph_engine, "before_cursor_execute", observe)
++    event.listen(graph_engine, "handle_error", observe_error)
++    started = time.perf_counter()
++    try:
++        with graph_engine.connect() as writer, ThreadPoolExecutor(max_workers=1) as pool:
++            transaction = writer.begin()
++            writer.execute(
++                text("UPDATE sources SET name=name WHERE source_id=:id"),
++                {"id": submission.source_id.value},
++            )
++            future = pool.submit(client.get, f"/v1/events/{event_id}/graph")
++            assert reached_parent_lock.wait(3)
++            writer.execute(
++                update(documents)
++                .where(documents.c.source_id == submission.source_id.value)
++                .values(visibility="tenant", tenant_id="other")
++            )
++            writer.execute(text("UPDATE scope_epochs SET epoch=epoch+1 WHERE scope_key='public'"))
++            transaction.commit()
++            response = future.result(timeout=10)
++        assert response.status_code == 409
++        assert "40P01" not in sql_states
++        record_response(
++            "parent_then_epoch",
++            response,
++            None,
++            elapsed_seconds=time.perf_counter() - started,
++            sql_states=sql_states,
++        )
++    finally:
++        event.remove(graph_engine, "before_cursor_execute", observe)
++        event.remove(graph_engine, "handle_error", observe_error)
++        client.close()
++
++
++def test_parent_lock_timeout_returns_bounded_unavailable_without_fake_success(
++    graph_engine, tmp_path, register_sensitive_failure_value
++):
++    event_id = uuid4()
++    submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
++    publish_event(graph_engine, event_id, [submission])
++    client, *_ = client_for(graph_engine, register_sensitive_failure_value)
++    started = time.perf_counter()
++    sql_states = []
++
++    def observe_error(context):
++        code = getattr(context.original_exception, "sqlstate", None)
++        if isinstance(code, str):
++            sql_states.append(code)
++
++    event.listen(graph_engine, "handle_error", observe_error)
++    try:
++        with graph_engine.connect() as writer, writer.begin():
++            writer.execute(
++                text("UPDATE sources SET name=name WHERE source_id=:id"),
++                {"id": submission.source_id.value},
++            )
++            response = client.get(f"/v1/events/{event_id}/graph")
++        assert response.status_code == 503
++        assert sql_states == ["55P03"]
++        assert "edges" not in response.json()
++        record_response(
++            "parent_lock_timeout",
++            response,
++            None,
++            elapsed_seconds=time.perf_counter() - started,
++            sql_states=sql_states,
++        )
++    finally:
++        client.close()
++        event.remove(graph_engine, "handle_error", observe_error)
++
++
++@pytest.mark.parametrize(
++    "change", ["package", "boundary", "wrapped_condition", "fix", "other_event"]
++)
++def test_typed_version_requires_matching_contextual_source_lines(graph_engine, tmp_path, change):
++    event_id = uuid4()
++    submission = prepared_submission(graph_engine, tmp_path, predicate="version_assertion")
++    value = dict(VERSION)
++    lines = [value["raw_expression"], value["vendor_fix"], *value["mitigations"]]
++    if change == "other_event":
++        value["raw_expression"] = value["raw_expression"].replace(
++            SOURCE_IDENTIFIER, "GHSA-cccc-ffff-gggg"
++        )
++        lines[0] = value["raw_expression"]
++        lines.append("Background reference " + SOURCE_IDENTIFIER + ".")
++    elif change == "package":
++        lines[0] = lines[0].replace("fixture-package", "other-package")
++    elif change == "boundary":
++        lines[0] = lines[0].replace("<1.4.2", "<1.5.0")
++    elif change == "wrapped_condition":
++        lines.append("Only when remote tools are enabled.")
++    else:
++        lines[1] = "No fix is available for GHSA-2345-6789-cfgh."
++    record = ClaimRecord.model_validate(
++        {
++            **submission.record.model_dump(),
++            "schema_version": 3,
++            "subject": str(event_id),
++            "object_value": value,
++        }
++    )
++    submission = replace_source_body(
++        graph_engine, submission.model_copy(update={"record": record}), lines
++    )
++    publish_submission(graph_engine, submission)
++    publish_event(graph_engine, event_id, [submission])
++    assert read_graph(graph_engine, event_id).edges == ()
++
++
++def test_atlas_cannot_drop_prerequisites_present_in_source_block(graph_engine, tmp_path):
++    event_id = uuid4()
++    value = {**ATLAS, "prerequisites": []}
++    submission = publish_fact(graph_engine, tmp_path, event_id, value)
++    replace_source_body(
++        graph_engine, submission, [value["mechanism"], "Attacker can submit untrusted input."]
++    )
++    publish_event(graph_engine, event_id, [submission])
++    assert read_graph(graph_engine, event_id).edges == ()
++
++
++def test_precise_source_owner_field_binds_a_rule_fact_without_internal_uuid_in_text(
++    graph_engine, tmp_path
++):
++    event_id = uuid4()
++    value = {**VERSION, "raw_expression": "PyPI fixture-package affected versions: >=1.0,<1.4.2"}
++    template = prepared_submission(
++        graph_engine, tmp_path, predicate="version_assertion", claim_origin="rule_derived"
++    )
++    record = ClaimRecord.model_validate(
++        {
++            **template.record.model_dump(),
++            "schema_version": 3,
++            "subject": str(event_id),
++            "object_value": value,
++        }
++    )
++    source = replace_source_body(
++        graph_engine,
++        template.model_copy(update={"record": record}),
++        [value["raw_expression"], value["vendor_fix"], *value["mitigations"]],
++    )
++    with graph_engine.begin() as writer:
++        block_id = add_text_block(
++            writer,
++            source.revision_id.value,
++            2,
++            500,
++            500 + len(SOURCE_IDENTIFIER),
++            SOURCE_IDENTIFIER,
++        )
++        writer.execute(
++            text("UPDATE text_blocks SET json_pointer='/ghsa_id' WHERE block_id=:id"),
++            {"id": block_id},
++        )
++        span_id = attach_evidence_span(
++            writer,
++            source.revision_id.value,
++            500,
++            500 + len(SOURCE_IDENTIFIER),
++            "/ghsa_id",
++            SOURCE_IDENTIFIER,
++            True,
++            "public",
++            None,
++            NOW,
++            block_id=block_id,
++            verified_at=NOW,
++        )
++        store_fixture_original(writer, source.revision_id.value)
++    owner_record = ClaimRecord.model_validate(
++        {
++            **template.record.model_dump(),
++            "claim_id": {"value": str(uuid4())},
++            "subject": str(event_id),
++            "predicate": "source_identifier",
++            "object_value": SOURCE_IDENTIFIER,
++        }
++    )
++    owner = template.model_copy(
++        update={
++            "record": owner_record,
++            "json_path": "/ghsa_id",
++            "evidence_links": (
++                EvidenceLink(
++                    evidence_id={"value": span_id},
++                    support_kind="supports",
++                    validation_status="validated",
++                ),
++            ),
++        }
++    )
++    publish_submission(graph_engine, source)
++    publish_submission(graph_engine, owner)
++    publish_event(graph_engine, event_id, [source])
++    result = read_graph(graph_engine, event_id)
++    assert any(edge.relation_type == "affects_component_version" for edge in result.edges)
++    with Session(graph_engine) as reader:
++        row = reader.execute(
++            select(claims.c.claim_origin, claims.c.object_json).where(
++                claims.c.claim_id == source.record.claim_id.value
++            )
++        ).one()
++    assert (
++        row.claim_origin == "rule_derived" and row.object_json["comparison_support"] == "supported"
++    )
++    assert str(event_id) not in "\n".join(
++        [value["raw_expression"], value["vendor_fix"], *value["mitigations"], SOURCE_IDENTIFIER]
++    )
++
++
++def test_published_static_poc_presence_is_not_a_remediation_or_lab_verification(
++    graph_engine, tmp_path
++):
++    event_id = uuid4()
++    value = {
++        "kind": "artifact_reference",
++        "uri": "https://example.invalid/static-poc",
++        "title": "Fixture PoC",
++        "artifact_kind": "poc",
++        "static_status": "static_reviewed",
++    }
++    template = prepared_submission(graph_engine, tmp_path, predicate="artifact_reference")
++    record = ClaimRecord.model_validate(
++        {
++            **template.record.model_dump(),
++            "schema_version": 3,
++            "subject": str(event_id),
++            "object_value": value,
++        }
++    )
++    source = replace_source_body(
++        graph_engine,
++        template.model_copy(update={"record": record}),
++        [
++            "GHSA-2345-6789-cfgh: Fixture PoC https://example.invalid/static-poc "
++            "proof of concept; not executed."
++        ],
++    )
++    publish_submission(graph_engine, source)
++    publish_event(graph_engine, event_id, [source])
++    result = read_graph(graph_engine, event_id)
++    assert {edge.relation_type for edge in result.edges} == {"same_event"}
++    assert not any("lab_verified" in node.label for node in result.nodes)
++    with Session(graph_engine) as reader:
++        stored = reader.scalar(
++            select(claims.c.object_json).where(claims.c.claim_id == source.record.claim_id.value)
++        )
++    assert stored["static_status"] == "static_reviewed"
++
++
++@pytest.mark.parametrize("descriptor", ["matching", "missing", "ordinary"])
++def test_non_cve_binding_uses_primary_source_product_and_security_descriptor(
++    graph_engine, tmp_path, descriptor
++):
++    event_id = uuid4()
++    value = {
++        **VERSION,
++        "raw_expression": "PyPI fixture-package affected versions: >=1.0,<1.4.2",
++        "vendor_fix": None,
++        "mitigations": [],
++    }
++    template = prepared_submission(graph_engine, tmp_path, predicate="version_assertion")
++    excerpt = (
++        "Advisory AI-2026-01: fixture-package is vulnerable to untrusted model input."
++        if descriptor != "ordinary"
++        else "Advisory AI-2026-01: fixture-package has a new colour theme."
++    )
++    lines = [value["raw_expression"], excerpt, "fixture-package"]
++    record = ClaimRecord.model_validate(
++        {
++            **template.record.model_dump(),
++            "schema_version": 3,
++            "subject": str(event_id),
++            "object_value": value,
++        }
++    )
++    source = replace_source_body(
++        graph_engine, template.model_copy(update={"record": record}), lines
++    )
++    publish_submission(graph_engine, source)
++    if descriptor != "missing":
++        for index, predicate, object_value in (
++            (1, "source_excerpt", excerpt),
++            (2, "affected_product", "fixture-package"),
++        ):
++            bound = ClaimRecord.model_validate(
++                {
++                    **template.record.model_dump(),
++                    "claim_id": {"value": str(uuid4())},
++                    "subject": str(event_id),
++                    "predicate": predicate,
++                    "object_value": object_value,
++                }
++            )
++            publish_submission(
++                graph_engine,
++                template.model_copy(
++                    update={"record": bound, "evidence_links": (source.evidence_links[index],)}
++                ),
++            )
++    publish_event(graph_engine, event_id, [source])
++    with graph_engine.begin() as writer:
++        writer.execute(
++            event_external_ids.delete().where(event_external_ids.c.event_id == str(event_id))
++        )
++    result = read_graph(graph_engine, event_id)
++    assert any(edge.relation_type == "affects_component_version" for edge in result.edges) == (
++        descriptor == "matching"
++    )
++    assert str(event_id) not in "\n".join(lines)
++
++
++def test_2000_support_rows_share_one_request_local_paper_acl_lookup(graph_engine, tmp_path):
++    event_id = uuid4()
++    value = paper_value(graph_engine, tmp_path / "target")
++    template = prepared_submission(
++        graph_engine, tmp_path / "source", predicate="literature_reference"
++    )
++    record = ClaimRecord.model_validate(
++        {
++            **template.record.model_dump(),
++            "schema_version": 3,
++            "subject": str(event_id),
++            "object_value": value,
++        }
++    )
++    lines = [
++        value["support_summary"],
++        value["title"] + " " + value["uri"],
++        *("Source context paragraph " + str(index) + "." for index in range(18)),
++    ]
++    source = replace_source_body(
++        graph_engine, template.model_copy(update={"record": record}), lines
++    )
++    submissions = tuple(
++        source.model_copy(
++            update={
++                "record": record.model_copy(
++                    update={
++                        "claim_id": Identifier(value=str(uuid4())),
++                        "asserted_at": NOW + timedelta(seconds=index),
++                    }
++                )
++            }
++        )
++        for index in range(100)
++    )
++    submissions = tuple(
++        item.model_copy(update={"record": ClaimRecord.model_validate(item.record.model_dump())})
++        for item in submissions
++    )
++    with Session(graph_engine) as session, session.begin():
++        KnowledgeRepository(session, publisher_scope(source.record.scope)).publish(
++            "fixture-r10-2000", source.record.scope, submissions, created_at=NOW
++        )
++    publish_event(graph_engine, event_id, [source])
++    counts = {"selects": 0, "target_acl": 0}
++
++    def count(connection, cursor, statement, parameters, context, executemany):
++        if statement.lstrip().startswith("SELECT"):
++            counts["selects"] += 1
++            if "JOIN sources" in statement and value["target_revision_id"] in parameters.values():
++                counts["target_acl"] += 1
++
++    event.listen(graph_engine, "before_cursor_execute", count)
++    started = time.perf_counter()
++    try:
++        result = read_graph(graph_engine, event_id, max_nodes=1, max_edges=1)
++    finally:
++        event.remove(graph_engine, "before_cursor_execute", count)
++    assert result.truncated and len(result.nodes) == 1 and result.edges == ()
++    assert counts["target_acl"] == 1 and counts["selects"] <= 12
++    path = os.environ.get("R10_OBSERVATIONS_PATH")
++    if path:
++        with Path(path).open("a", encoding="utf-8") as stream:
++            stream.write(
++                json.dumps(
++                    {
++                        "case": "2000_support_rows",
++                        "input_claims": 100,
++                        "input_support_rows": 2000,
++                        "selects": counts["selects"],
++                        "target_acl_selects": counts["target_acl"],
++                        "elapsed_seconds": time.perf_counter() - started,
++                        "snapshot": result.model_dump(mode="json"),
++                        "data_mode": "fixture",
++                    },
++                    ensure_ascii=False,
++                )
++                + "\n"
++            )
++    with graph_engine.begin() as writer:
++        writer.execute(
++            update(documents)
++            .where(documents.c.document_id == value["target_document_id"])
++            .values(visibility="tenant", tenant_id="other")
++        )
++    assert not any(
++        edge.relation_type == "related_paper" for edge in read_graph(graph_engine, event_id).edges
++    )
+diff --git a/backend/tests/unit/test_r10_evidence_graph.py b/backend/tests/unit/test_r10_evidence_graph.py
+index 4d6cd17..7754005 100644
+--- a/backend/tests/unit/test_r10_evidence_graph.py
++++ b/backend/tests/unit/test_r10_evidence_graph.py
+@@ -33,7 +33,7 @@ def test_effective_edge_cannot_claim_support_without_evidence_or_candidates():
+         "source_revision_ids": [uuid4()],
+         "evidence_span_ids": [uuid4()],
+         "supporting_claim_ids": [uuid4()],
+-        "rule_or_model_version": "r10-graph-1.0.0",
++        "rule_or_model_version": "r10-graph-1.1.0",
+         "reason": "已核验机制",
+         "status": "supported",
+     }
+diff --git a/docs/decisions/CR-R10_graph_validity.md b/docs/decisions/CR-R10_graph_validity.md
+new file mode 100644
+index 0000000..c39c659
+--- /dev/null
++++ b/docs/decisions/CR-R10_graph_validity.md
+@@ -0,0 +1,49 @@
++# R10 · 证据支持、读返回有效性与 fixture 迁移
++
++记录时间：2026-10-16T04:12:00+08:00。状态：`awaiting_review`；实施依据是主控本轮明确授权的修复设计和 10 个旧正例 fixture 输入迁移，独立复核尚未完成。本文件不修改 public_api_v2、公共权限/认证、数据库 schema、锁配置、原 T 验收或评分分母。
++
++## 已复现问题与依据
++
++冻结 `b0b7a5b856cc38862f64c01565309564d67c34c0` 的作者 PG 35 项通过，但部分正例只用 `explicit source` 作为引用。PG supported/validated 标记和引文哈希不能证明版本、ATLAS、论文、处置或事件绑定的内容支持。新独立 reviewer 的最初 20 项为 8 passed/12 failed；扩展到 32 项后为 20 passed/12 failed。原报告/脚本/日志在主控 `reports/runs/recovery_r10_pg_evidence_graph_review1_20261016/`，本作者不修改其字节或期待。
++
++另两个 P1 是首次 RR event SELECT 后另一事务已撤销父 ACL、撤回事实/增加 epoch/事件版本，或将 analyst 降为 viewer，而路由仍交付旧快照。P2 是相同论文目标在 2000 支持行、max_nodes=1/max_edges=1 时重复做目标 ACL 查询。
++
++## 最小行为修正
++
++- 投影按 claim 聚合完整有效引用，验证证据坐标/哈希后复用 `validate_field_candidate`。CVE/GHSA 使用原文机制/版本/分析句中的外部 ID 或同修订精确 owner JSON 字段（`/id`、`/ghsa_id`、`/cve/id`、`/cveMetadata/cveId`）绑定，ID 比较沿用不区分大小写的已归一语义；不要求原文含系统 UUID。非 CVE 使用同主来源的已验证 affected_product/source_excerpt 与具体安全描述，缺绑定保持 unknown。
++- 版本需要组件、生态、肯定 affected 范围、原边界及限定条件；修复/缓解需具体来源句；ATLAS 需当前、可见、固定 commit 的体系文档/技术 ID、事件机制和前提；论文需 URI/title/关系正文、正确目标身份、覆盖及当前父 ACL。只共享主题或缺依据不发布强边。
++- 为复用模型专用校验器，只在临时校验候选里中和 comparison_support、模型不允许选择的 target IDs、static_status 等权限限制；随后核对由 PG 选定的目标身份。不写回、不提升模型候选，也不修改已有合法规则事实或静态 PoC 状态。规则事实的 supported comparison 和已记录 static_reviewed 保持原值。
++- 首次 RR 仅构建候选与输入摘要；关闭它后在新 READ COMMITTED 短事务使用现有 `lock_authenticated_scope`，比较完整 scope/role/permissions。锁顺序为认证 → source → document → revision → event → claim/evidence/block/断言关联 → epoch。当前投影和有界输入摘要全部重读，再锁/比较 epoch。直接撤权不递增 epoch 时也会失效；变化返回 409，撤权返回 401/403/404。所有读取完成后在持锁事务内构建响应字节。0 重试，不在 epoch 锁内倒序获取父锁，等待继承既有配置并以 503 有界失败。
++- 论文目标和文档只在一次 event_graph 调用的认证范围内缓存；下一调用重新检查当前父 ACL。没有全局权限缓存。输入支持行上限 2000、节点 200、边 400 保持；超过返回围栏容量明确 409。`content_sha256` 仍仅描述选中图，不能给截断全图/Neo4j 投影签一致；内部输入摘要只用于本次读围栏。
++- 投影规则版本由 `r10-graph-1.0.0` 升到 `r10-graph-1.1.0`，公开合同未改变。
++
++## 原 35 项迁移范围与保留
++
++原始文件完整保存在 `reports/runs/recovery_r10_graph_validity_20261016/original_author_cases.py`。raw SHA-256=`dca8f657fc384c6af9363b020c7ce49ce9bd1d2b08f913fa73625ff2d13d3bf9`，原 Git blob=`2ccfb158d3d231af1a442cdda0e20d41023d515e`。只读原副本在新语义下实际为 24 passed/11 failed，exit 1；`original_author_red.log/xml/json` 保留。10 个失败正例缺内容支持，另 1 是旧 REST rule_version 的硬编码期待。没有把原红改绿或删样本。
++
++| 原 case / 参数范围 | 原缺口 | 新输入；全部行为/权限/current/数量断言保留 |
++|---|---|---|
++| `test_six_relations_are_derived_from_published_pg_claims_and_preserve_reverse_support`（1） | 假 quote 不含六类字段和事件依据 | 合成自然 GHSA 公告、PyPI affected 边界、Fixed/Mitigation 句、体系 commit/技术 ID/机制/前提、论文标题/URI/分析原文与目标版本 |
++| `test_same_names_in_distinct_ecosystems_and_ranges_remain_separate`（1） | 引用无组件、生态和范围 | 三个明确的 PyPI/npm 与 1.x/2.x 来源句；仍断言 3 身份、不合并 |
++| `test_unknown_version_and_absent_action_preserve_gaps`（1） | 无来源绑定的 same_event | 真 GHSA/组件范围来源；comparison unknown 和空 action 原期待保留 |
++| `test_current_version_changed_withdrawal_and_truncation_do_not_resurrect_edges`（1） | 初始 5 边无原文依据 | 合法的 affected/fix/mitigation 来源；原 5 边、截断、撤回、旧 RR 快照与新版本断言均保留 |
++| `test_private_graph_and_nested_sources_do_not_cross_tenants_or_promote_scope`（1） | 私有输入无语义绑定 | 同样自然原文的私有 scope；被测试的公开关联显式带相同外部标识，仍拒绝 other/viewer、私边不提升 |
++| `test_every_parent_acl_is_rechecked_and_private_support_stays_private`（5） | 来源事实本身是空泛 quote | 真实字段句；source/document/revision/evidence/claim 全 5 参数与其拒绝/私有范围断言不改 |
++
++同一 helper 生成的其余 25 项输入得到上述自然原文以保持正负例同一基线，原 case IDs、参数和期待未删除。合成原文按固定坐标存入内容寻址对象，PG 文档/修订 hash 与实际字节一致；只是未发布 fixture 的初始化，不改变产品历史或原文保存逻辑。新增检查直接读取原文字节核验所有 quote 坐标。仍不是 live/官方版本真实性实测。
++
++unit 的一个固定 rule_or_model_version 输入和 REST 的 rule_version 期待改为 1.1.0，分别有原 unit/PG 副本和旧红记录；这是版本变更，不改变状态门或强关系门。
++
++## 原 reviewer 20/32 的保留与 known loss
++
++作者复制的 32 项脚本 raw SHA-256=`cfbbb95d227f4e884d2765bde6da5dbd1121c5ffd9c159ac99a1e9eadf0bfe16`，原脚本字节不改。新语义首轮复跑 22 passed/10 failed：原 12 个 P1 反例均通过；10 个旧期待仍保留失败。
++
++- `test_exact_fixture_fields_produce_each_supported_relation` 的 6 参数：仅将 typed JSON 和内部 UUID 拼入字符串，并未给出原文外部 ID/精确源字段、完整版本/体系/论文依据，不能作为强关系正例。
++- `test_selected_graph_is_bounded_deterministic_and_canonical` 的 3 个小上限参数：仍以无支持的旧 quote 输入，期待原来虚构的 5 边导致 truncated=true；新语义无有效边，原截断期待不成立。第四个大上限 case 仍通过。
++- `test_poc_reference_does_not_become_remediation_or_verification`（1）：旧无绑定 quote 不能确认 same_event；“不成为处置/验证”的安全要求继续由新增真实来源例验证。
++
++这些 known loss 不被标记 skip、不替换原 probe 或改计分口径。新增自然原文正负例另列；独立 reviewer 决定语义修复与本次 fixture 迁移是否可接受。
++
++## 验证与剩余范围
++
++需在新的冻结 SHA 完整运行迁移后原 35、原 pure 10、新语义/HTTP/锁等待/性能用例、相关既有回归，并保留原 35 与 reviewer 20/32 的红项和所有分母。控制负载仅报 SELECT 次数与实际耗时，不作为 P1/P3 比赛指标。无 source/provider/model/network 调用，无资产扫描、认证共用改动、新 schema 或业务写入。Neo4j、产品注册、UI、live/manual 仍未交付，原 R10/原 T 整卡不能自动接受。
