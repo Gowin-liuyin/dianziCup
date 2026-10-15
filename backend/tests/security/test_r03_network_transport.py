@@ -454,6 +454,22 @@ def test_ambiguous_response_headers_close_transport(
     assert sockets[0].closed
 
 
+@pytest.mark.parametrize("second_name", [b"Link", b"link", b"LINK"])
+def test_duplicate_pagination_links_are_rejected_before_dictionary_conversion(
+    monkeypatch: pytest.MonkeyPatch,
+    second_name: bytes,
+) -> None:
+    headers = (
+        b'Link: <https://source.example/first>; rel="next"\r\n'
+        + second_name
+        + b': <https://source.example/second>; rel="next"\r\n'
+    )
+    sockets, _queries = _install_socket_fixtures(monkeypatch, [_response(headers=headers)])
+    with pytest.raises(NetworkRequestError, match="ambiguous duplicate response headers"):
+        create_network_gateway(NetworkPolicy(("source.example",))).fetch("https://source.example/")
+    assert sockets[0].closed
+
+
 def test_truncated_response_is_failure_and_closes_transport(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

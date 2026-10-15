@@ -12,7 +12,9 @@
 
 ## 分页和时间语义
 
-NVD 使用固定 Ollama keywordSearch 查询与 startIndex，vLLM 使用固定仓库 published advisory 查询与 page。NVD 的下一页来自实际响应的 startIndex/resultsPerPage/totalResults，且须与请求一致；厂商页满则请求下一页确认，空页才结束。完成页输出空位置以便下一轮从首页重读；同源相同原文由现有版本服务幂等复用。
+NVD 使用固定 Ollama keywordSearch 查询与 startIndex，下一页来自实际响应的 startIndex/resultsPerPage/totalResults，且须与请求一致。vLLM 使用固定仓库 published advisory 查询，下一页仅来自响应 Link 的 after 游标；没有 next 则完成，即使本页恰好10条。仅校验官方域、443端口、固定命名仓库或已核实数字仓库路径及固定参数，然后提取有界不透明 after，重新构造命名仓库 URL，不直接跟随 Link URL。重复 Link 头必须在共享 HTTP 传输转换成字典前拒绝，大小写不能绕过。完成页输出空位置以便下一轮从首页重读；同源相同原文由现有版本服务幂等复用。
+
+2026-10-15T14:24:49+08:00 至14:24:52+08:00实际响应证明旧数字 page 被上游忽略，两页哈希和10条记录完全相同；旧版95/7184数字分页合同与失败证据保留于Git历史及原始运行日志，不再作为当前合同。新版持久位置为 cursor_version=2/after；旧page=1可作首请求，page>1明确 blocked/legacy_vendor_cursor_requires_restart，不静默重置、删除回执或伪称完整。旧查询 URL 仍可读取历史；新 vendor URL 仅因2048字符游标经编码的最坏膨胀放宽到6500，NVD仍2000。回滚旧代码前暂停新版流；旧版不能解释after时必须显式失败，不能靠回滚数据完成迁移。
 
 当前窗口仅记录观察轮次的开始/截止标识，**不是上游不可变快照或时间过滤覆盖保证**。未核明时区的 NVD 原始发布时间保持 unknown；本实现不据此推进发布时间 watermark，不声称完整增量监测或同版本持续运行。R06 负责来源广度、时间过滤、重叠补采与正式观测，R16 负责撤回后的结论失效与历史重判。来源原文中明确撤回/Rejected 状态留档，不将事件 active/merged 注册状态解释为仍有效或安全。
 

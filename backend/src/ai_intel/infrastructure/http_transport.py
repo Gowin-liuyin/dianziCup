@@ -106,6 +106,7 @@ class _HttpResponse:
             "content-type",
             "content-encoding",
             "location",
+            "link",
             "transfer-encoding",
         }
         seen: set[str] = set()
