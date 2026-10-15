@@ -1,0 +1,39 @@
+..................F.........................                             [100%]
+================================== FAILURES ===================================
+_ test_osv_offline_record_keeps_alias_relation_and_range_inputs_in_raw_document _
+
+    def test_osv_offline_record_keeps_alias_relation_and_range_inputs_in_raw_document():
+        record = json.loads((REPOSITORY / "osv_ollama_real.body").read_bytes())
+        body = json.dumps({"vulns": [record]}).encode()
+>       page = normalize_catalog_page("osv_ollama", body, {})
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\test_r06_catalog_pages.py:54: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\ingestion\catalog_pages.py:583: in normalize_catalog_page
+    return _osv_page(body, cursor)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\ingestion\catalog_pages.py:360: in _osv_page
+    record = normalize_osv_record(item)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\ingestion\sources\osv.py:120: in normalize_osv_record
+    modified_at = _timestamp(payload.get("modified"), "modified")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+value = '2026-09-10T03:49:48.487641080Z', field_name = 'modified'
+
+    def _timestamp(value: object, field_name: str) -> str | None:
+        text = _optional_text(value, field_name)
+        if text is not None:
+            try:
+                if parse_source_timestamp(text) is None:
+                    raise ValueError("timestamp lacks explicit timezone")
+            except ValueError:
+>               raise OsvContractError(f"{field_name} must be a timezone-aware timestamp") from None
+E               ai_intel.ingestion.sources.osv.OsvContractError: modified must be a timezone-aware timestamp
+
+src\ai_intel\ingestion\sources\osv.py:86: OsvContractError
+=========================== short test summary info ===========================
+FAILED tests/unit/test_r06_catalog_pages.py::test_osv_offline_record_keeps_alias_relation_and_range_inputs_in_raw_document
+1 failed, 43 passed in 1.04s
