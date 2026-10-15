@@ -1,0 +1,47 @@
+UP022 Prefer `capture_output` over sending `stdout` and `stderr` to `PIPE`
+  --> D:\wt\r11-sbom-inventory\reports\runs\recovery_r11_sbom_inventory_20261016\run_pg.py:20:14
+   |
+19 |   def approved_url():
+20 |       result = subprocess.run([
+   |  ______________^
+21 | |         "wsl.exe", "-d", "Ubuntu-22.04", "-u", "root", "--exec", "cat",
+22 | |         "/tmp/dianzi-docker-static-r01-20261014/runtime/test-services/connection.json",
+23 | |     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+   | |__________________________________________________________________^
+24 |       configured = json.loads(result.stdout)
+25 |       url = make_url(configured["TEST_DATABASE_URL"])
+   |
+help: Replace with `capture_output` keyword argument
+
+E501 Line too long (112 > 100)
+  --> D:\wt\r11-sbom-inventory\reports\runs\recovery_r11_sbom_inventory_20261016\run_pg.py:38:101
+   |
+36 |         raise ValueError("unsupported database suite")
+37 |     started = datetime.now(ZoneInfo("Asia/Shanghai"))
+38 |     run_id = ("r11_sbom_inventory_" if mode == "sbom" else "r11_inventory_") + started.strftime("%Y%m%d_%H%M%S")
+   |                                                                                                     ^^^^^^^^^^^^
+39 |     database = "test_dianzi_" + run_id
+40 |     assert re.fullmatch(r"test_dianzi_r11_(sbom_inventory|inventory)_[0-9]{8}_[0-9]{6}", database)
+   |
+
+E501 Line too long (111 > 100)
+  --> D:\wt\r11-sbom-inventory\reports\runs\recovery_r11_sbom_inventory_20261016\run_pg.py:44:101
+   |
+42 |     admin = create_engine(parsed, isolation_level="AUTOCOMMIT", hide_parameters=True)
+43 |     with admin.connect() as connection:
+44 |         assert not connection.scalar(text("SELECT 1 FROM pg_database WHERE datname=:name"), {"name": database})
+   |                                                                                                     ^^^^^^^^^^^
+45 |         connection.execute(text(f'CREATE DATABASE "{database}"'))
+46 |     admin.dispose()
+   |
+
+E501 Line too long (104 > 100)
+  --> D:\wt\r11-sbom-inventory\reports\runs\recovery_r11_sbom_inventory_20261016\run_pg.py:73:101
+   |
+71 |              else ["tests/integration/test_t24_asset_inventory.py"])
+72 |     return run(f"pg_{mode}_{run_id}", [str(PYTHON), "-m", "pytest", *files, "--no-cov", "-q",
+73 |                                       f"--junitxml={RUN / (run_id + '.xml')}"], environment=environment)
+   |                                                                                                     ^^^^
+
+Found 4 errors.
+No fixes available (1 hidden fix can be enabled with the `--unsafe-fixes` option).

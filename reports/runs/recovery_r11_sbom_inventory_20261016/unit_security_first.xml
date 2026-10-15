@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="24" time="3.984" timestamp="2026-10-16T06:13:58.403622+08:00" hostname="yin"><testcase classname="tests.unit.test_r11_sbom_inventory_capacity" name="test_cdx_10000_keeps_every_version_and_identity[two_fields]" time="0.290" /><testcase classname="tests.unit.test_r11_sbom_inventory_capacity" name="test_cdx_10000_keeps_every_version_and_identity[dense]" time="0.544" /><testcase classname="tests.unit.test_r11_sbom_inventory_capacity" name="test_original_reviewed_dense_10000_bytes_now_parse" time="0.501" /><testcase classname="tests.unit.test_r11_sbom_inventory_capacity" name="test_spdx_10000_with_direct_versions_keeps_all_components" time="0.311" /><testcase classname="tests.unit.test_r11_sbom_inventory_capacity" name="test_local_manifest_budget_supports_all_valid_fields_at_10000_component_boundary" time="1.879" /><testcase classname="tests.unit.test_r11_sbom_inventory_dispatch" name="test_dispatch_legacy_json_and_csv_keep_projection_and_no_sbom" time="0.001" /><testcase classname="tests.unit.test_r11_sbom_inventory_dispatch" name="test_sbom_dispatch_freezes_safe_typed_sidecar_from_server_identity[1.5]" time="0.002"><failure message="AssertionError: assert ('/opaque',) == ('/opaque', '/version')&#10;  &#10;  Right contains one more item: '/version'&#10;  Use -v to get more diff">version = '1.5'
+
+    @pytest.mark.parametrize("version", ["1.5", "1.6", "1.7"])
+    def test_sbom_dispatch_freezes_safe_typed_sidecar_from_server_identity(version):
+        raw = json.dumps({
+            "bomFormat": "CycloneDX", "specVersion": version, "version": 1,
+            "components": [{"type": "library", "name": "p", "version": "1", "bom-ref": "ref-p",
+                            "hashes": [{"alg": "SHA-256", "content": "a" * 64}]}],
+            "compositions": [{"aggregate": "complete", "assemblies": ["ref-p"]}],
+            "opaque": "private-marker",
+        }).encode()
+        result = parse_inventory_input(raw, manifest_format="cyclonedx_json", **OPTIONS)
+        assert result.sbom is not None
+        sidecar = freeze_sbom_sidecar(result.sbom)
+        assert sidecar.tenant_id == "dispatch-tenant"
+        assert sidecar.spec_version == version
+        assert sidecar.component_sources[0].checksums[0].checksum_value == "a" * 64
+        assert sidecar.completeness_declarations[0].aggregate == "complete"
+        assert result.manifest.source_bytes == raw
+        assert result.manifest.snapshot.components[0].image_digest is None
+        assert result.manifest.snapshot.components[0].dependency_path is None
+        assert result.manifest.snapshot.inventory_completeness == "unknown"
+        assert sidecar.combined_semantic_sha256 == result.semantic_sha256
+        assert "private-marker" not in sidecar.model_dump_json()
+&gt;       assert sidecar.unmapped_field_locators == ("/opaque", "/version")
+E       AssertionError: assert ('/opaque',) == ('/opaque', '/version')
+E         
+E         Right contains one more item: '/version'
+E         Use -v to get more diff
+
+tests\unit\test_r11_sbom_inventory_dispatch.py:57: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_sbom_inventory_dispatch" name="test_sbom_dispatch_freezes_safe_typed_sidecar_from_server_identity[1.6]" time="0.001"><failure message="AssertionError: assert ('/opaque',) == ('/opaque', '/version')&#10;  &#10;  Right contains one more item: '/version'&#10;  Use -v to get more diff">version = '1.6'
+
+    @pytest.mark.parametrize("version", ["1.5", "1.6", "1.7"])
+    def test_sbom_dispatch_freezes_safe_typed_sidecar_from_server_identity(version):
+        raw = json.dumps({
+            "bomFormat": "CycloneDX", "specVersion": version, "version": 1,
+            "components": [{"type": "library", "name": "p", "version": "1", "bom-ref": "ref-p",
+                            "hashes": [{"alg": "SHA-256", "content": "a" * 64}]}],
+            "compositions": [{"aggregate": "complete", "assemblies": ["ref-p"]}],
+            "opaque": "private-marker",
+        }).encode()
+        result = parse_inventory_input(raw, manifest_format="cyclonedx_json", **OPTIONS)
+        assert result.sbom is not None
+        sidecar = freeze_sbom_sidecar(result.sbom)
+        assert sidecar.tenant_id == "dispatch-tenant"
+        assert sidecar.spec_version == version
+        assert sidecar.component_sources[0].checksums[0].checksum_value == "a" * 64
+        assert sidecar.completeness_declarations[0].aggregate == "complete"
+        assert result.manifest.source_bytes == raw
+        assert result.manifest.snapshot.components[0].image_digest is None
+        assert result.manifest.snapshot.components[0].dependency_path is None
+        assert result.manifest.snapshot.inventory_completeness == "unknown"
+        assert sidecar.combined_semantic_sha256 == result.semantic_sha256
+        assert "private-marker" not in sidecar.model_dump_json()
+&gt;       assert sidecar.unmapped_field_locators == ("/opaque", "/version")
+E       AssertionError: assert ('/opaque',) == ('/opaque', '/version')
+E         
+E         Right contains one more item: '/version'
+E         Use -v to get more diff
+
+tests\unit\test_r11_sbom_inventory_dispatch.py:57: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_sbom_inventory_dispatch" name="test_sbom_dispatch_freezes_safe_typed_sidecar_from_server_identity[1.7]" time="0.001"><failure message="AssertionError: assert ('/opaque',) == ('/opaque', '/version')&#10;  &#10;  Right contains one more item: '/version'&#10;  Use -v to get more diff">version = '1.7'
+
+    @pytest.mark.parametrize("version", ["1.5", "1.6", "1.7"])
+    def test_sbom_dispatch_freezes_safe_typed_sidecar_from_server_identity(version):
+        raw = json.dumps({
+            "bomFormat": "CycloneDX", "specVersion": version, "version": 1,
+            "components": [{"type": "library", "name": "p", "version": "1", "bom-ref": "ref-p",
+                            "hashes": [{"alg": "SHA-256", "content": "a" * 64}]}],
+            "compositions": [{"aggregate": "complete", "assemblies": ["ref-p"]}],
+            "opaque": "private-marker",
+        }).encode()
+        result = parse_inventory_input(raw, manifest_format="cyclonedx_json", **OPTIONS)
+        assert result.sbom is not None
+        sidecar = freeze_sbom_sidecar(result.sbom)
+        assert sidecar.tenant_id == "dispatch-tenant"
+        assert sidecar.spec_version == version
+        assert sidecar.component_sources[0].checksums[0].checksum_value == "a" * 64
+        assert sidecar.completeness_declarations[0].aggregate == "complete"
+        assert result.manifest.source_bytes == raw
+        assert result.manifest.snapshot.components[0].image_digest is None
+        assert result.manifest.snapshot.components[0].dependency_path is None
+        assert result.manifest.snapshot.inventory_completeness == "unknown"
+        assert sidecar.combined_semantic_sha256 == result.semantic_sha256
+        assert "private-marker" not in sidecar.model_dump_json()
+&gt;       assert sidecar.unmapped_field_locators == ("/opaque", "/version")
+E       AssertionError: assert ('/opaque',) == ('/opaque', '/version')
+E         
+E         Right contains one more item: '/version'
+E         Use -v to get more diff
+
+tests\unit\test_r11_sbom_inventory_dispatch.py:57: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_sbom_inventory_dispatch" name="test_sbom_dispatch_rejects_csv_mapping_before_parsing[cyclonedx_json]" time="0.000" /><testcase classname="tests.unit.test_r11_sbom_inventory_dispatch" name="test_sbom_dispatch_rejects_csv_mapping_before_parsing[spdx_json]" time="0.000" /><testcase classname="tests.unit.test_r11_sbom_inventory_dispatch" name="test_unknown_format_is_not_inferred_from_document" time="0.000" /><testcase classname="tests.security.test_r11_sbom_inventory_boundary" name="test_local_inventory_json_still_rejects_invalid_values[nan]" time="0.000" /><testcase classname="tests.security.test_r11_sbom_inventory_boundary" name="test_local_inventory_json_still_rejects_invalid_values[infinity]" time="0.000" /><testcase classname="tests.security.test_r11_sbom_inventory_boundary" name="test_local_inventory_json_still_rejects_invalid_values[overflow]" time="0.000" /><testcase classname="tests.security.test_r11_sbom_inventory_boundary" name="test_local_inventory_json_still_rejects_invalid_values[nul]" time="0.000" /><testcase classname="tests.security.test_r11_sbom_inventory_boundary" name="test_local_inventory_json_still_rejects_invalid_values[surrogate]" time="0.000" /><testcase classname="tests.security.test_r11_sbom_inventory_boundary" name="test_local_inventory_json_still_rejects_invalid_values[duplicate]" time="0.000" /><testcase classname="tests.security.test_r11_sbom_inventory_boundary" name="test_local_inventory_json_keeps_depth_limit_and_component_limit" time="0.024" /><testcase classname="tests.security.test_r11_sbom_inventory_boundary" name="test_shared_model_json_budget_is_not_increased" time="0.000" /><testcase classname="tests.security.test_r11_sbom_inventory_boundary" name="test_sbom_write_permission_is_checked_before_any_parse_or_database[cyclonedx_json-analyst]" time="0.001" /><testcase classname="tests.security.test_r11_sbom_inventory_boundary" name="test_sbom_write_permission_is_checked_before_any_parse_or_database[cyclonedx_json-viewer]" time="0.000" /><testcase classname="tests.security.test_r11_sbom_inventory_boundary" name="test_sbom_write_permission_is_checked_before_any_parse_or_database[spdx_json-analyst]" time="0.000" /><testcase classname="tests.security.test_r11_sbom_inventory_boundary" name="test_sbom_write_permission_is_checked_before_any_parse_or_database[spdx_json-viewer]" time="0.000" /></testsuite></testsuites>
