@@ -1,0 +1,415 @@
+E501 Line too long (103 > 100)
+  --> tests\contract\test_r12_hybrid_contracts.py:50:101
+   |
+48 |     with client, pytest.raises(HybridRetrievalError):
+49 |         OpenSearchCorpusClient(client).search(GENERATION,
+50 |             AccessScope.for_authenticated_user("reader", "tenant-a", Role.VIEWER), HybridQuery("risk"))
+   |                                                                                                     ^^^
+
+E501 Line too long (107 > 100)
+  --> tests\contract\test_r12_hybrid_contracts.py:57:101
+   |
+55 |         return httpx.Response(403, text="fixture secret token")
+56 |
+57 |     with httpx.Client(base_url="https://search.invalid", transport=httpx.MockTransport(failure)) as client:
+   |                                                                                                     ^^^^^^^
+58 |         with pytest.raises(HybridRetrievalError) as caught:
+59 |             OpenSearchCorpusClient(client).search(GENERATION,
+   |
+
+E501 Line too long (107 > 100)
+  --> tests\contract\test_r12_hybrid_contracts.py:60:101
+   |
+58 |         with pytest.raises(HybridRetrievalError) as caught:
+59 |             OpenSearchCorpusClient(client).search(GENERATION,
+60 |                 AccessScope.for_authenticated_user("reader", "tenant-a", Role.VIEWER), HybridQuery("risk"))
+   |                                                                                                     ^^^^^^^
+61 |         assert str(caught.value) == "opensearch_unavailable"
+   |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests\integration\test_t30_hybrid_retrieval.py:3:1
+   |
+ 1 |   """Real isolated PG and OpenSearch; fixture semantics and real E5 checks stay distinguished."""
+ 2 |
+ 3 | / from __future__ import annotations
+ 4 | |
+ 5 | | import json
+ 6 | | import os
+ 7 | | from collections.abc import Iterator
+ 8 | | from datetime import timedelta
+ 9 | | from pathlib import Path
+10 | | from uuid import uuid4
+11 | |
+12 | | import httpx
+13 | | import pytest
+14 | | from sqlalchemy import create_engine, func, select, text, update
+15 | | from sqlalchemy.engine import Engine, make_url
+16 | | from sqlalchemy.orm import Session
+17 | | from sqlalchemy.schema import CreateSchema, DropSchema
+18 | |
+19 | | from ai_intel.domain.access import AccessScope, Role
+20 | | from ai_intel.infrastructure.database import run_migrations
+21 | | from ai_intel.infrastructure.models.semantic import LocalSemanticModels
+22 | | from ai_intel.knowledge.models import document_revisions, documents, evidence, scope_epochs
+23 | | from ai_intel.knowledge.persistence_models import claim_evidence, claims, events
+24 | | from ai_intel.retrieval.hybrid import HybridRetriever
+25 | | from ai_intel.retrieval.hybrid_contracts import HybridQuery, HybridRetrievalError, IndexChange, IndexGeneration
+26 | | from ai_intel.retrieval.hybrid_schema import (
+27 | |     hybrid_chunks, hybrid_index_receipts, hybrid_index_watermarks, hybrid_metadata,
+28 | | )
+29 | | from ai_intel.retrieval.indexing import HybridIndexer
+30 | | from ai_intel.retrieval.opensearch_client import OpenSearchCorpusClient
+31 | | from tests.r12_hybrid_fixtures import NOW, FixtureSemanticModels, record_change, seed_fact
+   | |__________________________________________________________________________________________^
+32 |
+33 |   pytestmark = pytest.mark.real_pg
+   |
+help: Organize imports
+   |
+17 | from sqlalchemy.schema import CreateSchema, DropSchema
+18 + from tests.r12_hybrid_fixtures import NOW, FixtureSemanticModels, record_change, seed_fact
+19 |
+--------------------------------------------------------------------------------
+25 | from ai_intel.retrieval.hybrid import HybridRetriever
+   - from ai_intel.retrieval.hybrid_contracts import HybridQuery, HybridRetrievalError, IndexChange, IndexGeneration
+26 + from ai_intel.retrieval.hybrid_contracts import (
+27 +     HybridQuery,
+28 +     HybridRetrievalError,
+29 +     IndexChange,
+30 +     IndexGeneration,
+31 + )
+32 | from ai_intel.retrieval.hybrid_schema import (
+   -     hybrid_chunks, hybrid_index_receipts, hybrid_index_watermarks, hybrid_metadata,
+33 +     hybrid_chunks,
+34 +     hybrid_index_receipts,
+35 +     hybrid_index_watermarks,
+36 +     hybrid_metadata,
+37 | )
+38 | from ai_intel.retrieval.indexing import HybridIndexer
+39 | from ai_intel.retrieval.opensearch_client import OpenSearchCorpusClient
+   - from tests.r12_hybrid_fixtures import NOW, FixtureSemanticModels, record_change, seed_fact
+40 |
+   |
+
+F401 [*] `sqlalchemy.orm.Session` imported but unused
+  --> tests\integration\test_t30_hybrid_retrieval.py:16:28
+   |
+14 | from sqlalchemy import create_engine, func, select, text, update
+15 | from sqlalchemy.engine import Engine, make_url
+16 | from sqlalchemy.orm import Session
+   |                            ^^^^^^^
+17 | from sqlalchemy.schema import CreateSchema, DropSchema
+   |
+help: Remove unused import: `sqlalchemy.orm.Session`
+   |
+15 | from sqlalchemy.engine import Engine, make_url
+   - from sqlalchemy.orm import Session
+16 | from sqlalchemy.schema import CreateSchema, DropSchema
+   |
+
+F401 [*] `ai_intel.knowledge.models.evidence` imported but unused
+  --> tests\integration\test_t30_hybrid_retrieval.py:22:70
+   |
+20 | from ai_intel.infrastructure.database import run_migrations
+21 | from ai_intel.infrastructure.models.semantic import LocalSemanticModels
+22 | from ai_intel.knowledge.models import document_revisions, documents, evidence, scope_epochs
+   |                                                                      ^^^^^^^^
+23 | from ai_intel.knowledge.persistence_models import claim_evidence, claims, events
+24 | from ai_intel.retrieval.hybrid import HybridRetriever
+   |
+help: Remove unused import: `ai_intel.knowledge.models.evidence`
+   |
+21 | from ai_intel.infrastructure.models.semantic import LocalSemanticModels
+   - from ai_intel.knowledge.models import document_revisions, documents, evidence, scope_epochs
+22 + from ai_intel.knowledge.models import document_revisions, documents, scope_epochs
+23 | from ai_intel.knowledge.persistence_models import claim_evidence, claims, events
+   |
+
+E501 Line too long (111 > 100)
+  --> tests\integration\test_t30_hybrid_retrieval.py:25:101
+   |
+23 | from ai_intel.knowledge.persistence_models import claim_evidence, claims, events
+24 | from ai_intel.retrieval.hybrid import HybridRetriever
+25 | from ai_intel.retrieval.hybrid_contracts import HybridQuery, HybridRetrievalError, IndexChange, IndexGeneration
+   |                                                                                                     ^^^^^^^^^^^
+26 | from ai_intel.retrieval.hybrid_schema import (
+27 |     hybrid_chunks, hybrid_index_receipts, hybrid_index_watermarks, hybrid_metadata,
+   |
+
+E501 Line too long (103 > 100)
+  --> tests\integration\test_t30_hybrid_retrieval.py:38:101
+   |
+37 | @pytest.fixture
+38 | def corpus(isolated_test_database_url: str) -> Iterator[tuple[Engine, HybridIndexer, HybridRetriever]]:
+   |                                                                                                     ^^^
+39 |     url = make_url(isolated_test_database_url)
+40 |     assert url.database == "test_dianzi_r12_hybrid_20261016"
+   |
+
+E501 Line too long (109 > 100)
+  --> tests\integration\test_t30_hybrid_retrieval.py:45:101
+   |
+43 |     with base.begin() as connection:
+44 |         connection.execute(CreateSchema(schema))
+45 |     migration_url = url.update_query_dict({"options": f"-c search_path={schema} -c statement_timeout=15000"})
+   |                                                                                                     ^^^^^^^^^
+46 |     run_migrations(migration_url.render_as_string(hide_password=False))
+47 |     runtime_url = url.update_query_dict({"options": f"-c search_path={schema},public -c statement_timeout=15000"})
+   |
+
+E501 Line too long (114 > 100)
+  --> tests\integration\test_t30_hybrid_retrieval.py:47:101
+   |
+45 |     migration_url = url.update_query_dict({"options": f"-c search_path={schema} -c statement_timeout=15000"})
+46 |     run_migrations(migration_url.render_as_string(hide_password=False))
+47 |     runtime_url = url.update_query_dict({"options": f"-c search_path={schema},public -c statement_timeout=15000"})
+   |                                                                                                     ^^^^^^^^^^^^^^
+48 |     engine = create_engine(runtime_url, connect_args={"connect_timeout": 5})
+49 |     with engine.begin() as connection:
+   |
+
+E501 Line too long (102 > 100)
+  --> tests\integration\test_t30_hybrid_retrieval.py:75:101
+   |
+73 |             connection.execute(DropSchema(schema, cascade=True))
+74 |         base.dispose()
+75 |         print(json.dumps({"cleanup": "owned_only", "index": generation.index_name, "schema": schema}))
+   |                                                                                                     ^^
+
+E501 Line too long (103 > 100)
+  --> tests\integration\test_t30_hybrid_retrieval.py:86:101
+   |
+84 | def test_t30_c01_exact_cve_has_priority_even_after_reranker(corpus) -> None:
+85 |     engine, indexer, retriever = corpus
+86 |     target = seed_fact(engine, "CVE-2026-10001 synthetic prompt injection risk.", cve="CVE-2026-10001")
+   |                                                                                                     ^^^
+87 |     seed_fact(engine, "A different prompt injection risk has very similar wording.")
+88 |     index_fact_set(engine, indexer)
+   |
+
+E501 Line too long (108 > 100)
+  --> tests\integration\test_t30_hybrid_retrieval.py:89:101
+   |
+87 |     seed_fact(engine, "A different prompt injection risk has very similar wording.")
+88 |     index_fact_set(engine, indexer)
+89 |     result = retriever.retrieve(PUBLIC, HybridQuery("CVE-2026-10001 prompt injection", include_graph=False))
+   |                                                                                                     ^^^^^^^^
+90 |     assert result.hits[0].candidate.event_id == target["event_id"]
+91 |     assert result.hits[0].exact_identifier
+   |
+
+E501 Line too long (122 > 100)
+   --> tests\integration\test_t30_hybrid_retrieval.py:102:101
+    |
+100 |     own = seed_fact(engine, "shared prompt injection risk own", tenant="tenant-a")
+101 |     other = seed_fact(engine, "shared prompt injection risk other", tenant="tenant-b")
+102 |     future = seed_fact(engine, "shared prompt injection future", tenant="tenant-a", available_at=NOW + timedelta(days=10))
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^
+103 |     for key in ("public", "tenant:tenant-a", "tenant:tenant-b"):
+104 |         index_fact_set(engine, indexer, key)
+    |
+
+E501 Line too long (141 > 100)
+   --> tests\integration\test_t30_hybrid_retrieval.py:106:101
+    |
+104 | …
+105 | …ic-analyst", "tenant-a", Role.ANALYST)
+106 | …red prompt injection", available_before=NOW + timedelta(days=1), include_graph=False))
+    |                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+107 | ….hits} == {public["evidence_id"], own["evidence_id"]}
+108 | …or_count == 2
+    |
+
+E501 Line too long (108 > 100)
+   --> tests\integration\test_t30_hybrid_retrieval.py:107:101
+    |
+105 |     scope = AccessScope.for_authenticated_user("synthetic-analyst", "tenant-a", Role.ANALYST)
+106 |     result = retriever.retrieve(scope, HybridQuery("shared prompt injection", available_before=NOW + timedelta(days=1), include_graph…
+107 |     assert {hit.candidate.evidence_id for hit in result.hits} == {public["evidence_id"], own["evidence_id"]}
+    |                                                                                                     ^^^^^^^^
+108 |     assert result.trace.bm25_count == result.trace.vector_count == 2
+109 |     assert other["evidence_id"] not in repr(result)
+    |
+
+E501 Line too long (103 > 100)
+   --> tests\integration\test_t30_hybrid_retrieval.py:125:101
+    |
+123 |     (documents, {"visibility": "tenant", "tenant_id": "tenant-b"}),
+124 | ])
+125 | def test_t30_c04_stale_or_hidden_authority_is_filtered_before_rerank(corpus, relation, values) -> None:
+    |                                                                                                     ^^^
+126 |     engine, indexer, retriever = corpus
+127 |     seed_fact(engine, "prompt injection synthetic risk")
+    |
+
+E501 Line too long (128 > 100)
+   --> tests\integration\test_t30_hybrid_retrieval.py:216:101
+    |
+214 |     indexer.models = models
+215 |     retriever.models = models
+216 |     english = seed_fact(engine, "Prompt injection makes a language model follow malicious instructions embedded in a document.")
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+217 |     chinese = seed_fact(engine, "提示注入使语言模型遵循文档中嵌入的恶意指令。")
+218 |     irrelevant = seed_fact(engine, "Steam rice in a pot with water until it is cooked.")
+    |
+
+E501 Line too long (130 > 100)
+   --> tests\integration\test_t30_hybrid_retrieval.py:220:82
+    |
+218 |     irrelevant = seed_fact(engine, "Steam rice in a pot with water until it is cooked.")
+219 |     index_fact_set(engine, indexer)
+220 |     for question in ("什么攻击会让模型听从文档里的恶意指令？", "What attack makes a model obey malicious document instructions?"):
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+221 |         result = retriever.retrieve(PUBLIC, HybridQuery(question, include_graph=False))
+222 |         assert result.hits[0].candidate.evidence_id in {english["evidence_id"], chinese["evidence_id"]}
+    |
+
+E501 Line too long (103 > 100)
+   --> tests\integration\test_t30_hybrid_retrieval.py:222:101
+    |
+220 |     for question in ("什么攻击会让模型听从文档里的恶意指令？", "What attack makes a model obey malicious document instructions?"):
+221 |         result = retriever.retrieve(PUBLIC, HybridQuery(question, include_graph=False))
+222 |         assert result.hits[0].candidate.evidence_id in {english["evidence_id"], chinese["evidence_id"]}
+    |                                                                                                     ^^^
+223 |         assert result.hits[0].candidate.evidence_id != irrelevant["evidence_id"]
+224 |         assert result.trace.vector_count == result.trace.reranked_count == 3
+    |
+
+E501 Line too long (114 > 100)
+   --> tests\integration\test_t30_hybrid_retrieval.py:226:101
+    |
+224 |         assert result.trace.vector_count == result.trace.reranked_count == 3
+225 |         assert result.embedding_model == models.embed_query(question).model_version
+226 |         print(json.dumps({"data_mode": "synthetic_real_models", "language": "zh" if question[0] == "什" else "en",
+    |                                                                                                     ^^^^^^^^^^^^^^
+227 |                           "trace": result.trace.__dict__, "rerank_scores": [hit.rerank_score for hit in result.hits]}))
+    |
+
+E501 Line too long (119 > 100)
+   --> tests\integration\test_t30_hybrid_retrieval.py:227:101
+    |
+225 |         assert result.embedding_model == models.embed_query(question).model_version
+226 |         print(json.dumps({"data_mode": "synthetic_real_models", "language": "zh" if question[0] == "什" else "en",
+227 |                           "trace": result.trace.__dict__, "rerank_scores": [hit.rerank_score for hit in result.hits]}))
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests\r12_hybrid_fixtures.py:3:1
+   |
+ 1 |   """Synthetic public facts and explicit fixture models; nothing here is a live source claim."""
+ 2 |
+ 3 | / import hashlib
+ 4 | | import json
+ 5 | | import os
+ 6 | | from datetime import UTC, datetime
+ 7 | | from pathlib import Path
+ 8 | | from uuid import uuid4
+ 9 | |
+10 | | from sqlalchemy import text
+11 | | from sqlalchemy.dialects.postgresql import insert
+12 | | from sqlalchemy.engine import Engine
+13 | |
+14 | | from ai_intel.infrastructure.models.clients import EmbeddingResult
+15 | | from ai_intel.infrastructure.models.semantic import (
+16 | |     E5_MODEL, RERANK_MODEL, RankedPassage, RerankResult,
+17 | | )
+18 | | from ai_intel.knowledge.models import (
+19 | |     content_objects, document_revisions, documents, evidence, job_runs, outbox_events,
+20 | |     scope_epochs, text_blocks,
+21 | | )
+22 | | from ai_intel.knowledge.persistence_models import (
+23 | |     change_events, claim_evidence, claims, event_documents, event_external_ids, events,
+24 | | )
+25 | | from ai_intel.retrieval.hybrid_contracts import IndexChange
+   | |___________________________________________________________^
+26 |
+27 |   NOW = datetime(2026, 10, 15, 5, 0, tzinfo=UTC)
+   |
+help: Organize imports
+   |
+15 | from ai_intel.infrastructure.models.semantic import (
+   -     E5_MODEL, RERANK_MODEL, RankedPassage, RerankResult,
+16 +     E5_MODEL,
+17 +     RERANK_MODEL,
+18 +     RankedPassage,
+19 +     RerankResult,
+20 | )
+21 | from ai_intel.knowledge.models import (
+   -     content_objects, document_revisions, documents, evidence, job_runs, outbox_events,
+   -     scope_epochs, text_blocks,
+22 +     content_objects,
+23 +     document_revisions,
+24 +     documents,
+25 +     evidence,
+26 +     job_runs,
+27 +     outbox_events,
+28 +     scope_epochs,
+29 +     text_blocks,
+30 | )
+31 | from ai_intel.knowledge.persistence_models import (
+   -     change_events, claim_evidence, claims, event_documents, event_external_ids, events,
+32 +     change_events,
+33 +     claim_evidence,
+34 +     claims,
+35 +     event_documents,
+36 +     event_external_ids,
+37 +     events,
+38 | )
+   |
+
+E501 Line too long (116 > 100)
+  --> tests\r12_hybrid_fixtures.py:63:101
+   |
+61 |         with (root / "raw_manifest.jsonl").open("a", encoding="utf-8") as stream:
+62 |             stream.write(json.dumps({"sha256": digest, "size_bytes": len(body.encode()),
+63 |                                      "data_mode": "synthetic", "source_uri": "https://example.invalid/r12"}) + "\n")
+   |                                                                                                     ^^^^^^^^^^^^^^^^
+64 |     with engine.begin() as connection:
+65 |         connection.execute(insert(content_objects).values(
+   |
+
+E501 Line too long (103 > 100)
+  --> tests\r12_hybrid_fixtures.py:69:101
+   |
+67 |         ).on_conflict_do_nothing())
+68 |         connection.execute(text(
+69 |             "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) "
+   |                                                                                                     ^^^
+70 |             "VALUES(:id,'r12 synthetic source','vendor_advisory','https://example.invalid',:v,:t,:now)"
+71 |         ), {"id": identifiers["source_id"], "v": visibility, "t": tenant, "now": available_at})
+   |
+
+E501 Line too long (102 > 100)
+  --> tests\r12_hybrid_fixtures.py:97:101
+   |
+95 |         ))
+96 |         connection.execute(events.insert().values(
+97 |             event_id=identifiers["event_id"], event_type="vulnerability", title="R12 synthetic event",
+   |                                                                                                     ^^
+98 |             scope_key=scope, visibility=visibility, tenant_id=tenant, status="active",
+99 |             first_seen_at=available_at, business_version=1,
+   |
+
+E501 Line too long (106 > 100)
+   --> tests\r12_hybrid_fixtures.py:110:101
+    |
+108 |             ))
+109 |         connection.execute(claims.insert().values(
+110 |             claim_id=identifiers["claim_id"], subject="synthetic component", predicate="affected_product",
+    |                                                                                                     ^^^^^^
+111 |             object_value="synthetic", claim_status="supported", claim_origin="source_explicit",
+112 |             condition_value="true", freshness="current", asserted_at=available_at,
+    |
+
+E501 Line too long (112 > 100)
+  --> tests\security\test_r12_retrieval_boundaries.py:23:101
+   |
+23 | @pytest.mark.parametrize("name", ["*", "_all", "other_index", "dianzi_../../_search", "dianzi_*", "dianzi_a/b"])
+   |                                                                                                     ^^^^^^^^^^^^
+24 | def test_index_cannot_escape_dedicated_namespace(name: str) -> None:
+25 |     with pytest.raises(ValueError):
+   |
+
+Found 28 errors.
+[*] 4 fixable with the `--fix` option.

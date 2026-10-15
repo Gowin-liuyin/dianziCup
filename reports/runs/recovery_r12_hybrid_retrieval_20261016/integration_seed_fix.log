@@ -1,0 +1,122 @@
+F{"cleanup": "owned_only", "index": "dianzi_test_r12_90e95ba7de08476d856a65cc3ee3d59d", "schema": "test_r12_hybrid_652d850611dc4932a2ae72550e343c5c"}
+.{"cleanup": "owned_only", "index": "dianzi_test_r12_ee57af2c20504e579627c0be5926c324", "schema": "test_r12_hybrid_7885a6245a144d109792fe17415d4be7"}
+.{"cleanup": "owned_only", "index": "dianzi_test_r12_d056e58471664c7ab0dd76a66d002a8c", "schema": "test_r12_hybrid_3cac8db7de4e43b8a5f60ce50d7622f3"}
+.{"cleanup": "owned_only", "index": "dianzi_test_r12_ab447d73ca2f4e00a28fa297d3325c4b", "schema": "test_r12_hybrid_481808dfd18143c3bf05bd3526b7b491"}
+.{"cleanup": "owned_only", "index": "dianzi_test_r12_9cdde1cd54064c5c8b0cb5b51eb750f0", "schema": "test_r12_hybrid_41c7f83bab6f49119a1e7fed87dad21c"}
+.{"cleanup": "owned_only", "index": "dianzi_test_r12_df6e94eff2964efc9a9565010f6117ab", "schema": "test_r12_hybrid_509c3e6c4bf94f36ae5caef4b9e281f4"}
+.{"cleanup": "owned_only", "index": "dianzi_test_r12_e88e4012c8434de99409622a5f861785", "schema": "test_r12_hybrid_303793cefe924a52a55b88e7bfbd2000"}
+.{"cleanup": "owned_only", "index": "dianzi_test_r12_0a214b8f12664e8fbf58cfba969a2b0f", "schema": "test_r12_hybrid_861d38addca54843808e3928df554871"}
+.{"cleanup": "owned_only", "index": "dianzi_test_r12_454b800a0b244cc49fc1e24b84dc1da3", "schema": "test_r12_hybrid_ade71d9e875d421fb86d4528c7b9b8e3"}
+.{"cleanup": "owned_only", "index": "dianzi_test_r12_15ce871499a1400583307cb2b3c27a81", "schema": "test_r12_hybrid_3158811a68494fd4a9fa3d3c741ade86"}
+.{"cleanup": "owned_only", "index": "dianzi_test_r12_8832d85453b9474995957b95d6d01722", "schema": "test_r12_hybrid_027cd3dc04024c60a632f1696b8828c3"}
+F{"cleanup": "owned_only", "index": "dianzi_test_r12_42e9367207394ddfafd13867817a7041", "schema": "test_r12_hybrid_f8c0140dc56642e38fc6c0282058f809"}
+.{"cleanup": "owned_only", "index": "dianzi_test_r12_f777de761c0649748c43b631fbad395d", "schema": "test_r12_hybrid_523b4374d4b44921a99472512ac7ea6e"}
+.{"cleanup": "owned_only", "index": "dianzi_test_r12_b06958050da2430a864ee2e6921c6464", "schema": "test_r12_hybrid_99659735dcd74ea9bd4ac6d5346c9b98"}
+{"data_mode": "synthetic_real_models", "language": "zh", "trace": {"exact_count": 0, "bm25_count": 1, "vector_count": 3, "graph_count": 0, "validated_count": 3, "reranked_count": 3, "exact_seconds": 0.00027189998945686966, "bm25_seconds": 0.028561099999933504, "vector_seconds": 3.1386290000082226, "validation_seconds": 0.0699655999924289, "rerank_seconds": 3.3998579000035534, "total_seconds": 6.691516400009277}, "rerank_scores": [6.526335716247559, 2.6336417198181152, -9.080052375793457]}
+{"data_mode": "synthetic_real_models", "language": "en", "trace": {"exact_count": 0, "bm25_count": 1, "vector_count": 3, "graph_count": 0, "validated_count": 3, "reranked_count": 3, "exact_seconds": 0.0002496999950380996, "bm25_seconds": 0.045398699992801994, "vector_seconds": 3.093773600005079, "validation_seconds": 0.03525799998897128, "rerank_seconds": 3.5057039999956032, "total_seconds": 6.738495600002352}, "rerank_scores": [7.149515628814697, 3.873549461364746, -9.945563316345215]}
+.{"cleanup": "owned_only", "index": "dianzi_test_r12_49f111bc1a864d7ba820628ef379e480", "schema": "test_r12_hybrid_5619f0b9b523458aa7d2b7196b3b4972"}
+
+================================== FAILURES ===================================
+___________ test_t30_c01_exact_cve_has_priority_even_after_reranker ___________
+
+corpus = (Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r12_hybrid_20261016?options=-c+search_pat....HybridIndexer object at 0x00000214A895C8F0>, <ai_intel.retrieval.hybrid.HybridRetriever object at 0x00000214A895D160>)
+
+    def test_t30_c01_exact_cve_has_priority_even_after_reranker(corpus) -> None:
+        engine, indexer, retriever = corpus
+        target = seed_fact(engine, "CVE-2026-10001 synthetic prompt injection risk.", cve="CVE-2026-10001")
+        seed_fact(engine, "A different prompt injection risk has very similar wording.")
+        index_fact_set(engine, indexer)
+        result = retriever.retrieve(PUBLIC, HybridQuery("CVE-2026-10001 prompt injection", include_graph=False))
+>       assert result.hits[0].candidate.event_id == target["event_id"]
+E       AssertionError: assert '0575efa5-895...-6c0dfe3e3866' == '7f1e9e0c-dd3...-723d47a4d7cc'
+E         
+E         - 7f1e9e0c-dd3c-478c-be9e-723d47a4d7cc
+E         + 0575efa5-8950-49fc-88cc-6c0dfe3e3866
+
+tests\integration\test_t30_hybrid_retrieval.py:90: AssertionError
+___________ test_os_failure_never_advances_pg_receipt_or_watermark ____________
+
+corpus = (Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r12_hybrid_20261016?options=-c+search_pat....HybridIndexer object at 0x00000214A8FC3DD0>, <ai_intel.retrieval.hybrid.HybridRetriever object at 0x00000214A8FC2060>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000214A8FC1490>
+
+        seed_fact(engine, "prompt injection synthetic risk")
+        index_fact_set(engine, indexer)
+        with engine.begin() as connection:
+            connection.execute(update(relation).values(**values))
+        result = retriever.retrieve(PUBLIC, HybridQuery("prompt injection", include_graph=False))
+        assert not result.hits and result.partial
+        assert "stale_candidates_filtered" in result.reasons
+        assert result.trace.reranked_count == 0
+    
+    
+    def test_t30_c06_new_unindexed_exact_fact_uses_pg_and_marks_lag(corpus) -> None:
+>       engine, indexer, retriever = corpus
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_t30_hybrid_retrieval.py:176: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\retrieval\indexing.py:183: in refresh_scope
+    self.search.remove_older_scope(self.generation, change.scope_key, epoch)
+src\ai_intel\retrieval\opensearch_client.py:263: in remove_older_scope
+    response = self._request(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel.retrieval.opensearch_client.OpenSearchCorpusClient object at 0x00000214A8E529F0>
+method = 'POST'
+path = '/dianzi_test_r12_42e9367207394ddfafd13867817a7041/_delete_by_query'
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body: dict[str, object] | None = None,
+        content: bytes | None = None,
+    ) -> httpx.Response:
+        try:
+            response = self.client.request(
+                method,
+                path,
+                json=body,
+                content=content,
+                headers={"Content-Type": "application/x-ndjson"} if content is not None else None,
+                timeout=10.0,
+                follow_redirects=False,
+            )
+            response.raise_for_status()
+            if len(response.content) > 2 * 1024**2:
+                raise HybridRetrievalError("opensearch_response_limit")
+            return response
+        except (httpx.HTTPError, ValueError):
+>           raise HybridRetrievalError("opensearch_unavailable") from None
+E           ai_intel.retrieval.hybrid_contracts.HybridRetrievalError: opensearch_unavailable
+
+src\ai_intel\retrieval\opensearch_client.py:167: HybridRetrievalError
+
+During handling of the above exception, another exception occurred:
+
+corpus = (Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r12_hybrid_20261016?options=-c+search_pat....HybridIndexer object at 0x00000214A8FC3DD0>, <ai_intel.retrieval.hybrid.HybridRetriever object at 0x00000214A8FC2060>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000214A8FC1490>
+
+        seed_fact(engine, "prompt injection synthetic risk")
+        index_fact_set(engine, indexer)
+        with engine.begin() as connection:
+            connection.execute(update(relation).values(**values))
+        result = retriever.retrieve(PUBLIC, HybridQuery("prompt injection", include_graph=False))
+        assert not result.hits and result.partial
+        assert "stale_candidates_filtered" in result.reasons
+        assert result.trace.reranked_count == 0
+    
+    
+>   def test_t30_c06_new_unindexed_exact_fact_uses_pg_and_marks_lag(corpus) -> None:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: Regex pattern did not match.
+E    Regex: 'opensearch_refresh_incomplete'
+E    Input: 'opensearch_unavailable'
+
+tests\integration\test_t30_hybrid_retrieval.py:175: AssertionError
+- generated xml file: D:\wt\r12-hybrid-retrieval\reports\runs\recovery_r12_hybrid_retrieval_20261016\integration_seed_fix.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_t30_hybrid_retrieval.py::test_t30_c01_exact_cve_has_priority_even_after_reranker
+FAILED tests/integration/test_t30_hybrid_retrieval.py::test_os_failure_never_advances_pg_receipt_or_watermark
+2 failed, 13 passed in 54.29s
