@@ -236,6 +236,9 @@ def validate_rule(
     if rule.status == RuleStatus.RETIRED:
         pending.append("retired_rule_requires_new_version")
     eligible = not (missing or conflicts or pending)
+    resulting_status = rule.status
+    if rule.status not in {RuleStatus.PUBLISHED, RuleStatus.RETIRED}:
+        resulting_status = RuleStatus.VALIDATED if eligible else RuleStatus.CANDIDATE
     return RuleValidationResult(
         rule_id=rule.rule_id,
         rule_version=rule.version,
@@ -244,7 +247,7 @@ def validate_rule(
         condition_sha256=condition_digest(rule.condition_ast),
         eligible=eligible,
         automatic_publication_eligible=eligible and policy.automatic_publication_enabled,
-        resulting_status=RuleStatus.VALIDATED if eligible else RuleStatus.CANDIDATE,
+        resulting_status=resulting_status,
         missing_requirements=tuple(dict.fromkeys(missing)),
         conflicts=tuple(dict.fromkeys(conflicts)),
         pending_review=tuple(dict.fromkeys(pending)),
