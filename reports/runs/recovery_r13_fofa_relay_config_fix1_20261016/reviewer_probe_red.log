@@ -1,0 +1,34 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_ test_explicit_fixture_mode_never_constructs_real_gateway_even_for_falsey_fixture _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001F286E4A120>
+
+    def test_explicit_fixture_mode_never_constructs_real_gateway_even_for_falsey_fixture(monkeypatch):
+        class FalseyFixtureGateway:
+            def __bool__(self):
+                return False
+    
+            def fetch(self, url, max_redirect_hops=5):
+                return FetchResult(url, 200, "application/json", b'{"valid":true}')
+    
+        real_factory_calls = []
+    
+        def blocked_real_factory(*args, **kwargs):
+            real_factory_calls.append(True)
+            return FalseyFixtureGateway()
+    
+        monkeypatch.setattr(relay, "create_network_gateway", blocked_real_factory)
+        fixture = FalseyFixtureGateway()
+        client = relay.FofaRelayClient(
+            relay.FofaRelayConfig(SecretStr(FIXTURE_KEY)), fixture_gateway=fixture, fixture_mode=True
+        )
+>       assert not real_factory_calls, "Explicit fixture mode fell through to the production gateway factory"
+E       AssertionError: Explicit fixture mode fell through to the production gateway factory
+E       assert not [True]
+
+D:\wt\r13-fofa-relay-review-1\reports\runs\recovery_r13_fofa_relay_review_1_20261016\test_independent_relay_boundaries.py:148: AssertionError
+- generated xml file: D:\wt\r13-fofa-relay-config\reports\runs\recovery_r13_fofa_relay_config_fix1_20261016\reviewer_probe_red.xml -
+=========================== short test summary info ===========================
+FAILED ..\..\r13-fofa-relay-review-1\reports\runs\recovery_r13_fofa_relay_review_1_20261016\test_independent_relay_boundaries.py::test_explicit_fixture_mode_never_constructs_real_gateway_even_for_falsey_fixture
+1 failed in 0.71s
