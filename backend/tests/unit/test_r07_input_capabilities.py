@@ -256,3 +256,73 @@ def test_invalid_mature_yaml_scalar_constructor_has_a_fixed_safe_error(scalar):
     with pytest.raises(TaxonomyInputError) as failure:
         parse_atlas_catalogue(raw, provenance(raw, "atlas"))
     assert str(failure.value) == "taxonomy_yaml_invalid"
+
+
+INVALID_YAML_SCALARS = (
+    "!!timestamp nope",
+    "!!timestamp ''",
+    "!!timestamp 0000-01-01",
+    "!!timestamp 10000-01-01",
+    "!!timestamp 2026-13-01",
+    "!!timestamp 2026-01-01T24:00:00Z",
+    "!!timestamp 2026-01-01T00:00:00+24:00",
+    "!!int ''",
+    "!!int '-'",
+    "!!int 0b2",
+    "!!float ''",
+    "!!float ':'",
+    "!!bool maybe",
+)
+VALID_YAML_SCALARS = (
+    "!!str nope",
+    "!!null null",
+    "!!bool true",
+    "!!int 0",
+    "!!int 0xff",
+    "!!float 1.25",
+    "!!float .nan",
+    "!!float .inf",
+    "!!timestamp 2026-10-16",
+    "!!timestamp 9999-12-31",
+    "!!timestamp 2026-10-16T06:00:00Z",
+    "!!timestamp 2000-02-29",
+)
+
+
+@pytest.mark.parametrize("scalar", INVALID_YAML_SCALARS)
+@pytest.mark.parametrize("position", ["key", "value"])
+def test_mature_scalar_failures_in_keys_and_values_have_a_fixed_error(scalar, position):
+    suffix = (
+        f"\nmetadata:\n  {scalar}: fixture\n" if position == "key" else f"\nmetadata: {scalar}\n"
+    )
+    raw = ATLAS_YAML + suffix.encode()
+    with pytest.raises(TaxonomyInputError) as failure:
+        parse_atlas_catalogue(raw, provenance(raw, "atlas"))
+    assert str(failure.value) == "taxonomy_yaml_invalid"
+
+
+@pytest.mark.parametrize("scalar", VALID_YAML_SCALARS)
+def test_valid_mature_scalar_values_preserve_taxonomy_members_and_quotes(scalar):
+    raw = ATLAS_YAML + f"\nmetadata: {scalar}\n".encode()
+    catalogue = parse_atlas_catalogue(raw, provenance(raw, "atlas"))
+    assert catalogue.supported_ids == {"AML.T0051", "AML.T0051.001"}
+    for entry in catalogue.entries:
+        assert raw.decode()[entry.start_offset : entry.end_offset] == entry.identifier_quote
+
+
+@pytest.mark.parametrize("scalar", ["!!binary Zm9v", "!!binary not-base64", "!!binary '中文'"])
+def test_binary_scalar_tags_remain_forbidden_for_catalogues(scalar):
+    raw = ATLAS_YAML + f"\nmetadata: {scalar}\n".encode()
+    with pytest.raises(TaxonomyInputError, match="taxonomy_yaml_tag_forbidden"):
+        parse_atlas_catalogue(raw, provenance(raw, "atlas"))
+
+
+def test_attribute_error_outside_scalar_construction_is_not_hidden(monkeypatch):
+    def broken_identifier_projection(*args):
+        raise AttributeError("fixture_business_bug")
+
+    monkeypatch.setattr(
+        "ai_intel.enrichment.taxonomy_inputs._atlas_identifier_quotes", broken_identifier_projection
+    )
+    with pytest.raises(AttributeError, match="fixture_business_bug"):
+        parse_atlas_catalogue(ATLAS_YAML, provenance(ATLAS_YAML, "atlas"))

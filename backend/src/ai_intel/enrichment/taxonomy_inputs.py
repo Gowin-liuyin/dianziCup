@@ -198,7 +198,12 @@ def _check_yaml_node(node: yaml.Node, loader: yaml.SafeLoader, depth: int = 0) -
         for name in ("map", "seq", "str", "null", "bool", "int", "float", "timestamp")
     }:
         raise TaxonomyInputError("taxonomy_yaml_tag_forbidden")
-    if isinstance(node, yaml.MappingNode):
+    if isinstance(node, yaml.ScalarNode):
+        try:
+            loader.construct_object(node)
+        except (ValueError, KeyError, AttributeError, IndexError, OverflowError):
+            raise TaxonomyInputError("taxonomy_yaml_invalid") from None
+    elif isinstance(node, yaml.MappingNode):
         keys: set[object] = set()
         for key, value in node.value:
             if not isinstance(key, yaml.ScalarNode):
