@@ -85,6 +85,10 @@ document_revisions = Table(
     Column("parse_status", Text(), nullable=False, server_default="legacy_unverified"),
     Column("source_response_hash", Text(), ForeignKey("content_objects.content_hash")),
     Column("source_json_pointer", Text()),
+    Column("source_metadata", JSONB(), nullable=False, server_default="{}"),
+    CheckConstraint(
+        "jsonb_typeof(source_metadata) = 'object'", name="ck_revision_source_metadata_object"
+    ),
     UniqueConstraint("document_id", "revision_number", name="uq_revision_per_document"),
     CheckConstraint(
         "parse_status IN ('pending','parsed','partial','failed','legacy_unverified')",

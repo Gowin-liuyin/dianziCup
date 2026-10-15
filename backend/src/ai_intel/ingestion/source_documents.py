@@ -34,6 +34,7 @@ from ai_intel.enrichment.persistence import DimensionRepository, DimensionSubmis
 from ai_intel.infrastructure.content_store import ContentStorage
 from ai_intel.ingestion.parsing.parsers import parse_json_document
 from ai_intel.ingestion.parsing.text_blocks import ParseOutcome, TextBlock
+from ai_intel.ingestion.source_catalog import CATALOG_SOURCES, SourceKind
 from ai_intel.ingestion.sources.nvd import normalize_nvd_page, normalize_nvd_record
 from ai_intel.ingestion.sources.vendor_advisories import normalize_vendor_advisory
 from ai_intel.knowledge.event_linking import EventIdentifier, EventRepository, EventSubmission
@@ -56,18 +57,8 @@ from ai_intel.knowledge.revisions import (
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
 PUBLIC_SCOPE = VisibilityScope(visibility="public")
 SOURCE_DEFINITIONS = {
-    "nvd_ollama": (
-        str(uuid5(NAMESPACE_URL, "dianzi:source:nvd-ollama")),
-        "NVD Ollama keyword window",
-        "structured_vulnerability",
-        "https://services.nvd.nist.gov",
-    ),
-    "vllm_vendor": (
-        str(uuid5(NAMESPACE_URL, "dianzi:source:vllm-vendor")),
-        "vLLM repository security advisories",
-        "vendor_advisory",
-        "https://api.github.com",
-    ),
+    key: (source.source_id, source.name, source.category.value, source.base_origin)
+    for key, source in CATALOG_SOURCES.items()
 }
 
 
@@ -369,7 +360,7 @@ def _require_public_administrator(scope: AccessScope) -> None:
 def ensure_source_registration(
     session: Session,
     access_scope: AccessScope,
-    source_kind: Literal["nvd_ollama", "vllm_vendor"],
+    source_kind: SourceKind,
     created_at: datetime,
 ) -> str:
     """Register one fixed public source for cursor leases; the caller owns commit."""

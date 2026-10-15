@@ -122,7 +122,7 @@ def test_upgrade_preserves_immutable_evidence_and_real_extension(vector_database
         )
         assert (
             connection.scalar(text("SELECT version_num FROM alembic_version"))
-            == "0014_grounded_answer_vectors"
+            == "0015_catalog_document_metadata"
         )
 
 

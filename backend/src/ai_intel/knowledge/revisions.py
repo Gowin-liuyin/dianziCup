@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
+from pydantic import JsonValue
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
@@ -105,8 +107,23 @@ def save_document_revision(
     visibility: str,
     tenant_id: str | None,
     created_at: datetime,
+    *,
+    revision_metadata: dict[str, JsonValue] | None = None,
 ) -> SavedRevision:
-    """保存文档修订: 末版同内容复用; A→B→A 保留三修订; 归属与租户必须一致。"""
+    """同内容及显式元数据才复用；旧调用不提供metadata时保留原有语义。"""
+    if revision_metadata is not None:
+        try:
+            encoded_metadata = json.dumps(
+                revision_metadata, ensure_ascii=False, allow_nan=False
+            ).encode("utf-8")
+        except (TypeError, ValueError, UnicodeError, RecursionError):
+            raise ValueError("invalid document revision metadata") from None
+        if (
+            not isinstance(revision_metadata, dict)
+            or len(encoded_metadata) > 65536
+            or b"\\u0000" in encoded_metadata
+        ):
+            raise ValueError("document revision metadata exceeds bounded object")
     document_row = _load_document_row(session, document_id)
     if (visibility == "tenant") != (tenant_id is not None):
         raise TenantScopeViolation("tenant revision requires exactly one tenant_id")
@@ -128,7 +145,11 @@ def save_document_revision(
         .mappings()
         .first()
     )
-    if tip is not None and tip["content_hash"] == stored.content_hash:
+    if (
+        tip is not None
+        and tip["content_hash"] == stored.content_hash
+        and (revision_metadata is None or tip["source_metadata"] == revision_metadata)
+    ):
         return SavedRevision(
             revision_id=str(tip["revision_id"]),
             revision_number=int(tip["revision_number"]),
@@ -161,6 +182,7 @@ def save_document_revision(
             previous_revision_id=str(tip["revision_id"]) if tip is not None else None,
             visibility=visibility,
             tenant_id=tenant_id,
+            source_metadata=revision_metadata if revision_metadata is not None else {},
         )
     )
     session.execute(
