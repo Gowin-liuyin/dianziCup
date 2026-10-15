@@ -54,6 +54,8 @@
 
 完整 argv、工作目录、起止秒、退出码、日志字节哈希在 `check_commands.json`。Python 为仓外独立 venv，`uv sync --frozen --group dev` 退出 0，未新增依赖或锁文件。定向套件使用 `--no-cov` 仅避免无关全包覆盖率；随后运行原默认 60% 覆盖率门，无门槛变动。
 
+封存自检发现 Git autocrlf 将 20 个原始 log/JSON 的 CRLF 归一化，导致 Git blob 与记录哈希不一致；仅新增本 run 内 `.gitattributes` 对 log/JSON 保留原字节，未改根属性或测试结果。原始日志包含工具自己的空白行，不能裁剪来消除 diff whitespace；业务和可编辑文本仍检查。修正后再次核对全部 manifest 项目与 Git blob 字节哈希，结果随交接提供。
+
 | 类别/命令概要 | 结果 | 日志 |
 |---|---|---|
 | unit：pytest 新 unit --no-cov -q | 38 passed，exit 0 | unit.log |

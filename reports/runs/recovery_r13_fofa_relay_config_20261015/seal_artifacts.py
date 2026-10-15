@@ -10,7 +10,9 @@ from zoneinfo import ZoneInfo
 RUN_DIRECTORY = Path(__file__).parent
 WORKTREE = RUN_DIRECTORY.parents[2]
 code_sha = subprocess.check_output(
-    ["git", "rev-parse", "HEAD"], cwd=WORKTREE, text=True
+    ["git", "log", "-1", "--format=%H", "--", "backend/src/ai_intel/assets/fofa_relay.py"],
+    cwd=WORKTREE,
+    text=True,
 ).strip()
 paths = [
     WORKTREE / "backend/src/ai_intel/assets/fofa_relay.py",
