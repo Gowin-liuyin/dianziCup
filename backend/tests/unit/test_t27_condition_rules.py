@@ -669,3 +669,12 @@ def test_pending_fact_evidence_is_audited_without_becoming_a_confirmed_value():
     assert result.value == "unknown"
     assert result.evidence_ids == ("fixture-span",)
     assert result.limitations == ("unconfirmed_fact:fixture-claim",)
+
+
+def test_validation_receipt_does_not_rewind_publication_or_retirement_lifecycle():
+    published = rule(status="published", published_at=STAMP)
+    assert validate(published).resulting_status == "published"
+    assert validate(published, supports=()).resulting_status == "published"
+    assert not validate(published, supports=()).eligible
+    retired = rule(status="retired", published_at=STAMP, retired_at=STAMP)
+    assert validate(retired).resulting_status == "retired"
