@@ -51,3 +51,9 @@ strict DTO 字段/枚举/日期/安全URL/版本归属；只读请求/cursor/fil
 独立初审发现两个真实缺陷并已复现：历史403/404残留正文、同hash当前链接没有新GET。修复后资料detail/history共享读取代次与取消范围，权限/资源确定丢失时清空所有检视事实，同时清父列表快照和阻止在途list复活；503保持部分结果说明。当前版本链接显式重置检视组件、所选revision及正文/history分页，并发起不带revision的当前GET，不依赖hashchange。普通临时错误重试仍保留原选修订。
 
 原样独立36unit和6browser由作者复跑红→绿，新增永久4回归红→绿，完整299unit、原4browser与lint/typecheck/build真实通过；不是独立accepted或live。详见任务报告第二轮与review_fix_1_*日志。外观tokens/背景/旧功能不变，实际检查无权限清空和新当前版本截图。
+
+## READ_PUBLIC 目录到检视区的共同失效（第三轮）
+
+独立复核确认目录403先返回时，详情/历史晚到200仍能恢复。原资料generation/AbortController范围现提升到该工作区私有scope，让目录、详情和历史共用；目录403/401取消全部资料请求并卸载Inspector，其他资料确定失效保持原清缓存行为。搜索/上下页/回首页/重试均先取消旧scope再换查询，503与入口404继续保留明确不同语义。
+
+305unit、8Edge（原4+新4）、原36/6和新增独立7/1有效单元均真实通过；独立新增Edge有矛盾可见性前置，原样结果完整保留并由主控确认由原reviewer修probe，作者未改断言。所有限定证据和仪器修正说明见任务报告第三轮。实看403清空截图，外观与动效未改，当前仍awaiting_review / live not_run。

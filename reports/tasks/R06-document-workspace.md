@@ -86,3 +86,31 @@ F1/R1：资料分类与明确正文覆盖/日期精度；F2/F3：指定revision�
 末版真实时间窗（+08:00）：独立36unit20:04:54.6298737–20:04:56.7733704；独立6browser20:04:54.6298737–20:05:02.0550406；原4browser20:05:39.8184006–20:05:48.1506510；lint/typecheck/build20:05:39.8711446–20:05:50.2211009；299unit20:05:39.8711118–20:05:59.9377796。CBM本次新增src索引后的DocumentInspector入站确认DocumentWorkspace（1跳）与App.Workbench（2跳），均lsp0.95，rg调用日志复核；此前baseline图保留，不把图当测试通过。原独立assert文件copies末次hash仍一致，见review_fix_1_copy_hashes.json。
 
 实际查看修复截图：history-403-stale.png中资料列表已清除且检视区仅有无权限；current-link-stale.png中已出现新当前revision3/原文，无旧版正文。文件名来自原独立测试，不代表修复后仍stale。截图在review_fix_1_browser_artifacts/。源码/文档diff检查仅排除原生日志，不清洗原工具输出；末版源冻结随后登记。下一步由原独立reviewer对新SHA复核，真实资料API/browser依旧由主控接续，不自行accepted。
+
+## 定向复核 Must 3 修复（第三轮，基线 ef3a058）
+
+原独立复核已关闭 Must 1/2，并在直接deep-link列表先403、detail/history在途200的相邻路径确认Must 3。作者读取主控原报告并复现，不改独立测试或已关闭结论。状态awaiting_review，仍待同一独立reviewer复核。
+
+最小修复把原Inspector的generation与AbortController集合提升至资料工作区单个私有READ_PUBLIC读取scope，list/detail/history共同使用；无新全局state/框架/公共合同。list403或401同步提高scope代次并取消全部资料请求、清selection且卸载旧Inspector状态；401继续清会话。详情/历史403/404仍按原修复清缓存，晚到list也被scope/目录代次挡住。503及列表404待接通保持各自查询失败语义，不统一清空或伪造零结果。搜索、下一页、回第一页、重试统一经queryDocuments取消旧scope再清检视/换过滤，补回第一页原来未清Inspector的相邻路径。
+
+改动仅document-workspace.tsx、永久document-scope.test.tsx、永久r06_document_scope_fixture.spec.ts、原专用Playwright config的testMatch（原4保留，新增4），以及自有报告/设计/run。无backend、认证/DTO、锁、progress、金标、分母变更，无push/accepted。
+
+独立新输入已固定hash：catalog_privacy.test.ts=e1df2ef900bf6a277b381b0781d56359259d670a5906a88b3761d7a434a763ab；catalog_privacy.browser.spec.ts=092bedcad878acbe66428c6a8ab2e5851318c573b40e8b5a54c0b3ce3bc1734b；七竞态recheck.race.test.ts=c77c4767106618dc02198a0fc82c9ad3095456f688ac1168ee976e7811b52fb1。自用copy字节原样，config仅更换include/cwd/loopback端口/输出，见review_fix_2_inputs.json。原独立目录未写。
+
+| 实际检查（完整命令/时间/exit在commands.jsonl） | 结果 | 文件前缀 |
+|---|---|---|
+| 独立catalog原样单元 | 修前exit1，1红；修后exit0，1/1 | review_fix_2_catalog_red / catalog_green |
+| 永久scope单元 | 修前6中4过2红（初轮403与回第一页取消）；修后6/6，另含原4修复回归合跑10/10 | review_fix_2_scope_red / scope_green |
+| 原样相邻七竞态 / 原36单元 | exit0，7/7及36/36，0skip | review_fix_2_race_green / original_unit |
+| 全前端npm test JSON | exit0，305/305，22文件0skip（原299保留+6） | review_fix_2_full_unit |
+| lint / typecheck / build | 全exit0，lint0warning | review_fix_2_lint / typecheck / build |
+| 原4+永久scope4 Edge，独占25376 | exit0，8/8，0skip/flaky | review_fix_2_browser_delivery |
+| 原样独立6 Edge，独占25377 | exit0，6/6，0skip/flaky | review_fix_2_original_browser |
+
+永久Edge直接验证：403/401错误出现后待完成两类请求实际requestfailed取消，释放全部barrier并等实际已启动handler完成，再断言标题/正文/source链接/历史控件为0；分页同样覆盖。503对照保留查询失败与合法已取得详情，绝不显示零记录。实际查看catalog-403-scope-cleared.png，右侧已卸载成通用核查提示，左侧无记录标题/数量。每轮的截图与原失败日志均保留，不宣称live。
+
+独立新browser probe在release后先要求漏洞原文toBeVisible，再要求count0：修前可复现泄漏，正确修后原文永不出现，因此原样修后在toBeVisible前置超时。已向主控逐条报告，主控明确认可保留该仪器失败而用有效unit与永久Edge检查；不改原文件、不断言为产品仍失败，也不声称该probe绿色。原样前后exit1及JSON均保留在review_fix_2_browser_red.json / browser_raw_after_fix.json，原reviewer需修其probe再复核。
+
+作者永久Edge首轮把StrictMode的实际4个handler硬写成2，造成4红；改为核对实际started/settled数量后保留原红日志。第二轮有403业务红、分页fixture按次数允许首页导致StrictMode误拒绝的仪器红；改为按有无cursor识别真正分页请求，0skip，最终4/4。没有降低权限取消或不可见断言，也未改独立断言；原scope_browser_red、red_valid及两套artifacts完整保留。
+
+真实时间窗（+08:00）：质量/305unit20:31:13.1192399–20:31:42.3322160；8Edge20:31:13.1892050–20:31:23.7955812；原独立6Edge时间见末条commands。来源实际PG/API/browser/live仍not_run。主控用新源码和元数据提交交原reviewer复核，本作者不accepted、结束此修复切片。

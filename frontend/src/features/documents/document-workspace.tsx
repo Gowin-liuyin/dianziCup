@@ -10,6 +10,12 @@ import { EmptyState, ErrorPanel, StatusBadge } from "../../components/status";
 import "./documents.css";
 
 type Resource<T> = { kind: "loading" } | { kind: "loaded"; value: T } | { kind: "failed"; error: ApiProblem };
+interface DocumentReadScope { generation: number; controllers: Set<AbortController>; }
+function cancelDocumentReads(scope: DocumentReadScope) {
+  scope.generation += 1;
+  for (const controller of scope.controllers) controller.abort();
+  scope.controllers.clear();
+}
 const kindLabels: Record<DocumentKind, string> = { advisory: "安全公告", paper: "论文", standard: "技术标准", policy: "政策法规", article: "研究文章", repository_record: "仓库记录" };
 const categoryLabels: Record<SourceCategory, string> = { structured_vulnerability: "结构化漏洞库", vendor_advisory: "厂商公告", security_community: "安全社区", code_repository: "代码仓库", technical_blog: "技术博客", academic_paper: "学术论文", technical_standard: "技术标准", policy_regulation: "政策法规" };
 const coverageLabels: Record<ContentCoverage, string> = { full_text: "全文", abstract: "仅摘要", feed_excerpt: "订阅片段", metadata: "仅元数据", unknown: "覆盖未知" };
@@ -42,7 +48,7 @@ function EvidenceBlock({ evidence, index }: { evidence: EvidenceResponse; index:
   </article>;
 }
 
-function DocumentInspector({ id, revisionId, isCurrent, onExpired, onUnavailable, onReloadCurrent }: { id: string; revisionId: string | null; isCurrent: () => boolean; onExpired: () => void; onUnavailable: (error: ApiProblem) => void; onReloadCurrent: (id: string) => void }) {
+function DocumentInspector({ id, revisionId, isCurrent, onExpired, onUnavailable, onReloadCurrent, readScope }: { id: string; revisionId: string | null; isCurrent: () => boolean; onExpired: () => void; onUnavailable: (error: ApiProblem) => void; onReloadCurrent: (id: string) => void; readScope: DocumentReadScope }) {
   const [resource, setResource] = useState<Resource<DocumentDetailResponse>>({ kind: "loading" });
   const [request, setRequest] = useState({ offset: 0, retry: 0 });
   const [pending, setPending] = useState(true);
@@ -54,30 +60,24 @@ function DocumentInspector({ id, revisionId, isCurrent, onExpired, onUnavailable
   const [historyRequest, setHistoryRequest] = useState({ offset: 0, retry: 0 });
   const [historyPending, setHistoryPending] = useState(true);
   const [historyError, setHistoryError] = useState<ApiProblem | null>(null);
-  const readGeneration = useRef(0);
-  const activeReads = useRef(new Set<AbortController>());
-  const stopReads = useCallback(() => {
-    readGeneration.current += 1;
-    for (const controller of activeReads.current) controller.abort();
-    activeReads.current.clear();
-  }, []);
+  const stopReads = useCallback(() => cancelDocumentReads(readScope), [readScope]);
   const invalidateDocument = useCallback((error: ApiProblem) => {
     stopReads(); selectedRevision.current = null;
     setResource({ kind: "failed", error }); setHistory({ kind: "failed", error });
     setPending(false); setHistoryPending(false); setPageError(null); setHistoryError(null);
     onUnavailable(error);
   }, [stopReads, onUnavailable]);
-  function reloadCurrentDocument() { stopReads(); onReloadCurrent(id); }
+  function reloadCurrentDocument() { onReloadCurrent(id); }
 
   useEffect(() => {
     const controller = new AbortController();
-    const generation = readGeneration.current;
-    const controllers = activeReads.current;
+    const generation = readScope.generation;
+    const controllers = readScope.controllers;
     controllers.add(controller);
     setPending(true); setPageError(null);
     if (request.offset === 0) setResource({ kind: "loading" });
     void getDocumentDetail(id, selectedRevision.current, request.offset, controller.signal).then((value) => {
-      if (controller.signal.aborted || generation !== readGeneration.current || !isCurrent()) return;
+      if (controller.signal.aborted || generation !== readScope.generation || !isCurrent()) return;
       selectedRevision.current = value.document.revision_id;
       setResource((previous) => {
         if (request.offset === 0 || previous.kind !== "loaded") return { kind: "loaded", value };
@@ -87,7 +87,7 @@ function DocumentInspector({ id, revisionId, isCurrent, onExpired, onUnavailable
       });
       setPending(false);
     }).catch((failure: unknown) => {
-      if (controller.signal.aborted || generation !== readGeneration.current || !isCurrent()) return;
+      if (controller.signal.aborted || generation !== readScope.generation || !isCurrent()) return;
       const error = publicProblem(failure); setPending(false);
       if (error.status === 403 || error.status === 404) { invalidateDocument(error); return; }
       if (request.offset > 0 && error.status !== 401 && error.status !== 403 && error.status !== 404) setPageError(error);
@@ -95,15 +95,15 @@ function DocumentInspector({ id, revisionId, isCurrent, onExpired, onUnavailable
       if (error.status === 401) onExpired();
     });
     return () => { controller.abort(); controllers.delete(controller); };
-  }, [id, request, isCurrent, onExpired, invalidateDocument]);
+  }, [id, request, isCurrent, onExpired, invalidateDocument, readScope]);
 
   useEffect(() => {
     const controller = new AbortController(); setHistoryPending(true); setHistoryError(null);
-    const generation = readGeneration.current;
-    const controllers = activeReads.current;
+    const generation = readScope.generation;
+    const controllers = readScope.controllers;
     controllers.add(controller);
     void getDocumentRevisions(id, historyRequest.offset, controller.signal).then((value) => {
-      if (controller.signal.aborted || generation !== readGeneration.current || !isCurrent()) return;
+      if (controller.signal.aborted || generation !== readScope.generation || !isCurrent()) return;
       setHistory((previous) => {
         if (historyRequest.offset === 0 || previous.kind !== "loaded") return { kind: "loaded", value };
         const items = [...previous.value.items, ...value.items];
@@ -111,7 +111,7 @@ function DocumentInspector({ id, revisionId, isCurrent, onExpired, onUnavailable
         return { kind: "loaded", value: { ...value, items } };
       }); setHistoryPending(false);
     }).catch((failure: unknown) => {
-      if (controller.signal.aborted || generation !== readGeneration.current || !isCurrent()) return;
+      if (controller.signal.aborted || generation !== readScope.generation || !isCurrent()) return;
       const error = publicProblem(failure); setHistoryPending(false);
       if (error.status === 403 || error.status === 404) { invalidateDocument(error); return; }
       if (historyRequest.offset > 0 && error.status !== 401 && error.status !== 403 && error.status !== 404) setHistoryError(error);
@@ -119,7 +119,7 @@ function DocumentInspector({ id, revisionId, isCurrent, onExpired, onUnavailable
       if (error.status === 401) onExpired();
     });
     return () => { controller.abort(); controllers.delete(controller); };
-  }, [id, historyRequest, isCurrent, onExpired, invalidateDocument]);
+  }, [id, historyRequest, isCurrent, onExpired, invalidateDocument, readScope]);
 
   useEffect(() => {
     if (resource.kind !== "loaded" || focused.current) return;
@@ -181,6 +181,7 @@ export function DocumentWorkspace() {
   const [catalogInvalidated, setCatalogInvalidated] = useState(false);
   const listGeneration = useRef(0);
   const listController = useRef<AbortController | null>(null);
+  const readScope = useRef<DocumentReadScope>({ generation: 0, controllers: new Set() });
   const user = state.kind === "authenticated" ? state.user : null;
   const isCurrent = useCallback(() => isSessionCurrent(sessionGeneration), [isSessionCurrent, sessionGeneration]);
   const expired = useCallback(() => expireSession(sessionGeneration), [expireSession, sessionGeneration]);
@@ -189,6 +190,7 @@ export function DocumentWorkspace() {
     setCatalogInvalidated(true); setResource({ kind: "failed", error });
   }, []);
   const reloadCurrent = useCallback((id: string) => {
+    cancelDocumentReads(readScope.current);
     listGeneration.current += 1; listController.current?.abort();
     setResource({ kind: "loading" }); setCatalogInvalidated(false);
     window.history.replaceState(null, "", `#documents/${id}`);
@@ -199,15 +201,25 @@ export function DocumentWorkspace() {
   useEffect(() => {
     if (user === null || actionPending) return;
     const controller = new AbortController(); const generation = ++listGeneration.current;
+    const scope = readScope.current; const scopeGeneration = scope.generation;
+    scope.controllers.add(controller);
     listController.current = controller; setResource({ kind: "loading" }); setCatalogInvalidated(false);
-    void getDocumentList(filters, controller.signal).then((value) => { if (!controller.signal.aborted && generation === listGeneration.current && isCurrent()) setResource({ kind: "loaded", value }); }).catch((failure: unknown) => {
-      if (controller.signal.aborted || generation !== listGeneration.current || !isCurrent()) return;
-      const error = publicProblem(failure); setResource({ kind: "failed", error }); if (error.status === 401) expired();
-    }); return () => controller.abort();
+    void getDocumentList(filters, controller.signal).then((value) => { if (!controller.signal.aborted && generation === listGeneration.current && scopeGeneration === scope.generation && isCurrent()) setResource({ kind: "loaded", value }); }).catch((failure: unknown) => {
+      if (controller.signal.aborted || generation !== listGeneration.current || scopeGeneration !== scope.generation || !isCurrent()) return;
+      const error = publicProblem(failure);
+      if (error.status === 403 || error.status === 401) {
+        cancelDocumentReads(scope); listGeneration.current += 1;
+        setSelection(null); window.history.replaceState(null, "", "#documents");
+      }
+      setResource({ kind: "failed", error }); if (error.status === 401) expired();
+    }); return () => { controller.abort(); scope.controllers.delete(controller); };
   }, [filters, retry, user, actionPending, isCurrent, expired]);
   function search(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setSelection(null); window.history.replaceState(null, "", "#documents");
-    setFilters({ q: query.trim(), document_kind: kind || undefined, source_category: category || undefined, limit: 20 });
+    event.preventDefault(); queryDocuments({ q: query.trim(), document_kind: kind || undefined, source_category: category || undefined, limit: 20 });
+  }
+  function queryDocuments(nextFilters: DocumentFilters) {
+    cancelDocumentReads(readScope.current); listGeneration.current += 1;
+    setSelection(null); window.history.replaceState(null, "", "#documents"); setFilters(nextFilters);
   }
   if (user === null || actionPending) return <section className="panel document-anonymous">{sessionError?.code === "session_expired" && <ErrorPanel error={sessionError} />}<EmptyState title="登录后核查资料" description="资料与原文版本需要当前团队会话。尚未执行资料查询，不能判断资料数量。" /><a className="button" href="#session">登录并核对权限</a></section>;
   const status = resource.kind === "loading" ? "loading" : resource.kind === "failed" ? (resource.error.status === 403 ? "denied" : "failed") : resource.value.items.length === 0 ? "no_result" : "loaded";
@@ -219,7 +231,7 @@ export function DocumentWorkspace() {
       <button className="button" type="submit" disabled={resource.kind === "loading"}>检索资料</button><p className="small-note">仅检索已保存标题。资料覆盖与风险确认分别核查。</p>
     </form>
     {resource.kind === "loading" && <p role="status" className="loading-state">正在查询授权范围内的资料…</p>}
-    {resource.kind === "failed" && (catalogInvalidated ? <EmptyState title="资料列表已清除" description="所选资料已不可访问，旧列表快照已隐藏。重新检索后再核查可见资料。" /> : <DocumentError error={resource.error} collection onRetry={() => setRetry((value) => value + 1)} />)}
+    {resource.kind === "failed" && (catalogInvalidated ? <EmptyState title="资料列表已清除" description="所选资料已不可访问，旧列表快照已隐藏。重新检索后再核查可见资料。" /> : <DocumentError error={resource.error} collection onRetry={() => queryDocuments({ ...filters })} />)}
     {resource.kind === "loaded" && <><p className="document-page-count">本页 {resource.value.items.length} 条 · {modeLabel(resource.value.data_mode)}</p>
       {resource.value.items.length === 0 && <EmptyState title="本次查询没有资料记录" description="本次授权范围与筛选没有返回资料，不能推论相关研究或风险不存在。" />}
       <ul className="document-list" aria-label="已保存资料列表">{resource.value.items.map((document) => <li key={document.document_id} className={selection?.documentId === document.document_id ? "document-selected" : undefined}>
@@ -227,9 +239,9 @@ export function DocumentWorkspace() {
         <a href={`#documents/${document.document_id}`} className="document-record-link" aria-current={selection?.documentId === document.document_id ? "true" : undefined}>{document.title}</a>
         <p className="document-record-source">{document.source_name} · 修订 {document.revision_number}</p><div className="document-date"><Publication document={document} /></div>
       </li>)}</ul>
-      <div className="document-pagination"><button className="button secondary" disabled={filters.cursor === undefined} onClick={() => setFilters((value) => ({ ...value, cursor: undefined }))}>回到第一页</button><button className="button secondary" disabled={resource.value.next_cursor === null} onClick={() => { setSelection(null); window.history.replaceState(null, "", "#documents"); setFilters((value) => ({ ...value, cursor: resource.value.next_cursor ?? undefined })); }}>下一页资料</button></div>
+      <div className="document-pagination"><button className="button secondary" disabled={filters.cursor === undefined} onClick={() => queryDocuments({ ...filters, cursor: undefined })}>回到第一页</button><button className="button secondary" disabled={resource.value.next_cursor === null} onClick={() => queryDocuments({ ...filters, cursor: resource.value.next_cursor ?? undefined })}>下一页资料</button></div>
     </>}
   </section>
-    {selection === null ? <aside className="panel document-prompt"><p className="eyebrow">原文核查</p><h2>读资料<br />留意证据范围</h2><p>选择资料，核查保存的版本、发布时间精度与原文覆盖。</p><dl><dt>论文</dt><dd>研究主张与确认事实分别核查。</dd><dt>标准与政策</dt><dd>版本、建议、义务和适用范围以原文为准。</dd><dt>原文证据</dt><dd>定位已核验仍需确认片段是否支持论断。</dd></dl><p className="document-boundary">未知保持未知</p></aside> : <DocumentInspector key={`${selection.documentId}:${selection.revisionId}:${inspectorGeneration}`} id={selection.documentId} revisionId={selection.revisionId} isCurrent={isCurrent} onExpired={expired} onUnavailable={invalidateCatalog} onReloadCurrent={reloadCurrent} />}
+    {selection === null ? <aside className="panel document-prompt"><p className="eyebrow">原文核查</p><h2>读资料<br />留意证据范围</h2><p>选择资料，核查保存的版本、发布时间精度与原文覆盖。</p><dl><dt>论文</dt><dd>研究主张与确认事实分别核查。</dd><dt>标准与政策</dt><dd>版本、建议、义务和适用范围以原文为准。</dd><dt>原文证据</dt><dd>定位已核验仍需确认片段是否支持论断。</dd></dl><p className="document-boundary">未知保持未知</p></aside> : <DocumentInspector key={`${selection.documentId}:${selection.revisionId}:${inspectorGeneration}`} id={selection.documentId} revisionId={selection.revisionId} isCurrent={isCurrent} onExpired={expired} onUnavailable={invalidateCatalog} onReloadCurrent={reloadCurrent} readScope={readScope.current} />}
   </div>;
 }
