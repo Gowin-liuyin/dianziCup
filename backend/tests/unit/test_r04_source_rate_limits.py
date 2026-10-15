@@ -327,6 +327,7 @@ def test_source_handler_passes_clock_and_never_commits_a_failed_page(
     enqueue = Mock(side_effect=AssertionError("failed page cannot enqueue continuation"))
     monkeypatch.setattr(source_jobs, "persist_source_response", persist)
     monkeypatch.setattr(source_jobs, "enqueue_source_page", enqueue)
+    monkeypatch.setattr(source_jobs, "SourceResponseRecorder", Mock())
     if failure_kind == "http-date":
         fetched = response(429, {"Retry-After": "Thu, 15 Oct 2026 00:00:13 GMT"})
     elif failure_kind == "quota-long":
@@ -341,6 +342,7 @@ def test_source_handler_passes_clock_and_never_commits_a_failed_page(
     context = JobExecutionContext("synthetic-job", "synthetic-worker", 1, None)
     with Session() as session:
         monkeypatch.setattr(session, "scalar", Mock(return_value=None))
+        monkeypatch.setattr(session, "get_bind", Mock(return_value=Mock()))
         if failure_kind == "storage":
             with pytest.raises(OSError, match="synthetic storage unavailable"):
                 handler(session, context, request.model_dump_json().encode())

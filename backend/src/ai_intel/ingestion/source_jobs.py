@@ -54,6 +54,7 @@ from ai_intel.ingestion.source_documents import (
     persist_source_response,
     validate_vendor_after,
 )
+from ai_intel.ingestion.source_failure_receipts import SourceResponseRecorder
 from ai_intel.ingestion.sources.academic import AcademicContractError
 from ai_intel.ingestion.sources.feed import FeedParseError
 from ai_intel.ingestion.sources.nvd import normalize_nvd_page
@@ -325,6 +326,8 @@ def _fetch_catalog_page(
     fetcher: SourceFetcher | None,
     poster: SourcePoster | None,
     clock: Callable[[], datetime],
+    response_recorder: Callable[[CatalogRequest, FetchResult | None, int], None] | None = None,
+    normalization_recorder: Callable[[int], None] | None = None,
 ) -> tuple[CatalogPage, tuple[tuple[CatalogRequest, FetchResult], ...]]:
     """One fixed request, or AVID tree/blob with one deadline and at most two requests."""
     if source_kind == "avid_community" and cursor and set(cursor) != {"tree_sha", "record_offset"}:
@@ -342,26 +345,38 @@ def _fetch_catalog_page(
     )
     deadline = RequestDeadline(time.monotonic() + CATALOG_REQUEST_TIMEOUT_SECONDS)
     responses: list[tuple[CatalogRequest, FetchResult]] = []
+    request_count = 0
 
     def read(current: CatalogRequest) -> FetchResult:
-        if len(responses) >= CATALOG_MAX_REQUESTS_PER_PAGE:
+        nonlocal request_count
+        if request_count >= CATALOG_MAX_REQUESTS_PER_PAGE:
             raise SourceCatalogError("catalog page request limit exceeded")
         deadline.remaining_seconds()
-        if current.method == "POST":
-            if current.json_body is None:
-                raise SourceCatalogError("fixed POST body missing")
-            body = json.dumps(current.json_body, allow_nan=False, separators=(",", ":")).encode()
-            result = (
-                poster(current.url, body)
-                if poster
-                else gateway.post_json(current.url, body, deadline=deadline)
-            )
-        else:
-            result = (
-                fetcher(current.url)
-                if fetcher
-                else gateway.fetch(current.url, max_redirect_hops=0, deadline=deadline)
-            )
+        request_count += 1
+        try:
+            if current.method == "POST":
+                if current.json_body is None:
+                    raise SourceCatalogError("fixed POST body missing")
+                body = json.dumps(
+                    current.json_body, allow_nan=False, separators=(",", ":")
+                ).encode()
+                result = (
+                    poster(current.url, body)
+                    if poster
+                    else gateway.post_json(current.url, body, deadline=deadline)
+                )
+            else:
+                result = (
+                    fetcher(current.url)
+                    if fetcher
+                    else gateway.fetch(current.url, max_redirect_hops=0, deadline=deadline)
+                )
+        except (NetworkPolicyViolation, NetworkRequestError):
+            if response_recorder:
+                response_recorder(current, None, request_count)
+            raise
+        if response_recorder:
+            response_recorder(current, result, request_count)
         deadline.remaining_seconds()
         _http_failure(result, clock=clock)
         if result.content_type.split(";", 1)[0].strip().casefold() not in content_types:
@@ -372,6 +387,8 @@ def _fetch_catalog_page(
     result = read(request)
     if source_kind == "avid_community":
         selected = select_avid_blob(result.body, cursor)
+        if normalization_recorder:
+            normalization_recorder(1)
         if selected is None:
             return CatalogPage((), {}), tuple(responses)
         blob_request = build_catalog_request(source_kind, {"blob_sha": selected.blob_sha})
@@ -379,6 +396,8 @@ def _fetch_catalog_page(
         page = CatalogPage((normalize_avid_blob(selected, blob.body),), selected.next_cursor)
     else:
         page = normalize_catalog_page(source_kind, result.body, cursor, result.redacted_headers)
+    if normalization_recorder:
+        normalization_recorder(request_count)
     return page, tuple(responses)
 
 
@@ -423,6 +442,33 @@ def build_source_page_handler(
         )
         if lease is None:
             raise JobExecutionError("source_busy", retry_after_seconds=7)
+        recorder = SourceResponseRecorder(
+            session.get_bind().engine,
+            store,
+            scope,
+            context,
+            request.source_kind,
+            request.stream_kind,
+            lease.window_end,
+            lease.cursor_json,
+        )
+
+        def record_response(
+            catalog_request: CatalogRequest, response: FetchResult | None, ordinal: int
+        ) -> None:
+            recorder.record_response(
+                catalog_request,
+                response,
+                ordinal,
+                clock(),
+                allowed_content_types=CATALOG_CONTENT_TYPES.get(
+                    request.source_kind, ("application/json",)
+                ),
+            )
+
+        def record_normalization(ordinal: int) -> None:
+            recorder.mark_outcome("normalized", clock(), ordinal=ordinal)
+
         try:
             last_observed = session.scalar(
                 select(func.max(fetch_attempts.c.attempted_at)).where(
@@ -433,7 +479,13 @@ def build_source_page_handler(
                 raise JobExecutionError("source_poll_interval", retry_after_seconds=7)
             if request.source_kind == "nvd_ollama" or request.source_kind == "vllm_vendor":
                 url = source_page_url(request.source_kind, lease.cursor_json)
-                result = read_page(url)
+                catalog_request = CatalogRequest("GET", url)
+                try:
+                    result = read_page(url)
+                except (NetworkPolicyViolation, NetworkRequestError):
+                    record_response(catalog_request, None, 1)
+                    raise
+                record_response(catalog_request, result, 1)
                 _http_failure(result, clock=clock)
                 observed_at = clock()
                 saved = persist_source_response(
@@ -448,6 +500,7 @@ def build_source_page_handler(
                 following = _next_position(
                     request.source_kind, result.body, lease.cursor_json, result.redacted_headers
                 )
+                recorder.mark_outcome("normalized", clock())
             else:
                 page, responses = _fetch_catalog_page(
                     request.source_kind,
@@ -456,6 +509,8 @@ def build_source_page_handler(
                     fetcher=fetcher,
                     poster=poster,
                     clock=clock,
+                    response_recorder=record_response,
+                    normalization_recorder=record_normalization,
                 )
                 observed_at = clock()
                 response_hash = ""
@@ -534,8 +589,12 @@ def build_source_page_handler(
                 )
             return JobExecutionResult(result_ref="pg:source:" + source_id)
         except NetworkPolicyViolation:
+            recorder.mark_outcome(
+                "transport_failed", clock(), error_code="source_network_policy_denied"
+            )
             raise JobExecutionError("source_network_policy_denied", blocked=True) from None
         except NetworkRequestError as error:
+            recorder.mark_outcome("transport_failed", clock(), error_code=error.code)
             raise JobExecutionError(error.code, retry_after_seconds=7) from None
         except (
             SourceDocumentError,
@@ -545,6 +604,19 @@ def build_source_page_handler(
             OsvContractError,
             RepositoryFetchError,
         ):
+            recorder.mark_outcome(
+                "normalization_failed", clock(), error_code="source_response_invalid"
+            )
             raise JobExecutionError("source_response_invalid", blocked=True) from None
+        except JobExecutionError as error:
+            if error.error_code in {
+                "source_auth_denied",
+                "source_rate_limited",
+                "source_client_error",
+                "source_server_error",
+                "source_unexpected_status",
+            }:
+                recorder.mark_outcome("transport_failed", clock(), error_code=error.error_code)
+            raise
 
     return collect_page
