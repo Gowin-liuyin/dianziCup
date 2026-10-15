@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
+
+from ai_intel.infrastructure.models.json_output import strict_json_object
 
 MODEL_CLIENT_VERSION = "model-1.0.0"
 
@@ -56,24 +57,24 @@ def validate_structured_output(
 ) -> GenerationResult:
     """JSON 输出校验: 多余字段/坏 JSON 报错或至多一次受限修复, 不降级成功。"""
     try:
-        payload = json.loads(raw_text)
+        payload = strict_json_object(raw_text)
         repair_used = False
-    except ValueError:
+    except (ValueError, RecursionError):
         if repair_once is None:
             raise ModelContractError(
                 "model output is not valid JSON; no repair available"
             ) from None
         repaired_text = repair_once(raw_text)
         try:
-            payload = json.loads(repaired_text)
-        except ValueError as error:
+            payload = strict_json_object(repaired_text)
+        except (ValueError, RecursionError) as error:
             raise ModelContractError("model output invalid even after single repair") from error
         repair_used = True
     if not isinstance(payload, dict):
         raise ModelContractError("structured output must be a JSON object")
     unexpected = sorted(set(payload) - set(allowed_top_level_keys))
     if unexpected:
-        raise ModelContractError(f"unexpected top-level fields: {unexpected}")
+        raise ModelContractError("unexpected top-level fields")
     return GenerationResult(
         structured_payload=payload,
         model_version=model_version,
