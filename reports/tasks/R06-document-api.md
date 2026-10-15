@@ -32,3 +32,4 @@ READ_PUBLIC只来自认证用户；即便同租户管理员拥有READ_ASSET，�
 见已有CR-R04资料只读合同。此批不新增迁移/锁/依赖；要求已迁移0015。旧events/evidence/questions及双前缀保留。关闭新增资料导航/路由可停止功能，保留PG历史，不downgrade/删文档。新7来源worker仍待接线，当前PG测试是合成公开原文不是live；真实浏览器必须后续接同后端验证。九维/图谱/资产/推荐/完整工作台及正式评分未因此通过。
 
 下一步：全新非作者固定49审查并复跑负例；资料前端第三权限竞态修复后由原reviewer复核；统一worker新源→实际来源/原文/PG/API/浏览器。无新增付费调用，人工金标/FOFA授权范围仍待用户输入，但不阻塞本GET实现。没有push/accepted。
+修订 2026-10-15T20:25:37+08:00 /root：固定49ee33的document_pg_frozen49为20 passed、exit0、15.58秒。初次元数据归档db33因Git换行转换造成45个manifest成员中的31个Git blob与原始文件hash不等；a578仅为本run添加-text与cr-at-eol属性并显式renormalize，原始45文件未修改，Git blob/原始manifest全45匹配，未屏蔽scanner/测试/其他目录或实际行尾空格。产品代码仍49ee33，资料GET完整live浏览器尚未执行。
