@@ -11,6 +11,7 @@ from semver import Version as SemverVersion
 from ai_intel.domain.enrichment_values import VersionAssertionValue, VersionInterval
 
 MAX_VERSION_LENGTH = 128
+MAX_BRANCH_LENGTH = 200
 MAX_INTERVALS = 50
 MAX_EXCLUDED_VERSIONS = 50
 MAX_EXPLICIT_VERSIONS = 100
@@ -46,6 +47,16 @@ def _comparison_scheme(scheme: str, ecosystem: str) -> tuple[str | None, str]:
     if scheme != "osv_ecosystem" and scheme != ecosystem_scheme:
         return None, "scheme_ecosystem_mismatch"
     return ecosystem_scheme, ""
+
+
+def _valid_branch_label(branch: object) -> bool:
+    """None preserves missing context; labels retain exact identity within frozen Label bounds."""
+    return branch is None or (
+        type(branch) is str
+        and 0 < len(branch) <= MAX_BRANCH_LENGTH
+        and branch == branch.strip()
+        and branch.isprintable()
+    )
 
 
 def _parse_exact_version(version: str, scheme: str) -> ParsedVersion:
@@ -112,6 +123,10 @@ def contains_version(
 def _contains_parsed_version(
     version: ParsedVersion, interval: VersionInterval, scheme: str, branch: str | None
 ) -> VersionMatch:
+    if not _valid_branch_label(branch):
+        return VersionMatch("unknown", "invalid_asset_branch")
+    if not _valid_branch_label(interval.branch):
+        return VersionMatch("unknown", "invalid_source_branch")
     if interval.branch is not None:
         if branch is None:
             return VersionMatch("unknown", "missing_branch")
@@ -210,8 +225,6 @@ def evaluate_version_assertion(
             excluded_match |= _compare_parsed_versions(parsed_version, parsed_excluded) == 0
     except ValueError:
         return VersionMatch("unknown", "invalid_excluded_version", interval_results)
-    if excluded_match:
-        return VersionMatch("not_affected", "explicitly_excluded", interval_results)
     explicit_match = False
     invalid_explicit_version = False
     for explicit in assertion.explicit_versions:
@@ -226,6 +239,14 @@ def evaluate_version_assertion(
     )
     if invalid_explicit_version:
         unresolved_reasons += ("invalid_explicit_version",)
+    if not _valid_branch_label(branch):
+        if "invalid_asset_branch" not in unresolved_reasons:
+            unresolved_reasons += ("invalid_asset_branch",)
+        return VersionMatch("unknown", "invalid_asset_branch", interval_results, unresolved_reasons)
+    if excluded_match:
+        return VersionMatch(
+            "not_affected", "explicitly_excluded", interval_results, unresolved_reasons
+        )
     if explicit_match:
         return VersionMatch(
             "affected", "matching_explicit_version", interval_results, unresolved_reasons
