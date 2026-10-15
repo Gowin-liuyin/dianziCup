@@ -73,7 +73,7 @@ def _validate_document(source_kind: SourceKind, member: NormalizedSourceDocument
     if member.kind != source_document_kinds[source_kind]:
         raise SourceCatalogError("document kind does not match fixed source category")
     if not 1 <= len(member.source_record_id) <= 512 or any(
-        ord(char) < 32 for char in member.source_record_id
+        ord(char) < 32 or ord(char) == 127 for char in member.source_record_id
     ):
         raise SourceCatalogError("invalid stable source record identifier")
     if not 1 <= len(member.title) <= 500 or not member.title.strip() or "\x00" in member.title:
@@ -99,7 +99,7 @@ def _validate_document(source_kind: SourceKind, member: NormalizedSourceDocument
     if (
         not valid_uri
         or not member.canonical_uri.isascii()
-        or len(member.canonical_uri) > 4096
+        or len(member.canonical_uri) > 2083
         or any(ord(char) <= 32 or ord(char) == 127 for char in member.canonical_uri)
     ):
         raise SourceCatalogError("source document URI outside fixed publisher")

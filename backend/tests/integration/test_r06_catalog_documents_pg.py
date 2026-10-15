@@ -165,7 +165,8 @@ def test_tenant_roles_cannot_publish_public_source_documents(catalog_engine, tmp
 
 
 @pytest.mark.parametrize(
-    "mutation", ["foreign_uri", "duplicate", "coordinates", "del_uri", "kind", "long_uri"]
+    "mutation",
+    ["foreign_uri", "duplicate", "coordinates", "del_uri", "kind", "long_uri", "del_identifier"],
 )
 def test_bad_member_rejects_the_whole_page_without_partial_documents(
     catalog_engine, tmp_path, mutation
@@ -182,6 +183,8 @@ def test_bad_member_rejects_the_whole_page_without_partial_documents(
         bad = replace(bad, kind=DocumentKind.ADVISORY)
     elif mutation == "long_uri":
         bad = replace(bad, canonical_uri="https://arxiv.org/abs/" + "x" * 2083)
+    elif mutation == "del_identifier":
+        bad = replace(bad, source_record_id="2601.00002\x7f")
     else:
         parsed = replace(
             bad.parsed,
