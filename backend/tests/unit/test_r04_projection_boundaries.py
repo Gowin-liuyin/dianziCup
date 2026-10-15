@@ -9,9 +9,16 @@ from pydantic import ValidationError
 
 from ai_intel.api.knowledge_contracts import (
     EnrichmentProjection,
+    EventListResponse,
     EventSummary,
     EvidenceResponse,
 )
+
+
+def test_empty_continuation_token_cannot_repeat_the_first_page() -> None:
+    with pytest.raises(ValidationError):
+        EventListResponse(items=(), next_cursor="", data_mode="fixture")
+    assert EventListResponse(items=(), next_cursor=None, data_mode="fixture").next_cursor is None
 
 
 def test_available_enrichment_requires_real_reference() -> None:

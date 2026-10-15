@@ -65,7 +65,7 @@ class EventSummary(StrictRecord):
 class EventListResponse(StrictRecord):
     schema_version: Literal[2] = 2
     items: tuple[EventSummary, ...] = Field(max_length=100)
-    next_cursor: str | None = Field(max_length=2048)
+    next_cursor: str | None = Field(min_length=1, max_length=2048)
     data_mode: DataMode
 
 

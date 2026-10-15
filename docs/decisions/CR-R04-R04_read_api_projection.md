@@ -24,3 +24,6 @@ GET `/evidence/{id}`：`{schema_version:2,span_id,revision_id,block_id,start_off
 前端仅按这些DTO编写，未知字段/非法enum应显示合同错误，不能成功默认值。03/05范围保留；公用Vulnerability/NormalizedIntel/MCP投影由R18继续完成，本补充不取代或改写这些schema。root唯一负责后端投影/schema/迁移与事务，前端Agent只其独立WT。接口准备与UI组件可以并行，不表示G-A/G-B通过；真实来源、任务、模型与正式业务e2e仍遵守阶段依赖。
 
 兼容现有auth/health与问题格式；旧API没有这些业务端点，无需覆盖旧历史。回滚停止新写/暂退只读新路由并保留数据库历史，前向修复，不自动downgrade。新增测试要求：ACL预过滤、不可见404、错误非空结果、cursor跨页稳定、原文非零block、旧版本时间未知、冲突/失效明确、真实来源列表→详情→证据浏览器操作。root将实际冻结提交交新非作者核对，再依据范围登记验收；本文不是作者自签accepted。
+
+
+2026-10-15T11:35:26+08:00 · 非空游标细则：next_cursor=null表示无后续页；非null必须长度1–2048，为不透明continuation。空字符串是协议错误，不得把它当首页重取。服务端Pydantic和前端边界共同拒绝，原有效返回和字段无变化，新增unit负例；本实现须随R04批次独立审查。
