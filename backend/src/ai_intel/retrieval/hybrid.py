@@ -9,7 +9,7 @@ import time
 from typing import Literal, Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from sqlalchemy import Select, and_, exists, func, or_, select
+from sqlalchemy import Select, and_, exists, func, or_, select, tuple_
 from sqlalchemy.engine import Engine, RowMapping
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
@@ -19,7 +19,13 @@ from ai_intel.api.knowledge_read_service import KnowledgeReadService, sources
 from ai_intel.domain.access import READ_ASSET, READ_PUBLIC, AccessScope
 from ai_intel.infrastructure.models.clients import ModelContractError
 from ai_intel.infrastructure.models.semantic import E5_MODEL, RERANK_MODEL
-from ai_intel.knowledge.models import document_revisions, documents, evidence, scope_epochs
+from ai_intel.knowledge.models import (
+    document_revisions,
+    documents,
+    evidence,
+    scope_epochs,
+    text_blocks,
+)
 from ai_intel.knowledge.persistence_models import (
     claim_evidence,
     claims,
@@ -76,7 +82,11 @@ def read_scope_epochs(
     session: Session, scope: AccessScope, *, lock: bool = False
 ) -> dict[str, int]:
     keys = authorized_scope_keys(scope)
-    query = select(scope_epochs).where(scope_epochs.c.scope_key.in_(keys))
+    query = (
+        select(scope_epochs)
+        .where(scope_epochs.c.scope_key.in_(keys))
+        .order_by(scope_epochs.c.scope_key)
+    )
     if lock:
         query = query.with_for_update(read=True)
     rows = {row.scope_key: row.epoch for row in session.execute(query)}
@@ -260,6 +270,76 @@ def candidate_values(candidate: CorpusCandidate) -> dict[str, object]:
         "source_uri": candidate.source_uri,
         "locator": candidate.locator,
     }
+
+
+def lock_candidate_authorities(
+    session: Session, scope: AccessScope, candidates: tuple[CorpusCandidate, ...]
+) -> None:
+    """Lock only previously visible input identities; a complete fresh fact read must follow."""
+    for relation, identifier, values in (
+        (sources, sources.c.source_id, {item.source_id for item in candidates}),
+        (documents, documents.c.document_id, {item.document_id for item in candidates}),
+        (
+            document_revisions,
+            document_revisions.c.revision_id,
+            {item.revision_id for item in candidates},
+        ),
+        (events, events.c.event_id, {item.event_id for item in candidates}),
+        (claims, claims.c.claim_id, {item.claim_id for item in candidates}),
+        (evidence, evidence.c.evidence_id, {item.evidence_id for item in candidates}),
+    ):
+        session.execute(
+            select(identifier)
+            .where(identifier.in_(values), visible_clause(scope, relation))
+            .order_by(identifier)
+            .with_for_update(read=True)
+        ).all()
+    session.execute(
+        select(text_blocks.c.block_id)
+        .where(
+            text_blocks.c.block_id.in_(
+                select(evidence.c.block_id).where(
+                    evidence.c.evidence_id.in_({item.evidence_id for item in candidates}),
+                    visible_clause(scope, evidence),
+                )
+            )
+        )
+        .order_by(text_blocks.c.block_id)
+        .with_for_update(read=True)
+    ).all()
+    session.execute(
+        select(event_documents.c.event_id, event_documents.c.revision_id)
+        .where(
+            tuple_(event_documents.c.event_id, event_documents.c.revision_id).in_(
+                {(item.event_id, item.revision_id) for item in candidates}
+            )
+        )
+        .order_by(event_documents.c.event_id, event_documents.c.revision_id)
+        .with_for_update(read=True)
+    ).all()
+    session.execute(
+        select(claim_evidence.c.claim_id, claim_evidence.c.evidence_id)
+        .where(
+            tuple_(claim_evidence.c.claim_id, claim_evidence.c.evidence_id).in_(
+                {(item.claim_id, item.evidence_id) for item in candidates}
+            )
+        )
+        .order_by(claim_evidence.c.claim_id, claim_evidence.c.evidence_id)
+        .with_for_update(read=True)
+    ).all()
+
+
+def current_hit_candidates(
+    session: Session, scope: AccessScope, query: HybridQuery, hits: tuple[RetrievalHit, ...]
+) -> dict[str, CorpusCandidate]:
+    rows = list(
+        session.execute(
+            facts_query(scope, query).where(
+                evidence.c.evidence_id.in_({hit.candidate.evidence_id for hit in hits})
+            )
+        ).mappings()
+    )
+    return {item.chunk_id: item for item in candidates_from_rows(session, scope, rows)}
 
 
 class HybridRetriever:
@@ -456,56 +536,45 @@ class HybridRetriever:
                 )
             )
         rerank_seconds = time.perf_counter() - rerank_start
-        with Session(self.engine) as session:
-            final_epochs = read_scope_epochs(session, scope)
-            final = {
-                item.chunk_id: item
-                for item in candidates_from_rows(
-                    session,
-                    scope,
-                    list(
-                        session.execute(
-                            facts_query(scope, query).where(
-                                evidence.c.evidence_id.in_(
-                                    [hit.candidate.evidence_id for hit in hits]
-                                )
-                            )
-                        ).mappings()
-                    ),
-                )
-            }
+        with Session(self.engine) as session, session.begin():
+            session.connection(execution_options={"isolation_level": "READ COMMITTED"})
+            observed_epochs = read_scope_epochs(session, scope)
+            observed_candidates = current_hit_candidates(session, scope, query, hits)
+            lock_candidate_authorities(session, scope, tuple(hit.candidate for hit in hits))
+            final = current_hit_candidates(session, scope, query, hits)
+            final_epochs = read_scope_epochs(session, scope, lock=True)
             checked = tuple(
                 hit for hit in hits if final.get(hit.candidate.chunk_id) == hit.candidate
             )
-            if len(checked) != len(hits):
+            if len(checked) != len(hits) or final != observed_candidates:
                 reasons.append("facts_changed_during_rerank")
             hits = checked
-            if final_epochs != epochs:
+            if final_epochs != epochs or final_epochs != observed_epochs:
                 reasons.append("scope_changed_during_retrieval")
                 hits = ()
-        if not hits:
-            reasons.append("no_supported_evidence")
-        return HybridSelection(
-            hits,
-            bool(reasons),
-            tuple(dict.fromkeys(reasons)),
-            tuple(sorted(final_epochs.items())),
-            tuple((key, watermarks.get(key)) for key in epochs),
-            E5_MODEL.model_version,
-            RERANK_MODEL.model_version,
-            graph_status,
-            RetrievalTrace(
-                len(exact),
-                len(bm25_ids),
-                len(vector_ids),
-                len(graph_ids),
-                len(validated),
-                len(selected),
-                exact_seconds,
-                bm25_seconds,
-                vector_seconds,
-                validation_seconds,
-                rerank_seconds,
-                time.perf_counter() - start,
-            ),
-        )
+            if not hits:
+                reasons.append("no_supported_evidence")
+            return HybridSelection(
+                hits,
+                bool(reasons),
+                tuple(dict.fromkeys(reasons)),
+                tuple(sorted(final_epochs.items())),
+                tuple((key, watermarks.get(key)) for key in epochs),
+                E5_MODEL.model_version,
+                RERANK_MODEL.model_version,
+                graph_status,
+                RetrievalTrace(
+                    len(exact),
+                    len(bm25_ids),
+                    len(vector_ids),
+                    len(graph_ids),
+                    len(validated),
+                    len(selected),
+                    exact_seconds,
+                    bm25_seconds,
+                    vector_seconds,
+                    validation_seconds,
+                    rerank_seconds,
+                    time.perf_counter() - start,
+                ),
+            )
