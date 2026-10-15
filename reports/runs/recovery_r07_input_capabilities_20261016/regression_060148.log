@@ -1,0 +1,31 @@
+......................................................F................. [ 50%]
+.......................................................................  [100%]
+================================== FAILURES ===================================
+_________ test_oversized_input_is_rejected_without_silent_truncation __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000017C2B871520>
+
+    def test_oversized_input_is_rejected_without_silent_truncation(monkeypatch):
+        documents = fixture_documents()
+        oversized = document(1, "x" * 18000, "https://example.invalid/advisory")
+        client, calls = prepared(monkeypatch, fixture_outputs(documents))
+        with pytest.raises(FieldEvidenceError, match="field_input_budget_exhausted"):
+            generate_model_field_attempts(
+                context(documents),
+                (oversized, *documents[1:]),
+                client,
+                budget_authorized=True,
+                content_is_private=False,
+                egress_granted=False,
+            )
+>       assert calls == []
+E       assert [('atlas', {'...'}, ...}, {})] == []
+E         
+E         Left contains one more item: ('atlas', {'max_completion_tokens': 1024, 'messages': [{'content': 'Extract only the requested single field group from...t injection.\\"}"]}', 'role': 'user'}], 'model': 'fixture-model', 'response_format': {'type': 'json_object'}, ...}, {})
+E         Use -v to get more diff
+
+tests\unit\test_r07_model_fields.py:591: AssertionError
+- generated xml file: D:\wt\r07-input-capabilities\reports\runs\recovery_r07_input_capabilities_20261016\regression_060148.xml -
+=========================== short test summary info ===========================
+FAILED tests/unit/test_r07_model_fields.py::test_oversized_input_is_rejected_without_silent_truncation
+1 failed, 142 passed in 5.81s
