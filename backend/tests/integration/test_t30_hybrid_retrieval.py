@@ -372,7 +372,16 @@ def test_t30_c02_real_e5_and_reranker_retrieve_chinese_english_synonyms(corpus) 
         }
         assert result.hits[0].candidate.evidence_id != irrelevant["evidence_id"]
         assert result.trace.vector_count == result.trace.reranked_count == 3
-        assert result.embedding_model == models.embed_query(question).model_version
+        encoded = models.embed_query(question)
+        assert result.embedding_model == encoded.model_version
+        with engine.connect() as connection:
+            distance = hybrid_chunks.c.embedding.cosine_distance(list(encoded.vectors[0]))
+            nearest = connection.scalar(
+                select(hybrid_chunks.c.evidence_id)
+                .order_by(distance, hybrid_chunks.c.chunk_id)
+                .limit(1)
+            )
+        assert nearest in {english["evidence_id"], chinese["evidence_id"]}
         print(
             json.dumps(
                 {
