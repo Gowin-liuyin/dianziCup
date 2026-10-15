@@ -7,9 +7,6 @@ import logging
 import sys
 from io import BytesIO
 
-from pypdf import PdfReader, overwrite_configuration
-from pypdf.errors import PyPdfError
-
 from ai_intel.infrastructure.process_limits import bound_process_resources
 
 MAX_PDF_BYTES = 32 * 1024 * 1024
@@ -25,6 +22,9 @@ def _bound_memory() -> int | None:
 
 def extract_pages(content: bytes) -> dict[str, object]:
     """页码按原PDF从1开始；缺少文本只记录缺口，不推断为扫描件。"""
+    from pypdf import PdfReader, overwrite_configuration
+    from pypdf.errors import PyPdfError
+
     overwrite_configuration(
         maximum_declared_stream_length=8 * 1024 * 1024,
         array_based_stream_maximum_output_length=8 * 1024 * 1024,
@@ -71,6 +71,8 @@ def main() -> None:
     except OSError:
         result: dict[str, object] = {"pages": [], "notes": ["pdf resource limit unavailable"]}
     else:
+        from pypdf.errors import PyPdfError
+
         content = sys.stdin.buffer.read(MAX_PDF_BYTES + 1)
         try:
             result = (
