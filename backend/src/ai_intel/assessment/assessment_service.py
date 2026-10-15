@@ -101,7 +101,7 @@ def _bind_source_evidence(
 
 
 class AssessmentService:
-    """Prepare verifies blobs outside final locks; commit trusts only its persisted PG receipt."""
+    """Current reads/commits recheck bounded CAS bytes while their PG inputs remain locked."""
 
     def __init__(self, engine: Engine, session_token: str, content_store: ContentStorage) -> None:
         self.engine = engine
@@ -227,7 +227,7 @@ class AssessmentService:
             row = read_rule(
                 session, scope, prepared.inputs.rule.rule_id, prepared.inputs.rule.version
             )
-            current = load_rule_inputs(session, scope, row, None)
+            current = load_rule_inputs(session, scope, row, self.content_store)
             require_snapshot_source_access(session, scope, current.rule.scope, prepared.inputs)
             prior = (
                 session.execute(
@@ -350,7 +350,10 @@ class AssessmentService:
         rule = read_rule(session, scope, receipt.rule_id, receipt.rule_version)
         lock_rule_inputs(session, stored_rule(rule), scope)
         current = load_rule_inputs(
-            session, scope, read_rule(session, scope, receipt.rule_id, receipt.rule_version), None
+            session,
+            scope,
+            read_rule(session, scope, receipt.rule_id, receipt.rule_version),
+            self.content_store,
         )
         require_snapshot_source_access(session, scope, current.rule.scope, receipt.prepared.inputs)
         stale = (

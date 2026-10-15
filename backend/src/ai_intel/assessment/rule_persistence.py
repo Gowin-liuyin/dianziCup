@@ -502,9 +502,9 @@ def load_rule_inputs(
     session: Session,
     scope: AccessScope,
     row: RowMapping,
-    store: ContentStorage | None,
+    store: ContentStorage,
 ) -> RuleInputSnapshot:
-    """Separate Unicode existence from necessity; reviews bind the complete live PG input."""
+    """Reopen every bounded CAS input; stored PG metadata never substitutes for raw integrity."""
     rule = stored_rule(row)
     require_rule_access(scope, rule.scope, write=False)
     event_row = (
@@ -522,21 +522,20 @@ def load_rule_inputs(
             _bounded_scope(scope, rule.scope, source, prefix)
         if source["is_current"] and source["document_content_hash"] != source["content_hash"]:
             raise RulePersistenceError("source_document_current_pair_invalid")
-        if store is not None:
-            size = session.scalar(
-                select(content_objects.c.size_bytes).where(
-                    content_objects.c.content_hash == source["content_hash"]
-                )
+        size = session.scalar(
+            select(content_objects.c.size_bytes).where(
+                content_objects.c.content_hash == source["content_hash"]
             )
-            if size is None or size > 2 * 1024 * 1024 or total_bytes + size > 8 * 1024 * 1024:
-                raise RulePersistenceError("source_blob_budget_exceeded")
-            total_bytes += size
-            source_blob = store.read_verified(source["content_hash"])
-            if (
-                size != len(source_blob)
-                or hashlib.sha256(source_blob).hexdigest() != source["content_hash"]
-            ):
-                raise RulePersistenceError("source_blob_integrity_invalid")
+        )
+        if size is None or size > 2 * 1024 * 1024 or total_bytes + size > 8 * 1024 * 1024:
+            raise RulePersistenceError("source_blob_budget_exceeded")
+        total_bytes += size
+        source_blob = store.read_verified(source["content_hash"])
+        if (
+            size != len(source_blob)
+            or hashlib.sha256(source_blob).hexdigest() != source["content_hash"]
+        ):
+            raise RulePersistenceError("source_blob_integrity_invalid")
         sources_snapshot.append(
             SourceInput(
                 source_id=source["source_id"],
