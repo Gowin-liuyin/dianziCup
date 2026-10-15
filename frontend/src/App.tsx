@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 
 import { getLiveness, getReadiness, publicProblem, type ApiProblem, type CurrentUser, type Readiness } from "./api/client";
 import { AuthProvider, useAuthSession } from "./app/auth-session";
+import { readWorkspacePage, workspacePages, type WorkspacePage } from "./app/workspace-navigation";
 import { EmptyState, ErrorPanel, StatusBadge } from "./components/status";
+import { AmbientBackdrop } from "./components/ambient-backdrop";
+import { CapabilityWorkspace, PreparedEventWorkspace } from "./features/preparation/capability-workspace";
 import "./styles.css";
 
 type HealthState = { kind: "loading" } | { kind: "checked"; live: boolean; readiness: Readiness | null; errors: ApiProblem[]; checkedAt: string };
@@ -113,6 +116,7 @@ function DependencyDetails({ health }: { health: HealthState }) {
 
 function Workbench() {
   const { state } = useAuthSession();
+  const [page, setPage] = useState<WorkspacePage | "missing">(() => readWorkspacePage(window.location.hash));
   const [health, setHealth] = useState<HealthState>({ kind: "loading" });
   const healthGeneration = useRef(0);
 
@@ -133,34 +137,42 @@ function Workbench() {
     return () => { healthGeneration.current += 1; controller.abort(); };
   }, [refreshHealth]);
 
+  useEffect(() => {
+    const navigate = () => setPage(readWorkspacePage(window.location.hash));
+    window.addEventListener("hashchange", navigate);
+    return () => window.removeEventListener("hashchange", navigate);
+  }, []);
+
   const readiness = health.kind === "checked" ? health.readiness : null;
   const dataMode = modeLabel(state.kind === "authenticated" ? state.user : undefined);
+  const currentPage = page === "missing" ? null : workspacePages[page];
   let processLabel = "无法确认";
   if (health.kind === "loading") processLabel = "检查中";
   if (health.kind === "checked" && health.live) processLabel = "可响应";
 
   return (
     <div className="workbench-shell">
-      <a className="skip-link" href="#main-content">跳到主要内容</a>
+      <AmbientBackdrop />
+      <a className="skip-link" href="#main-content" onClick={(event) => { event.preventDefault(); document.getElementById("main-content")?.focus(); }}>跳到主要内容</a>
       <aside className="sidebar">
-        <a className="brand" href="#main-content"><span className="brand-mark" aria-hidden="true">DI</span><span>安全情报<span className="brand-caption">AI INTELLIGENCE</span></span></a>
+        <a className="brand" href="#runtime"><span className="brand-mark" aria-hidden="true">DI<span /></span><span>安全情报<span className="brand-caption">DEFENSE INTELLIGENCE</span></span></a>
         <nav aria-label="工作台导航">
-          <a className="nav-link active" href="#runtime" aria-current="page"><span aria-hidden="true">◫</span>运行状态</a>
-          <a className="nav-link" href="#session"><span aria-hidden="true">◎</span>会话与权限</a>
+          {(["研究", "协作", "系统"] as const).map((group) => <div className="nav-group" key={group}><p className="nav-group-label">{group}</p>{Object.entries(workspacePages).filter(([, definition]) => definition.group === group).map(([key, definition]) => <a key={key} className={`nav-link ${page === key ? "active" : ""}`} href={`#${key}`} aria-current={page === key ? "page" : undefined}><span aria-hidden="true">{definition.symbol}</span>{definition.label}</a>)}</div>)}
         </nav>
-        <div className="sidebar-note"><p>可追溯的事实<br />清晰的判断边界</p><span className="small-note">AI 安全知识情报系统</span></div>
+        <div className="sidebar-note"><p>可追溯的事实<br />清晰的判断边界</p><span className="small-note">AI 安全知识情报系统</span><code>READ · VERIFY · CONNECT</code></div>
       </aside>
       <div className="workspace">
-        <header className="topbar"><span>工作台 / 运行概览</span><span className="mode-label">数据模式 <strong>{dataMode}</strong></span></header>
+        <header className="topbar"><span className="workspace-crumb"><span aria-hidden="true" className="terminal-prompt">&gt;</span>工作台 <span aria-hidden="true">/</span> {currentPage?.label ?? "页面未找到"}</span><span className="mode-label">数据模式 <strong>{dataMode}</strong></span></header>
         <main id="main-content" tabIndex={-1}>
           <div className="page-heading">
-            <div><p className="eyebrow">WORKSPACE / 系统</p><h1>运行概览<span className="heading-point" aria-hidden="true">.</span></h1><p>查看服务状态，管理你的团队会话。</p></div>
+            <div><p className="eyebrow">{currentPage?.code ?? "WORKSPACE / UNKNOWN"}</p><h1>{currentPage?.title ?? "页面未找到"}<span className="heading-point" aria-hidden="true">_</span></h1><p>{currentPage?.description ?? "当前地址没有对应工作区，可返回运行状态继续。"}</p></div>
             <button className="button secondary refresh-button" disabled={health.kind === "loading"} onClick={() => void refreshHealth()}><span aria-hidden="true">↻</span>刷新状态</button>
           </div>
+          {page === "runtime" && <>
           <section className="status-strip" aria-label="当前运行摘要">
-            <div><span className="eyebrow">API 进程</span><strong>{processLabel}</strong><span className="small-note">存活不代表依赖已就绪</span></div>
-            <div><span className="eyebrow">依赖就绪</span><strong>{readinessLabel(health)}</strong><span className="small-note">基于服务端实际探测结果</span></div>
-            <div><span className="eyebrow">数据模式</span><strong>{dataMode}</strong><span className="small-note">模式与业务验证状态分别呈现</span></div>
+            <div><span className="eyebrow">PROCESS / API 进程</span><strong><span className={`summary-mark ${health.kind === "checked" && health.live ? "is-live" : ""}`} aria-hidden="true" />{processLabel}</strong><span className="small-note">存活不代表依赖已就绪</span></div>
+            <div><span className="eyebrow">DEPENDENCIES / 依赖就绪</span><strong>{readinessLabel(health)}</strong><span className="small-note">基于服务端实际探测结果</span></div>
+            <div><span className="eyebrow">DATA / 数据模式</span><strong>{dataMode}</strong><span className="small-note">模式与业务验证状态分别呈现</span></div>
           </section>
           <div className="content-grid">
             <section className="panel runtime-panel" id="runtime" aria-labelledby="runtime-title">
@@ -171,6 +183,12 @@ function Workbench() {
             </section>
             <SessionPanel />
           </div>
+          <section className="research-entry" aria-labelledby="research-entry-title"><div><p className="eyebrow">RESEARCH WORKSPACE</p><h2 id="research-entry-title">从线索到证据</h2><p>事件、原文版本与判断依据，在同一工作区核查。</p></div><a className="button secondary" href="#events">进入情报工作区<span aria-hidden="true">↗</span></a></section>
+          </>}
+          {page === "session" && <div className="session-workspace"><SessionPanel /><div className="access-guidance"><p className="eyebrow">TRUST BOUNDARY / 授权边界</p><h2>按权限查看<br />按证据判断</h2><p>登录后，身份与权限由服务端确认。会话失效或退出时，页面立即清除身份信息。</p><a href="#runtime" className="text-link">返回运行概览 →</a></div></div>}
+          {page === "events" && <PreparedEventWorkspace authenticated={state.kind === "authenticated"} />}
+          {page !== "runtime" && page !== "session" && page !== "events" && page !== "missing" && <CapabilityWorkspace page={page} authenticated={state.kind === "authenticated"} />}
+          {page === "missing" && <section className="panel missing-page"><EmptyState title="工作区不存在" description="请通过导航选择已登记页面。该地址没有触发业务请求。" /><a className="button secondary" href="#runtime">返回运行状态</a></section>}
           {state.kind === "authenticated" && <footer className="workspace-footer"><span>{state.user.app_env ? `环境 ${state.user.app_env}` : "环境未由服务端标明"}</span><span>{state.user.platform_version ? `版本 ${state.user.platform_version}` : "版本未由服务端标明"}</span></footer>}
         </main>
       </div>
