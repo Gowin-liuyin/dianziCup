@@ -37,3 +37,5 @@ CBM 官方本机 0.11.0 先对本 WT src 与 assets 独立索引，再实际 `rg
 合同/计划偏差：主控批准单 provider 20 秒及产品顺序 40 秒入口，无公共合同偏差；原 R08 整包不因该切片自动签通过。评分证据：F2 是可追踪安全公网总量、错误/未知/历史保持；P2 是类型/权限/时间/事务回归，不证明测绘指纹准确率；X1 是 raw/secret 隔离、不可变历史和 PG 唯一权威，不把总量解释为漏洞/自有资产数。费用 unknown。
 
 未运行项：新真实供应商调用、真实 Redis IO、API/worker/enrichment 发布、frontend/e2e/manual、生产 0019 迁移、全仓性能/覆盖率。下一步建议主控合入该内部接口与最终 DDL，接线 R07 两 provider child，再由新非作者 reviewer 复跑冻结 code/materials；root 唯一 merge/push。本作者到 awaiting_review 停止，不 spawn、不 accepted、不 push。
+
+材料保存采用本 run 局部 `.gitattributes * -text`，保留原日志的 CR/LF 字节；全量 Git whitespace 检查会把这些 Windows 原始日志字节报告为尾部 whitespace，未改写原始失败证据。源码/测试/CR/报告另做限定路径 diff check；材料按 manifest 逐字节 hash 检查。code 文件 hash 基于 Git blob，报告基于 LF 文本，run 材料基于被局部规则保留的原字节；此规则不禁止任何源码检查。

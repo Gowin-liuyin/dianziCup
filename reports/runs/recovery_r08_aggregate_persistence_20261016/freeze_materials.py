@@ -14,8 +14,8 @@ from prepare_pg import test_connection
 
 run_directory = Path(__file__).parent
 root = run_directory.parents[2]
-code_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
-code_tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=root, text=True).strip()
+code_sha = "fb1c08ae9f1379179b3f05c5547fafa5846fe752"
+code_tree = subprocess.check_output(["git", "rev-parse", f"{code_sha}^{{tree}}"], cwd=root, text=True).strip()
 code_paths = subprocess.check_output(["git", "diff", "--name-only", "8a1b04d48346d8550f0326a77f003246a0ebbab5", code_sha], cwd=root, text=True).splitlines()
 paths = [root / path for path in code_paths]
 paths += [root / "reports/tasks/R08-aggregate-persistence.md"]
