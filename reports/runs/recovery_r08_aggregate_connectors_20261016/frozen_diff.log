@@ -1,0 +1,1024 @@
+diff --git a/backend/src/ai_intel/assets/aggregate_observations.py b/backend/src/ai_intel/assets/aggregate_observations.py
+new file mode 100644
+index 0000000..0efda39
+--- /dev/null
++++ b/backend/src/ai_intel/assets/aggregate_observations.py
+@@ -0,0 +1,250 @@
++"""Internal aggregate-only boundary; raw provider records never become a business value."""
++
++from __future__ import annotations
++
++from datetime import UTC, datetime
++from typing import Literal, Protocol, TypedDict
++
++from pydantic import BaseModel, ConfigDict, SecretStr, model_validator
++
++from ai_intel.domain.enrichment_values import ExposureAggregateValue
++from ai_intel.domain.values import UtcTimestamp
++from ai_intel.infrastructure.models.json_output import strict_json_object
++from ai_intel.infrastructure.network import (
++    FetchResult,
++    NetworkGateway,
++    NetworkPolicy,
++    NetworkPolicyViolation,
++    NetworkRequestError,
++    OriginCredentials,
++    create_network_gateway,
++)
++
++AggregateProvider = Literal["hunter", "quake"]
++AggregateQueryId = Literal["ollama", "vllm"]
++AggregateOutcome = Literal[
++    "available", "unknown", "unauthorized", "rate_limited", "failed", "not_configured"
++]
++AggregateErrorCode = Literal[
++    "missing_total",
++    "invalid_total",
++    "invalid_response",
++    "provider_unauthorized",
++    "provider_rate_limited",
++    "provider_http_error",
++    "provider_error",
++    "credential_missing",
++    "network_error",
++    "network_dns_error",
++    "network_tls_error",
++    "network_timeout",
++    "network_policy_violation",
++    "response_too_large",
++    "unsupported_content_type",
++]
++QUERY_VERSION: Literal["r08-product-name-1"] = "r08-product-name-1"
++TTL_SECONDS = 86400
++MAX_RESPONSE_BYTES = 262144
++LIMITATIONS = (
++    "Service count is not a count of vulnerable or owned assets.",
++    "Product-name matching can omit unrecognized services and include false matches.",
++    "Ollama/vLLM provider fingerprint names and match accuracy have not been verified live.",
++    "The provider supplies no aggregate observation timestamp; "
++    "retrieval time is not observation time.",
++    "Only the search total is retained; provider asset records are discarded in memory.",
++)
++
++
++class AggregateGateway(Protocol):
++    """Explicit fixture gateways implement the same bounded request surface without network IO."""
++
++    def fetch(self, url: str, max_redirect_hops: int = 5) -> FetchResult: ...
++
++    def post_json(self, url: str, payload: bytes) -> FetchResult: ...
++
++
++class AggregateIdentity(TypedDict):
++    provider: AggregateProvider
++    query_id: AggregateQueryId
++    retrieved_at: datetime
++    data_mode: Literal["live", "fixture"]
++
++
++class AggregateObservation(BaseModel):
++    """Failures retain a fixed reason and query identity rather than a fabricated count."""
++
++    model_config = ConfigDict(extra="forbid", frozen=True, strict=True, hide_input_in_errors=True)
++    schema_version: Literal["r08-aggregate-observation-1"] = "r08-aggregate-observation-1"
++    provider: AggregateProvider
++    query_id: AggregateQueryId
++    query_version: Literal["r08-product-name-1"] = QUERY_VERSION
++    retrieved_at: UtcTimestamp
++    outcome: AggregateOutcome
++    error_code: AggregateErrorCode | None = None
++    value: ExposureAggregateValue | None = None
++    data_mode: Literal["live", "fixture"]
++
++    @model_validator(mode="after")
++    def consistent_result(self) -> AggregateObservation:
++        if self.outcome == "available":
++            if self.value is None or self.error_code is not None:
++                raise ValueError("available aggregate requires a value without an error")
++            if (
++                self.value.provider != self.provider
++                or self.value.query_id != self.query_id
++                or self.value.query_version != self.query_version
++                or self.value.retrieved_at != self.retrieved_at
++            ):
++                raise ValueError("aggregate identity and retrieval time must agree")
++        elif self.value is not None or self.error_code is None:
++            raise ValueError("unavailable aggregate requires an error without a value")
++        elif (
++            (self.outcome == "unknown") != (self.error_code == "missing_total")
++            or (self.outcome == "unauthorized") != (self.error_code == "provider_unauthorized")
++            or (self.outcome == "rate_limited") != (self.error_code == "provider_rate_limited")
++            or (self.outcome == "not_configured") != (self.error_code == "credential_missing")
++        ):
++            raise ValueError("aggregate outcome must agree with its fixed error code")
++        return self
++
++
++def require_query_id(query_id: AggregateQueryId) -> None:
++    if type(query_id) is not str or query_id not in ("ollama", "vllm"):
++        raise ValueError("query_id must be ollama or vllm")
++
++
++def retrieval_time(value: datetime | None) -> datetime:
++    if value is None:
++        return datetime.now(UTC)
++    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
++        raise ValueError("retrieved_at must be a timezone-aware datetime")
++    return value.astimezone(UTC)
++
++
++def aggregate_freshness(
++    value: ExposureAggregateValue, now: datetime
++) -> Literal["current", "stale", "unknown"]:
++    evaluated_at = retrieval_time(now)
++    age_seconds = (evaluated_at - value.retrieved_at).total_seconds()
++    if age_seconds < 0:
++        raise ValueError("freshness cannot be evaluated before retrieval")
++    if age_seconds >= value.ttl_seconds:
++        return "stale"
++    if value.observed_at is None:
++        return "unknown"
++    observed_age = (evaluated_at - value.observed_at).total_seconds()
++    if observed_age < 0:
++        raise ValueError("observation cannot be in the future")
++    return "stale" if observed_age >= value.ttl_seconds else "current"
++
++
++def build_aggregate_gateway(
++    provider: AggregateProvider,
++    api_key: SecretStr,
++    dns_resolver: Literal["system", "cloudflare_doh"],
++) -> NetworkGateway:
++    if not isinstance(api_key, SecretStr):
++        raise ValueError("api_key requires a bounded SecretStr")
++    secret = api_key.get_secret_value()
++    if (
++        not 1 <= len(secret) <= 4096
++        or not secret.isascii()
++        or any(ord(character) <= 32 or ord(character) == 127 for character in secret)
++    ):
++        raise ValueError("api_key requires a bounded SecretStr")
++    if provider == "hunter":
++        origin = "https://hunter.qianxin.com"
++        credentials = OriginCredentials(origin, query_parameters={"api-key": api_key})
++        domain = "hunter.qianxin.com"
++    elif provider == "quake":
++        origin = "https://quake.360.net"
++        credentials = OriginCredentials(origin, headers={"X-QuakeToken": api_key})
++        domain = "quake.360.net"
++    else:
++        raise ValueError("unsupported aggregate provider")
++    return create_network_gateway(
++        NetworkPolicy(
++            (domain,),
++            max_response_bytes=MAX_RESPONSE_BYTES,
++            allowed_content_types=("application/json",),
++            total_timeout_seconds=20.0,
++            dns_resolver=dns_resolver,
++        ),
++        credentials,
++        max_concurrent_requests=1,
++    )
++
++
++def response_error(response: FetchResult) -> tuple[AggregateOutcome, AggregateErrorCode] | None:
++    if response.status_code in (401, 403):
++        return "unauthorized", "provider_unauthorized"
++    if response.status_code == 429:
++        return "rate_limited", "provider_rate_limited"
++    if not 200 <= response.status_code < 300:
++        return "failed", "provider_http_error"
++    return None
++
++
++def decode_aggregate_response(response: FetchResult) -> dict[str, object]:
++    if response.content_type != "application/json":
++        raise ValueError("aggregate response requires JSON")
++    return strict_json_object(response.body, MAX_RESPONSE_BYTES)
++
++
++def network_error_code(error: NetworkRequestError | NetworkPolicyViolation) -> AggregateErrorCode:
++    if isinstance(error, NetworkPolicyViolation):
++        return "network_policy_violation"
++    if error.code == "network_dns_error":
++        return "network_dns_error"
++    if error.code == "network_tls_error":
++        return "network_tls_error"
++    if error.code == "network_timeout":
++        return "network_timeout"
++    if error.code == "response_too_large":
++        return "response_too_large"
++    if error.code == "unsupported_content_type":
++        return "unsupported_content_type"
++    return "network_error"
++
++
++def total_result(
++    provider: AggregateProvider,
++    query_id: AggregateQueryId,
++    total: object,
++    retrieved_at: datetime,
++    data_mode: Literal["live", "fixture"],
++) -> AggregateObservation:
++    if total is None:
++        return AggregateObservation(
++            provider=provider,
++            query_id=query_id,
++            retrieved_at=retrieved_at,
++            outcome="unknown",
++            error_code="missing_total",
++            data_mode=data_mode,
++        )
++    if not isinstance(total, int) or type(total) is not int or not 0 <= total <= 2**63 - 1:
++        return AggregateObservation(
++            provider=provider,
++            query_id=query_id,
++            retrieved_at=retrieved_at,
++            outcome="failed",
++            error_code="invalid_total",
++            data_mode=data_mode,
++        )
++    return AggregateObservation(
++        provider=provider,
++        query_id=query_id,
++        retrieved_at=retrieved_at,
++        outcome="available",
++        value=ExposureAggregateValue(
++            provider=provider,
++            query_id=query_id,
++            query_version=QUERY_VERSION,
++            service_count=total,
++            retrieved_at=retrieved_at,
++            ttl_seconds=TTL_SECONDS,
++            limitations=LIMITATIONS,
++        ),
++        data_mode=data_mode,
++    )
+diff --git a/backend/src/ai_intel/assets/hunter_aggregate.py b/backend/src/ai_intel/assets/hunter_aggregate.py
+new file mode 100644
+index 0000000..888b7d9
+--- /dev/null
++++ b/backend/src/ai_intel/assets/hunter_aggregate.py
+@@ -0,0 +1,106 @@
++"""Hunter fixed product-name searches retain only the documented data.total field."""
++
++from __future__ import annotations
++
++import base64
++from datetime import datetime
++from types import MappingProxyType
++from typing import Literal
++from urllib.parse import urlencode
++
++from pydantic import SecretStr
++
++from ai_intel.assets.aggregate_observations import (
++    AggregateGateway,
++    AggregateIdentity,
++    AggregateObservation,
++    AggregateQueryId,
++    build_aggregate_gateway,
++    decode_aggregate_response,
++    network_error_code,
++    require_query_id,
++    response_error,
++    retrieval_time,
++    total_result,
++)
++from ai_intel.infrastructure.network import NetworkPolicyViolation, NetworkRequestError
++
++HUNTER_QUERIES = MappingProxyType({"ollama": 'app.name="Ollama"', "vllm": 'app.name="vLLM"'})
++HUNTER_ENDPOINT = "https://hunter.qianxin.com/openApi/search"
++
++
++class HunterAggregateConnector:
++    """One GET without retries, redirects, account probing or caller-supplied query text."""
++
++    def __init__(
++        self,
++        api_key: SecretStr | None = None,
++        *,
++        fixture_gateway: AggregateGateway | None = None,
++        dns_resolver: Literal["system", "cloudflare_doh"] = "system",
++    ) -> None:
++        if fixture_gateway is not None and api_key is not None:
++            raise ValueError("fixture mode cannot receive provider credentials")
++        self._data_mode: Literal["live", "fixture"] = (
++            "fixture" if fixture_gateway is not None else "live"
++        )
++        self._gateway: AggregateGateway | None = fixture_gateway
++        if fixture_gateway is None and api_key is not None:
++            self._gateway = build_aggregate_gateway("hunter", api_key, dns_resolver)
++
++    def collect(
++        self, query_id: AggregateQueryId, *, retrieved_at: datetime | None = None
++    ) -> AggregateObservation:
++        require_query_id(query_id)
++        if retrieved_at is not None and self._data_mode != "fixture":
++            raise ValueError("retrieved_at override requires explicit fixture mode")
++        completed_at = retrieval_time(retrieved_at)
++        fields: AggregateIdentity = {
++            "provider": "hunter",
++            "query_id": query_id,
++            "retrieved_at": completed_at,
++            "data_mode": self._data_mode,
++        }
++        if self._gateway is None:
++            return AggregateObservation(
++                **fields, outcome="not_configured", error_code="credential_missing"
++            )
++        encoded_query = base64.urlsafe_b64encode(HUNTER_QUERIES[query_id].encode()).decode("ascii")
++        request_url = (
++            HUNTER_ENDPOINT
++            + "?"
++            + urlencode(
++                {
++                    "search": encoded_query,
++                    "page": 1,
++                    "page_size": 1,
++                    "is_web": 3,
++                    "fields": "updated_at",
++                }
++            )
++        )
++        try:
++            response = self._gateway.fetch(request_url, max_redirect_hops=0)
++        except (NetworkRequestError, NetworkPolicyViolation) as error:
++            return AggregateObservation(
++                **fields, outcome="failed", error_code=network_error_code(error)
++            )
++        completed_at = retrieval_time(retrieved_at)
++        fields["retrieved_at"] = completed_at
++        http_error = response_error(response)
++        if http_error is not None:
++            return AggregateObservation(**fields, outcome=http_error[0], error_code=http_error[1])
++        try:
++            document = decode_aggregate_response(response)
++        except (ValueError, UnicodeError, RecursionError):
++            return AggregateObservation(**fields, outcome="failed", error_code="invalid_response")
++        if type(document.get("code")) is not int:
++            return AggregateObservation(**fields, outcome="failed", error_code="invalid_response")
++        if document["code"] != 200:
++            return AggregateObservation(**fields, outcome="failed", error_code="provider_error")
++        aggregate_data = document.get("data")
++        if not isinstance(aggregate_data, dict):
++            return AggregateObservation(**fields, outcome="failed", error_code="invalid_response")
++        return total_result(
++            "hunter", query_id, aggregate_data.get("total"), completed_at, self._data_mode
++        )
+diff --git a/backend/src/ai_intel/assets/quake_aggregate.py b/backend/src/ai_intel/assets/quake_aggregate.py
+new file mode 100644
+index 0000000..7eb64bc
+--- /dev/null
++++ b/backend/src/ai_intel/assets/quake_aggregate.py
+@@ -0,0 +1,97 @@
++"""Quake fixed app searches retain only the official search pagination total."""
++
++from __future__ import annotations
++
++import json
++from datetime import datetime
++from types import MappingProxyType
++from typing import Literal
++
++from pydantic import SecretStr
++
++from ai_intel.assets.aggregate_observations import (
++    AggregateGateway,
++    AggregateIdentity,
++    AggregateObservation,
++    AggregateQueryId,
++    build_aggregate_gateway,
++    decode_aggregate_response,
++    network_error_code,
++    require_query_id,
++    response_error,
++    retrieval_time,
++    total_result,
++)
++from ai_intel.infrastructure.network import NetworkPolicyViolation, NetworkRequestError
++
++QUAKE_QUERIES = MappingProxyType({"ollama": 'app:"Ollama"', "vllm": 'app:"vLLM"'})
++QUAKE_ENDPOINT = "https://quake.360.net/api/v3/search/quake_service"
++
++
++class QuakeAggregateConnector:
++    """One POST without retries, redirects or support for raw body/URL/query arguments."""
++
++    def __init__(
++        self,
++        api_key: SecretStr | None = None,
++        *,
++        fixture_gateway: AggregateGateway | None = None,
++        dns_resolver: Literal["system", "cloudflare_doh"] = "system",
++    ) -> None:
++        if fixture_gateway is not None and api_key is not None:
++            raise ValueError("fixture mode cannot receive provider credentials")
++        self._data_mode: Literal["live", "fixture"] = (
++            "fixture" if fixture_gateway is not None else "live"
++        )
++        self._gateway: AggregateGateway | None = fixture_gateway
++        if fixture_gateway is None and api_key is not None:
++            self._gateway = build_aggregate_gateway("quake", api_key, dns_resolver)
++
++    def collect(
++        self, query_id: AggregateQueryId, *, retrieved_at: datetime | None = None
++    ) -> AggregateObservation:
++        require_query_id(query_id)
++        if retrieved_at is not None and self._data_mode != "fixture":
++            raise ValueError("retrieved_at override requires explicit fixture mode")
++        completed_at = retrieval_time(retrieved_at)
++        fields: AggregateIdentity = {
++            "provider": "quake",
++            "query_id": query_id,
++            "retrieved_at": completed_at,
++            "data_mode": self._data_mode,
++        }
++        if self._gateway is None:
++            return AggregateObservation(
++                **fields, outcome="not_configured", error_code="credential_missing"
++            )
++        request_body = json.dumps(
++            {"query": QUAKE_QUERIES[query_id], "start": 0, "size": 1}, separators=(",", ":")
++        ).encode("utf-8")
++        try:
++            response = self._gateway.post_json(QUAKE_ENDPOINT, request_body)
++        except (NetworkRequestError, NetworkPolicyViolation) as error:
++            return AggregateObservation(
++                **fields, outcome="failed", error_code=network_error_code(error)
++            )
++        completed_at = retrieval_time(retrieved_at)
++        fields["retrieved_at"] = completed_at
++        http_error = response_error(response)
++        if http_error is not None:
++            return AggregateObservation(**fields, outcome=http_error[0], error_code=http_error[1])
++        try:
++            document = decode_aggregate_response(response)
++        except (ValueError, UnicodeError, RecursionError):
++            return AggregateObservation(**fields, outcome="failed", error_code="invalid_response")
++        if type(document.get("code")) is not int:
++            return AggregateObservation(**fields, outcome="failed", error_code="invalid_response")
++        if document["code"] != 0:
++            return AggregateObservation(**fields, outcome="failed", error_code="provider_error")
++        meta = document.get("meta")
++        if not isinstance(meta, dict):
++            return AggregateObservation(**fields, outcome="failed", error_code="invalid_response")
++        pagination = meta.get("pagination")
++        if not isinstance(pagination, dict):
++            return AggregateObservation(**fields, outcome="failed", error_code="invalid_response")
++        return total_result(
++            "quake", query_id, pagination.get("total"), completed_at, self._data_mode
++        )
+diff --git a/backend/tests/contract/test_r08_aggregate_contract.py b/backend/tests/contract/test_r08_aggregate_contract.py
+new file mode 100644
+index 0000000..64ba75a
+--- /dev/null
++++ b/backend/tests/contract/test_r08_aggregate_contract.py
+@@ -0,0 +1,143 @@
++"""Fixed query and wire contracts come from official documentation, not asset fixtures."""
++
++import base64
++import json
++from urllib.parse import parse_qs, urlsplit
++
++import pytest
++
++from ai_intel.assets.hunter_aggregate import HunterAggregateConnector
++from ai_intel.assets.quake_aggregate import QuakeAggregateConnector
++from ai_intel.infrastructure.network import FetchResult
++
++
++class ContractFixtureGateway:
++    def __init__(self, provider: str, body: bytes | None = None) -> None:
++        self.provider = provider
++        self.body = body
++        self.calls: list[tuple[str, bytes | None, int | None]] = []
++
++    def fetch(self, url: str, max_redirect_hops: int = 5) -> FetchResult:
++        self.calls.append((url, None, max_redirect_hops))
++        return FetchResult(
++            url,
++            200,
++            "application/json",
++            self.body if self.body is not None else b'{"code":200,"data":{"total":5}}',
++        )
++
++    def post_json(self, url: str, payload: bytes) -> FetchResult:
++        self.calls.append((url, payload, None))
++        return FetchResult(
++            url,
++            200,
++            "application/json",
++            self.body if self.body is not None else b'{"code":0,"meta":{"pagination":{"total":5}}}',
++        )
++
++
++@pytest.mark.parametrize(
++    "query_id,expected_query", [("ollama", 'app.name="Ollama"'), ("vllm", 'app.name="vLLM"')]
++)
++def test_hunter_fixed_get_contract(query_id: str, expected_query: str) -> None:
++    gateway = ContractFixtureGateway("hunter")
++    result = HunterAggregateConnector(fixture_gateway=gateway).collect(query_id)
++    url, payload, max_redirect_hops = gateway.calls[0]
++    parts = urlsplit(url)
++    assert (parts.scheme, parts.netloc, parts.path) == (
++        "https",
++        "hunter.qianxin.com",
++        "/openApi/search",
++    )
++    parameters = parse_qs(parts.query)
++    assert base64.urlsafe_b64decode(parameters["search"][0]).decode() == expected_query
++    assert {key: value for key, value in parameters.items() if key != "search"} == {
++        "page": ["1"],
++        "page_size": ["1"],
++        "is_web": ["3"],
++        "fields": ["updated_at"],
++    }
++    assert payload is None
++    assert max_redirect_hops == 0
++    assert result.value is not None and result.value.service_count == 5
++
++
++@pytest.mark.parametrize(
++    "query_id,expected_query", [("ollama", 'app:"Ollama"'), ("vllm", 'app:"vLLM"')]
++)
++def test_quake_fixed_post_search_contract(query_id: str, expected_query: str) -> None:
++    gateway = ContractFixtureGateway("quake")
++    result = QuakeAggregateConnector(fixture_gateway=gateway).collect(query_id)
++    url, payload, _ = gateway.calls[0]
++    assert url == "https://quake.360.net/api/v3/search/quake_service"
++    assert payload is not None
++    assert json.loads(payload) == {"query": expected_query, "start": 0, "size": 1}
++    assert result.value is not None and result.value.service_count == 5
++
++
++@pytest.mark.parametrize(
++    "connector_type,provider,body,outcome,error_code",
++    [
++        (HunterAggregateConnector, "hunter", b'{"code":200,"data":{}}', "unknown", "missing_total"),
++        (
++            QuakeAggregateConnector,
++            "quake",
++            b'{"code":0,"meta":{"pagination":{}}}',
++            "unknown",
++            "missing_total",
++        ),
++        (
++            HunterAggregateConnector,
++            "hunter",
++            b'{"code":400,"message":"private-diagnostic"}',
++            "failed",
++            "provider_error",
++        ),
++        (
++            QuakeAggregateConnector,
++            "quake",
++            b'{"code":1,"message":"private-diagnostic"}',
++            "failed",
++            "provider_error",
++        ),
++        (
++            HunterAggregateConnector,
++            "hunter",
++            b'{"code":200,"data":null}',
++            "failed",
++            "invalid_response",
++        ),
++        (QuakeAggregateConnector, "quake", b'{"code":0,"meta":null}', "failed", "invalid_response"),
++        (
++            QuakeAggregateConnector,
++            "quake",
++            b'{"code":0,"meta":{"pagination":[]}}',
++            "failed",
++            "invalid_response",
++        ),
++        (
++            HunterAggregateConnector,
++            "hunter",
++            b'{"code":"200","data":{"total":0}}',
++            "failed",
++            "invalid_response",
++        ),
++        (
++            QuakeAggregateConnector,
++            "quake",
++            b'{"code":false,"meta":{"pagination":{"total":0}}}',
++            "failed",
++            "invalid_response",
++        ),
++    ],
++)
++def test_only_documented_success_envelope_produces_value(
++    connector_type, provider: str, body: bytes, outcome: str, error_code: str
++) -> None:
++    result = connector_type(fixture_gateway=ContractFixtureGateway(provider, body)).collect(
++        "ollama"
++    )
++    assert result.outcome == outcome
++    assert result.error_code == error_code
++    assert result.value is None
++    assert "private-diagnostic" not in result.model_dump_json()
+diff --git a/backend/tests/security/test_r08_aggregate_boundary.py b/backend/tests/security/test_r08_aggregate_boundary.py
+new file mode 100644
+index 0000000..e927b7c
+--- /dev/null
++++ b/backend/tests/security/test_r08_aggregate_boundary.py
+@@ -0,0 +1,193 @@
++"""Isolated socket fixtures exercise the real gateway without live provider requests."""
++
++import json
++import threading
++import time
++from datetime import datetime
++
++import pytest
++from pydantic import SecretStr
++from test_r03_network_transport import _install_socket_fixtures
++
++from ai_intel.assets.aggregate_observations import MAX_RESPONSE_BYTES
++from ai_intel.assets.hunter_aggregate import HunterAggregateConnector
++from ai_intel.assets.quake_aggregate import QuakeAggregateConnector
++
++CONNECTORS = (HunterAggregateConnector, QuakeAggregateConnector)
++
++
++def socket_response(status: int, body: bytes, headers: bytes = b"") -> bytes:
++    return (
++        f"HTTP/1.1 {status} Fixture\r\nContent-Type: application/json\r\n".encode()
++        + headers
++        + f"Content-Length: {len(body)}\r\n\r\n".encode()
++        + body
++    )
++
++
++def success_body(connector_type) -> bytes:
++    return (
++        b'{"code":200,"data":{"total":7,"arr":[{"ip":"192.0.2.42","banner":"private"}]}}'
++        if connector_type is HunterAggregateConnector
++        else b'{"code":0,"meta":{"pagination":{"total":7}},"data":[{"ip":"192.0.2.42"}]}'
++    )
++
++
++@pytest.mark.parametrize("connector_type", CONNECTORS)
++def test_real_wire_uses_only_fixed_origin_and_discards_details(monkeypatch, connector_type) -> None:
++    sockets, queries = _install_socket_fixtures(
++        monkeypatch, [socket_response(200, success_body(connector_type))]
++    )
++    connector = connector_type(SecretStr("synthetic-r08-api-key"))
++    result = connector.collect("ollama")
++    sent = b"".join(sockets[0].sent)
++    expected_origin = (
++        "hunter.qianxin.com" if connector_type is HunterAggregateConnector else "quake.360.net"
++    )
++    assert queries == [expected_origin]
++    assert sockets[0].sni == expected_origin
++    assert b"synthetic-r08-api-key" in sent
++    if connector_type is HunterAggregateConnector:
++        assert sent.startswith(b"GET /openApi/search?")
++        assert b"api-key=synthetic-r08-api-key" in sent
++    else:
++        assert sent.startswith(b"POST /api/v3/search/quake_service ")
++        assert b"X-QuakeToken: synthetic-r08-api-key" in sent
++        assert json.loads(sent.split(b"\r\n\r\n", 1)[1]) == {
++            "query": 'app:"Ollama"',
++            "start": 0,
++            "size": 1,
++        }
++    assert sockets[0].closed
++    assert result.outcome == "available"
++    assert result.data_mode == "live"
++    serialized = result.model_dump_json()
++    assert "synthetic-r08-api-key" not in serialized
++    assert "192.0.2.42" not in serialized
++    assert "private" not in serialized
++
++
++@pytest.mark.parametrize("connector_type", CONNECTORS)
++@pytest.mark.parametrize("status", [301, 302, 307, 308])
++def test_redirect_never_sends_secret_to_another_origin(
++    monkeypatch, connector_type, status: int
++) -> None:
++    sockets, queries = _install_socket_fixtures(
++        monkeypatch, [socket_response(status, b"", b"Location: https://other.example/receive\r\n")]
++    )
++    result = connector_type(SecretStr("synthetic-r08-api-key")).collect("ollama")
++    assert result.error_code == "network_policy_violation"
++    assert result.value is None
++    assert len(sockets) == len(queries) == 1
++    assert sockets[0].closed
++
++
++@pytest.mark.parametrize("connector_type", CONNECTORS)
++def test_oversized_response_is_bounded_and_not_retried(monkeypatch, connector_type) -> None:
++    sockets, queries = _install_socket_fixtures(
++        monkeypatch, [socket_response(200, b"x" * (MAX_RESPONSE_BYTES + 1))]
++    )
++    result = connector_type(SecretStr("synthetic-r08-api-key")).collect("ollama")
++    assert (result.outcome, result.error_code, result.value) == (
++        "failed",
++        "response_too_large",
++        None,
++    )
++    assert len(sockets) == len(queries) == 1
++    assert sockets[0].closed
++
++
++@pytest.mark.parametrize("connector_type", CONNECTORS)
++@pytest.mark.parametrize(
++    "query_id", ["", "other", 'ollama" || ip="0.0.0.0/0', "https://example.invalid", None]
++)
++def test_invalid_query_stops_before_dns(monkeypatch, connector_type, query_id) -> None:
++    sockets, queries = _install_socket_fixtures(monkeypatch, [])
++    with pytest.raises(ValueError, match="query_id"):
++        connector_type(SecretStr("synthetic-r08-api-key")).collect(query_id)
++    assert sockets == queries == []
++
++
++@pytest.mark.parametrize("connector_type", CONNECTORS)
++def test_live_retrieval_clock_cannot_be_overridden(monkeypatch, connector_type) -> None:
++    sockets, queries = _install_socket_fixtures(monkeypatch, [])
++    with pytest.raises(ValueError, match="explicit fixture mode"):
++        connector_type(SecretStr("synthetic-r08-api-key")).collect(
++            "ollama", retrieved_at=datetime(2026, 10, 16)
++        )
++    assert sockets == queries == []
++
++
++@pytest.mark.parametrize("connector_type", CONNECTORS)
++@pytest.mark.parametrize(
++    "api_key", [SecretStr(""), SecretStr("x\r\n"), SecretStr("x" * 4097), "raw-key"]
++)
++def test_invalid_credential_is_rejected_without_dns(monkeypatch, connector_type, api_key) -> None:
++    sockets, queries = _install_socket_fixtures(monkeypatch, [])
++    with pytest.raises(ValueError, match="bounded SecretStr"):
++        connector_type(api_key)
++    assert sockets == queries == []
++
++
++@pytest.mark.parametrize("connector_type", CONNECTORS)
++def test_fixture_cannot_receive_a_live_credential(connector_type) -> None:
++    with pytest.raises(ValueError, match="fixture mode"):
++        connector_type(SecretStr("synthetic-r08-api-key"), fixture_gateway=object())
++
++
++@pytest.mark.parametrize("connector_type", CONNECTORS)
++def test_one_connector_serializes_its_gateway_requests(monkeypatch, connector_type) -> None:
++    from ai_intel.infrastructure.http_transport import PinnedHttpTransport
++
++    connector = connector_type(SecretStr("synthetic-r08-api-key"))
++    active_requests = 0
++    maximum_active = 0
++    calls = 0
++    lock = threading.Lock()
++    entered = threading.Event()
++
++    def bounded_fixture(self, url, addresses, deadline, headers, **kwargs):
++        nonlocal active_requests, maximum_active, calls
++        with lock:
++            active_requests += 1
++            maximum_active = max(maximum_active, active_requests)
++            calls += 1
++        entered.set()
++        time.sleep(0.02)
++        with lock:
++            active_requests -= 1
++        document = success_body(connector_type)
++
++        class Response:
++            status_code = 200
++
++            def __init__(self) -> None:
++                self.headers = {
++                    "Content-Type": "application/json",
++                    "Content-Length": str(len(document)),
++                }
++
++            def iter_bytes(self):
++                yield document
++
++            def close(self):
++                pass
++
++        return Response()
++
++    monkeypatch.setattr(PinnedHttpTransport, "request", bounded_fixture)
++    monkeypatch.setattr(PinnedHttpTransport, "resolve_addresses", lambda *args: ["93.184.216.34"])
++    observations = []
++    workers = [
++        threading.Thread(target=lambda: observations.append(connector.collect("ollama")))
++        for _ in range(3)
++    ]
++    for worker in workers:
++        worker.start()
++    assert entered.wait(1)
++    for worker in workers:
++        worker.join(timeout=2)
++        assert not worker.is_alive()
++    assert maximum_active == 1
++    assert calls == len(observations) == 3
++    assert all(observation.outcome == "available" for observation in observations)
+diff --git a/backend/tests/unit/test_r08_aggregate_connectors.py b/backend/tests/unit/test_r08_aggregate_connectors.py
+new file mode 100644
+index 0000000..d6ae1da
+--- /dev/null
++++ b/backend/tests/unit/test_r08_aggregate_connectors.py
+@@ -0,0 +1,199 @@
++"""Explicit fixtures test count semantics without contacting a provider."""
++
++import json
++from datetime import UTC, datetime, timedelta
++
++import pytest
++from pydantic import ValidationError
++
++from ai_intel.assets.aggregate_observations import AggregateObservation, aggregate_freshness
++from ai_intel.assets.hunter_aggregate import HunterAggregateConnector
++from ai_intel.assets.quake_aggregate import QuakeAggregateConnector
++from ai_intel.infrastructure.network import FetchResult, NetworkTimeoutError
++
++RETRIEVED_AT = datetime(2026, 10, 16, tzinfo=UTC)
++CONNECTORS = (HunterAggregateConnector, QuakeAggregateConnector)
++
++
++class FixtureGateway:
++    """Only this explicitly injected object supplies fixture responses."""
++
++    def __init__(self, response: FetchResult | Exception) -> None:
++        self.response = response
++        self.calls: list[tuple[str, bytes | None, int | None]] = []
++
++    def __bool__(self) -> bool:
++        return False
++
++    def fetch(self, url: str, max_redirect_hops: int = 5) -> FetchResult:
++        self.calls.append((url, None, max_redirect_hops))
++        return self._response()
++
++    def post_json(self, url: str, payload: bytes) -> FetchResult:
++        self.calls.append((url, payload, None))
++        return self._response()
++
++    def _response(self) -> FetchResult:
++        if isinstance(self.response, Exception):
++            raise self.response
++        return self.response
++
++
++def response_for(provider: str, total: object = 42, *, status: int = 200) -> FetchResult:
++    document = (
++        {"code": 200, "data": {"total": total, "arr": [{"ip": "192.0.2.123"}]}}
++        if provider == "hunter"
++        else {"code": 0, "meta": {"pagination": {"total": total}}, "data": [{"ip": "192.0.2.123"}]}
++    )
++    return FetchResult(
++        "https://example.invalid", status, "application/json", json.dumps(document).encode()
++    )
++
++
++@pytest.mark.parametrize("connector_type", CONNECTORS)
++@pytest.mark.parametrize("total", [0, 42, 2**63 - 1])
++def test_success_count_never_uses_asset_details(connector_type, total: int) -> None:
++    provider = "hunter" if connector_type is HunterAggregateConnector else "quake"
++    gateway = FixtureGateway(response_for(provider, total))
++    result = connector_type(fixture_gateway=gateway).collect("ollama", retrieved_at=RETRIEVED_AT)
++    assert result.outcome == "available"
++    assert result.data_mode == "fixture"
++    assert result.value is not None
++    assert result.value.service_count == total
++    assert result.value.observed_at is None
++    assert result.value.retrieved_at == RETRIEVED_AT
++    assert result.value.query_version == "r08-product-name-1"
++    assert result.value.ttl_seconds == 86400
++    assert "192.0.2.123" not in result.model_dump_json()
++    assert "vulnerable" not in result.model_dump()
++    assert "Service count is not a count of vulnerable or owned assets." in result.value.limitations
++    assert len(gateway.calls) == 1
++
++
++@pytest.mark.parametrize("connector_type", CONNECTORS)
++@pytest.mark.parametrize("total", [None, True, -1, 1.5, "42", 2**63])
++def test_invalid_total_is_unknown_or_failed_never_zero(connector_type, total: object) -> None:
++    provider = "hunter" if connector_type is HunterAggregateConnector else "quake"
++    result = connector_type(fixture_gateway=FixtureGateway(response_for(provider, total))).collect(
++        "vllm"
++    )
++    assert result.outcome == ("unknown" if total is None else "failed")
++    assert result.error_code == ("missing_total" if total is None else "invalid_total")
++    assert result.value is None
++
++
++@pytest.mark.parametrize("connector_type", CONNECTORS)
++@pytest.mark.parametrize(
++    "status,outcome,error_code",
++    [
++        (401, "unauthorized", "provider_unauthorized"),
++        (403, "unauthorized", "provider_unauthorized"),
++        (429, "rate_limited", "provider_rate_limited"),
++        (500, "failed", "provider_http_error"),
++    ],
++)
++def test_http_failures_remain_distinct(
++    connector_type, status: int, outcome: str, error_code: str
++) -> None:
++    gateway = FixtureGateway(FetchResult("https://example.invalid", status, "text/html", b"secret"))
++    result = connector_type(fixture_gateway=gateway).collect("ollama")
++    assert result.outcome == outcome
++    assert result.error_code == error_code
++    assert result.value is None
++    assert "secret" not in repr(result)
++
++
++@pytest.mark.parametrize("connector_type", CONNECTORS)
++@pytest.mark.parametrize("body", [b"{", b"[]", b'{"code":0,"code":200}', b'{"code":NaN}', b"\xff"])
++def test_bad_json_is_safe_failure(connector_type, body: bytes) -> None:
++    gateway = FixtureGateway(FetchResult("https://example.invalid", 200, "application/json", body))
++    result = connector_type(fixture_gateway=gateway).collect("ollama")
++    assert (result.outcome, result.error_code, result.value) == ("failed", "invalid_response", None)
++
++
++@pytest.mark.parametrize("connector_type", CONNECTORS)
++def test_network_failure_does_not_fallback_to_zero_or_retry(connector_type) -> None:
++    gateway = FixtureGateway(NetworkTimeoutError("credential-and-private-diagnostic"))
++    result = connector_type(fixture_gateway=gateway).collect("ollama")
++    assert (result.outcome, result.error_code, result.value) == ("failed", "network_timeout", None)
++    assert "credential" not in result.model_dump_json()
++    assert len(gateway.calls) == 1
++
++
++@pytest.mark.parametrize("connector_type", CONNECTORS)
++def test_unconfigured_connector_has_no_success_default(connector_type) -> None:
++    result = connector_type().collect("ollama")
++    assert (result.outcome, result.error_code, result.value) == (
++        "not_configured",
++        "credential_missing",
++        None,
++    )
++    assert result.data_mode == "live"
++
++
++def test_ttl_expiry_preserves_historical_count_and_unknown_observed_time() -> None:
++    result = HunterAggregateConnector(
++        fixture_gateway=FixtureGateway(response_for("hunter"))
++    ).collect("ollama", retrieved_at=RETRIEVED_AT)
++    assert result.value is not None
++    assert aggregate_freshness(result.value, RETRIEVED_AT + timedelta(hours=23)) == "unknown"
++    assert aggregate_freshness(result.value, RETRIEVED_AT + timedelta(days=1)) == "stale"
++    assert result.value.service_count == 42
++    with pytest.raises(ValueError, match="before retrieval"):
++        aggregate_freshness(result.value, RETRIEVED_AT - timedelta(seconds=1))
++
++
++def test_output_rejects_details_and_inconsistent_available_state() -> None:
++    result = HunterAggregateConnector(
++        fixture_gateway=FixtureGateway(response_for("hunter"))
++    ).collect("ollama")
++    with pytest.raises(ValidationError):
++        AggregateObservation.model_validate({**result.model_dump(), "ip": "192.0.2.123"})
++    with pytest.raises(ValidationError):
++        AggregateObservation.model_validate({**result.model_dump(), "outcome": "failed"})
++
++
++@pytest.mark.parametrize(
++    "outcome,error_code",
++    [
++        ("unknown", "provider_unauthorized"),
++        ("failed", "missing_total"),
++        ("unauthorized", "provider_error"),
++        ("failed", "provider_rate_limited"),
++        ("rate_limited", "invalid_response"),
++        ("not_configured", "network_timeout"),
++    ],
++)
++def test_unavailable_status_cannot_mislabel_the_error(outcome: str, error_code: str) -> None:
++    with pytest.raises(ValidationError, match="must agree"):
++        AggregateObservation.model_validate(
++            {
++                "provider": "hunter",
++                "query_id": "ollama",
++                "retrieved_at": RETRIEVED_AT,
++                "outcome": outcome,
++                "error_code": error_code,
++                "data_mode": "fixture",
++            }
++        )
++
++
++def test_observed_at_freshness_requires_real_observation_time() -> None:
++    result = HunterAggregateConnector(
++        fixture_gateway=FixtureGateway(response_for("hunter"))
++    ).collect("ollama", retrieved_at=RETRIEVED_AT)
++    assert result.value is not None
++    value = result.value.model_copy(update={"observed_at": RETRIEVED_AT - timedelta(days=2)})
++    assert aggregate_freshness(value, RETRIEVED_AT) == "stale"
++    value = result.value.model_copy(update={"observed_at": RETRIEVED_AT})
++    assert aggregate_freshness(value, RETRIEVED_AT + timedelta(seconds=1)) == "current"
++
++
++@pytest.mark.parametrize("connector_type", CONNECTORS)
++def test_fixture_retrieval_timestamp_rejects_naive_input(connector_type) -> None:
++    gateway = FixtureGateway(response_for("hunter"))
++    with pytest.raises(ValueError, match="timezone-aware"):
++        connector_type(fixture_gateway=gateway).collect(
++            "ollama", retrieved_at=datetime(2026, 10, 16)
++        )
++    assert gateway.calls == []

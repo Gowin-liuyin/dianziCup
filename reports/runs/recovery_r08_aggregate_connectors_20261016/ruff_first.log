@@ -1,0 +1,143 @@
+E501 Line too long (104 > 100)
+  --> src\ai_intel\assets\aggregate_observations.py:52:101
+   |
+50 |     "Product-name matching can omit unrecognized services and include false matches.",
+51 |     "Ollama/vLLM provider fingerprint names and match accuracy have not been verified live.",
+52 |     "The provider supplies no aggregate observation timestamp; retrieval time is not observation time.",
+   |                                                                                                     ^^^^
+53 |     "Only the search total is retained; provider asset records are discarded in memory.",
+54 | )
+   |
+
+E501 Line too long (108 > 100)
+  --> src\ai_intel\assets\hunter_aggregate.py:62:101
+   |
+60 |         }
+61 |         if self._gateway is None:
+62 |             return AggregateObservation(**fields, outcome="not_configured", error_code="credential_missing")
+   |                                                                                                     ^^^^^^^^
+63 |         encoded_query = base64.urlsafe_b64encode(HUNTER_QUERIES[query_id].encode()).decode("ascii")
+64 |         request_url = HUNTER_ENDPOINT + "?" + urlencode(
+   |
+
+E501 Line too long (101 > 100)
+  --> src\ai_intel\assets\hunter_aggregate.py:65:101
+   |
+63 |         encoded_query = base64.urlsafe_b64encode(HUNTER_QUERIES[query_id].encode()).decode("ascii")
+64 |         request_url = HUNTER_ENDPOINT + "?" + urlencode(
+65 |             {"search": encoded_query, "page": 1, "page_size": 1, "is_web": 3, "fields": "updated_at"}
+   |                                                                                                     ^
+66 |         )
+67 |         try:
+   |
+
+E501 Line too long (105 > 100)
+  --> src\ai_intel\assets\hunter_aggregate.py:70:101
+   |
+68 |             response = self._gateway.fetch(request_url, max_redirect_hops=0)
+69 |         except (NetworkRequestError, NetworkPolicyViolation) as error:
+70 |             return AggregateObservation(**fields, outcome="failed", error_code=network_error_code(error))
+   |                                                                                                     ^^^^^
+71 |         http_error = response_error(response)
+72 |         if http_error is not None:
+   |
+
+E501 Line too long (107 > 100)
+  --> src\ai_intel\assets\hunter_aggregate.py:85:101
+   |
+83 |         if not isinstance(aggregate_data, dict):
+84 |             return AggregateObservation(**fields, outcome="failed", error_code="invalid_response")
+85 |         return total_result("hunter", query_id, aggregate_data.get("total"), completed_at, self._data_mode)
+   |                                                                                                     ^^^^^^^
+
+E501 Line too long (108 > 100)
+  --> src\ai_intel\assets\quake_aggregate.py:61:101
+   |
+59 |         }
+60 |         if self._gateway is None:
+61 |             return AggregateObservation(**fields, outcome="not_configured", error_code="credential_missing")
+   |                                                                                                     ^^^^^^^^
+62 |         request_body = json.dumps(
+63 |             {"query": QUAKE_QUERIES[query_id], "start": 0, "size": 1}, separators=(",", ":")
+   |
+
+E501 Line too long (105 > 100)
+  --> src\ai_intel\assets\quake_aggregate.py:68:101
+   |
+66 |             response = self._gateway.post_json(QUAKE_ENDPOINT, request_body)
+67 |         except (NetworkRequestError, NetworkPolicyViolation) as error:
+68 |             return AggregateObservation(**fields, outcome="failed", error_code=network_error_code(error))
+   |                                                                                                     ^^^^^
+69 |         http_error = response_error(response)
+70 |         if http_error is not None:
+   |
+
+E501 Line too long (102 > 100)
+  --> src\ai_intel\assets\quake_aggregate.py:86:101
+   |
+84 |         if not isinstance(pagination, dict):
+85 |             return AggregateObservation(**fields, outcome="failed", error_code="invalid_response")
+86 |         return total_result("quake", query_id, pagination.get("total"), completed_at, self._data_mode)
+   |                                                                                                     ^^
+
+E501 Line too long (108 > 100)
+  --> tests\unit\test_r08_aggregate_connectors.py:48:101
+   |
+46 |         else {"code": 0, "meta": {"pagination": {"total": total}}, "data": [{"ip": "192.0.2.123"}]}
+47 |     )
+48 |     return FetchResult("https://example.invalid", status, "application/json", json.dumps(document).encode())
+   |                                                                                                     ^^^^^^^^
+
+E501 Line too long (106 > 100)
+  --> tests\unit\test_r08_aggregate_connectors.py:75:101
+   |
+73 | def test_invalid_total_is_unknown_or_failed_never_zero(connector_type, total: object) -> None:
+74 |     provider = "hunter" if connector_type is HunterAggregateConnector else "quake"
+75 |     result = connector_type(fixture_gateway=FixtureGateway(response_for(provider, total))).collect("vllm")
+   |                                                                                                     ^^^^^^
+76 |     assert result.outcome == ("unknown" if total is None else "failed")
+77 |     assert result.error_code == ("missing_total" if total is None else "invalid_total")
+   |
+
+E501 Line too long (107 > 100)
+  --> tests\unit\test_r08_aggregate_connectors.py:88:101
+   |
+86 |     (500, "failed", "provider_http_error"),
+87 | ])
+88 | def test_http_failures_remain_distinct(connector_type, status: int, outcome: str, error_code: str) -> None:
+   |                                                                                                     ^^^^^^^
+89 |     gateway = FixtureGateway(FetchResult("https://example.invalid", status, "text/html", b"secret"))
+90 |     result = connector_type(fixture_gateway=gateway).collect("ollama")
+   |
+
+E501 Line too long (110 > 100)
+   --> tests\unit\test_r08_aggregate_connectors.py:117:101
+    |
+115 | def test_unconfigured_connector_has_no_success_default(connector_type) -> None:
+116 |     result = connector_type().collect("ollama")
+117 |     assert (result.outcome, result.error_code, result.value) == ("not_configured", "credential_missing", None)
+    |                                                                                                     ^^^^^^^^^^
+118 |     assert result.data_mode == "live"
+    |
+
+E501 Line too long (102 > 100)
+   --> tests\unit\test_r08_aggregate_connectors.py:122:101
+    |
+121 | def test_ttl_expiry_preserves_historical_count_and_unknown_observed_time() -> None:
+122 |     result = HunterAggregateConnector(fixture_gateway=FixtureGateway(response_for("hunter"))).collect(
+    |                                                                                                     ^^
+123 |         "ollama", retrieved_at=RETRIEVED_AT
+124 |     )
+    |
+
+E501 Line too long (111 > 100)
+   --> tests\unit\test_r08_aggregate_connectors.py:134:101
+    |
+133 | def test_output_rejects_details_and_inconsistent_available_state() -> None:
+134 |     result = HunterAggregateConnector(fixture_gateway=FixtureGateway(response_for("hunter"))).collect("ollama")
+    |                                                                                                     ^^^^^^^^^^^
+135 |     with pytest.raises(ValidationError):
+136 |         AggregateObservation.model_validate({**result.model_dump(), "ip": "192.0.2.123"})
+    |
+
+Found 14 errors.
