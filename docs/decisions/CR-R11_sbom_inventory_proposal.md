@@ -37,3 +37,15 @@ canonical_payload保存本次已解析typed component sources、checksum、ref�
 回滚入口必须先停用新格式及sidecar读取，连同dispatcher/DTO/服务/本容量修复回退；保留SBOM历史和原文，禁止删表、原文或修改current。已存在SBOM快照不能在旧版本上以投影hash进行新导入判等；回滚后需保持新格式写禁用，或重新上线这次冻结实现。依赖packageurl-python0.17.6已有主控锁，不新增依赖。
 
 unit/contract/realPG/security/frontend/e2e按实际运行记录；纯synthetic测试不计产品live。整个R11/T24/T28、真实资产完整性人工核验、真实SBOM产品live、研判/规则/OpenVEX与最终评分不由本切片完成。所有通过数量、未运行和外部阻塞以最终报告及run原日志为准。
+
+## 独立审查privacy修复补充（主控批准）
+
+独立审查真实PG18自有探针15通过、3失败证明：SPDX spdxDocument的数据库连接URI、file URI、HTTPS userinfo URI原样出sidecarGET，违反上文不返回内部路径/连接串合同。新最小pure红3例同样复现，不修改已审pure parser/原输入/原review探针。修复是安全展示投影；不是拒绝或删掉原声明以改事实。
+
+新sidecar公开响应统一schema `r11-sbom-sidecar-2`，document_uri为str或None；新增typed redactions，每项source_field_locator、固定reason=unsafe_uri_or_path、replacement_ref为None或精确redacted-ref:64hex。内部校验接受历史schema1（redactions缺失按空），先核scope/adapter/spec/raw/projection/sidecar/combined绑定，再投影；不更新旧payload，不取原raw重新解析。新schema2只信完整typed载荷中确切位置、固定reason与实际alias同时匹配的标记；重复/多余/伪标记或未处理危险值返回503，不单凭保留前缀信任。
+
+URI仅离线判断，无DNS/HTTP：优先无credential、无query/fragment的HTTP(S)，authority百分号/反斜杠/控制、明确localhost/internal host及非global IP均不展示；路径编码中的URI/控制也不展示。必要UUID/CDX规范URN及安全opaque引用可保留。其他URI/path被标明展示限制。CDX组件ref、edge两端、composition三组引用统一sha256 opaque alias，同原值保拓扑。客户端原值恰为生成前缀也按原值再次hash，不与真实危险引用生成的alias合并；schema2再次投影仅通过严格服务器标记保持幂等。原id/checksum仍保留，声明完整性仍unknown。
+
+进一步实际probe确认PURL的编码version可携credential URI（qualifier/subpath原profile仍拒绝）；因此主控批准仅SBOM source_kind的公共snapshot purl只读隐藏为已有nullable None，覆盖POST新导入、幂等重放、指定/current/asset-list/history读取。私有canonical候选、component identity、raw/hash不变，JSON/CSV及旧DTO字段不变。sidecar从同次冻结snapshot payload标出该purl源位置，不读取raw或重跑parser。URI/path样式的未知JSONPointer键同样使用稳定安全locator占位；普通业务name/display或自由文字不使用万能secret黑名单。
+
+迁移：无表/DDL或批量回填；兼容schema1和schema2私有payload读取。新声明及旧原文均保持不可变；raw/fullJSON/combined/projection摘要不因展示限制改变。回滚须保留此安全view或停用SBOM/sidecar展示，不能重新上线会透传旧私有URI的旧读取。验证增加原3URI、编码PURL、URI键、private IP/query、schema1历史、schema2幂等、碰撞、伪metadata、analyst/ACL、raw/hash/replay/history和日志否定；保留原411分母和新独立审查，不改评分/阈值。生产0022、正式app、SBOM frontend/browser/live/manual仍独立待验。

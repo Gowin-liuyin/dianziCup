@@ -44,13 +44,19 @@ class SbomCompletenessDeclarationResponse(InventoryContract):
 
 class SbomExternalDocumentResponse(InventoryContract):
     document_ref: str
-    document_uri: str
+    document_uri: str | None
     checksum: SbomChecksumResponse
     source_field_locator: str
 
 
+class SbomRedactionResponse(InventoryContract):
+    source_field_locator: str
+    reason: Literal["unsafe_uri_or_path"]
+    replacement_ref: str | None = Field(default=None, pattern="^redacted-ref:[0-9a-f]{64}$")
+
+
 class AssetSnapshotSbomResponse(InventoryContract):
-    schema_version: Literal["r11-sbom-sidecar-1"]
+    schema_version: Literal["r11-sbom-sidecar-1", "r11-sbom-sidecar-2"]
     snapshot_id: str
     asset_id: str
     tenant_id: str
@@ -66,3 +72,4 @@ class AssetSnapshotSbomResponse(InventoryContract):
     completeness_declarations: tuple[SbomCompletenessDeclarationResponse, ...]
     external_documents: tuple[SbomExternalDocumentResponse, ...]
     unmapped_field_locators: tuple[str, ...]
+    redactions: tuple[SbomRedactionResponse, ...] = ()

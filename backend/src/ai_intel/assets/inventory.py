@@ -23,7 +23,13 @@ from ai_intel.assets.inventory_contracts import (
 )
 from ai_intel.assets.inventory_models import asset_import_receipts, asset_snapshots, assets
 from ai_intel.assets.manifest_parser import ManifestValidationError
-from ai_intel.assets.sbom_inventory import freeze_sbom_sidecar, parse_inventory_input
+from ai_intel.assets.sbom_inventory import (
+    SbomProjectionValidationError,
+    freeze_sbom_sidecar,
+    parse_inventory_input,
+    safe_sbom_sidecar,
+    safe_sbom_snapshot,
+)
 from ai_intel.assets.sbom_inventory_contracts import AssetSnapshotSbomResponse
 from ai_intel.assets.sbom_persistence_models import asset_snapshot_sbom_sidecars
 from ai_intel.domain.access import (
@@ -111,7 +117,7 @@ class InventoryService:
         ).first()
         if row is None:
             raise CrossTenantAccessError("resource not found")
-        return AssetSnapshotResponse.model_validate(row[0])
+        return safe_sbom_snapshot(AssetSnapshotResponse.model_validate(row[0]))
 
     def read_asset(self, asset_id: str) -> AssetResponse:
         row = self._asset(asset_id)
@@ -133,6 +139,7 @@ class InventoryService:
                     asset_snapshots.c.manifest_sha256.label("projection_sha256"),
                     asset_snapshots.c.raw_input_sha256.label("raw_sha256"),
                     asset_snapshots.c.source_kind.label("source_format"),
+                    asset_snapshots.c.canonical_payload.label("snapshot_payload"),
                 )
                 .join(
                     asset_snapshots,
@@ -171,7 +178,11 @@ class InventoryService:
         )
         if any(getattr(result, field) != row[field] for field in fields):
             raise SbomStoredEvidenceError("stored SBOM evidence binding differs")
-        return result
+        try:
+            snapshot = AssetSnapshotResponse.model_validate(row["snapshot_payload"])
+            return safe_sbom_sidecar(result, snapshot)
+        except (ValidationError, SbomProjectionValidationError):
+            raise SbomStoredEvidenceError("stored SBOM display binding differs") from None
 
     def import_manifest(
         self,
@@ -419,7 +430,9 @@ class InventoryService:
                 created_at=now,
             )
         )
-        return AssetImportResponse(asset_id=selected_id, snapshot=snapshot, reused=reused)
+        return AssetImportResponse(
+            asset_id=selected_id, snapshot=safe_sbom_snapshot(snapshot), reused=reused
+        )
 
     def list_assets(
         self,
@@ -523,7 +536,8 @@ class InventoryService:
         )
         return AssetSnapshotListResponse(
             items=tuple(
-                AssetSnapshotResponse.model_validate(row["canonical_payload"]) for row in page
+                safe_sbom_snapshot(AssetSnapshotResponse.model_validate(row["canonical_payload"]))
+                for row in page
             ),
             next_cursor=next_cursor,
         )
