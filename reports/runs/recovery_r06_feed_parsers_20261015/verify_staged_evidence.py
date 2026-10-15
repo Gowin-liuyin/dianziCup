@@ -28,7 +28,7 @@ def main() -> None:
                 ),
                 "files_checked": len(manifest["files"]),
                 "blob_hash_mismatches": 0,
-                "code_sha": "6b7dd7e881bb822e83b55f8302f7aefe565f4940",
+                "code_sha": "9138e1741722491ca0c4df6b5540b76157a2b47e",
             }
         )
     )
