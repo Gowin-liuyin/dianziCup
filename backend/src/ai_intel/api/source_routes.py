@@ -69,7 +69,10 @@ class SourceJobResponse(BaseModel):
 
 
 def build_source_router(
-    service_provider: Callable[[], AuthenticationSessionService | None], engine: Engine | None
+    service_provider: Callable[[], AuthenticationSessionService | None],
+    engine: Engine | None,
+    *,
+    include_job_reader: bool = True,
 ) -> APIRouter:
     """管理员调度固定公开来源；读写失败均返回脱敏 problem。"""
     router = APIRouter()
@@ -194,7 +197,6 @@ def build_source_router(
         ) as error:
             return failure(request, error)
 
-    @router.get("/jobs/{job_id}", response_model=SourceJobResponse)
     def source_job(request: Request, job_id: UUID) -> SourceJobResponse | Response:
         try:
             scope = authenticate(request, write=False)
@@ -216,4 +218,8 @@ def build_source_router(
         ) as error:
             return failure(request, error)
 
+    if include_job_reader:
+        router.add_api_route(
+            "/jobs/{job_id}", source_job, methods=["GET"], response_model=SourceJobResponse
+        )
     return router

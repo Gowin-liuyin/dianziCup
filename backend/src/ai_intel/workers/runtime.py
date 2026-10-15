@@ -10,6 +10,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ai_intel.domain.access import AccessScope, Role
+from ai_intel.enrichment.job_handlers import make_enrichment_job_handlers
+from ai_intel.enrichment.runtime_policy import build_enrichment_job_service
 from ai_intel.infrastructure.content_storage_factory import build_content_storage
 from ai_intel.infrastructure.database import build_engine
 from ai_intel.infrastructure.outbox import relay_pending_events
@@ -126,9 +128,14 @@ def dispatch_pending_jobs() -> dict[str, int]:
 def consume_job(job_id: str) -> dict[str, str]:
     """实际Celery消费受控handler；worker身份不由队列请求参数提供。"""
     UUID(job_id)
-    engine = build_engine(load_application_settings())
+    settings = load_application_settings()
+    engine = build_engine(settings)
     try:
-        outcome = execute_job(engine, job_id, "celery-" + uuid4().hex, EXECUTION_HANDLERS)
+        handlers = dict(EXECUTION_HANDLERS)
+        enrichment = build_enrichment_job_service(engine, settings)
+        if enrichment is not None:
+            handlers.update(make_enrichment_job_handlers(enrichment))
+        outcome = execute_job(engine, job_id, "celery-" + uuid4().hex, handlers)
         return {"job_id": job_id, "outcome": outcome}
     except SQLAlchemyError:
         raise RuntimeError("runtime database unavailable") from None
