@@ -502,8 +502,10 @@ def test_untyped_empty_http_error_retains_status_and_retry_metadata(
 
 
 @pytest.mark.parametrize("query", ["api-key=fixture-key", "renamed=wrapped-fixture-key"])
+@pytest.mark.parametrize("scheme", ["Bearer ", "bearer ", "bEaReR ", "bEaReR   "])
+@pytest.mark.parametrize("include_query_credential", [False, True])
 def test_cross_origin_location_cannot_forward_reflected_query_credentials(
-    monkeypatch: pytest.MonkeyPatch, query: str
+    monkeypatch: pytest.MonkeyPatch, query: str, scheme: str, include_query_credential: bool
 ) -> None:
     sockets, _ = _install_socket_fixtures(
         monkeypatch,
@@ -516,8 +518,8 @@ def test_cross_origin_location_cannot_forward_reflected_query_credentials(
     )
     credentials = OriginCredentials(
         "https://source.example",
-        {"Authorization": SecretStr("Bearer fixture-key")},
-        {"api-key": SecretStr("fixture-key")},
+        {"Authorization": SecretStr(scheme + "fixture-key")},
+        {"api-key": SecretStr("fixture-key")} if include_query_credential else {},
     )
     result = create_network_gateway(
         NetworkPolicy(("source.example", "other.example")), credentials
@@ -526,4 +528,31 @@ def test_cross_origin_location_cannot_forward_reflected_query_credentials(
     assert result.status_code == 200
     assert b"GET /next?visible=1 HTTP/1.1" in sent
     assert b"fixture-key" not in sent and b"Authorization:" not in sent
+    assert all(connection.closed for connection in sockets)
+
+
+@pytest.mark.parametrize("header", ["Location", "Content-Location", "X-Trace-Echo"])
+@pytest.mark.parametrize(
+    "value",
+    [
+        "review/synthetic+credential==",
+        "review%2Fsynthetic%2Bcredential%3D%3D",
+        "review%2fsynthetic%2bcredential%3d%3d",
+    ],
+)
+def test_known_secret_response_metadata_is_redacted_before_and_after_url_decoding(
+    monkeypatch: pytest.MonkeyPatch, header: str, value: str
+) -> None:
+    sockets, _ = _install_socket_fixtures(
+        monkeypatch,
+        [_response(headers=f"{header}: https://source.example/?renamed={value}\r\n".encode())],
+    )
+    credentials = OriginCredentials(
+        "https://source.example", {"api-key": SecretStr("review/synthetic+credential==")}
+    )
+    result = create_network_gateway(NetworkPolicy(("source.example",)), credentials).fetch(
+        "https://source.example/"
+    )
+    assert result.redacted_headers[header] == "REDACTED"
+    assert result.body == b"document"
     assert all(connection.closed for connection in sockets)

@@ -3,6 +3,8 @@
 记录者/root；首次创建/本次写作开始/结束/最后更新时间：2026-10-15T11:44:14+08:00。
 状态awaiting_review；落实已授权R03/T07/T08/T16，非新增产品范围、评分或架构决策。0011先由主控统一冻结，业务实现只消费该schema，变动先报主控。
 
+2026-10-15T12:55:32+08:00 补充网络凭据边界：独立复核59466发现合法大小写混合/多空格Bearer的token未纳入已知秘密，以及响应metadata中的percent编码秘密可恢复。认证scheme按casefold识别，仅剥离分隔空格，不改变token大小写；响应头原值经一次URL解码含已知秘密时整值REDACTED，原文body保持原字节。延续同源注入、跨源清除header/query的既有合同，不新增provider或重试层、schema迁移。原跨源用例保留有query凭据分支，同时新增无query凭据及四种scheme；新增原文/大写hex/小写hex和三种header的9个负例。回滚应停用凭据来源并保留历史，不恢复已证实泄漏的metadata行为。root工作区相关396项通过、原始66.64%，静态通过；其中含尚未冻结NVD修改，不能给最终完整候选或独立验收背书；新冻结网络代码等待原reviewer独立复核。影响R03/R04/R05/R08/R13，金标、阈值和分母无变化。
+
 ## PG与接口
 
 PostgreSQL始终唯一任务/事实/游标权威，Celery+Redis只交付job_id引用，不存另一份业务结果。0011在job_runs增next_retry_at/started_at/finished_at/error_code/result_ref，outbox增delivery_attempts/next_delivery_at/last_error_code；job_payloads按job_id保存<=1MiB bytes，new payload_ref=pg:job:<UUID>；已有pg:change:<UUID>沿用并检查同scope与digest。旧纯hash无法恢复内容，原样保留，消费必须blocked legacy_job_payload_unavailable，不编造payload。新job_transitions只追加attempt/status/reason/真实时刻，不含原请求/凭据。

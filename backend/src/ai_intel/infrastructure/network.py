@@ -148,7 +148,9 @@ def redact_headers(
 ) -> dict[str, str]:
     redacted: dict[str, str] = {}
     for key, value in headers.items():
-        if key.lower() in SENSITIVE_HEADERS:
+        if key.lower() in SENSITIVE_HEADERS or any(
+            secret in unquote(value) for secret in sensitive_values
+        ):
             redacted[key] = "REDACTED"
         elif key.lower() in {"location", "content-location"}:
             try:
@@ -375,9 +377,11 @@ def _fetch(
             value.get_secret_value() for value in credentials.query_parameters.values()
         )
         for value in credentials.headers.values():
-            secret_values.add(value.get_secret_value())
-            if value.get_secret_value().startswith("Bearer "):
-                secret_values.add(value.get_secret_value().removeprefix("Bearer "))
+            header_value = value.get_secret_value()
+            secret_values.add(header_value)
+            scheme, separator, token = header_value.partition(" ")
+            if separator and scheme.casefold() == "bearer":
+                secret_values.add(token.lstrip(" "))
     sensitive_values = tuple(value for value in secret_values if value)
     for hop in range(max_redirect_hops + 1):
         deadline.remaining_seconds()
