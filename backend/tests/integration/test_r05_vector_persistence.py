@@ -1,12 +1,13 @@
 """隔离PG验证真实vector类型和增量迁移；这里的合成向量不计模型live。"""
 
+import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import create_engine, func, insert, select, text, update
+from sqlalchemy import DateTime, MetaData, Table, create_engine, func, insert, select, text, update
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
@@ -22,13 +23,104 @@ from ai_intel.infrastructure.models.semantic import (
     RankedPassage,
     RerankResult,
 )
-from ai_intel.ingestion.source_documents import SourceResponse, persist_source_response
 from ai_intel.knowledge.models import document_revisions, evidence
 from ai_intel.knowledge.persistence_models import claims, events
 from ai_intel.retrieval.persistence_models import retrieval_chunks
 from ai_intel.retrieval.service import EventEvidenceRetriever, RetrievalFailure
 
 pytestmark = pytest.mark.real_pg
+
+LEGACY_SEED_TABLES = (
+    "sources",
+    "content_objects",
+    "documents",
+    "document_revisions",
+    "text_blocks",
+    "evidence",
+    "events",
+    "event_external_ids",
+    "event_documents",
+    "claims",
+    "claim_assertions",
+    "claim_evidence",
+    "claim_status_history",
+    "scope_epochs",
+    "change_events",
+    "job_runs",
+    "outbox_events",
+    "publication_receipts",
+    "fetch_attempts",
+)
+
+
+def load_legacy_0013_seed(engine: Engine, schema: str, store: ContentStore) -> tuple[Table, ...]:
+    """Load the frozen old writer output using only the migrated 0013 column definitions."""
+    assert schema.startswith("test_r05_") and schema.isidentifier()
+    recorded = Path(__file__).resolve().parents[3] / "fixtures/recorded"
+    seed_bytes = (
+        (recorded / "r05_legacy_0013_vllm_public_v1.json").read_bytes().replace(b"\r\n", b"\n")
+    )
+    assert hashlib.sha256(seed_bytes).hexdigest() == (
+        "6170ce55e63a70a557f62fc79213d20b596222220e2a04d5e050e67b7e188336"
+    )
+    seed = json.loads(seed_bytes)
+    assert seed["fixture_version"] == 1 and seed["data_mode"] == "fixture"
+    assert seed["migration_revision"] == "0013_revision_source_metadata"
+    assert seed["writer_commit"] == "1927eeb00a7e0c1335f76340b0382f46102f08f2"
+    source_bytes = (recorded / "vllm_vendor_20261015_public.json").read_bytes()
+    assert hashlib.sha256(source_bytes).hexdigest() == seed["source_fixture_sha256"]
+    original_body = json.dumps([json.loads(source_bytes)[0]]).encode()
+    assert hashlib.sha256(original_body).hexdigest() == seed["response_body_sha256"]
+    assert set(seed["required_tables"]) == set(LEGACY_SEED_TABLES) == set(seed["tables"])
+    with engine.begin() as connection:
+        assert connection.scalar(text("SELECT current_schema()")) == schema
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+            "0013_revision_source_metadata"
+        )
+        prepared = []
+        for name in LEGACY_SEED_TABLES:
+            table = Table(
+                name, MetaData(), schema=schema, autoload_with=connection, resolve_fks=False
+            )
+            table_seed = seed["tables"][name]
+            assert set(table_seed["columns"]) == set(table.columns.keys())
+            assert table_seed["rows"]
+            assert connection.scalar(select(func.count()).select_from(table)) == 0
+            for row in table_seed["rows"]:
+                assert set(row) == set(table_seed["columns"])
+                for column in table.columns:
+                    if isinstance(column.type, DateTime) and row[column.name] is not None:
+                        value = datetime.fromisoformat(row[column.name])
+                        assert value.tzinfo is not None and value.utcoffset() is not None
+                        row[column.name] = value.astimezone(UTC)
+                if "visibility" in row:
+                    assert row["visibility"] == "public" and row["tenant_id"] is None
+                if "tenant_id" in row:
+                    assert row["tenant_id"] is None
+                if "scope_key" in row:
+                    assert row["scope_key"] == "public"
+            prepared.append((table, table_seed["rows"]))
+        content_rows = seed["tables"]["content_objects"]["rows"]
+        assert set(seed["content_payloads_utf8"]) == {row["content_hash"] for row in content_rows}
+        for row in content_rows:
+            payload = seed["content_payloads_utf8"][row["content_hash"]].encode("utf-8")
+            assert hashlib.sha256(payload).hexdigest() == row["content_hash"]
+            assert len(payload) == row["size_bytes"]
+            assert store.store_bytes(payload).content_hash == row["content_hash"]
+            assert store.read_verified(row["content_hash"]) == payload
+        for table, rows in prepared:
+            if table.name == "claim_status_history":
+                inserted = connection.scalars(
+                    insert(table).returning(table.c.transition_sequence),
+                    [
+                        {key: value for key, value in row.items() if key != "transition_sequence"}
+                        for row in rows
+                    ],
+                ).all()
+                assert inserted == [row["transition_sequence"] for row in rows]
+            else:
+                connection.execute(insert(table), rows)
+    return tuple(table for table, _rows in prepared)
 
 
 @pytest.fixture
@@ -41,32 +133,33 @@ def vector_database(isolated_test_database_url: str, tmp_path_factory: pytest.Te
         assert connection.scalar(text("SELECT current_database()")) == url.database
         connection.execute(CreateSchema(schema))
     isolated = url.update_query_dict(
-        {"options": f"-c search_path={schema},public -c statement_timeout=15000"}
+        {"options": f"-c search_path={schema} -c statement_timeout=15000"}
     )
     connection_url = isolated.render_as_string(hide_password=False)
-    engine = create_engine(isolated, connect_args={"connect_timeout": 5})
+    runtime_url = isolated.update_query_dict(
+        {"options": f"-c search_path={schema},public -c statement_timeout=15000"}
+    )
+    engine = create_engine(runtime_url, connect_args={"connect_timeout": 5})
     try:
         run_migrations(connection_url, "0013_revision_source_metadata")
-        fixture = (
-            Path(__file__).resolve().parents[3]
-            / "fixtures/recorded/vllm_vendor_20261015_public.json"
-        )
-        record = json.loads(fixture.read_bytes())[0]
-        at = datetime(2026, 10, 15, 8, tzinfo=UTC)
-        with Session(engine) as session, session.begin():
-            persist_source_response(
-                session,
-                ContentStore(tmp_path_factory.mktemp("vector-content")),
-                AccessScope.for_authenticated_user("fixture-vector-admin", None, Role.SYSTEM_ADMIN),
-                SourceResponse(
-                    "vllm_vendor",
-                    json.dumps([record]).encode(),
-                    "https://api.github.com/repos/vllm-project/vllm/security-advisories?per_page=10&state=published",
-                    at,
-                ),
-                ingested_at=at,
-            )
         with engine.connect() as connection:
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT n.nspname FROM pg_class c "
+                        "JOIN pg_namespace n ON n.oid=c.relnamespace "
+                        "WHERE c.oid=to_regclass('alembic_version')"
+                    )
+                )
+                == schema
+            )
+        store = ContentStore(tmp_path_factory.mktemp("vector-content"))
+        legacy_tables = load_legacy_0013_seed(engine, schema, store)
+        with engine.connect() as connection:
+            previous_seed = tuple(
+                tuple(connection.execute(select(table).order_by(*table.primary_key.columns)))
+                for table in legacy_tables
+            )
             previous = tuple(
                 connection.execute(
                     select(evidence.c.evidence_id, evidence.c.quote_sha256).order_by(
@@ -76,6 +169,10 @@ def vector_database(isolated_test_database_url: str, tmp_path_factory: pytest.Te
             )
         run_migrations(connection_url)
         with engine.connect() as connection:
+            following_seed = tuple(
+                tuple(connection.execute(select(table).order_by(*table.primary_key.columns)))
+                for table in legacy_tables
+            )
             following = tuple(
                 connection.execute(
                     select(evidence.c.evidence_id, evidence.c.quote_sha256).order_by(
@@ -84,6 +181,7 @@ def vector_database(isolated_test_database_url: str, tmp_path_factory: pytest.Te
                 )
             )
         assert following == previous and following
+        assert following_seed == previous_seed
         yield engine
     finally:
         engine.dispose()
@@ -116,13 +214,14 @@ def chunk_values(
 def test_upgrade_preserves_immutable_evidence_and_real_extension(vector_database: Engine) -> None:
     with vector_database.connect() as connection:
         assert connection.scalar(select(func.count()).select_from(document_revisions)) == 1
+        assert connection.scalar(select(document_revisions.c.source_metadata)) == {}
         assert (
             connection.scalar(text("SELECT extversion FROM pg_extension WHERE extname='vector'"))
             == "0.8.2"
         )
         assert (
             connection.scalar(text("SELECT version_num FROM alembic_version"))
-            == "0014_grounded_answer_vectors"
+            == "0015_catalog_document_metadata"
         )
 
 

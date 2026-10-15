@@ -1,0 +1,2293 @@
+{
+  "fixture_version": 1,
+  "data_mode": "fixture",
+  "migration_revision": "0013_revision_source_metadata",
+  "writer_commit": "1927eeb00a7e0c1335f76340b0382f46102f08f2",
+  "writer_source_sha256": "b688f3eb1393c9bb0914980f75578b55c024ab58bd3cf57b3b18f89b78109f8a",
+  "source_fixture": "fixtures/recorded/vllm_vendor_20261015_public.json",
+  "source_fixture_sha256": "f084ddcb1eecd43494ac0244dd3b650431727add18deb330bc3df1722912cedf",
+  "source_record_index": 0,
+  "response_body_sha256": "ed8547c71c74f9fe73edef9de024dd8603d76ae1f80b9c8afff53b3aaa874ba9",
+  "observed_at": "2026-10-15T08:00:00+00:00",
+  "required_tables": [
+    "change_events",
+    "claim_assertions",
+    "claim_evidence",
+    "claim_status_history",
+    "claims",
+    "content_objects",
+    "document_revisions",
+    "documents",
+    "event_documents",
+    "event_external_ids",
+    "events",
+    "evidence",
+    "fetch_attempts",
+    "job_runs",
+    "outbox_events",
+    "publication_receipts",
+    "scope_epochs",
+    "sources",
+    "text_blocks"
+  ],
+  "tables": {
+    "change_events": {
+      "columns": [
+        "change_id",
+        "scope_key",
+        "epoch",
+        "change_type",
+        "entity_ids",
+        "payload",
+        "created_at"
+      ],
+      "rows": [
+        {
+          "change_id": "09b7fc72-423a-4ea4-8036-1f41cb184189",
+          "scope_key": "public",
+          "epoch": 1,
+          "change_type": "events_published",
+          "entity_ids": [
+            "54f15599-5e3d-51bb-a846-b628bc671b34"
+          ],
+          "payload": {
+            "scope": {
+              "tenant_id": null,
+              "visibility": "public"
+            },
+            "events": [
+              {
+                "scope": {
+                  "tenant_id": null,
+                  "visibility": "public"
+                },
+                "title": "V1 InputBatch.condense leaves a stale allowed_token_ids mask on recycled batch rows",
+                "event_id": {
+                  "value": "54f15599-5e3d-51bb-a846-b628bc671b34",
+                  "external_id": null
+                },
+                "event_type": "vulnerability",
+                "external_ids": [
+                  {
+                    "id_type": "ghsa",
+                    "id_value": "GHSA-6cxc-2vcg-w5qc"
+                  }
+                ],
+                "source_revision_ids": [
+                  {
+                    "value": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+                    "external_id": null
+                  }
+                ]
+              }
+            ],
+            "operation": "publish_events",
+            "schema_version": 1
+          },
+          "created_at": "2026-10-15T08:00:00+00:00"
+        },
+        {
+          "change_id": "8262056d-f694-4564-9988-ab2f57458863",
+          "scope_key": "public",
+          "epoch": 2,
+          "change_type": "knowledge_published",
+          "entity_ids": [
+            "53b4350d-455c-5f5b-a1ba-c295ae141d73",
+            "171e46ce-8a4b-5da0-8323-ddefd6f3932a"
+          ],
+          "payload": {
+            "scope": {
+              "tenant_id": null,
+              "visibility": "public"
+            },
+            "claims": [
+              {
+                "record": {
+                  "scope": {
+                    "tenant_id": null,
+                    "visibility": "public"
+                  },
+                  "subject": "54f15599-5e3d-51bb-a846-b628bc671b34",
+                  "claim_id": {
+                    "value": "53b4350d-455c-5f5b-a1ba-c295ae141d73",
+                    "external_id": null
+                  },
+                  "freshness": "current",
+                  "predicate": "source_excerpt",
+                  "asserted_at": "2026-10-15T08:00:00Z",
+                  "observed_at": "2026-10-15T08:00:00Z",
+                  "claim_origin": "structured_source",
+                  "claim_status": "supported",
+                  "object_value": "## Severity\r\n\r\n- **Severity:** Low\r\n- **CVSS v3.1:** `CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N` (3.7, Low)\r\n- **CWE:** CWE-440 (Expected Behavior Violation), CWE-668 (Exposure of Resource to Wrong Sphere)\r\n\r\n## Summary\r\n\r\nvLLM V1 `InputBatch.condense()` can leave a stale `allowed_token_ids_mask_cpu_tensor` row after moving a constrained request. A later unrestricted request that reuses that batch slot inherits the previous request's token allowlist, so sampling for that other client is constrained by a mask it did not set (cross-request output-integrity issue). The victim request still returns HTTP 200 with no error indication.\r\n\r\nPublic report: https://github.com/vllm-project/vllm/issues/43894\r\n\r\n## Affected\r\n\r\n- **Ecosystem / package:** pip / `vllm`\r\n- **Affected versions:** vLLM ≤ 0.30.0 (V1 worker `InputBatch` path). Confirmed via public issue #43894.\r\n- **Fixed versions:** Fix merged in https://github.com/vllm-project/vllm/pull/43931 (not yet in a tagged release as of v0.30.0; expected in the next release).\r\n\r\n## Details\r\n\r\n`InputBatch.condense()` copies `allowed_token_ids_mask_cpu_tensor` from a moved request's row into the freed index but never clears the source row. `add_request()` only writes that row when the new request sets `sampling_params.allowed_token_ids`. When another active request still has `allowed_token_ids`, `_make_sampling_metadata()` copies the active prefix of the CPU mask to GPU and `Sampler.apply_logits_processors()` applies the stale whitelist to the unrestricted request.\r\n\r\nAn attacker who can submit generate traffic (including unauthenticated `/invocations`, which is outside `--api-key` guards, or any valid API key on `/v1`) plants a chosen `allowed_token_ids` mask. If batching/`condense` recycles that row onto another client's unrestricted request while the constrained request is still active, the victim's tokens are limited to the attacker's allowlist (for example only a single token, only digit tokens, or only tokens that spell a",
+                  "schema_version": 2,
+                  "condition_value": "true"
+                },
+                "json_path": "/description",
+                "source_id": {
+                  "value": "64f0f40e-912c-571b-9d63-6f5f3362f46f",
+                  "external_id": null
+                },
+                "revision_id": {
+                  "value": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+                  "external_id": null
+                },
+                "evidence_links": [
+                  {
+                    "evidence_id": {
+                      "value": "fe813a5e-91ad-4f0f-90c9-530fdc871abc",
+                      "external_id": null
+                    },
+                    "support_kind": "supports",
+                    "validation_status": "validated"
+                  }
+                ],
+                "scoring_authority": ""
+              },
+              {
+                "record": {
+                  "scope": {
+                    "tenant_id": null,
+                    "visibility": "public"
+                  },
+                  "subject": "54f15599-5e3d-51bb-a846-b628bc671b34",
+                  "claim_id": {
+                    "value": "171e46ce-8a4b-5da0-8323-ddefd6f3932a",
+                    "external_id": null
+                  },
+                  "freshness": "current",
+                  "predicate": "affected_product",
+                  "asserted_at": "2026-10-15T08:00:00Z",
+                  "observed_at": "2026-10-15T08:00:00Z",
+                  "claim_origin": "structured_source",
+                  "claim_status": "supported",
+                  "object_value": "vllm",
+                  "schema_version": 2,
+                  "condition_value": "true"
+                },
+                "json_path": "/vulnerabilities/0/package/name",
+                "source_id": {
+                  "value": "64f0f40e-912c-571b-9d63-6f5f3362f46f",
+                  "external_id": null
+                },
+                "revision_id": {
+                  "value": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+                  "external_id": null
+                },
+                "evidence_links": [
+                  {
+                    "evidence_id": {
+                      "value": "f8cced56-a7d5-4e53-8c95-aed410bcd6ca",
+                      "external_id": null
+                    },
+                    "support_kind": "supports",
+                    "validation_status": "validated"
+                  }
+                ],
+                "scoring_authority": ""
+              }
+            ],
+            "entities": [],
+            "relations": [],
+            "schema_version": 1
+          },
+          "created_at": "2026-10-15T08:00:00+00:00"
+        }
+      ]
+    },
+    "claim_assertions": {
+      "columns": [
+        "assertion_id",
+        "claim_id",
+        "source_id",
+        "revision_id",
+        "json_path",
+        "scoring_authority",
+        "assertion_kind",
+        "created_at"
+      ],
+      "rows": [
+        {
+          "assertion_id": "fc69317f-e0a5-4cd3-93e1-cc7d17b81fd4",
+          "claim_id": "53b4350d-455c-5f5b-a1ba-c295ae141d73",
+          "source_id": "64f0f40e-912c-571b-9d63-6f5f3362f46f",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "json_path": "/description",
+          "scoring_authority": "",
+          "assertion_kind": "structured_source",
+          "created_at": "2026-10-15T08:00:00+00:00"
+        },
+        {
+          "assertion_id": "a55ffd56-1b26-4d41-bb87-adfccb9d43e6",
+          "claim_id": "171e46ce-8a4b-5da0-8323-ddefd6f3932a",
+          "source_id": "64f0f40e-912c-571b-9d63-6f5f3362f46f",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "json_path": "/vulnerabilities/0/package/name",
+          "scoring_authority": "",
+          "assertion_kind": "structured_source",
+          "created_at": "2026-10-15T08:00:00+00:00"
+        }
+      ]
+    },
+    "claim_evidence": {
+      "columns": [
+        "claim_id",
+        "evidence_id",
+        "support_kind",
+        "validation_status"
+      ],
+      "rows": [
+        {
+          "claim_id": "53b4350d-455c-5f5b-a1ba-c295ae141d73",
+          "evidence_id": "fe813a5e-91ad-4f0f-90c9-530fdc871abc",
+          "support_kind": "supports",
+          "validation_status": "validated"
+        },
+        {
+          "claim_id": "171e46ce-8a4b-5da0-8323-ddefd6f3932a",
+          "evidence_id": "f8cced56-a7d5-4e53-8c95-aed410bcd6ca",
+          "support_kind": "supports",
+          "validation_status": "validated"
+        }
+      ]
+    },
+    "claim_status_history": {
+      "columns": [
+        "history_id",
+        "transition_sequence",
+        "claim_id",
+        "status",
+        "reason",
+        "changed_at"
+      ],
+      "rows": [
+        {
+          "history_id": "ba4ed2a6-0bd1-4d63-90ed-5598e0c56292",
+          "transition_sequence": 1,
+          "claim_id": "53b4350d-455c-5f5b-a1ba-c295ae141d73",
+          "status": "supported",
+          "reason": "initial publication",
+          "changed_at": "2026-10-15T08:00:00+00:00"
+        },
+        {
+          "history_id": "8428254c-9d55-4937-aca2-7b252ff51121",
+          "transition_sequence": 2,
+          "claim_id": "171e46ce-8a4b-5da0-8323-ddefd6f3932a",
+          "status": "supported",
+          "reason": "initial publication",
+          "changed_at": "2026-10-15T08:00:00+00:00"
+        }
+      ]
+    },
+    "claims": {
+      "columns": [
+        "claim_id",
+        "subject",
+        "predicate",
+        "object_value",
+        "claim_status",
+        "claim_origin",
+        "condition_value",
+        "freshness",
+        "asserted_at",
+        "observed_at",
+        "visibility",
+        "tenant_id",
+        "created_at",
+        "object_json",
+        "value_kind",
+        "provenance_status",
+        "field_fingerprint",
+        "is_current",
+        "schema_version",
+        "source_revision_id"
+      ],
+      "rows": [
+        {
+          "claim_id": "53b4350d-455c-5f5b-a1ba-c295ae141d73",
+          "subject": "54f15599-5e3d-51bb-a846-b628bc671b34",
+          "predicate": "source_excerpt",
+          "object_value": "## Severity\r\n\r\n- **Severity:** Low\r\n- **CVSS v3.1:** `CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N` (3.7, Low)\r\n- **CWE:** CWE-440 (Expected Behavior Violation), CWE-668 (Exposure of Resource to Wrong Sphere)\r\n\r\n## Summary\r\n\r\nvLLM V1 `InputBatch.condense()` can leave a stale `allowed_token_ids_mask_cpu_tensor` row after moving a constrained request. A later unrestricted request that reuses that batch slot inherits the previous request's token allowlist, so sampling for that other client is constrained by a mask it did not set (cross-request output-integrity issue). The victim request still returns HTTP 200 with no error indication.\r\n\r\nPublic report: https://github.com/vllm-project/vllm/issues/43894\r\n\r\n## Affected\r\n\r\n- **Ecosystem / package:** pip / `vllm`\r\n- **Affected versions:** vLLM ≤ 0.30.0 (V1 worker `InputBatch` path). Confirmed via public issue #43894.\r\n- **Fixed versions:** Fix merged in https://github.com/vllm-project/vllm/pull/43931 (not yet in a tagged release as of v0.30.0; expected in the next release).\r\n\r\n## Details\r\n\r\n`InputBatch.condense()` copies `allowed_token_ids_mask_cpu_tensor` from a moved request's row into the freed index but never clears the source row. `add_request()` only writes that row when the new request sets `sampling_params.allowed_token_ids`. When another active request still has `allowed_token_ids`, `_make_sampling_metadata()` copies the active prefix of the CPU mask to GPU and `Sampler.apply_logits_processors()` applies the stale whitelist to the unrestricted request.\r\n\r\nAn attacker who can submit generate traffic (including unauthenticated `/invocations`, which is outside `--api-key` guards, or any valid API key on `/v1`) plants a chosen `allowed_token_ids` mask. If batching/`condense` recycles that row onto another client's unrestricted request while the constrained request is still active, the victim's tokens are limited to the attacker's allowlist (for example only a single token, only digit tokens, or only tokens that spell a",
+          "claim_status": "supported",
+          "claim_origin": "structured_source",
+          "condition_value": "true",
+          "freshness": "current",
+          "asserted_at": "2026-10-15T08:00:00+00:00",
+          "observed_at": "2026-10-15T08:00:00+00:00",
+          "visibility": "public",
+          "tenant_id": null,
+          "created_at": "2026-10-15T08:00:00+00:00",
+          "object_json": null,
+          "value_kind": "text",
+          "provenance_status": "source_verified",
+          "field_fingerprint": "2de43e04ac57ca7747148d7c2db8c37f85dd3d6f6a13d4e43809cc39a1770578",
+          "is_current": true,
+          "schema_version": 2,
+          "source_revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f"
+        },
+        {
+          "claim_id": "171e46ce-8a4b-5da0-8323-ddefd6f3932a",
+          "subject": "54f15599-5e3d-51bb-a846-b628bc671b34",
+          "predicate": "affected_product",
+          "object_value": "vllm",
+          "claim_status": "supported",
+          "claim_origin": "structured_source",
+          "condition_value": "true",
+          "freshness": "current",
+          "asserted_at": "2026-10-15T08:00:00+00:00",
+          "observed_at": "2026-10-15T08:00:00+00:00",
+          "visibility": "public",
+          "tenant_id": null,
+          "created_at": "2026-10-15T08:00:00+00:00",
+          "object_json": null,
+          "value_kind": "text",
+          "provenance_status": "source_verified",
+          "field_fingerprint": "65c62df250969d0ebd6a3800fc17012584f7cae466bd7b2426bfabb14e25e218",
+          "is_current": true,
+          "schema_version": 2,
+          "source_revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f"
+        }
+      ]
+    },
+    "content_objects": {
+      "columns": [
+        "content_hash",
+        "size_bytes",
+        "created_at"
+      ],
+      "rows": [
+        {
+          "content_hash": "ed8547c71c74f9fe73edef9de024dd8603d76ae1f80b9c8afff53b3aaa874ba9",
+          "size_bytes": 9073,
+          "created_at": "2026-10-15T08:00:00+00:00"
+        },
+        {
+          "content_hash": "b0571da15760e3d42c130f3b9662ff4afebfdddd973aaf0b8c696aaecd25910b",
+          "size_bytes": 9071,
+          "created_at": "2026-10-15T08:00:00+00:00"
+        }
+      ]
+    },
+    "document_revisions": {
+      "columns": [
+        "revision_id",
+        "document_id",
+        "revision_number",
+        "content_hash",
+        "created_at",
+        "is_current",
+        "previous_revision_id",
+        "visibility",
+        "tenant_id",
+        "canonical_uri",
+        "parser_version",
+        "normalizer_version",
+        "source_json_pointer",
+        "source_published_at",
+        "source_modified_at",
+        "first_observed_at",
+        "ingested_at",
+        "parse_status",
+        "source_response_hash"
+      ],
+      "rows": [
+        {
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "document_id": "1a68f818-66dc-5793-9bd3-2fbc637d2422",
+          "revision_number": 1,
+          "content_hash": "b0571da15760e3d42c130f3b9662ff4afebfdddd973aaf0b8c696aaecd25910b",
+          "created_at": "2026-10-15T08:00:00+00:00",
+          "is_current": true,
+          "previous_revision_id": null,
+          "visibility": "public",
+          "tenant_id": null,
+          "canonical_uri": "https://github.com/vllm-project/vllm/security/advisories/GHSA-6cxc-2vcg-w5qc",
+          "parser_version": "json-2.0.0",
+          "normalizer_version": "1.0.0",
+          "source_json_pointer": "/0",
+          "source_published_at": "2026-10-06T20:45:08+00:00",
+          "source_modified_at": "2026-10-06T20:45:08+00:00",
+          "first_observed_at": "2026-10-15T08:00:00+00:00",
+          "ingested_at": "2026-10-15T08:00:00+00:00",
+          "parse_status": "parsed",
+          "source_response_hash": "ed8547c71c74f9fe73edef9de024dd8603d76ae1f80b9c8afff53b3aaa874ba9"
+        }
+      ]
+    },
+    "documents": {
+      "columns": [
+        "document_id",
+        "source_id",
+        "kind",
+        "title",
+        "published_at",
+        "retrieved_at",
+        "content_hash",
+        "visibility",
+        "tenant_id",
+        "schema_version"
+      ],
+      "rows": [
+        {
+          "document_id": "1a68f818-66dc-5793-9bd3-2fbc637d2422",
+          "source_id": "64f0f40e-912c-571b-9d63-6f5f3362f46f",
+          "kind": "advisory",
+          "title": "V1 InputBatch.condense leaves a stale allowed_token_ids mask on recycled batch rows",
+          "published_at": "2026-10-06T20:45:08+00:00",
+          "retrieved_at": "2026-10-15T08:00:00+00:00",
+          "content_hash": "b0571da15760e3d42c130f3b9662ff4afebfdddd973aaf0b8c696aaecd25910b",
+          "visibility": "public",
+          "tenant_id": null,
+          "schema_version": 2
+        }
+      ]
+    },
+    "event_documents": {
+      "columns": [
+        "event_id",
+        "revision_id",
+        "active",
+        "associated_at",
+        "superseded_at"
+      ],
+      "rows": [
+        {
+          "event_id": "54f15599-5e3d-51bb-a846-b628bc671b34",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "active": true,
+          "associated_at": "2026-10-15T08:00:00+00:00",
+          "superseded_at": null
+        }
+      ]
+    },
+    "event_external_ids": {
+      "columns": [
+        "event_id",
+        "id_type",
+        "id_value",
+        "scope_key"
+      ],
+      "rows": [
+        {
+          "event_id": "54f15599-5e3d-51bb-a846-b628bc671b34",
+          "id_type": "ghsa",
+          "id_value": "GHSA-6CXC-2VCG-W5QC",
+          "scope_key": "public"
+        }
+      ]
+    },
+    "events": {
+      "columns": [
+        "event_id",
+        "event_type",
+        "title",
+        "scope_key",
+        "visibility",
+        "tenant_id",
+        "status",
+        "first_seen_at",
+        "business_version"
+      ],
+      "rows": [
+        {
+          "event_id": "54f15599-5e3d-51bb-a846-b628bc671b34",
+          "event_type": "vulnerability",
+          "title": "V1 InputBatch.condense leaves a stale allowed_token_ids mask on recycled batch rows",
+          "scope_key": "public",
+          "visibility": "public",
+          "tenant_id": null,
+          "status": "active",
+          "first_seen_at": "2026-10-15T08:00:00+00:00",
+          "business_version": 1
+        }
+      ]
+    },
+    "evidence": {
+      "columns": [
+        "evidence_id",
+        "revision_id",
+        "start_offset",
+        "end_offset",
+        "locator",
+        "quote",
+        "supports_claim",
+        "visibility",
+        "tenant_id",
+        "created_at",
+        "block_id",
+        "quote_sha256",
+        "verified_at",
+        "coordinate_version"
+      ],
+      "rows": [
+        {
+          "evidence_id": "fe813a5e-91ad-4f0f-90c9-530fdc871abc",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "start_offset": 328,
+          "end_offset": 2328,
+          "locator": "/description",
+          "quote": "## Severity\r\n\r\n- **Severity:** Low\r\n- **CVSS v3.1:** `CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N` (3.7, Low)\r\n- **CWE:** CWE-440 (Expected Behavior Violation), CWE-668 (Exposure of Resource to Wrong Sphere)\r\n\r\n## Summary\r\n\r\nvLLM V1 `InputBatch.condense()` can leave a stale `allowed_token_ids_mask_cpu_tensor` row after moving a constrained request. A later unrestricted request that reuses that batch slot inherits the previous request's token allowlist, so sampling for that other client is constrained by a mask it did not set (cross-request output-integrity issue). The victim request still returns HTTP 200 with no error indication.\r\n\r\nPublic report: https://github.com/vllm-project/vllm/issues/43894\r\n\r\n## Affected\r\n\r\n- **Ecosystem / package:** pip / `vllm`\r\n- **Affected versions:** vLLM ≤ 0.30.0 (V1 worker `InputBatch` path). Confirmed via public issue #43894.\r\n- **Fixed versions:** Fix merged in https://github.com/vllm-project/vllm/pull/43931 (not yet in a tagged release as of v0.30.0; expected in the next release).\r\n\r\n## Details\r\n\r\n`InputBatch.condense()` copies `allowed_token_ids_mask_cpu_tensor` from a moved request's row into the freed index but never clears the source row. `add_request()` only writes that row when the new request sets `sampling_params.allowed_token_ids`. When another active request still has `allowed_token_ids`, `_make_sampling_metadata()` copies the active prefix of the CPU mask to GPU and `Sampler.apply_logits_processors()` applies the stale whitelist to the unrestricted request.\r\n\r\nAn attacker who can submit generate traffic (including unauthenticated `/invocations`, which is outside `--api-key` guards, or any valid API key on `/v1`) plants a chosen `allowed_token_ids` mask. If batching/`condense` recycles that row onto another client's unrestricted request while the constrained request is still active, the victim's tokens are limited to the attacker's allowlist (for example only a single token, only digit tokens, or only tokens that spell a",
+          "supports_claim": true,
+          "visibility": "public",
+          "tenant_id": null,
+          "created_at": "2026-10-15T08:00:00+00:00",
+          "block_id": "7c09acdd-aa3c-4e66-8b7b-ab7db5da5886",
+          "quote_sha256": "7b259eb34de80bbe12d4a985c97a789d59f7c4f28991eb46de5e7db7e0518de5",
+          "verified_at": "2026-10-15T08:00:00+00:00",
+          "coordinate_version": "fulltext_unicode_v1"
+        },
+        {
+          "evidence_id": "f8cced56-a7d5-4e53-8c95-aed410bcd6ca",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "start_offset": 5032,
+          "end_offset": 5036,
+          "locator": "/vulnerabilities/0/package/name",
+          "quote": "vllm",
+          "supports_claim": true,
+          "visibility": "public",
+          "tenant_id": null,
+          "created_at": "2026-10-15T08:00:00+00:00",
+          "block_id": "a4c41b71-4d40-4815-911d-216cf0c42200",
+          "quote_sha256": "ec8207a3dde607f7867f8f5390915018488b877761306ffd4ef099f9b3ee16a1",
+          "verified_at": "2026-10-15T08:00:00+00:00",
+          "coordinate_version": "fulltext_unicode_v1"
+        }
+      ]
+    },
+    "fetch_attempts": {
+      "columns": [
+        "attempt_id",
+        "source_id",
+        "attempted_at",
+        "outcome",
+        "http_status",
+        "new_event_count",
+        "response_content_hash",
+        "final_url"
+      ],
+      "rows": [
+        {
+          "attempt_id": "270c307c-3a6f-4ccc-bb09-6e609e4c6093",
+          "source_id": "64f0f40e-912c-571b-9d63-6f5f3362f46f",
+          "attempted_at": "2026-10-15T08:00:00+00:00",
+          "outcome": "succeeded",
+          "http_status": 200,
+          "new_event_count": 0,
+          "response_content_hash": "ed8547c71c74f9fe73edef9de024dd8603d76ae1f80b9c8afff53b3aaa874ba9",
+          "final_url": "https://api.github.com/repos/vllm-project/vllm/security-advisories?per_page=10&state=published"
+        }
+      ]
+    },
+    "job_runs": {
+      "columns": [
+        "job_id",
+        "tenant_id",
+        "job_type",
+        "status",
+        "idempotency_key",
+        "payload_sha256",
+        "payload_ref",
+        "attempt_count",
+        "max_attempts",
+        "lease_owner",
+        "lease_expires_at",
+        "created_at",
+        "updated_at",
+        "next_retry_at",
+        "started_at",
+        "finished_at",
+        "error_code",
+        "result_ref"
+      ],
+      "rows": [
+        {
+          "job_id": "f7f9abe2-fd76-4d0e-aceb-af4446a785b1",
+          "tenant_id": null,
+          "job_type": "knowledge_change",
+          "status": "queued",
+          "idempotency_key": "knowledge-change:c4e4ef9d-8d0c-49d7-9d9e-6bac276c568e",
+          "payload_sha256": "013144fed88cf81d0ab64aa7711362359f4670b2c9b417a4ce8f1a313c5ef232",
+          "payload_ref": "pg:change:09b7fc72-423a-4ea4-8036-1f41cb184189",
+          "attempt_count": 0,
+          "max_attempts": 5,
+          "lease_owner": null,
+          "lease_expires_at": null,
+          "created_at": "2026-10-15T08:00:00+00:00",
+          "updated_at": "2026-10-15T08:00:00+00:00",
+          "next_retry_at": null,
+          "started_at": null,
+          "finished_at": null,
+          "error_code": null,
+          "result_ref": null
+        },
+        {
+          "job_id": "b204043f-f4b6-49cc-bc52-a58fb130bca6",
+          "tenant_id": null,
+          "job_type": "knowledge_change",
+          "status": "queued",
+          "idempotency_key": "knowledge-change:ce26f852-d14b-4448-9152-213e4b64ddce",
+          "payload_sha256": "3e1ca8af34744d595d488400d1ac3952d66085141380519f9f9f73c82bf732ec",
+          "payload_ref": "pg:change:8262056d-f694-4564-9988-ab2f57458863",
+          "attempt_count": 0,
+          "max_attempts": 5,
+          "lease_owner": null,
+          "lease_expires_at": null,
+          "created_at": "2026-10-15T08:00:00+00:00",
+          "updated_at": "2026-10-15T08:00:00+00:00",
+          "next_retry_at": null,
+          "started_at": null,
+          "finished_at": null,
+          "error_code": null,
+          "result_ref": null
+        }
+      ]
+    },
+    "outbox_events": {
+      "columns": [
+        "event_id",
+        "job_id",
+        "topic",
+        "payload_ref",
+        "created_at",
+        "published_at",
+        "delivery_attempts",
+        "next_delivery_at",
+        "last_error_code"
+      ],
+      "rows": [
+        {
+          "event_id": "0f67ded3-739b-4c70-bb57-74cb23e9b500",
+          "job_id": "f7f9abe2-fd76-4d0e-aceb-af4446a785b1",
+          "topic": "job.knowledge_change",
+          "payload_ref": "pg:change:09b7fc72-423a-4ea4-8036-1f41cb184189",
+          "created_at": "2026-10-15T08:00:00+00:00",
+          "published_at": null,
+          "delivery_attempts": 0,
+          "next_delivery_at": null,
+          "last_error_code": null
+        },
+        {
+          "event_id": "9e026d8f-47a8-4015-83a8-69089c40fd0f",
+          "job_id": "b204043f-f4b6-49cc-bc52-a58fb130bca6",
+          "topic": "job.knowledge_change",
+          "payload_ref": "pg:change:8262056d-f694-4564-9988-ab2f57458863",
+          "created_at": "2026-10-15T08:00:00+00:00",
+          "published_at": null,
+          "delivery_attempts": 0,
+          "next_delivery_at": null,
+          "last_error_code": null
+        }
+      ]
+    },
+    "publication_receipts": {
+      "columns": [
+        "receipt_id",
+        "scope_key",
+        "publication_key",
+        "payload_sha256",
+        "claim_ids",
+        "epoch",
+        "job_id",
+        "outbox_id",
+        "change_id",
+        "created_at"
+      ],
+      "rows": [
+        {
+          "receipt_id": "c4e4ef9d-8d0c-49d7-9d9e-6bac276c568e",
+          "scope_key": "public",
+          "publication_key": "source-revision:1e34c064-d3e3-4255-ad1d-05f52ab5fa1f:event",
+          "payload_sha256": "013144fed88cf81d0ab64aa7711362359f4670b2c9b417a4ce8f1a313c5ef232",
+          "claim_ids": [],
+          "epoch": 1,
+          "job_id": "f7f9abe2-fd76-4d0e-aceb-af4446a785b1",
+          "outbox_id": "0f67ded3-739b-4c70-bb57-74cb23e9b500",
+          "change_id": "09b7fc72-423a-4ea4-8036-1f41cb184189",
+          "created_at": "2026-10-15T08:00:00+00:00"
+        },
+        {
+          "receipt_id": "ce26f852-d14b-4448-9152-213e4b64ddce",
+          "scope_key": "public",
+          "publication_key": "source-revision:1e34c064-d3e3-4255-ad1d-05f52ab5fa1f:facts",
+          "payload_sha256": "3e1ca8af34744d595d488400d1ac3952d66085141380519f9f9f73c82bf732ec",
+          "claim_ids": [
+            "53b4350d-455c-5f5b-a1ba-c295ae141d73",
+            "171e46ce-8a4b-5da0-8323-ddefd6f3932a"
+          ],
+          "epoch": 2,
+          "job_id": "b204043f-f4b6-49cc-bc52-a58fb130bca6",
+          "outbox_id": "9e026d8f-47a8-4015-83a8-69089c40fd0f",
+          "change_id": "8262056d-f694-4564-9988-ab2f57458863",
+          "created_at": "2026-10-15T08:00:00+00:00"
+        }
+      ]
+    },
+    "scope_epochs": {
+      "columns": [
+        "scope_key",
+        "epoch",
+        "updated_at"
+      ],
+      "rows": [
+        {
+          "scope_key": "public",
+          "epoch": 2,
+          "updated_at": "2026-10-15T08:00:00+00:00"
+        }
+      ]
+    },
+    "sources": {
+      "columns": [
+        "source_id",
+        "name",
+        "category",
+        "base_origin",
+        "visibility",
+        "tenant_id",
+        "created_at"
+      ],
+      "rows": [
+        {
+          "source_id": "64f0f40e-912c-571b-9d63-6f5f3362f46f",
+          "name": "vLLM repository security advisories",
+          "category": "vendor_advisory",
+          "base_origin": "https://api.github.com",
+          "visibility": "public",
+          "tenant_id": null,
+          "created_at": "2026-10-15T08:00:00+00:00"
+        }
+      ]
+    },
+    "text_blocks": {
+      "columns": [
+        "block_id",
+        "revision_id",
+        "ordinal",
+        "start_offset",
+        "end_offset",
+        "text_sha256",
+        "block_text",
+        "block_type",
+        "page_number",
+        "json_pointer"
+      ],
+      "rows": [
+        {
+          "block_id": "aca0174c-9d1c-4411-b570-fb267de428ea",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 0,
+          "start_offset": 0,
+          "end_offset": 29,
+          "text_sha256": "94615ca4312587ee36db6f041ef6a172498d395410e43ec948d72ea5bef53b6b",
+          "block_text": "/ghsa_id: GHSA-6cxc-2vcg-w5qc",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/ghsa_id"
+        },
+        {
+          "block_id": "3f849aa2-3d35-4406-ac48-b73bae1f82be",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 1,
+          "start_offset": 29,
+          "end_offset": 42,
+          "text_sha256": "6c0b52008bdfa45b080dc45c93bf8452abb48375a133c42e47bfc82c90db6f93",
+          "block_text": "/cve_id: null",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/cve_id"
+        },
+        {
+          "block_id": "9061aeed-4180-4b9d-a322-ae00b62a6b64",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 2,
+          "start_offset": 42,
+          "end_offset": 134,
+          "text_sha256": "ba6b3fa77e2e993b11a9be236592d3fb7321352b1d336ad499cd6b9836fa1d56",
+          "block_text": "/url: https://api.github.com/repos/vllm-project/vllm/security-advisories/GHSA-6cxc-2vcg-w5qc",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/url"
+        },
+        {
+          "block_id": "29edf9e2-c334-4b79-82f2-92edb5f80a8b",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 3,
+          "start_offset": 134,
+          "end_offset": 221,
+          "text_sha256": "38bc5b3d5c46d748e154baedd38c05dda84d9c519c5f0e36dca88589e691288b",
+          "block_text": "/html_url: https://github.com/vllm-project/vllm/security/advisories/GHSA-6cxc-2vcg-w5qc",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/html_url"
+        },
+        {
+          "block_id": "4d43b692-27bb-4769-9454-e0191f12661f",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 4,
+          "start_offset": 221,
+          "end_offset": 314,
+          "text_sha256": "26968e805adc2a44f0a7b3964ec85b824d45cdfed5e2f7c0763acf0f9b626e81",
+          "block_text": "/summary: V1 InputBatch.condense leaves a stale allowed_token_ids mask on recycled batch rows",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/summary"
+        },
+        {
+          "block_id": "7c09acdd-aa3c-4e66-8b7b-ab7db5da5886",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 5,
+          "start_offset": 314,
+          "end_offset": 3576,
+          "text_sha256": "e3e8a0d39a1fcf8f96c9766084f1960483cc74e9d93eb2770caf4bee6441f7f9",
+          "block_text": "/description: ## Severity\r\n\r\n- **Severity:** Low\r\n- **CVSS v3.1:** `CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N` (3.7, Low)\r\n- **CWE:** CWE-440 (Expected Behavior Violation), CWE-668 (Exposure of Resource to Wrong Sphere)\r\n\r\n## Summary\r\n\r\nvLLM V1 `InputBatch.condense()` can leave a stale `allowed_token_ids_mask_cpu_tensor` row after moving a constrained request. A later unrestricted request that reuses that batch slot inherits the previous request's token allowlist, so sampling for that other client is constrained by a mask it did not set (cross-request output-integrity issue). The victim request still returns HTTP 200 with no error indication.\r\n\r\nPublic report: https://github.com/vllm-project/vllm/issues/43894\r\n\r\n## Affected\r\n\r\n- **Ecosystem / package:** pip / `vllm`\r\n- **Affected versions:** vLLM ≤ 0.30.0 (V1 worker `InputBatch` path). Confirmed via public issue #43894.\r\n- **Fixed versions:** Fix merged in https://github.com/vllm-project/vllm/pull/43931 (not yet in a tagged release as of v0.30.0; expected in the next release).\r\n\r\n## Details\r\n\r\n`InputBatch.condense()` copies `allowed_token_ids_mask_cpu_tensor` from a moved request's row into the freed index but never clears the source row. `add_request()` only writes that row when the new request sets `sampling_params.allowed_token_ids`. When another active request still has `allowed_token_ids`, `_make_sampling_metadata()` copies the active prefix of the CPU mask to GPU and `Sampler.apply_logits_processors()` applies the stale whitelist to the unrestricted request.\r\n\r\nAn attacker who can submit generate traffic (including unauthenticated `/invocations`, which is outside `--api-key` guards, or any valid API key on `/v1`) plants a chosen `allowed_token_ids` mask. If batching/`condense` recycles that row onto another client's unrestricted request while the constrained request is still active, the victim's tokens are limited to the attacker's allowlist (for example only a single token, only digit tokens, or only tokens that spell a short phrase). This is vocabulary steering / wrong allowlist application, not free-form substitution of arbitrary attacker text.\r\n\r\nA related but distinct bug in `InputBatch.swap_states()` (row-view aliasing of the same mask tensor) was fixed in https://github.com/vllm-project/vllm/pull/48419.\r\n\r\n## Impact\r\n\r\nLimited cross-request sampling integrity on a shared engine: one client's `allowed_token_ids` can constrain another client's outputs under concurrent batching. Confidentiality and availability are unaffected. Attack complexity is High because exploitation needs concurrent requests plus a `condense` slot-reuse race while the attacker's constrained request remains in the batch.\r\n\r\n## Patches\r\n\r\n- https://github.com/vllm-project/vllm/pull/43931 — clear vacated `allowed_token_ids` mask rows in `condense()`\r\n- https://github.com/vllm-project/vllm/pull/48419 — related `swap_states` mask aliasing fix\r\n\r\n## References\r\n\r\n- https://github.com/vllm-project/vllm/issues/43894\r\n- https://github.com/vllm-project/vllm/pull/43931\r\n- https://github.com/vllm-project/vllm/pull/48419\r\n- https://docs.vllm.ai/en/latest/usage/security.html (API key does not cover `/invocations`)\r\n\r\n## Credit\r\n\r\nReported publicly by @glaziermag in issue #43894.\r\n",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/description"
+        },
+        {
+          "block_id": "5fe89099-1775-4e9e-b142-073f2a70d087",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 6,
+          "start_offset": 3576,
+          "end_offset": 3590,
+          "text_sha256": "4447100af5933b1c3955b14ed6ddf8cf1d8675da31f63b64a4a11c5818a8f664",
+          "block_text": "/severity: low",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/severity"
+        },
+        {
+          "block_id": "ecc3a464-a816-442d-8b83-65a98f67c1d3",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 7,
+          "start_offset": 3590,
+          "end_offset": 3603,
+          "text_sha256": "56b7a557f4ccf9a4271b458e44c842665363aecf9e656d461f5c90716a675a68",
+          "block_text": "/author: null",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/author"
+        },
+        {
+          "block_id": "3592ae1b-eeed-4a1d-a636-1dd2839f86f9",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 8,
+          "start_offset": 3603,
+          "end_offset": 3635,
+          "text_sha256": "3b151e99bfc0ea90380255ab9e3396928ab44768aaa7bae64e9f1ba0bbf661ab",
+          "block_text": "/publisher/login: jperezdealgaba",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/login"
+        },
+        {
+          "block_id": "467f6789-e5af-4c9c-99a4-7551b46556d8",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 9,
+          "start_offset": 3635,
+          "end_offset": 3659,
+          "text_sha256": "a6e7e23a96635c3db8ec0ec1df10c3152d6350d63bff43474546ea785374f6dc",
+          "block_text": "/publisher/id: 124347725",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/id"
+        },
+        {
+          "block_id": "83929934-8a57-4b0f-a7fb-ebbad6df80e2",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 10,
+          "start_offset": 3659,
+          "end_offset": 3691,
+          "text_sha256": "33c125a3f64274a4d0822589113a4265bf3d243e32998fe58dae30b9e2e61dc2",
+          "block_text": "/publisher/node_id: U_kgDOB2llTQ",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/node_id"
+        },
+        {
+          "block_id": "3e60d736-f9ce-489d-bac9-415273bdb21e",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 11,
+          "start_offset": 3691,
+          "end_offset": 3767,
+          "text_sha256": "4eb8bbda9a74f44225cd4e52b0f9ba2e7a78a3cc850809660cde46c669179778",
+          "block_text": "/publisher/avatar_url: https://avatars.githubusercontent.com/u/124347725?v=4",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/avatar_url"
+        },
+        {
+          "block_id": "1a99c407-a2bd-4482-906e-c460a6ab0c1a",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 12,
+          "start_offset": 3767,
+          "end_offset": 3791,
+          "text_sha256": "8375ea962c234234128381ea47fc0dd5c1c46230633b511cbca56f9397860c25",
+          "block_text": "/publisher/gravatar_id: ",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/gravatar_id"
+        },
+        {
+          "block_id": "d4d14e1d-40c8-4372-af37-56984e4cdfa9",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 13,
+          "start_offset": 3791,
+          "end_offset": 3850,
+          "text_sha256": "e4fe45f3d08e14b11f884f56e9eb9ee2b21ac1fcb17252a1caf48f20154d7db7",
+          "block_text": "/publisher/url: https://api.github.com/users/jperezdealgaba",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/url"
+        },
+        {
+          "block_id": "bc42e96a-bd25-4e89-9bca-a5e0d1a1b726",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 14,
+          "start_offset": 3850,
+          "end_offset": 3904,
+          "text_sha256": "f992a047963adb211c4ea2aabb19178d4115b9f8148a1da57359101486d2eb4e",
+          "block_text": "/publisher/html_url: https://github.com/jperezdealgaba",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/html_url"
+        },
+        {
+          "block_id": "e73a6110-5c48-4a80-9f27-c3b1b903ca97",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 15,
+          "start_offset": 3904,
+          "end_offset": 3983,
+          "text_sha256": "45bf82b097bf6346f9a24832ef3b6d2197ad7632206e06e745f5fb64c8a42aba",
+          "block_text": "/publisher/followers_url: https://api.github.com/users/jperezdealgaba/followers",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/followers_url"
+        },
+        {
+          "block_id": "9e6e2951-d1df-4750-aa61-a406dced0940",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 16,
+          "start_offset": 3983,
+          "end_offset": 4075,
+          "text_sha256": "950869f8e4f6db04f447dcd8cc62be56e214f4604ebd9f83293a06760ebef911",
+          "block_text": "/publisher/following_url: https://api.github.com/users/jperezdealgaba/following{/other_user}",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/following_url"
+        },
+        {
+          "block_id": "268c4716-a89d-4a6f-962f-a45189b40eab",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 17,
+          "start_offset": 4075,
+          "end_offset": 4156,
+          "text_sha256": "5b180d07e0c1bbc479d584e0a0d6652ef240f0d5ad3db4da718516ed608052a1",
+          "block_text": "/publisher/gists_url: https://api.github.com/users/jperezdealgaba/gists{/gist_id}",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/gists_url"
+        },
+        {
+          "block_id": "729c56b2-6442-4844-b05c-26d8d39d4ce4",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 18,
+          "start_offset": 4156,
+          "end_offset": 4246,
+          "text_sha256": "4409108958cccb542f9045abf5ad0817d51749b8c9c83b56e2cde1551cdd23b4",
+          "block_text": "/publisher/starred_url: https://api.github.com/users/jperezdealgaba/starred{/owner}{/repo}",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/starred_url"
+        },
+        {
+          "block_id": "2827860a-3ecd-44e5-8c9d-0cafb08dee5d",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 19,
+          "start_offset": 4246,
+          "end_offset": 4333,
+          "text_sha256": "1077e64114094f071cdaa7e9a11325f93a31a6f3c36a0e60a671a6f3c68cb53d",
+          "block_text": "/publisher/subscriptions_url: https://api.github.com/users/jperezdealgaba/subscriptions",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/subscriptions_url"
+        },
+        {
+          "block_id": "921277ea-3dd3-4375-a4d8-ebb08b43e75a",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 20,
+          "start_offset": 4333,
+          "end_offset": 4411,
+          "text_sha256": "4b9e6b0d65d82f306280ad78a45629dc2067ac06dfe6c074597e61b229f3dbdd",
+          "block_text": "/publisher/organizations_url: https://api.github.com/users/jperezdealgaba/orgs",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/organizations_url"
+        },
+        {
+          "block_id": "58148a65-064a-454b-862f-95f0a35ee317",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 21,
+          "start_offset": 4411,
+          "end_offset": 4482,
+          "text_sha256": "b0662082b0012d410af37759d30f0e8eb75ce63c20b6d2654dd4f97db0244481",
+          "block_text": "/publisher/repos_url: https://api.github.com/users/jperezdealgaba/repos",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/repos_url"
+        },
+        {
+          "block_id": "32f7725a-8dba-4a37-b665-5c602f306bf8",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 22,
+          "start_offset": 4482,
+          "end_offset": 4565,
+          "text_sha256": "77714ea282a73e4435529488d8bf82c3224e5f408cf8663659b7bd7f6c39cb56",
+          "block_text": "/publisher/events_url: https://api.github.com/users/jperezdealgaba/events{/privacy}",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/events_url"
+        },
+        {
+          "block_id": "39ee497b-e56c-4c61-b0b8-c4a3af2d09a3",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 23,
+          "start_offset": 4565,
+          "end_offset": 4656,
+          "text_sha256": "4c88d70ffeb52d79f50463b53ca85add6e2337f646c272838d7766a672def224",
+          "block_text": "/publisher/received_events_url: https://api.github.com/users/jperezdealgaba/received_events",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/received_events_url"
+        },
+        {
+          "block_id": "b9284fbc-6585-4f31-99d4-dca8d09c169e",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 24,
+          "start_offset": 4656,
+          "end_offset": 4677,
+          "text_sha256": "7b6042f77528273eb325630e1a2178e34c49990733137662e5564f466dde1e7b",
+          "block_text": "/publisher/type: User",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/type"
+        },
+        {
+          "block_id": "8757bf50-8ba9-40a3-80eb-159c66f90e8c",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 25,
+          "start_offset": 4677,
+          "end_offset": 4710,
+          "text_sha256": "c6a942050649b3ec81956ec2e4dafea225a3060420bc2732d7b42640b41d2e98",
+          "block_text": "/publisher/user_view_type: public",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/user_view_type"
+        },
+        {
+          "block_id": "c511cb06-d066-477e-9858-42121ac49006",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 26,
+          "start_offset": 4710,
+          "end_offset": 4738,
+          "text_sha256": "8e160954b121829d1a1345c5de9f8bdb29efb4a9c29e566f5d903776afc83661",
+          "block_text": "/publisher/site_admin: false",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/publisher/site_admin"
+        },
+        {
+          "block_id": "5a40ad88-3c9f-4541-b0f9-7d8edc1a5fec",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 27,
+          "start_offset": 4738,
+          "end_offset": 4779,
+          "text_sha256": "0540cb6c113e0da5c81f252fbb684a994c27d57b09c52a8631db10b4580ef19f",
+          "block_text": "/identifiers/0/value: GHSA-6cxc-2vcg-w5qc",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/identifiers/0/value"
+        },
+        {
+          "block_id": "12cb053c-2f83-4d7c-95e2-4d96df9325d9",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 28,
+          "start_offset": 4779,
+          "end_offset": 4804,
+          "text_sha256": "9e580d3808dbfa88aefd54d87cb9a73b5f849b42fc39d12d712daa564758af15",
+          "block_text": "/identifiers/0/type: GHSA",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/identifiers/0/type"
+        },
+        {
+          "block_id": "83e80a5d-fe15-481d-9fb0-f1edac330c46",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 29,
+          "start_offset": 4804,
+          "end_offset": 4821,
+          "text_sha256": "0a556c990d95a475b11a925752769b387e9b67e434e1ec9c9be6be3bed165f71",
+          "block_text": "/state: published",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/state"
+        },
+        {
+          "block_id": "5e0b7f34-6c0b-4981-9a7b-7e80f80fe9c7",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 30,
+          "start_offset": 4821,
+          "end_offset": 4838,
+          "text_sha256": "62c71fcb11f15cf20644622bf7e33f9f8373ee69ec15020e04e3471a9ea46037",
+          "block_text": "/created_at: null",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/created_at"
+        },
+        {
+          "block_id": "13cd74e3-e5f7-428a-87a3-548ef2a5b3a6",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 31,
+          "start_offset": 4838,
+          "end_offset": 4871,
+          "text_sha256": "d6d5af3880860c3d3b464fc8a0fd2ebd4862353a2628996171484fd3caa9e340",
+          "block_text": "/updated_at: 2026-10-06T20:45:08Z",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/updated_at"
+        },
+        {
+          "block_id": "b09d0cf2-a4b2-4a2d-b921-5dfece1f5fe5",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 32,
+          "start_offset": 4871,
+          "end_offset": 4906,
+          "text_sha256": "78d8609def7aec8181bd197c17b0fa6c5d4914e3461349c4eaea7d87320caa5b",
+          "block_text": "/published_at: 2026-10-06T20:45:08Z",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/published_at"
+        },
+        {
+          "block_id": "3aa7a69d-6100-4644-a00a-45b6e3c9deec",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 33,
+          "start_offset": 4906,
+          "end_offset": 4922,
+          "text_sha256": "35265d95099427059dc16263fd9788453c974b448d6d36e637aa7e74d7e97532",
+          "block_text": "/closed_at: null",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/closed_at"
+        },
+        {
+          "block_id": "e81c1cf4-ce7c-46f6-ba29-3629d7ba4ff1",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 34,
+          "start_offset": 4922,
+          "end_offset": 4941,
+          "text_sha256": "e61532c67d44c95e13a15124821428a26ba559feda3ea87a11d5a6738c4728df",
+          "block_text": "/withdrawn_at: null",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/withdrawn_at"
+        },
+        {
+          "block_id": "d99a5d64-16b2-430e-8b55-41a5864eefee",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 35,
+          "start_offset": 4941,
+          "end_offset": 4958,
+          "text_sha256": "4009662a160d791d6ffa34f73ee7d9752af66e75a811d0b71983e99a264f609b",
+          "block_text": "/submission: null",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/submission"
+        },
+        {
+          "block_id": "2088cfa0-5337-4143-be6b-d42b46e358d1",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 36,
+          "start_offset": 4958,
+          "end_offset": 4999,
+          "text_sha256": "eec45f75d274786a3c5fe4b53193aa873731d55dbaa77c96805a6fc58c472a94",
+          "block_text": "/vulnerabilities/0/package/ecosystem: pip",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/vulnerabilities/0/package/ecosystem"
+        },
+        {
+          "block_id": "a4c41b71-4d40-4815-911d-216cf0c42200",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 37,
+          "start_offset": 4999,
+          "end_offset": 5036,
+          "text_sha256": "b0c7fcf6892f687ef3329c1264554363fde053a12e8a349e9f8120aa4397aa14",
+          "block_text": "/vulnerabilities/0/package/name: vllm",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/vulnerabilities/0/package/name"
+        },
+        {
+          "block_id": "288c59a2-0cb1-4ac2-bab7-ea95998676ca",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 38,
+          "start_offset": 5036,
+          "end_offset": 5089,
+          "text_sha256": "6e61b27ad2d57a74c11ea6ba9875b296c81b6e7777ebb8d832eac321fcee0afa",
+          "block_text": "/vulnerabilities/0/vulnerable_version_range: < 0.31.0",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/vulnerabilities/0/vulnerable_version_range"
+        },
+        {
+          "block_id": "55cf3e8e-64e4-4a36-8533-149d775373e9",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 39,
+          "start_offset": 5089,
+          "end_offset": 5135,
+          "text_sha256": "82a70dbd20bd842ff37cd38ba2c8f5771fad2eb54a0924ecb055ad1b31b5fe44",
+          "block_text": "/vulnerabilities/0/patched_versions: >= 0.31.0",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/vulnerabilities/0/patched_versions"
+        },
+        {
+          "block_id": "0a0351f6-8865-4b5a-840a-50f3fa38b315",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 40,
+          "start_offset": 5135,
+          "end_offset": 5178,
+          "text_sha256": "9149ddc518a15dc15c931a477aca1749f5c2cd8b385dbe3d9dea2bd7bb04a962",
+          "block_text": "/vulnerabilities/0/vulnerable_functions: []",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/vulnerabilities/0/vulnerable_functions"
+        },
+        {
+          "block_id": "318e05d0-1992-4461-8c5c-e87c2363cbc6",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 41,
+          "start_offset": 5178,
+          "end_offset": 5262,
+          "text_sha256": "99e175772a8cfcf04ab524c4c3772598af2322b260a92d664ea34b520ee88682",
+          "block_text": "/cvss_severities/cvss_v3/vector_string: CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/cvss_severities/cvss_v3/vector_string"
+        },
+        {
+          "block_id": "ab9acb2a-573f-4331-9fb4-3c8a58d61d43",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 42,
+          "start_offset": 5262,
+          "end_offset": 5297,
+          "text_sha256": "379ba61ad34a6a8e090a5d0f6a2254b293c79400f8d99566b579b4da008d94eb",
+          "block_text": "/cvss_severities/cvss_v3/score: 3.7",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/cvss_severities/cvss_v3/score"
+        },
+        {
+          "block_id": "bf5f8857-b696-4447-a31c-0a9f98c2e16a",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 43,
+          "start_offset": 5297,
+          "end_offset": 5341,
+          "text_sha256": "6ff856b5cdc8fb5739cfde61dab3d2eef2792b78d259e1240472135dea9133cb",
+          "block_text": "/cvss_severities/cvss_v4/vector_string: null",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/cvss_severities/cvss_v4/vector_string"
+        },
+        {
+          "block_id": "418bbe30-335b-4708-8c3f-1c19c876f862",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 44,
+          "start_offset": 5341,
+          "end_offset": 5377,
+          "text_sha256": "59469148e6c0a95afc268238bcd813518e8aa2546dcee40f3adf8987e25e3f34",
+          "block_text": "/cvss_severities/cvss_v4/score: null",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/cvss_severities/cvss_v4/score"
+        },
+        {
+          "block_id": "c8cd20a4-16c2-4b8b-8e7e-4e8c2c86055d",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 45,
+          "start_offset": 5377,
+          "end_offset": 5400,
+          "text_sha256": "98949e52f86789e2aaec31b549847a988cf30215acf3e7702aff33ed306c6777",
+          "block_text": "/cwes/0/cwe_id: CWE-440",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/cwes/0/cwe_id"
+        },
+        {
+          "block_id": "64db540b-068f-48f5-bcae-6b63c6020f2f",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 46,
+          "start_offset": 5400,
+          "end_offset": 5441,
+          "text_sha256": "83c011a1dd97c139b5bd41870e1178e95ca832308f8789bdffa71027f36e1357",
+          "block_text": "/cwes/0/name: Expected Behavior Violation",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/cwes/0/name"
+        },
+        {
+          "block_id": "b04d944b-9b50-4263-bfcd-adaf7f954d29",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 47,
+          "start_offset": 5441,
+          "end_offset": 5464,
+          "text_sha256": "39b119213f67316b5b0aa5abeee9cdd36c2a4663f12f3125c64e944e8b7c0a89",
+          "block_text": "/cwes/1/cwe_id: CWE-668",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/cwes/1/cwe_id"
+        },
+        {
+          "block_id": "92a2654f-dbad-45b8-95dc-5322b222e85d",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 48,
+          "start_offset": 5464,
+          "end_offset": 5514,
+          "text_sha256": "34fd32c29697d92b0ecd69e9eacdc2f26d1ad6988ff7d9113d398c0ccf8bcae3",
+          "block_text": "/cwes/1/name: Exposure of Resource to Wrong Sphere",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/cwes/1/name"
+        },
+        {
+          "block_id": "7daa9e8a-0c31-41af-af3a-6203e6348267",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 49,
+          "start_offset": 5514,
+          "end_offset": 5533,
+          "text_sha256": "6cf414353d664480e9d9480d8baa12cf0c3477b93778e6cae90d5dcca4a964e9",
+          "block_text": "/cwe_ids/0: CWE-440",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/cwe_ids/0"
+        },
+        {
+          "block_id": "2d84acf8-2289-418d-a623-d6fd7659f219",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 50,
+          "start_offset": 5533,
+          "end_offset": 5552,
+          "text_sha256": "02e3714273de75199b19a1f8aef1b5e1d6e0d6b3df3b4f239ec5be59a8a1b6f1",
+          "block_text": "/cwe_ids/1: CWE-668",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/cwe_ids/1"
+        },
+        {
+          "block_id": "16b5509c-6a64-4788-a0cf-7f263921c6c3",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 51,
+          "start_offset": 5552,
+          "end_offset": 5580,
+          "text_sha256": "e40fe9d375b76c579fc774a7342b40b3704982c7aad03cb68aeaad1c62b59e1d",
+          "block_text": "/credits/0/login: glaziermag",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits/0/login"
+        },
+        {
+          "block_id": "609e0df8-347c-451f-b938-88888ad40a8f",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 52,
+          "start_offset": 5580,
+          "end_offset": 5618,
+          "text_sha256": "b5f7eb4bba12cf78185e426c2a061651f7a23fda7cb2c4820f175a0af341b9d8",
+          "block_text": "/credits/0/type: remediation_developer",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits/0/type"
+        },
+        {
+          "block_id": "b0f5c482-bfc3-4dff-b13d-210aec03b2ea",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 53,
+          "start_offset": 5618,
+          "end_offset": 5650,
+          "text_sha256": "85eb84810e69ae5c01ce0beebd30caca8a43b2aab75ceb6c7972d6e5d4443588",
+          "block_text": "/credits/1/login: jperezdealgaba",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits/1/login"
+        },
+        {
+          "block_id": "6e2909f6-7f5b-4173-a984-0a14cd29c5e7",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 54,
+          "start_offset": 5650,
+          "end_offset": 5678,
+          "text_sha256": "54f4fe461315c3be3754afaf44d4b1ca31715aff618b4d6c370d7a6b35b29455",
+          "block_text": "/credits/1/type: coordinator",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits/1/type"
+        },
+        {
+          "block_id": "de788836-6c5d-4f15-adde-f0a903ba7d1e",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 55,
+          "start_offset": 5678,
+          "end_offset": 5702,
+          "text_sha256": "22e18e02f9e1f71e0c831d6361b4b82c8a985d25f04908747ca6347ad35d2523",
+          "block_text": "/credits/2/login: SunnyR",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits/2/login"
+        },
+        {
+          "block_id": "6846c4de-c524-4077-9e9d-0ff95fa021ac",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 56,
+          "start_offset": 5702,
+          "end_offset": 5727,
+          "text_sha256": "4b6e6973e2028a029d7de7ceb798b7d560e45d8cb40ff442e90d87171a2b37ca",
+          "block_text": "/credits/2/type: reporter",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits/2/type"
+        },
+        {
+          "block_id": "5f5fdcd6-56f5-49d9-9032-f84a3d8f3f8b",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 57,
+          "start_offset": 5727,
+          "end_offset": 5769,
+          "text_sha256": "157d0dcbdc8ef2d8e5b9487467cb92a54b20394df15446902b0badeee08466ce",
+          "block_text": "/credits_detailed/0/user/login: glaziermag",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/login"
+        },
+        {
+          "block_id": "ece08f9f-6c99-480d-83f6-a005b277f8e0",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 58,
+          "start_offset": 5769,
+          "end_offset": 5807,
+          "text_sha256": "e569a097016dc75f42ea603cbe2b437c2bc844c77d4f0a54237795c711f3b668",
+          "block_text": "/credits_detailed/0/user/id: 130600081",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/id"
+        },
+        {
+          "block_id": "1dbd3cae-324f-4d12-925b-4dcbbb2af80f",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 59,
+          "start_offset": 5807,
+          "end_offset": 5853,
+          "text_sha256": "435c8aebf039d428e1689dabd5ae4b2698555b0b9a8111a22f193b044e8b4857",
+          "block_text": "/credits_detailed/0/user/node_id: U_kgDOB8jMkQ",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/node_id"
+        },
+        {
+          "block_id": "087dcf2a-bd95-44de-83b1-1f2892ea5d3d",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 60,
+          "start_offset": 5853,
+          "end_offset": 5943,
+          "text_sha256": "e45b2e31bb77d77aa2acc07106ac16592645d535163e7e62ba154b5c7db8544f",
+          "block_text": "/credits_detailed/0/user/avatar_url: https://avatars.githubusercontent.com/u/130600081?v=4",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/avatar_url"
+        },
+        {
+          "block_id": "4139756e-3692-424b-a717-7c163cc892f3",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 61,
+          "start_offset": 5943,
+          "end_offset": 5981,
+          "text_sha256": "a12d7f87664308a41f39d7717ffece63ea9bb2dd834b388fb2516aabb1a07e0b",
+          "block_text": "/credits_detailed/0/user/gravatar_id: ",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/gravatar_id"
+        },
+        {
+          "block_id": "4c3d0a36-40ca-4998-b5b4-7f80985c5817",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 62,
+          "start_offset": 5981,
+          "end_offset": 6050,
+          "text_sha256": "c6b663ea28b5a48086229c0d643b0bd9e05fc4bf67ec63cae0f8afce0f719ecf",
+          "block_text": "/credits_detailed/0/user/url: https://api.github.com/users/glaziermag",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/url"
+        },
+        {
+          "block_id": "5e728919-3e24-4e33-b684-03b7eb18b4fd",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 63,
+          "start_offset": 6050,
+          "end_offset": 6114,
+          "text_sha256": "04187cd90fba7a4fd1fab52e26437d319c5108085b711e94baf0b26ab86619f7",
+          "block_text": "/credits_detailed/0/user/html_url: https://github.com/glaziermag",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/html_url"
+        },
+        {
+          "block_id": "dadb2351-61d4-4d54-b0ff-e005cca82d1c",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 64,
+          "start_offset": 6114,
+          "end_offset": 6203,
+          "text_sha256": "1023b427aa5dd75b6280d270680167a630bd864708bcd6384c5efb35da53d562",
+          "block_text": "/credits_detailed/0/user/followers_url: https://api.github.com/users/glaziermag/followers",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/followers_url"
+        },
+        {
+          "block_id": "b933d1c8-d3c0-498c-83d1-99d20035af6a",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 65,
+          "start_offset": 6203,
+          "end_offset": 6305,
+          "text_sha256": "c702e8437571048c91be5d8ed62b13a9eced3d4c19e266d53b15236e3c92a800",
+          "block_text": "/credits_detailed/0/user/following_url: https://api.github.com/users/glaziermag/following{/other_user}",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/following_url"
+        },
+        {
+          "block_id": "da47157b-36b2-47d4-9a88-a5b9ac6d6d4d",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 66,
+          "start_offset": 6305,
+          "end_offset": 6396,
+          "text_sha256": "cd26974dfa78bd0ea91ef2956a16fb0eb493e10d6943f991478f6aecd62ae01f",
+          "block_text": "/credits_detailed/0/user/gists_url: https://api.github.com/users/glaziermag/gists{/gist_id}",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/gists_url"
+        },
+        {
+          "block_id": "dbd7867f-2bbc-4a49-b6e4-61e6bcb5d67a",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 67,
+          "start_offset": 6396,
+          "end_offset": 6496,
+          "text_sha256": "6215d22a3f7277c313baa92b3f5bac98692bd5c36906140d21b31f51bbb737e9",
+          "block_text": "/credits_detailed/0/user/starred_url: https://api.github.com/users/glaziermag/starred{/owner}{/repo}",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/starred_url"
+        },
+        {
+          "block_id": "739a837e-208e-4873-8e57-0aa4e9cef62e",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 68,
+          "start_offset": 6496,
+          "end_offset": 6593,
+          "text_sha256": "521249894aff4aca8b5fa0281d63199c2956dd8564b9cd200909855bc875b8c4",
+          "block_text": "/credits_detailed/0/user/subscriptions_url: https://api.github.com/users/glaziermag/subscriptions",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/subscriptions_url"
+        },
+        {
+          "block_id": "0b713312-3e27-49f5-8054-c73925e7a746",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 69,
+          "start_offset": 6593,
+          "end_offset": 6681,
+          "text_sha256": "89002f43c69e9b70731cee6d28a8b666b078349cbd2e82f1ad14514a253cb3b0",
+          "block_text": "/credits_detailed/0/user/organizations_url: https://api.github.com/users/glaziermag/orgs",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/organizations_url"
+        },
+        {
+          "block_id": "4240d933-96fc-489e-881d-6762a531935f",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 70,
+          "start_offset": 6681,
+          "end_offset": 6762,
+          "text_sha256": "451ccbcd4a4974395c1475e7329195251be0623b427e360e7744d5eb20636072",
+          "block_text": "/credits_detailed/0/user/repos_url: https://api.github.com/users/glaziermag/repos",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/repos_url"
+        },
+        {
+          "block_id": "d2065ac7-80c6-4f57-9cdd-1fde1a927bcb",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 71,
+          "start_offset": 6762,
+          "end_offset": 6855,
+          "text_sha256": "4f294a032125e9f0457459ad0ddf217d19b5cd02e4ca70c420d08822f37d2964",
+          "block_text": "/credits_detailed/0/user/events_url: https://api.github.com/users/glaziermag/events{/privacy}",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/events_url"
+        },
+        {
+          "block_id": "3abf7f57-7a0f-43ac-91f0-277d1650e353",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 72,
+          "start_offset": 6855,
+          "end_offset": 6956,
+          "text_sha256": "be4d08328b0b5028991ecd8208183393eb3bb271ebf8d09a1894c514d971b060",
+          "block_text": "/credits_detailed/0/user/received_events_url: https://api.github.com/users/glaziermag/received_events",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/received_events_url"
+        },
+        {
+          "block_id": "3041edc6-9027-4537-a01d-339f088ea863",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 73,
+          "start_offset": 6956,
+          "end_offset": 6991,
+          "text_sha256": "dda701d540d7659b066fdb4a905959fbc08ccf8b0c1de8e9e5d0360302ab25f6",
+          "block_text": "/credits_detailed/0/user/type: User",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/type"
+        },
+        {
+          "block_id": "4cb71962-7fbe-4d1b-9fc8-8a93d0bf3f74",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 74,
+          "start_offset": 6991,
+          "end_offset": 7038,
+          "text_sha256": "cd1d1676111da9e2cdccefa62e22af14e6c04a85f16da2263a61e26a47b44dab",
+          "block_text": "/credits_detailed/0/user/user_view_type: public",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/user_view_type"
+        },
+        {
+          "block_id": "9a42bb23-2f48-4c35-b86c-14c5fbbaf591",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 75,
+          "start_offset": 7038,
+          "end_offset": 7080,
+          "text_sha256": "7ff6511024f1520a5bb3fb75ea1162b2a368ab365249c7902a16b86bb9a36762",
+          "block_text": "/credits_detailed/0/user/site_admin: false",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/user/site_admin"
+        },
+        {
+          "block_id": "dd239c49-4555-44b4-a07c-f8b44e0c3628",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 76,
+          "start_offset": 7080,
+          "end_offset": 7127,
+          "text_sha256": "8c4ec9c5e8b42be2caf461ba68eadbdb687c2ad318270db9f10b676e3d6c0ec4",
+          "block_text": "/credits_detailed/0/type: remediation_developer",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/type"
+        },
+        {
+          "block_id": "140924d5-86a8-4b65-9bfa-197693b931c4",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 77,
+          "start_offset": 7127,
+          "end_offset": 7162,
+          "text_sha256": "b15b3420b70614bef4554c641c8ab88b522b91b8486d4bb83018b4a2eacd1d8c",
+          "block_text": "/credits_detailed/0/state: accepted",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/0/state"
+        },
+        {
+          "block_id": "c118da35-6698-44f8-9c6d-86da116e6959",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 78,
+          "start_offset": 7162,
+          "end_offset": 7208,
+          "text_sha256": "bfbc0c4551e44c10036e81a5c6e546b479240473e8ca274e10d5bb68ab5eaab6",
+          "block_text": "/credits_detailed/1/user/login: jperezdealgaba",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/login"
+        },
+        {
+          "block_id": "7097d02b-2c01-4b1b-ac88-04b3f20c26a7",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 79,
+          "start_offset": 7208,
+          "end_offset": 7246,
+          "text_sha256": "146a8b5ef1d19e270038d7b32a142bf0580cedec9d5f32ed2111d67b9b46d893",
+          "block_text": "/credits_detailed/1/user/id: 124347725",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/id"
+        },
+        {
+          "block_id": "a49c9952-7860-414f-845c-05621539dd40",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 80,
+          "start_offset": 7246,
+          "end_offset": 7292,
+          "text_sha256": "41f4f90c5b6184d218f6e71a4ec1562748a11a943ecd092638c4243b8d9ae1e8",
+          "block_text": "/credits_detailed/1/user/node_id: U_kgDOB2llTQ",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/node_id"
+        },
+        {
+          "block_id": "fa7a5504-3639-4ead-82b2-b5e16ce0491d",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 81,
+          "start_offset": 7292,
+          "end_offset": 7382,
+          "text_sha256": "aa38b1240efe6bae239bf6dbb5bf3d9b23677457c63fa52c04434b4e1267577c",
+          "block_text": "/credits_detailed/1/user/avatar_url: https://avatars.githubusercontent.com/u/124347725?v=4",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/avatar_url"
+        },
+        {
+          "block_id": "f29281c3-b57b-42d4-96f5-63f6c2086d9e",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 82,
+          "start_offset": 7382,
+          "end_offset": 7420,
+          "text_sha256": "2463d2460b4c454faaac0d9f9211ef2ff94ff9e46ca7008c11d821d3797bb8f2",
+          "block_text": "/credits_detailed/1/user/gravatar_id: ",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/gravatar_id"
+        },
+        {
+          "block_id": "0866327a-f3e4-4508-a2b2-e57e9a625c5a",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 83,
+          "start_offset": 7420,
+          "end_offset": 7493,
+          "text_sha256": "ef15244f840a927242217d5cde4c92c74bfe9d72c73a2cab665dda7c8dabc52b",
+          "block_text": "/credits_detailed/1/user/url: https://api.github.com/users/jperezdealgaba",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/url"
+        },
+        {
+          "block_id": "5cd1d0e4-67fd-4aa5-b755-735035b4dd55",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 84,
+          "start_offset": 7493,
+          "end_offset": 7561,
+          "text_sha256": "014debda60206897acc7c0d7ec3d18cd554d6678abfcea8445c561ae60c8fa76",
+          "block_text": "/credits_detailed/1/user/html_url: https://github.com/jperezdealgaba",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/html_url"
+        },
+        {
+          "block_id": "9eab0ee6-ed3b-4871-8a53-78c8190cc0b5",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 85,
+          "start_offset": 7561,
+          "end_offset": 7654,
+          "text_sha256": "3534648eb2a3e27d32712ea271a859343ad08cd455fe9b8337c5f17d33886eeb",
+          "block_text": "/credits_detailed/1/user/followers_url: https://api.github.com/users/jperezdealgaba/followers",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/followers_url"
+        },
+        {
+          "block_id": "f4916be9-fb2f-4a88-8476-cc60faf46600",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 86,
+          "start_offset": 7654,
+          "end_offset": 7760,
+          "text_sha256": "fd124209fb9cb02bd4d0508f248a6da0fbfcc3359b02f5cb53e51f7d2faf8569",
+          "block_text": "/credits_detailed/1/user/following_url: https://api.github.com/users/jperezdealgaba/following{/other_user}",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/following_url"
+        },
+        {
+          "block_id": "141d9c5e-e447-4b2c-acfe-0a065d9f56cb",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 87,
+          "start_offset": 7760,
+          "end_offset": 7855,
+          "text_sha256": "c9bc91c8a020b7fa220d99492ba48328ba7cdb4816606c8f4eb9b5f7ed2ccf01",
+          "block_text": "/credits_detailed/1/user/gists_url: https://api.github.com/users/jperezdealgaba/gists{/gist_id}",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/gists_url"
+        },
+        {
+          "block_id": "b5fe6128-b726-4ac0-b956-7962235a5efc",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 88,
+          "start_offset": 7855,
+          "end_offset": 7959,
+          "text_sha256": "3c65148f0984524229f1caf67c3e224d0186014578febe09b78a21850ac82550",
+          "block_text": "/credits_detailed/1/user/starred_url: https://api.github.com/users/jperezdealgaba/starred{/owner}{/repo}",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/starred_url"
+        },
+        {
+          "block_id": "bc89997d-264a-4673-a2d9-71312df2f6e4",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 89,
+          "start_offset": 7959,
+          "end_offset": 8060,
+          "text_sha256": "d440a3519bd36862832fcba43116ca516ecb3d30240c7a3c0aa047bf019d3fcd",
+          "block_text": "/credits_detailed/1/user/subscriptions_url: https://api.github.com/users/jperezdealgaba/subscriptions",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/subscriptions_url"
+        },
+        {
+          "block_id": "937014ef-71b3-4856-901e-854385649f33",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 90,
+          "start_offset": 8060,
+          "end_offset": 8152,
+          "text_sha256": "9f3b38104d538b0c5151cc7f3ac1e8e90f888b33084ff7f9d4fddc02689741a1",
+          "block_text": "/credits_detailed/1/user/organizations_url: https://api.github.com/users/jperezdealgaba/orgs",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/organizations_url"
+        },
+        {
+          "block_id": "eade5e15-c03f-4c48-9c1d-fed69bf536a5",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 91,
+          "start_offset": 8152,
+          "end_offset": 8237,
+          "text_sha256": "2d183dd87b9b68298d4117ae9962df583588d3b68c0abe9bee8cd888133241d6",
+          "block_text": "/credits_detailed/1/user/repos_url: https://api.github.com/users/jperezdealgaba/repos",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/repos_url"
+        },
+        {
+          "block_id": "dd089f86-4967-4917-b0e5-04758fac7fbc",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 92,
+          "start_offset": 8237,
+          "end_offset": 8334,
+          "text_sha256": "197f9c4b3bd1af9be2b3862a469456804bf1bede106514d69c256b7cfe01e1e4",
+          "block_text": "/credits_detailed/1/user/events_url: https://api.github.com/users/jperezdealgaba/events{/privacy}",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/events_url"
+        },
+        {
+          "block_id": "744887bd-7eea-443c-9bdc-d28dde3d1f6e",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 93,
+          "start_offset": 8334,
+          "end_offset": 8439,
+          "text_sha256": "bba6d7a38ca269cb95f6193a03584afec0467a3f8e4cb20f29dfbe94ffcfbd34",
+          "block_text": "/credits_detailed/1/user/received_events_url: https://api.github.com/users/jperezdealgaba/received_events",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/received_events_url"
+        },
+        {
+          "block_id": "4b3e3fee-2f81-4b78-b485-9fbfbd9f3419",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 94,
+          "start_offset": 8439,
+          "end_offset": 8474,
+          "text_sha256": "7ce68bca2fff8469eb98e08970b7f5037bf526a695cac5bedb6239d7de0be031",
+          "block_text": "/credits_detailed/1/user/type: User",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/type"
+        },
+        {
+          "block_id": "0f1cf14c-c11a-409f-a172-97530c4c0566",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 95,
+          "start_offset": 8474,
+          "end_offset": 8521,
+          "text_sha256": "31e2231d0791293337f16fb53f3a0b550c7942cb1b0459c2d7963ff8d77ee43c",
+          "block_text": "/credits_detailed/1/user/user_view_type: public",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/user_view_type"
+        },
+        {
+          "block_id": "f15ae13f-6c23-4bee-a7f2-6a3688cd6d88",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 96,
+          "start_offset": 8521,
+          "end_offset": 8563,
+          "text_sha256": "5ef465bcb0779e3736822028e4b915ffe42298f2d550bfa024bedeec31591940",
+          "block_text": "/credits_detailed/1/user/site_admin: false",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/user/site_admin"
+        },
+        {
+          "block_id": "a3cc0314-5c6a-4dc8-aa82-11b22a7f3011",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 97,
+          "start_offset": 8563,
+          "end_offset": 8600,
+          "text_sha256": "f589c602f0e2b658908ec8a1e4da74ff2bbc3a372f693628c7b611b946f0b5e4",
+          "block_text": "/credits_detailed/1/type: coordinator",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/type"
+        },
+        {
+          "block_id": "3ce8bff8-3417-4d5f-b538-9165f136baf9",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 98,
+          "start_offset": 8600,
+          "end_offset": 8635,
+          "text_sha256": "c55d530f763b9c2e6b2ac6d5ea41f462b6e94c24ffc89315c76e6f6032fe23e3",
+          "block_text": "/credits_detailed/1/state: accepted",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/1/state"
+        },
+        {
+          "block_id": "35a4ac26-b3d5-4599-996b-166e6008b691",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 99,
+          "start_offset": 8635,
+          "end_offset": 8673,
+          "text_sha256": "badf282b45430b5fba5d7c2c9b722b7f120b917e3b7999d934c257283f14a290",
+          "block_text": "/credits_detailed/2/user/login: SunnyR",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/login"
+        },
+        {
+          "block_id": "5000534e-7405-4554-bde9-3e7f3f41419d",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 100,
+          "start_offset": 8673,
+          "end_offset": 8709,
+          "text_sha256": "f4f1c213322f12e37d470ec845585104a3927014f2050159ab0412c593198528",
+          "block_text": "/credits_detailed/2/user/id: 1923481",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/id"
+        },
+        {
+          "block_id": "0953a580-a816-483f-9d81-ad3110c9b502",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 101,
+          "start_offset": 8709,
+          "end_offset": 8763,
+          "text_sha256": "d9a84f8b8dd1a5767dc2443c07d11dbb2b2c290b38853ea76a4a997682e12d7d",
+          "block_text": "/credits_detailed/2/user/node_id: MDQ6VXNlcjE5MjM0ODE=",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/node_id"
+        },
+        {
+          "block_id": "59e7419c-5ad0-4d25-97d6-ef8bae61359c",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 102,
+          "start_offset": 8763,
+          "end_offset": 8851,
+          "text_sha256": "954bbc95ac5037292e78c01a2a2de7d76804339d2f963f2ed765a5f505f24d00",
+          "block_text": "/credits_detailed/2/user/avatar_url: https://avatars.githubusercontent.com/u/1923481?v=4",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/avatar_url"
+        },
+        {
+          "block_id": "10c5a7e1-39c4-4b3e-a089-adffb0a0a5b3",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 103,
+          "start_offset": 8851,
+          "end_offset": 8889,
+          "text_sha256": "95dc5f56578c78413079e852d547aad5788847b8b9ac799a470e195cdff535b7",
+          "block_text": "/credits_detailed/2/user/gravatar_id: ",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/gravatar_id"
+        },
+        {
+          "block_id": "cb387648-be7e-423d-b469-a8cf139c8f6d",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 104,
+          "start_offset": 8889,
+          "end_offset": 8954,
+          "text_sha256": "135c7529a0a4687f45d79d22db4965671cab212a883e553c5314e7e7e6dc2e8c",
+          "block_text": "/credits_detailed/2/user/url: https://api.github.com/users/SunnyR",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/url"
+        },
+        {
+          "block_id": "dbd78c17-309d-426c-a564-970a5cbb44dd",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 105,
+          "start_offset": 8954,
+          "end_offset": 9014,
+          "text_sha256": "7e0829081aa5fcbe2fceae6297540567f70355d79105f0dcd3210ef0955ffce9",
+          "block_text": "/credits_detailed/2/user/html_url: https://github.com/SunnyR",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/html_url"
+        },
+        {
+          "block_id": "45f2c86a-9c05-4b16-869d-0ef651abe9f4",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 106,
+          "start_offset": 9014,
+          "end_offset": 9099,
+          "text_sha256": "74ae8aff610750946553b88dae853caa026c1f2365ab38a8fe7997294fddcb83",
+          "block_text": "/credits_detailed/2/user/followers_url: https://api.github.com/users/SunnyR/followers",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/followers_url"
+        },
+        {
+          "block_id": "f7dee0d4-eb38-48e9-a2ec-b5c0ed4111bc",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 107,
+          "start_offset": 9099,
+          "end_offset": 9197,
+          "text_sha256": "1d274ca4517d951dc87b1662c7f92c87f3d966f64e78166fa78bf6e3a85f55a1",
+          "block_text": "/credits_detailed/2/user/following_url: https://api.github.com/users/SunnyR/following{/other_user}",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/following_url"
+        },
+        {
+          "block_id": "32ca7242-d58e-4aca-8600-5ea55af753b4",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 108,
+          "start_offset": 9197,
+          "end_offset": 9284,
+          "text_sha256": "2b1645abefa0bf05901c7b3a6073bc8d5918d4d2b811ae1d167b3a014fb26c34",
+          "block_text": "/credits_detailed/2/user/gists_url: https://api.github.com/users/SunnyR/gists{/gist_id}",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/gists_url"
+        },
+        {
+          "block_id": "aa405377-2661-4ca4-a0b2-f7c1d114f4b7",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 109,
+          "start_offset": 9284,
+          "end_offset": 9380,
+          "text_sha256": "a151065e677e3c2383350c74c3aa8f53fbfd2763957a6966ee74511c676f3831",
+          "block_text": "/credits_detailed/2/user/starred_url: https://api.github.com/users/SunnyR/starred{/owner}{/repo}",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/starred_url"
+        },
+        {
+          "block_id": "7707fdea-cc91-43f7-866f-59bc2fc7c78a",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 110,
+          "start_offset": 9380,
+          "end_offset": 9473,
+          "text_sha256": "ba51af6aa98799f3173aed99229b320089fbe316739d78ef1d4aa6b55266135d",
+          "block_text": "/credits_detailed/2/user/subscriptions_url: https://api.github.com/users/SunnyR/subscriptions",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/subscriptions_url"
+        },
+        {
+          "block_id": "a32ab39d-bb8b-4b06-8a8d-e0ec97158a42",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 111,
+          "start_offset": 9473,
+          "end_offset": 9557,
+          "text_sha256": "c49e9105a84a3746eaf182557e248d918d857c8638081b87bdd917ce8cd481e5",
+          "block_text": "/credits_detailed/2/user/organizations_url: https://api.github.com/users/SunnyR/orgs",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/organizations_url"
+        },
+        {
+          "block_id": "5f68d68c-c215-44d6-98dc-c4175df4b9de",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 112,
+          "start_offset": 9557,
+          "end_offset": 9634,
+          "text_sha256": "060d32873ad2b8b52fc0156e6eb70adf0e91c67ce431d6455e9848b8fb4051b8",
+          "block_text": "/credits_detailed/2/user/repos_url: https://api.github.com/users/SunnyR/repos",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/repos_url"
+        },
+        {
+          "block_id": "21272146-a8a6-47e2-8aff-ac53cf1c4624",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 113,
+          "start_offset": 9634,
+          "end_offset": 9723,
+          "text_sha256": "d23d76e1bff8049c1815582469f83f75f42a5e3af467615700ee400b15d108f3",
+          "block_text": "/credits_detailed/2/user/events_url: https://api.github.com/users/SunnyR/events{/privacy}",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/events_url"
+        },
+        {
+          "block_id": "1022ae17-5440-45b5-9adc-3e75b60a5431",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 114,
+          "start_offset": 9723,
+          "end_offset": 9820,
+          "text_sha256": "0cb5c2e2ca54af7d666e14ab5ee570a7bc4005e0a7f4ae13833140a646917b2c",
+          "block_text": "/credits_detailed/2/user/received_events_url: https://api.github.com/users/SunnyR/received_events",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/received_events_url"
+        },
+        {
+          "block_id": "9fcf8fc0-ddf1-4798-aa2a-22bb15ce785f",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 115,
+          "start_offset": 9820,
+          "end_offset": 9855,
+          "text_sha256": "63724b2f6d74f91d8c3f699c8bbc6118c2b5a614f3a5fdf92621f7ef5a1435ef",
+          "block_text": "/credits_detailed/2/user/type: User",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/type"
+        },
+        {
+          "block_id": "6013673a-0b32-4278-abe0-770a473d7afe",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 116,
+          "start_offset": 9855,
+          "end_offset": 9902,
+          "text_sha256": "cf0c5bafecfec86f3c1c4b48f6ac087c08d7f2ce9ed2d478e3904778f5bda54d",
+          "block_text": "/credits_detailed/2/user/user_view_type: public",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/user_view_type"
+        },
+        {
+          "block_id": "f149d585-7dc1-4ad5-9795-d6cf76107b46",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 117,
+          "start_offset": 9902,
+          "end_offset": 9944,
+          "text_sha256": "a66e21cf1060000bbe0b6ee3c9c57077b46e59fc442b0151c187413655fd7a50",
+          "block_text": "/credits_detailed/2/user/site_admin: false",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/user/site_admin"
+        },
+        {
+          "block_id": "27b0647d-51b6-42f8-903d-fdc81e53665e",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 118,
+          "start_offset": 9944,
+          "end_offset": 9978,
+          "text_sha256": "af513639cf39b2dc42e6cddda162214d33265837b93698b6d423c9e8fb0be490",
+          "block_text": "/credits_detailed/2/type: reporter",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/type"
+        },
+        {
+          "block_id": "439dc666-5a84-4012-aff8-811ae5f1b536",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 119,
+          "start_offset": 9978,
+          "end_offset": 10013,
+          "text_sha256": "a503603a553bf7a4b0a20a82c10875147d6f4336b2992875a0b05bfb795a0607",
+          "block_text": "/credits_detailed/2/state: accepted",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/credits_detailed/2/state"
+        },
+        {
+          "block_id": "48415950-fbfe-43f1-8c06-e8ce60a100e4",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 120,
+          "start_offset": 10013,
+          "end_offset": 10039,
+          "text_sha256": "15b253c1fe9ce83c08d28406dfdd011f4f48a720718d28ae7deef2f98e41711b",
+          "block_text": "/collaborating_users: null",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/collaborating_users"
+        },
+        {
+          "block_id": "6d45999c-cd40-4b35-a59f-4b285e433067",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 121,
+          "start_offset": 10039,
+          "end_offset": 10065,
+          "text_sha256": "e7e08a2fd3d93881e0f6b07cd89bf683ae683c64e4b648d93ef9ea1213988a3c",
+          "block_text": "/collaborating_teams: null",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/collaborating_teams"
+        },
+        {
+          "block_id": "d664c1a7-675a-4cf6-a3f8-f50d1f2bd70f",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 122,
+          "start_offset": 10065,
+          "end_offset": 10084,
+          "text_sha256": "97e9f5cb5880c443ffe36fcce3d017959f4cc0a1915add6ec5671922819777ed",
+          "block_text": "/private_fork: null",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/private_fork"
+        },
+        {
+          "block_id": "d0631324-578b-42ad-bf6c-ce237248da54",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 123,
+          "start_offset": 10084,
+          "end_offset": 10096,
+          "text_sha256": "47a6f0d2747a13c0d4336bd02b4ac467d94b3968e569e035ed83cfacdf4510e9",
+          "block_text": "/comments: 0",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/comments"
+        },
+        {
+          "block_id": "6aba36c2-f4de-4ca3-967c-363495eac91a",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 124,
+          "start_offset": 10096,
+          "end_offset": 10161,
+          "text_sha256": "fbd322db438b1b7172b465bdfb4ac6e31188e5cf3c3783cdbfa4bce572a2ccb2",
+          "block_text": "/cvss/vector_string: CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/cvss/vector_string"
+        },
+        {
+          "block_id": "1eb94e39-fc93-4744-9ce6-e64b507dce7a",
+          "revision_id": "1e34c064-d3e3-4255-ad1d-05f52ab5fa1f",
+          "ordinal": 125,
+          "start_offset": 10161,
+          "end_offset": 10177,
+          "text_sha256": "d02c54a5db7a9349d10424c264af8e8822bcd8560499a31af36e9c5028ae7c6a",
+          "block_text": "/cvss/score: 3.7",
+          "block_type": "json_field",
+          "page_number": null,
+          "json_pointer": "/cvss/score"
+        }
+      ]
+    }
+  },
+  "content_payloads_utf8": {
+    "ed8547c71c74f9fe73edef9de024dd8603d76ae1f80b9c8afff53b3aaa874ba9": "[{\"ghsa_id\": \"GHSA-6cxc-2vcg-w5qc\", \"cve_id\": null, \"url\": \"https://api.github.com/repos/vllm-project/vllm/security-advisories/GHSA-6cxc-2vcg-w5qc\", \"html_url\": \"https://github.com/vllm-project/vllm/security/advisories/GHSA-6cxc-2vcg-w5qc\", \"summary\": \"V1 InputBatch.condense leaves a stale allowed_token_ids mask on recycled batch rows\", \"description\": \"## Severity\\r\\n\\r\\n- **Severity:** Low\\r\\n- **CVSS v3.1:** `CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N` (3.7, Low)\\r\\n- **CWE:** CWE-440 (Expected Behavior Violation), CWE-668 (Exposure of Resource to Wrong Sphere)\\r\\n\\r\\n## Summary\\r\\n\\r\\nvLLM V1 `InputBatch.condense()` can leave a stale `allowed_token_ids_mask_cpu_tensor` row after moving a constrained request. A later unrestricted request that reuses that batch slot inherits the previous request's token allowlist, so sampling for that other client is constrained by a mask it did not set (cross-request output-integrity issue). The victim request still returns HTTP 200 with no error indication.\\r\\n\\r\\nPublic report: https://github.com/vllm-project/vllm/issues/43894\\r\\n\\r\\n## Affected\\r\\n\\r\\n- **Ecosystem / package:** pip / `vllm`\\r\\n- **Affected versions:** vLLM \\u2264 0.30.0 (V1 worker `InputBatch` path). Confirmed via public issue #43894.\\r\\n- **Fixed versions:** Fix merged in https://github.com/vllm-project/vllm/pull/43931 (not yet in a tagged release as of v0.30.0; expected in the next release).\\r\\n\\r\\n## Details\\r\\n\\r\\n`InputBatch.condense()` copies `allowed_token_ids_mask_cpu_tensor` from a moved request's row into the freed index but never clears the source row. `add_request()` only writes that row when the new request sets `sampling_params.allowed_token_ids`. When another active request still has `allowed_token_ids`, `_make_sampling_metadata()` copies the active prefix of the CPU mask to GPU and `Sampler.apply_logits_processors()` applies the stale whitelist to the unrestricted request.\\r\\n\\r\\nAn attacker who can submit generate traffic (including unauthenticated `/invocations`, which is outside `--api-key` guards, or any valid API key on `/v1`) plants a chosen `allowed_token_ids` mask. If batching/`condense` recycles that row onto another client's unrestricted request while the constrained request is still active, the victim's tokens are limited to the attacker's allowlist (for example only a single token, only digit tokens, or only tokens that spell a short phrase). This is vocabulary steering / wrong allowlist application, not free-form substitution of arbitrary attacker text.\\r\\n\\r\\nA related but distinct bug in `InputBatch.swap_states()` (row-view aliasing of the same mask tensor) was fixed in https://github.com/vllm-project/vllm/pull/48419.\\r\\n\\r\\n## Impact\\r\\n\\r\\nLimited cross-request sampling integrity on a shared engine: one client's `allowed_token_ids` can constrain another client's outputs under concurrent batching. Confidentiality and availability are unaffected. Attack complexity is High because exploitation needs concurrent requests plus a `condense` slot-reuse race while the attacker's constrained request remains in the batch.\\r\\n\\r\\n## Patches\\r\\n\\r\\n- https://github.com/vllm-project/vllm/pull/43931 \\u2014 clear vacated `allowed_token_ids` mask rows in `condense()`\\r\\n- https://github.com/vllm-project/vllm/pull/48419 \\u2014 related `swap_states` mask aliasing fix\\r\\n\\r\\n## References\\r\\n\\r\\n- https://github.com/vllm-project/vllm/issues/43894\\r\\n- https://github.com/vllm-project/vllm/pull/43931\\r\\n- https://github.com/vllm-project/vllm/pull/48419\\r\\n- https://docs.vllm.ai/en/latest/usage/security.html (API key does not cover `/invocations`)\\r\\n\\r\\n## Credit\\r\\n\\r\\nReported publicly by @glaziermag in issue #43894.\\r\\n\", \"severity\": \"low\", \"author\": null, \"publisher\": {\"login\": \"jperezdealgaba\", \"id\": 124347725, \"node_id\": \"U_kgDOB2llTQ\", \"avatar_url\": \"https://avatars.githubusercontent.com/u/124347725?v=4\", \"gravatar_id\": \"\", \"url\": \"https://api.github.com/users/jperezdealgaba\", \"html_url\": \"https://github.com/jperezdealgaba\", \"followers_url\": \"https://api.github.com/users/jperezdealgaba/followers\", \"following_url\": \"https://api.github.com/users/jperezdealgaba/following{/other_user}\", \"gists_url\": \"https://api.github.com/users/jperezdealgaba/gists{/gist_id}\", \"starred_url\": \"https://api.github.com/users/jperezdealgaba/starred{/owner}{/repo}\", \"subscriptions_url\": \"https://api.github.com/users/jperezdealgaba/subscriptions\", \"organizations_url\": \"https://api.github.com/users/jperezdealgaba/orgs\", \"repos_url\": \"https://api.github.com/users/jperezdealgaba/repos\", \"events_url\": \"https://api.github.com/users/jperezdealgaba/events{/privacy}\", \"received_events_url\": \"https://api.github.com/users/jperezdealgaba/received_events\", \"type\": \"User\", \"user_view_type\": \"public\", \"site_admin\": false}, \"identifiers\": [{\"value\": \"GHSA-6cxc-2vcg-w5qc\", \"type\": \"GHSA\"}], \"state\": \"published\", \"created_at\": null, \"updated_at\": \"2026-10-06T20:45:08Z\", \"published_at\": \"2026-10-06T20:45:08Z\", \"closed_at\": null, \"withdrawn_at\": null, \"submission\": null, \"vulnerabilities\": [{\"package\": {\"ecosystem\": \"pip\", \"name\": \"vllm\"}, \"vulnerable_version_range\": \"< 0.31.0\", \"patched_versions\": \">= 0.31.0\", \"vulnerable_functions\": []}], \"cvss_severities\": {\"cvss_v3\": {\"vector_string\": \"CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N\", \"score\": 3.7}, \"cvss_v4\": {\"vector_string\": null, \"score\": null}}, \"cwes\": [{\"cwe_id\": \"CWE-440\", \"name\": \"Expected Behavior Violation\"}, {\"cwe_id\": \"CWE-668\", \"name\": \"Exposure of Resource to Wrong Sphere\"}], \"cwe_ids\": [\"CWE-440\", \"CWE-668\"], \"credits\": [{\"login\": \"glaziermag\", \"type\": \"remediation_developer\"}, {\"login\": \"jperezdealgaba\", \"type\": \"coordinator\"}, {\"login\": \"SunnyR\", \"type\": \"reporter\"}], \"credits_detailed\": [{\"user\": {\"login\": \"glaziermag\", \"id\": 130600081, \"node_id\": \"U_kgDOB8jMkQ\", \"avatar_url\": \"https://avatars.githubusercontent.com/u/130600081?v=4\", \"gravatar_id\": \"\", \"url\": \"https://api.github.com/users/glaziermag\", \"html_url\": \"https://github.com/glaziermag\", \"followers_url\": \"https://api.github.com/users/glaziermag/followers\", \"following_url\": \"https://api.github.com/users/glaziermag/following{/other_user}\", \"gists_url\": \"https://api.github.com/users/glaziermag/gists{/gist_id}\", \"starred_url\": \"https://api.github.com/users/glaziermag/starred{/owner}{/repo}\", \"subscriptions_url\": \"https://api.github.com/users/glaziermag/subscriptions\", \"organizations_url\": \"https://api.github.com/users/glaziermag/orgs\", \"repos_url\": \"https://api.github.com/users/glaziermag/repos\", \"events_url\": \"https://api.github.com/users/glaziermag/events{/privacy}\", \"received_events_url\": \"https://api.github.com/users/glaziermag/received_events\", \"type\": \"User\", \"user_view_type\": \"public\", \"site_admin\": false}, \"type\": \"remediation_developer\", \"state\": \"accepted\"}, {\"user\": {\"login\": \"jperezdealgaba\", \"id\": 124347725, \"node_id\": \"U_kgDOB2llTQ\", \"avatar_url\": \"https://avatars.githubusercontent.com/u/124347725?v=4\", \"gravatar_id\": \"\", \"url\": \"https://api.github.com/users/jperezdealgaba\", \"html_url\": \"https://github.com/jperezdealgaba\", \"followers_url\": \"https://api.github.com/users/jperezdealgaba/followers\", \"following_url\": \"https://api.github.com/users/jperezdealgaba/following{/other_user}\", \"gists_url\": \"https://api.github.com/users/jperezdealgaba/gists{/gist_id}\", \"starred_url\": \"https://api.github.com/users/jperezdealgaba/starred{/owner}{/repo}\", \"subscriptions_url\": \"https://api.github.com/users/jperezdealgaba/subscriptions\", \"organizations_url\": \"https://api.github.com/users/jperezdealgaba/orgs\", \"repos_url\": \"https://api.github.com/users/jperezdealgaba/repos\", \"events_url\": \"https://api.github.com/users/jperezdealgaba/events{/privacy}\", \"received_events_url\": \"https://api.github.com/users/jperezdealgaba/received_events\", \"type\": \"User\", \"user_view_type\": \"public\", \"site_admin\": false}, \"type\": \"coordinator\", \"state\": \"accepted\"}, {\"user\": {\"login\": \"SunnyR\", \"id\": 1923481, \"node_id\": \"MDQ6VXNlcjE5MjM0ODE=\", \"avatar_url\": \"https://avatars.githubusercontent.com/u/1923481?v=4\", \"gravatar_id\": \"\", \"url\": \"https://api.github.com/users/SunnyR\", \"html_url\": \"https://github.com/SunnyR\", \"followers_url\": \"https://api.github.com/users/SunnyR/followers\", \"following_url\": \"https://api.github.com/users/SunnyR/following{/other_user}\", \"gists_url\": \"https://api.github.com/users/SunnyR/gists{/gist_id}\", \"starred_url\": \"https://api.github.com/users/SunnyR/starred{/owner}{/repo}\", \"subscriptions_url\": \"https://api.github.com/users/SunnyR/subscriptions\", \"organizations_url\": \"https://api.github.com/users/SunnyR/orgs\", \"repos_url\": \"https://api.github.com/users/SunnyR/repos\", \"events_url\": \"https://api.github.com/users/SunnyR/events{/privacy}\", \"received_events_url\": \"https://api.github.com/users/SunnyR/received_events\", \"type\": \"User\", \"user_view_type\": \"public\", \"site_admin\": false}, \"type\": \"reporter\", \"state\": \"accepted\"}], \"collaborating_users\": null, \"collaborating_teams\": null, \"private_fork\": null, \"comments\": 0, \"cvss\": {\"vector_string\": \"CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N\", \"score\": 3.7}}]",
+    "b0571da15760e3d42c130f3b9662ff4afebfdddd973aaf0b8c696aaecd25910b": "{\"ghsa_id\": \"GHSA-6cxc-2vcg-w5qc\", \"cve_id\": null, \"url\": \"https://api.github.com/repos/vllm-project/vllm/security-advisories/GHSA-6cxc-2vcg-w5qc\", \"html_url\": \"https://github.com/vllm-project/vllm/security/advisories/GHSA-6cxc-2vcg-w5qc\", \"summary\": \"V1 InputBatch.condense leaves a stale allowed_token_ids mask on recycled batch rows\", \"description\": \"## Severity\\r\\n\\r\\n- **Severity:** Low\\r\\n- **CVSS v3.1:** `CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N` (3.7, Low)\\r\\n- **CWE:** CWE-440 (Expected Behavior Violation), CWE-668 (Exposure of Resource to Wrong Sphere)\\r\\n\\r\\n## Summary\\r\\n\\r\\nvLLM V1 `InputBatch.condense()` can leave a stale `allowed_token_ids_mask_cpu_tensor` row after moving a constrained request. A later unrestricted request that reuses that batch slot inherits the previous request's token allowlist, so sampling for that other client is constrained by a mask it did not set (cross-request output-integrity issue). The victim request still returns HTTP 200 with no error indication.\\r\\n\\r\\nPublic report: https://github.com/vllm-project/vllm/issues/43894\\r\\n\\r\\n## Affected\\r\\n\\r\\n- **Ecosystem / package:** pip / `vllm`\\r\\n- **Affected versions:** vLLM \\u2264 0.30.0 (V1 worker `InputBatch` path). Confirmed via public issue #43894.\\r\\n- **Fixed versions:** Fix merged in https://github.com/vllm-project/vllm/pull/43931 (not yet in a tagged release as of v0.30.0; expected in the next release).\\r\\n\\r\\n## Details\\r\\n\\r\\n`InputBatch.condense()` copies `allowed_token_ids_mask_cpu_tensor` from a moved request's row into the freed index but never clears the source row. `add_request()` only writes that row when the new request sets `sampling_params.allowed_token_ids`. When another active request still has `allowed_token_ids`, `_make_sampling_metadata()` copies the active prefix of the CPU mask to GPU and `Sampler.apply_logits_processors()` applies the stale whitelist to the unrestricted request.\\r\\n\\r\\nAn attacker who can submit generate traffic (including unauthenticated `/invocations`, which is outside `--api-key` guards, or any valid API key on `/v1`) plants a chosen `allowed_token_ids` mask. If batching/`condense` recycles that row onto another client's unrestricted request while the constrained request is still active, the victim's tokens are limited to the attacker's allowlist (for example only a single token, only digit tokens, or only tokens that spell a short phrase). This is vocabulary steering / wrong allowlist application, not free-form substitution of arbitrary attacker text.\\r\\n\\r\\nA related but distinct bug in `InputBatch.swap_states()` (row-view aliasing of the same mask tensor) was fixed in https://github.com/vllm-project/vllm/pull/48419.\\r\\n\\r\\n## Impact\\r\\n\\r\\nLimited cross-request sampling integrity on a shared engine: one client's `allowed_token_ids` can constrain another client's outputs under concurrent batching. Confidentiality and availability are unaffected. Attack complexity is High because exploitation needs concurrent requests plus a `condense` slot-reuse race while the attacker's constrained request remains in the batch.\\r\\n\\r\\n## Patches\\r\\n\\r\\n- https://github.com/vllm-project/vllm/pull/43931 \\u2014 clear vacated `allowed_token_ids` mask rows in `condense()`\\r\\n- https://github.com/vllm-project/vllm/pull/48419 \\u2014 related `swap_states` mask aliasing fix\\r\\n\\r\\n## References\\r\\n\\r\\n- https://github.com/vllm-project/vllm/issues/43894\\r\\n- https://github.com/vllm-project/vllm/pull/43931\\r\\n- https://github.com/vllm-project/vllm/pull/48419\\r\\n- https://docs.vllm.ai/en/latest/usage/security.html (API key does not cover `/invocations`)\\r\\n\\r\\n## Credit\\r\\n\\r\\nReported publicly by @glaziermag in issue #43894.\\r\\n\", \"severity\": \"low\", \"author\": null, \"publisher\": {\"login\": \"jperezdealgaba\", \"id\": 124347725, \"node_id\": \"U_kgDOB2llTQ\", \"avatar_url\": \"https://avatars.githubusercontent.com/u/124347725?v=4\", \"gravatar_id\": \"\", \"url\": \"https://api.github.com/users/jperezdealgaba\", \"html_url\": \"https://github.com/jperezdealgaba\", \"followers_url\": \"https://api.github.com/users/jperezdealgaba/followers\", \"following_url\": \"https://api.github.com/users/jperezdealgaba/following{/other_user}\", \"gists_url\": \"https://api.github.com/users/jperezdealgaba/gists{/gist_id}\", \"starred_url\": \"https://api.github.com/users/jperezdealgaba/starred{/owner}{/repo}\", \"subscriptions_url\": \"https://api.github.com/users/jperezdealgaba/subscriptions\", \"organizations_url\": \"https://api.github.com/users/jperezdealgaba/orgs\", \"repos_url\": \"https://api.github.com/users/jperezdealgaba/repos\", \"events_url\": \"https://api.github.com/users/jperezdealgaba/events{/privacy}\", \"received_events_url\": \"https://api.github.com/users/jperezdealgaba/received_events\", \"type\": \"User\", \"user_view_type\": \"public\", \"site_admin\": false}, \"identifiers\": [{\"value\": \"GHSA-6cxc-2vcg-w5qc\", \"type\": \"GHSA\"}], \"state\": \"published\", \"created_at\": null, \"updated_at\": \"2026-10-06T20:45:08Z\", \"published_at\": \"2026-10-06T20:45:08Z\", \"closed_at\": null, \"withdrawn_at\": null, \"submission\": null, \"vulnerabilities\": [{\"package\": {\"ecosystem\": \"pip\", \"name\": \"vllm\"}, \"vulnerable_version_range\": \"< 0.31.0\", \"patched_versions\": \">= 0.31.0\", \"vulnerable_functions\": []}], \"cvss_severities\": {\"cvss_v3\": {\"vector_string\": \"CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N\", \"score\": 3.7}, \"cvss_v4\": {\"vector_string\": null, \"score\": null}}, \"cwes\": [{\"cwe_id\": \"CWE-440\", \"name\": \"Expected Behavior Violation\"}, {\"cwe_id\": \"CWE-668\", \"name\": \"Exposure of Resource to Wrong Sphere\"}], \"cwe_ids\": [\"CWE-440\", \"CWE-668\"], \"credits\": [{\"login\": \"glaziermag\", \"type\": \"remediation_developer\"}, {\"login\": \"jperezdealgaba\", \"type\": \"coordinator\"}, {\"login\": \"SunnyR\", \"type\": \"reporter\"}], \"credits_detailed\": [{\"user\": {\"login\": \"glaziermag\", \"id\": 130600081, \"node_id\": \"U_kgDOB8jMkQ\", \"avatar_url\": \"https://avatars.githubusercontent.com/u/130600081?v=4\", \"gravatar_id\": \"\", \"url\": \"https://api.github.com/users/glaziermag\", \"html_url\": \"https://github.com/glaziermag\", \"followers_url\": \"https://api.github.com/users/glaziermag/followers\", \"following_url\": \"https://api.github.com/users/glaziermag/following{/other_user}\", \"gists_url\": \"https://api.github.com/users/glaziermag/gists{/gist_id}\", \"starred_url\": \"https://api.github.com/users/glaziermag/starred{/owner}{/repo}\", \"subscriptions_url\": \"https://api.github.com/users/glaziermag/subscriptions\", \"organizations_url\": \"https://api.github.com/users/glaziermag/orgs\", \"repos_url\": \"https://api.github.com/users/glaziermag/repos\", \"events_url\": \"https://api.github.com/users/glaziermag/events{/privacy}\", \"received_events_url\": \"https://api.github.com/users/glaziermag/received_events\", \"type\": \"User\", \"user_view_type\": \"public\", \"site_admin\": false}, \"type\": \"remediation_developer\", \"state\": \"accepted\"}, {\"user\": {\"login\": \"jperezdealgaba\", \"id\": 124347725, \"node_id\": \"U_kgDOB2llTQ\", \"avatar_url\": \"https://avatars.githubusercontent.com/u/124347725?v=4\", \"gravatar_id\": \"\", \"url\": \"https://api.github.com/users/jperezdealgaba\", \"html_url\": \"https://github.com/jperezdealgaba\", \"followers_url\": \"https://api.github.com/users/jperezdealgaba/followers\", \"following_url\": \"https://api.github.com/users/jperezdealgaba/following{/other_user}\", \"gists_url\": \"https://api.github.com/users/jperezdealgaba/gists{/gist_id}\", \"starred_url\": \"https://api.github.com/users/jperezdealgaba/starred{/owner}{/repo}\", \"subscriptions_url\": \"https://api.github.com/users/jperezdealgaba/subscriptions\", \"organizations_url\": \"https://api.github.com/users/jperezdealgaba/orgs\", \"repos_url\": \"https://api.github.com/users/jperezdealgaba/repos\", \"events_url\": \"https://api.github.com/users/jperezdealgaba/events{/privacy}\", \"received_events_url\": \"https://api.github.com/users/jperezdealgaba/received_events\", \"type\": \"User\", \"user_view_type\": \"public\", \"site_admin\": false}, \"type\": \"coordinator\", \"state\": \"accepted\"}, {\"user\": {\"login\": \"SunnyR\", \"id\": 1923481, \"node_id\": \"MDQ6VXNlcjE5MjM0ODE=\", \"avatar_url\": \"https://avatars.githubusercontent.com/u/1923481?v=4\", \"gravatar_id\": \"\", \"url\": \"https://api.github.com/users/SunnyR\", \"html_url\": \"https://github.com/SunnyR\", \"followers_url\": \"https://api.github.com/users/SunnyR/followers\", \"following_url\": \"https://api.github.com/users/SunnyR/following{/other_user}\", \"gists_url\": \"https://api.github.com/users/SunnyR/gists{/gist_id}\", \"starred_url\": \"https://api.github.com/users/SunnyR/starred{/owner}{/repo}\", \"subscriptions_url\": \"https://api.github.com/users/SunnyR/subscriptions\", \"organizations_url\": \"https://api.github.com/users/SunnyR/orgs\", \"repos_url\": \"https://api.github.com/users/SunnyR/repos\", \"events_url\": \"https://api.github.com/users/SunnyR/events{/privacy}\", \"received_events_url\": \"https://api.github.com/users/SunnyR/received_events\", \"type\": \"User\", \"user_view_type\": \"public\", \"site_admin\": false}, \"type\": \"reporter\", \"state\": \"accepted\"}], \"collaborating_users\": null, \"collaborating_teams\": null, \"private_fork\": null, \"comments\": 0, \"cvss\": {\"vector_string\": \"CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N\", \"score\": 3.7}}"
+  }
+}

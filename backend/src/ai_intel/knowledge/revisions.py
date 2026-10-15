@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
+from pydantic import JsonValue
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
@@ -105,8 +107,27 @@ def save_document_revision(
     visibility: str,
     tenant_id: str | None,
     created_at: datetime,
+    *,
+    revision_metadata: dict[str, JsonValue] | None = None,
 ) -> SavedRevision:
-    """保存文档修订: 末版同内容复用; A→B→A 保留三修订; 归属与租户必须一致。"""
+    """同内容及显式元数据才复用；旧调用不提供metadata时保留原有语义。"""
+    if revision_metadata is not None:
+        try:
+            encoded_metadata = json.dumps(
+                revision_metadata,
+                ensure_ascii=False,
+                allow_nan=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        except (TypeError, ValueError, UnicodeError, RecursionError):
+            raise ValueError("invalid document revision metadata") from None
+        if (
+            not isinstance(revision_metadata, dict)
+            or len(encoded_metadata) > 65536
+            or b"\\u0000" in encoded_metadata
+        ):
+            raise ValueError("document revision metadata exceeds bounded object")
     document_row = _load_document_row(session, document_id)
     if (visibility == "tenant") != (tenant_id is not None):
         raise TenantScopeViolation("tenant revision requires exactly one tenant_id")
@@ -116,19 +137,29 @@ def save_document_revision(
     _lock_content_hash(session, content_hash)
     stored = store.store_bytes(payload)
     _insert_content_object(session, stored.content_hash, stored.size_bytes, created_at)
+    tip_query = select(
+        document_revisions.c.revision_id,
+        document_revisions.c.revision_number,
+        document_revisions.c.content_hash,
+    )
+    if revision_metadata is not None:
+        tip_query = tip_query.add_columns(
+            (document_revisions.c.source_metadata == revision_metadata).label("metadata_matches")
+        )
     tip = (
         session.execute(
-            select(document_revisions)
-            .where(
+            tip_query.where(
                 document_revisions.c.document_id == document_id,
                 document_revisions.c.is_current.is_(True),
-            )
-            .limit(1)
+            ).limit(1)
         )
         .mappings()
         .first()
     )
-    if tip is not None and tip["content_hash"] == stored.content_hash:
+    metadata_matches = revision_metadata is None
+    if revision_metadata is not None and tip is not None:
+        metadata_matches = tip["metadata_matches"] is True
+    if tip is not None and tip["content_hash"] == stored.content_hash and metadata_matches:
         return SavedRevision(
             revision_id=str(tip["revision_id"]),
             revision_number=int(tip["revision_number"]),
@@ -150,19 +181,20 @@ def save_document_revision(
             .where(document_revisions.c.revision_id == tip["revision_id"])
             .values(is_current=False)
         )
-    session.execute(
-        document_revisions.insert().values(
-            revision_id=revision_id,
-            document_id=document_id,
-            revision_number=next_number,
-            content_hash=stored.content_hash,
-            created_at=created_at,
-            is_current=True,
-            previous_revision_id=str(tip["revision_id"]) if tip is not None else None,
-            visibility=visibility,
-            tenant_id=tenant_id,
-        )
+    revision_insert = document_revisions.insert().values(
+        revision_id=revision_id,
+        document_id=document_id,
+        revision_number=next_number,
+        content_hash=stored.content_hash,
+        created_at=created_at,
+        is_current=True,
+        previous_revision_id=str(tip["revision_id"]) if tip is not None else None,
+        visibility=visibility,
+        tenant_id=tenant_id,
     )
+    if revision_metadata is not None:
+        revision_insert = revision_insert.values(source_metadata=revision_metadata)
+    session.execute(revision_insert)
     session.execute(
         update(documents)
         .where(documents.c.document_id == document_id)
