@@ -2,6 +2,7 @@ export const workspacePages = {
   runtime: { label: "运行状态", title: "运行概览", code: "SYSTEM / RUNTIME", description: "查看服务状态，管理你的团队会话。", group: "系统", symbol: "◫" },
   events: { label: "情报列表", title: "情报工作区", code: "INTELLIGENCE / FEED", description: "从事件线索进入事实、版本与原文证据。", group: "研究", symbol: "≡" },
   sources: { label: "来源监测", title: "来源与采集", code: "COLLECTION / SOURCES", description: "区分来源覆盖、实际接通与采集时效。", group: "研究", symbol: "◉" },
+  documents: { label: "资料库", title: "资料与原文", code: "RESEARCH / DOCUMENTS", description: "核查论文、标准、政策与研究资料的原文版本和覆盖范围。", group: "研究", symbol: "▤" },
   graph: { label: "知识图谱", title: "关联研究", code: "KNOWLEDGE / RELATIONS", description: "查看关系理由、证据与历史状态。", group: "研究", symbol: "◇" },
   questions: { label: "引用问答", title: "证据问答", code: "RESEARCH / QUESTIONS", description: "跨文档研究，让每条关键结论都有依据。", group: "研究", symbol: ">_" },
   assets: { label: "资产自查", title: "版本与资产", code: "ASSESSMENT / ASSETS", description: "在固定资产快照上核查版本、条件与影响。", group: "研究", symbol: "⬡" },
@@ -24,10 +25,18 @@ export function readEventSelection(hash: string): { eventId: string; evidenceId:
   return eventId === undefined ? null : { eventId: eventId.toLowerCase(), evidenceId: match?.[2]?.toLowerCase() ?? null, revisionId: match?.[3]?.toLowerCase() ?? null };
 }
 
+export function readDocumentSelection(hash: string): { documentId: string; revisionId: string | null } | null {
+  const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+  const match = new RegExp(`^#documents/(${uuid})(?:/revision/(${uuid}))?$`, "i").exec(hash);
+  const documentId = match?.[1];
+  return documentId === undefined ? null : { documentId: documentId.toLowerCase(), revisionId: match?.[2]?.toLowerCase() ?? null };
+}
+
 /** Hash 导航仅表示页面，不持久化私有数据；未知页面保留可解释的返回路径。 */
 export function readWorkspacePage(hash: string): WorkspacePage | "missing" {
   const page = hash.replace(/^#/, "");
   if (!page || page === "main-content") return "runtime";
   if (readEventSelection(hash) !== null) return "events";
+  if (readDocumentSelection(hash) !== null) return "documents";
   return isWorkspacePage(page) ? page : "missing";
 }
