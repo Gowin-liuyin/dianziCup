@@ -65,7 +65,7 @@ CBM 0.11.0 仅索引本工作树 backend/src，独立项目 `dianzi-r06-bulk-evi
 
 作者真正 raw handler **恰2次**，脚本 wall 合计 **7.326 秒**，每次 <120 / 合计 <240；没有第三次，也没有把额外小 fixture 回归算大页性能样本。第一份只读补核确认 20 docs、11,827 所有证据与 CAS 完整，但不能补编已丢失的 handler 秒数；早期 launcher GetProcessTimes 的0.015625秒并非实际 Python CPU，不使用它。第二份准确数据在 `fixed_real_release_2.json` 与提前封存的 `fixed_real_release_2_handler.json`。
 
-Ruff 初次 12 errors 后按规则修复，日志保留；format/check、Ruff/check、mypy 和生产/测试/CR 范围的 git diff --check 通过。材料全范围 staged diff --check 退出1，仅原样归档的 pytest/CBM/diff 日志包含尾空格或 EOF 空行；记录在 `material_whitespace_check.json`，不修改原输出 bytes，也不新增忽略规则。一次 PowerShell `HEAD^{tree}` 未引用导致元数据命令退出1，随后用准确 list argv / 引用重读为上述固定 tree；不能当业务失败或编造首次通过。
+Ruff 初次 12 errors 后按规则修复，日志保留；format/check、Ruff/check、mypy 和生产/测试/CR 范围的 git diff --check 通过。材料全范围 staged diff --check 实际退出2，仅原样归档的 pytest/CBM/diff 日志包含尾空格或 EOF 空行；记录在 `material_whitespace_check.json`，不修改原输出 bytes，也不新增忽略规则。一次 PowerShell `HEAD^{tree}` 未引用导致元数据命令退出1，随后用准确 list argv / 引用重读为上述固定 tree；不能当业务失败或编造首次通过。
 
 ## 八层状态、偏差与交接
 
@@ -81,6 +81,8 @@ Ruff 初次 12 errors 后按规则修复，日志保留；format/check、Ruff/ch
 | manual | not_run | 无新非作者评审或人工评分验收 |
 
 计划偏差只有明确披露的测试 harness 前置错误、旧 fixture 的安全资源适配和作者未使用原 Windows caps。没有放宽业务门或缩减范围。F1/E1/R1 的本轮证据只证明完整来源原文与证据写入、事务/范围和可追溯修订；P1 仅有作者负载测量，原 caps 下性能、新 live、正式时效、持续运行、模型/资产/网页层仍需各自真实证据。
+
+封存时另保留 `frozen_materials.zip`，含 manifest 列出的原始工作树 bytes，供跨 Git 换行转换的独立复核；ZIP 不含 raw 正文、资产或秘密。普通文件 sha 指作者实际 bytes，code commit/tree 指 Git 对象版本，不能把换行转换误判为业务内容修订。
 
 下一步：主控的新非作者 reviewer 冻结本候选及 manifest，按原 Windows Job caps 重放相同 raw，经 generic execute_job 核查完整 20/11,827 与 <35，再复查批次失败/权限/历史/幂等/并发/原文与 outbox 路径。原问题和所有 red 保留。通过独立 review 后由主控登记状态；作者不会继续下一任务、提交 raw、push 或自行 accepted。
 

@@ -4,6 +4,7 @@ import ast
 import hashlib
 import json
 import subprocess
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -29,8 +30,9 @@ def definition(blob, name):
 
 
 def main():
-    assert git("rev-parse", "HEAD").decode().strip() == CODE
-    tree = git("rev-parse", "HEAD^{tree}").decode().strip()
+    git("merge-base", "--is-ancestor", CODE, "HEAD")
+    assert not git("diff", CODE, "HEAD", "--", "backend/src", "backend/tests", "docs/decisions")
+    tree = git("rev-parse", CODE + "^{tree}").decode().strip()
     assert tree == "25bcfe534c447b5b83d4bceed9b1393cfb266109"
     revisions_path = "backend/src/ai_intel/knowledge/revisions.py"
     before, after = (git("show", revision + ":" + revisions_path) for revision in (BASE, CODE))
@@ -66,7 +68,8 @@ def main():
     )
     owned_paths = [REPORT, *sorted(path for path in RUN.rglob("*") if path.is_file()
                                  and "__pycache__" not in path.parts
-                                 and path.name not in {"artifact_manifest.json", "material_seal.json"})]
+                                 and path.name not in {"artifact_manifest.json", "material_seal.json",
+                                                       "frozen_materials.zip"})]
     for path in owned_paths:
         content = path.read_bytes()
         assert raw not in content, path.name
@@ -78,6 +81,14 @@ def main():
     artifact_rows = [{"path": path.relative_to(ROOT).as_posix(), "bytes": path.stat().st_size,
                       "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
                      for path in owned_paths]
+    archive_path = RUN / "frozen_materials.zip"
+    archive_inputs = [*owned_paths, *(ROOT / row["path"] for row in code_files)]
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in archive_inputs:
+            archive.write(path, path.relative_to(ROOT).as_posix())
+    with zipfile.ZipFile(archive_path) as archive:
+        for row in [*artifact_rows, *code_files]:
+            assert hashlib.sha256(archive.read(row["path"])).hexdigest() == row["sha256"]
     manifest = {
         "recorded_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
         "status": "awaiting_review", "implementation": "complete",
@@ -85,6 +96,9 @@ def main():
         "unchanged_legacy_definitions_sha256": unchanged,
         "unchanged_r04_test_blob_sha256": hashlib.sha256(old_bytes).hexdigest(),
         "code_files": code_files, "artifacts": artifact_rows,
+        "frozen_byte_archive": {"path": archive_path.relative_to(ROOT).as_posix(),
+                                "bytes": archive_path.stat().st_size,
+                                "sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest()},
         "raw_external_only": {"path": str(RAW_PATH), "bytes": len(raw),
                               "sha256": hashlib.sha256(raw).hexdigest()},
         "actual_author_raw_handler_invocations": 2, "live": "not_run",
