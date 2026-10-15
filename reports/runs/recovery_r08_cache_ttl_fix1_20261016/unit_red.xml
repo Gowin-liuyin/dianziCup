@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="10" time="0.356" timestamp="2026-10-16T04:27:21.655668+08:00" hostname="yin"><testcase classname="tests.unit.test_r08_cache_ttl_fix1" name="test_cache_ttl_never_exceeds_fractional_pg_retrieval_remaining[86399-expected_ttls0-available]" time="0.001" /><testcase classname="tests.unit.test_r08_cache_ttl_fix1" name="test_cache_ttl_never_exceeds_fractional_pg_retrieval_remaining[86399.5-expected_ttls1-available]" time="0.001"><failure message="assert [1] == []&#10;  &#10;  Left contains one more item: 1&#10;  Use -v to get more diff">age_seconds = 86399.5, expected_ttls = [], status = 'available'
+
+    @pytest.mark.parametrize("age_seconds,expected_ttls,status", [
+        (86399, [1], "available"), (86399.5, [], "available"), (86400, [], "unknown"),
+    ])
+    def test_cache_ttl_never_exceeds_fractional_pg_retrieval_remaining(age_seconds, expected_ttls, status):
+        service, repository, connector, cache = build_fixture_service(age_seconds)
+        result = service.collect_provider_aggregate_observation("hunter", "ollama", SCOPE, now=NOW)
+&gt;       assert [write[2] for write in cache.writes] == expected_ttls
+E       assert [1] == []
+E         
+E         Left contains one more item: 1
+E         Use -v to get more diff
+
+tests\unit\test_r08_cache_ttl_fix1.py:85: AssertionError</failure></testcase><testcase classname="tests.unit.test_r08_cache_ttl_fix1" name="test_cache_ttl_never_exceeds_fractional_pg_retrieval_remaining[86400-expected_ttls2-unknown]" time="0.001" /><testcase classname="tests.unit.test_r08_cache_ttl_fix1" name="test_observed_time_remaining_also_limits_cache_ttl[86399-expected_ttls0]" time="0.001" /><testcase classname="tests.unit.test_r08_cache_ttl_fix1" name="test_observed_time_remaining_also_limits_cache_ttl[86399.5-expected_ttls1]" time="0.001"><failure message="assert [1] == []&#10;  &#10;  Left contains one more item: 1&#10;  Use -v to get more diff">observed_age_seconds = 86399.5, expected_ttls = []
+
+    @pytest.mark.parametrize("observed_age_seconds,expected_ttls", [(86399, [1]), (86399.5, []), (86400, [])])
+    def test_observed_time_remaining_also_limits_cache_ttl(observed_age_seconds, expected_ttls):
+        service, _, _, cache = build_fixture_service(observed_age_seconds=observed_age_seconds)
+        result = service.collect_provider_aggregate_observation("hunter", "ollama", SCOPE, now=NOW)
+&gt;       assert [write[2] for write in cache.writes] == expected_ttls
+E       assert [1] == []
+E         
+E         Left contains one more item: 1
+E         Use -v to get more diff
+
+tests\unit\test_r08_cache_ttl_fix1.py:96: AssertionError</failure></testcase><testcase classname="tests.unit.test_r08_cache_ttl_fix1" name="test_observed_time_remaining_also_limits_cache_ttl[86400-expected_ttls2]" time="0.001" /><testcase classname="tests.unit.test_r08_cache_ttl_fix1" name="test_future_retrieval_is_never_written_to_cache_or_exposed_current" time="0.000" /><testcase classname="tests.unit.test_r08_cache_ttl_fix1" name="test_future_observation_is_rejected_before_safe_cache_write" time="0.000" /><testcase classname="tests.unit.test_r08_cache_ttl_fix1" name="test_cache_failure_still_returns_only_committed_available_pg_value" time="0.000" /><testcase classname="tests.unit.test_r08_cache_ttl_fix1" name="test_fixture_never_writes_even_at_one_second_remaining" time="0.000" /></testsuite></testsuites>
