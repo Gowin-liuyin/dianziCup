@@ -1,6 +1,8 @@
 import { ApiProblem } from "./client";
 
-export type SourceKind = "nvd_ollama" | "vllm_vendor";
+export const sourceKinds = ["nvd_ollama", "vllm_vendor", "osv_ollama", "avid_community", "ollama_releases", "trailofbits_blog", "arxiv_security", "nist_ai_rmf", "cac_generative_ai"] as const;
+export type SourceKind = typeof sourceKinds[number];
+export function isSourceKind(value: string): value is SourceKind { return sourceKinds.some((key) => key === value); }
 export type SourceJobStatus = "queued" | "running" | "retry_wait" | "succeeded" | "partial" | "failed" | "blocked" | "cancelled" | "waiting_approval";
 export interface SourceCollectionRequest { window_end: string; stream_kind: "live" | "backfill"; max_pages: number; }
 export interface SourceSubmission { sourceKind: SourceKind; body: SourceCollectionRequest; idempotencyKey: string; }
@@ -26,7 +28,7 @@ export function validateJobId(value: string): string {
 
 /** 写入固定字段并限制来源、窗口和页数；验证失败不会触发CSRF或网络请求。 */
 export function validateSourceSubmission(value: SourceSubmission): void {
-  if (value.sourceKind !== "nvd_ollama" && value.sourceKind !== "vllm_vendor") throw new ApiProblem(422, "validation_error", false);
+  if (!isSourceKind(value.sourceKind)) throw new ApiProblem(422, "validation_error", false);
   const body = value.body;
   if (Object.keys(body).length !== 3 || !Object.keys(body).every((key) => ["window_end", "stream_kind", "max_pages"].includes(key))) throw new ApiProblem(422, "validation_error", false);
   if (!timestamp(body.window_end) || body.window_end.length > 64 || Date.parse(body.window_end) > Date.now()) throw new ApiProblem(422, "validation_error", false);

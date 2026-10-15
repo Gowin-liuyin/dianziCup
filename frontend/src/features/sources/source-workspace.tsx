@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiProblem, publicProblem } from "../../api/client";
 import { collectSourcePage, getSourceJob } from "../../api/source-client";
-import { validateSourceSubmission, type SourceJob, type SourceJobStatus, type SourceKind, type SourceSubmission } from "../../api/source-contracts";
+import { isSourceKind, sourceKinds, validateSourceSubmission, type SourceJob, type SourceJobStatus, type SourceKind, type SourceSubmission } from "../../api/source-contracts";
+import { sourceCatalog, sourceCategoryLabels } from "./source-catalog";
 import { useAuthSession } from "../../app/auth-session";
 import { formatShanghaiTimestamp } from "../../app/date-time";
 import { EmptyState, ErrorPanel } from "../../components/status";
 import "./sources.css";
 
-const sourceNames: Record<SourceKind, string> = { nvd_ollama: "NVD · Ollama", vllm_vendor: "vLLM · 厂商公告" };
 const jobStates: Record<SourceJobStatus, { label: string; description: string }> = {
   queued: { label: "已排队", description: "PG已保存本页任务，等待worker执行；尚不能判断来源已采集。" },
   running: { label: "本页处理中", description: "服务端记录本页正在处理。此页面没有自动轮询，请手动刷新核对。" },
@@ -31,13 +31,14 @@ function failureMessage(error: ApiProblem, submit: boolean): string {
   if (error.status === 404) return "任务不存在或当前会话不可查看。没有展示旧任务或历史数量。";
   if (error.status === 409) return "幂等键与已保存请求冲突。请核对任务记录；不要通过自动更换请求键绕过冲突。";
   if (error.status === 422) return submit ? "请求未通过校验，请检查带时区的过去窗口、固定来源与1至20页范围。" : "任务标识未通过校验，请输入完整UUID后重新查询。";
+  if (error.status === 429) return "请求过于频繁，本次状态尚未确认。请稍后原样重试提交，或手动刷新已有任务；不会自动更换请求键。";
   if (submit) return "提交结果未确认。请求可能已入队；请保留本轮窗口和请求键原样重试，不要把网络错误当作未提交。";
   return "本次未取得PG任务状态，不能判断任务为空或已完成。恢复服务后手动刷新。";
 }
 
-function SourceJobDetails({ job }: { job: SourceJob }) {
+function SourceJobDetails({ job, sourceName, checkedAt }: { job: SourceJob; sourceName: string | null; checkedAt: string | null }) {
   const state = jobStates[job.status];
-  return <article className="source-job-details" aria-label="当前单页任务"><div className="source-job-state"><span className={`source-job-mark source-state-${job.status}`} aria-hidden="true" /><div><h3>{state.label}</h3><p>{state.description}</p></div></div><dl className="source-metadata"><dt>任务标识</dt><dd><code>{job.job_id}</code></dd><dt>执行尝试</dt><dd>{job.attempt_count} 次</dd><dt>创建时间</dt><dd><SourceTime value={job.created_at} /></dd><dt>结束时间</dt><dd><SourceTime value={job.finished_at} /></dd><dt>安全错误码</dt><dd><code>{job.error_code ?? "未返回错误码"}</code></dd><dt>内部结果引用</dt><dd><code>{job.result_ref ?? "尚无结果引用"}</code></dd></dl></article>;
+  return <article className="source-job-details" aria-label="当前单页任务"><div className="source-job-state"><span className={`source-job-mark source-state-${job.status}`} aria-hidden="true" /><div><h3>{state.label}</h3><p>{state.description}</p></div></div><dl className="source-metadata"><dt>任务标识</dt><dd><code>{job.job_id}</code></dd><dt>执行尝试</dt><dd>{job.attempt_count} 次</dd><dt>创建时间</dt><dd><SourceTime value={job.created_at} /></dd><dt>结束时间</dt><dd><SourceTime value={job.finished_at} /></dd><dt>安全错误码</dt><dd><code>{job.error_code ?? "未返回错误码"}</code></dd><dt>内部结果引用</dt><dd><code>{job.result_ref ?? "尚无结果引用"}</code></dd><dt>来源关联</dt><dd>{sourceName ?? "未知 / 仅按任务标识查询"}</dd><dt>本页取得快照</dt><dd><SourceTime value={checkedAt} /></dd><dt>状态时效</dt><dd>服务未提供时效标记；此为本次查询快照，请手动刷新。</dd></dl></article>;
 }
 
 function SourceAdminWorkspace() {
@@ -52,6 +53,10 @@ function SourceAdminWorkspace() {
   const [failure, setFailure] = useState<{ error: ApiProblem; submit: boolean } | null>(null);
   const [job, setJob] = useState<SourceJob | null>(null);
   const [jobId, setJobId] = useState("");
+  const [acceptedJobId, setAcceptedJobId] = useState<string | null>(null);
+  const [checkedAt, setCheckedAt] = useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const sourceSelect = useRef<HTMLSelectElement>(null);
   const active = useRef<AbortController | null>(null);
   const inFlight = useRef(false);
   const mounted = useRef(true);
@@ -68,18 +73,24 @@ function SourceAdminWorkspace() {
     inFlight.current = true;
     setPending(kind);
     setJob(null);
+    setCheckedAt(null);
     setFailure(null);
     const current = () => mounted.current && !controller.signal.aborted && isSessionCurrent(sessionGeneration);
     try {
       const result = kind === "submit" && frozen !== undefined ? await collectSourcePage(frozen, current, controller.signal) : await getSourceJob(jobId.trim(), controller.signal);
       if (!current()) return;
       setJob(result);
+      setCheckedAt(new Date().toISOString());
       setJobId(result.job_id);
-      if (kind === "submit") setAccepted(true);
+      if (kind === "submit") { setAccepted(true); setAcceptedJobId(result.job_id); }
     } catch (error: unknown) {
       if (!current()) return;
       const problem = publicProblem(error);
       setFailure({ error: problem, submit: kind === "submit" });
+      if (problem.status === 403 && problem.code !== "csrf_rejected") {
+        controller.abort(); inFlight.current = false; setPending(null); setAccessDenied(true);
+        setSubmission(null); setAccepted(false); setAcceptedJobId(null); setJobId("");
+      }
       if (problem.status === 401) expireSession(sessionGeneration);
     } finally {
       if (current()) { inFlight.current = false; setPending(null); }
@@ -101,22 +112,31 @@ function SourceAdminWorkspace() {
     setSubmission(null);
     setAccepted(false);
     setFailure(null);
+    setJob(null); setJobId(""); setAcceptedJobId(null); setCheckedAt(null);
     setWindowEnd(formatShanghaiTimestamp(new Date().toISOString()));
   }
 
   const locked = submission !== null || pending !== null;
-  return <div className="source-workspace"><div className="source-scope-note"><span className="eyebrow">FIXED SOURCES / 有界调度</span><p>仅管理两个固定公开来源。任务状态读取PG，不代表整个来源覆盖、持续在线或监控总量。</p><span className="source-mode">{state.kind === "authenticated" && state.user.data_mode === "fixture" ? "合成 / Fixture" : "真实 / Live"} · 模式来自当前会话</span></div>
-    <div className="source-workspace-grid"><section className="panel source-submit-panel" aria-labelledby="source-submit-title"><div className="panel-heading"><div><p className="eyebrow">COLLECT / 固定来源</p><h2 id="source-submit-title">提交采集轮次</h2></div></div>
-      <div className="source-catalog"><div><strong>NVD · Ollama</strong><p>固定Ollama关键词；每个任务处理一页。</p><code>nvd_ollama</code></div><div><strong>vLLM · 厂商公告</strong><p>固定官方仓库公开公告；服务端处理分页游标。</p><code>vllm_vendor</code></div></div>
-      <form className="source-form" onSubmit={submitCollection} aria-label="固定来源采集"><label htmlFor="source-kind">固定来源<select id="source-kind" disabled={locked} value={sourceKind} onChange={(event) => { if (event.target.value === "nvd_ollama" || event.target.value === "vllm_vendor") setSourceKind(event.target.value); }}><option value="nvd_ollama">NVD · Ollama</option><option value="vllm_vendor">vLLM · 厂商公告</option></select></label><div className="source-form-row"><label htmlFor="source-stream">采集流<select id="source-stream" disabled={locked} value={streamKind} onChange={(event) => { if (event.target.value === "live" || event.target.value === "backfill") setStreamKind(event.target.value); }}><option value="live">实时流 / live</option><option value="backfill">回补流 / backfill</option></select></label><label htmlFor="source-max-pages">本轮页上限<input id="source-max-pages" type="number" min="1" max="20" step="1" disabled={locked} value={maxPages} onChange={(event) => setMaxPages(event.target.value)} required /></label></div><label htmlFor="source-window">观察窗口截止（含时区）<input id="source-window" value={windowEnd} onChange={(event) => setWindowEnd(event.target.value)} disabled={locked} required /></label><p className="source-boundary">窗口是本轮观察标识，不保证上游快照或完整时间过滤。202只表示PG受理，不表示来源采完。</p><button className="button" type="submit" disabled={locked}>{pending === "submit" ? "正在提交…" : "提交本轮采集"}</button></form>
-      {submission !== null && <div className="source-frozen-request"><h3>{accepted ? "本轮已受理" : "本轮请求已冻结"}</h3><dl className="source-metadata"><dt>来源与流</dt><dd>{sourceNames[submission.sourceKind]} / {submission.body.stream_kind}</dd><dt>固定窗口</dt><dd><SourceTime value={submission.body.window_end} /></dd><dt>页上限</dt><dd>{submission.body.max_pages}</dd><dt>幂等请求键</dt><dd><code>{submission.idempotencyKey}</code></dd></dl><p>重试保留相同来源、请求体、窗口和请求键。开始新一轮后，首次提交会生成新键；上一轮结果未知时请先原样重试。</p><div className="source-actions">{!accepted && <button className="button secondary" disabled={pending !== null} onClick={() => void runRequest("submit", submission)}>原样重试本轮</button>}<button className="button secondary" disabled={pending !== null} onClick={newRound}>开始新一轮</button></div></div>}
+  function selectSource(kind: SourceKind, focus = false) {
+    if (locked || inFlight.current) return;
+    setSourceKind(kind); setJob(null); setJobId(""); setAcceptedJobId(null); setCheckedAt(null); setFailure(null);
+    if (focus) { sourceSelect.current?.focus(); sourceSelect.current?.scrollIntoView?.({ block: "center", behavior: "instant" }); }
+  }
+  if (accessDenied && failure !== null) return <section className="panel source-access-panel"><EmptyState title="没有来源调度权限" description="服务端已拒绝本次管理操作。本页已清除请求和任务快照，请重新核对会话权限。" /><ErrorPanel error={failure.error} message={failureMessage(failure.error, failure.submit)} /><a className="button secondary" href="#session">核对会话与权限</a></section>;
+  return <div className="source-workspace"><div className="source-scope-note"><span className="eyebrow">FIXED SOURCES / 有界调度</span><p>九个固定来源归入八类。目录仅说明登记范围，未验证接通或启用；任务状态读取PG，不代表持续在线或全部采完。</p><span className="source-mode">{state.kind === "authenticated" && state.user.data_mode === "fixture" ? "合成 / Fixture" : "真实 / Live"} · 模式来自当前会话</span></div>
+    <div className="source-workspace-grid"><section className="panel source-catalog-panel" aria-labelledby="source-catalog-title"><div className="panel-heading"><div><p className="eyebrow">CATALOG / 登记范围</p><h2 id="source-catalog-title">固定来源目录</h2></div><span className="small-note">接通状态未验证</span></div><div className="source-catalog">
+      {Object.entries(sourceCategoryLabels).map(([category, label]) => <section className="source-category-group" key={category}><h3>{label}</h3>{sourceKinds.filter((kind) => sourceCatalog[kind].category === category).map((kind) => <article key={kind} className={`source-catalog-row ${sourceKind === kind ? "source-selected" : ""}`}><div className="source-catalog-title"><strong>{sourceCatalog[kind].name}</strong><span className="source-verification">未验证</span></div><p>{sourceCatalog[kind].scope}</p><div className="source-catalog-action"><code>{kind}</code><button type="button" className="button secondary" disabled={locked} aria-pressed={sourceKind === kind} onClick={() => selectSource(kind, true)}>选择 {sourceCatalog[kind].name}</button></div></article>)}</section>)}
+    </div></section><div className="source-control-column"><section className="panel source-submit-panel" aria-labelledby="source-submit-title"><div className="panel-heading"><div><p className="eyebrow">COLLECT / 单源提交</p><h2 id="source-submit-title">提交采集轮次</h2></div></div>
+      <div className="source-selection-note"><strong>{sourceCatalog[sourceKind].name}</strong><p>{sourceCatalog[sourceKind].boundary}</p></div>
+      <form className="source-form" onSubmit={submitCollection} aria-label="固定来源采集"><label htmlFor="source-kind">固定来源<select ref={sourceSelect} id="source-kind" disabled={locked} value={sourceKind} onChange={(event) => { if (isSourceKind(event.target.value)) selectSource(event.target.value); }}>{sourceKinds.map((kind) => <option value={kind} key={kind}>{sourceCatalog[kind].name}</option>)}</select></label><div className="source-form-row"><label htmlFor="source-stream">采集流<select id="source-stream" disabled={locked} value={streamKind} onChange={(event) => { if (event.target.value === "live" || event.target.value === "backfill") setStreamKind(event.target.value); }}><option value="live">实时流 / live</option><option value="backfill">回补流 / backfill</option></select></label><label htmlFor="source-max-pages">本轮页上限<input id="source-max-pages" type="number" min="1" max="20" step="1" disabled={locked} value={maxPages} onChange={(event) => setMaxPages(event.target.value)} required /></label></div><label htmlFor="source-window">观察窗口截止（含时区）<input id="source-window" value={windowEnd} onChange={(event) => setWindowEnd(event.target.value)} disabled={locked} required /></label><p className="source-boundary">窗口是本轮观察标识，不保证上游快照或完整时间过滤。202只表示PG受理，不表示来源采完。</p><button className="button" type="submit" disabled={locked}>{pending === "submit" ? "正在提交…" : "提交本轮采集"}</button></form>
+      {submission !== null && <div className="source-frozen-request"><h3>{failure !== null ? "本轮状态未确认" : accepted ? "本轮已受理" : "本轮请求已冻结"}</h3><dl className="source-metadata"><dt>来源与流</dt><dd>{sourceCatalog[submission.sourceKind].name} / {submission.body.stream_kind}</dd><dt>固定窗口</dt><dd><SourceTime value={submission.body.window_end} /></dd><dt>页上限</dt><dd>{submission.body.max_pages}</dd><dt>幂等请求键</dt><dd><code>{submission.idempotencyKey}</code></dd></dl><p>重试保留相同来源、请求体、窗口和请求键。开始新一轮后，首次提交会生成新键；上一轮结果未知时请先原样重试。</p><div className="source-actions">{!accepted && <button className="button secondary" disabled={pending !== null} onClick={() => void runRequest("submit", submission)}>原样重试本轮</button>}<button className="button secondary" disabled={pending !== null} onClick={newRound}>开始新一轮</button></div></div>}
     </section>
     <section className="panel source-query-panel" aria-labelledby="source-query-title"><div className="panel-heading"><div><p className="eyebrow">JOB / PG单页任务</p><h2 id="source-query-title">任务状态查询</h2></div><span className="small-note">手动刷新</span></div><form className="source-form" aria-label="查询单页任务" onSubmit={(event) => { event.preventDefault(); void runRequest("lookup"); }}><label htmlFor="source-job-id">任务标识<input id="source-job-id" placeholder="输入已保存的job UUID" value={jobId} onChange={(event) => setJobId(event.target.value)} disabled={pending !== null} required /></label><button className="button secondary" type="submit" disabled={pending !== null || !jobId.trim()}>{pending === "lookup" ? "正在查询…" : "查询 / 刷新任务"}</button><p className="source-boundary">保存任务标识可在返回本页后重新查询。此处没有任务历史、全来源计数或自动轮询。</p></form>
       {pending !== null && <p className="source-loading" role="status">{pending === "submit" ? "正在提交固定来源任务，等待PG回执…" : "正在读取指定任务的PG状态…"}</p>}
       {failure !== null && <ErrorPanel error={failure.error} message={failureMessage(failure.error, failure.submit)} />}
-      {job !== null && <SourceJobDetails job={job} />}
+      {job !== null && <SourceJobDetails job={job} sourceName={submission !== null && job.job_id === acceptedJobId ? sourceCatalog[submission.sourceKind].name : null} checkedAt={checkedAt} />}
       {job === null && pending === null && failure === null && <EmptyState title="尚未查询任务" description="提交一轮取得任务标识，或输入已有标识查询。尚未查询不等于没有任务。" />}
-    </section></div>
+    </section></div></div>
   </div>;
 }
 
