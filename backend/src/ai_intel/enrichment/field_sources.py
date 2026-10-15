@@ -130,6 +130,73 @@ def _require_uri(uri: str, quotes: tuple[str, ...]) -> None:
         raise FieldEvidenceError("field_uri_not_in_evidence")
 
 
+def _require_affirmative_relation(text: str, relation: str) -> None:
+    """Negation belongs to the relation predicate; a missing safety control is not its denial."""
+    text = re.sub(r"\bnot\s+(?:only|just)\b|不仅|不只", "", text, flags=re.IGNORECASE)
+    if re.search(
+        r"\b(?:unknown|uncertain|unconfirmed|unverified|undetermined|possibly|potentially|"
+        r"no evidence|not (?:confirmed|established|verified|supported))\b|"
+        r"\b(?:might|may|could)\s+(?:analy[sz]\w*|provide|defend|mitigat\w*|experiment\w*|"
+        r"enter|reach|inject|override|execute|bypass|be|have)\b|"
+        r"未知|不确定|尚未确认|未确认|无法确认|尚无证据|未经证实|未证实|可能",
+        text,
+        re.IGNORECASE,
+    ):
+        raise FieldEvidenceError("field_relation_negative_or_unknown")
+    clauses = re.split(
+        r"[;；。！？!?\n]|\b(?:but|however|and|yet)\b|然而|但是|但|并且", text, flags=re.IGNORECASE
+    )
+    if relation == "atlas":
+        for clause in clauses:
+            for negative in re.finditer(
+                r"\b(?:not|never|cannot|can't|don't|doesn't|didn't|isn't|aren't|"
+                r"fails? to|unable to)\s+"
+                r"(?:(?:properly|fully|adequately|always|currently|directly)\s+)*([a-z]+)",
+                clause,
+                re.IGNORECASE,
+            ):
+                if not re.match(
+                    r"saniti[sz]|filter|validat|block|prevent|reject|escap|restrict|check|detect|"
+                    r"trust|need|requir",
+                    negative[1],
+                    re.IGNORECASE,
+                ):
+                    raise FieldEvidenceError("field_relation_negative_or_unknown")
+            if re.search(
+                r"\bno\s+(?:attack|injection|untrusted|malicious|input path)\b",
+                clause,
+                re.IGNORECASE,
+            ):
+                raise FieldEvidenceError("field_relation_negative_or_unknown")
+            for negative in re.finditer(r"没有|无法|不能|不会|并无|未|不|无", clause):
+                tail = clause[negative.end() :]
+                if negative[0] == "不" and re.match(r"同|一致|完整的|安全的|足", tail):
+                    continue
+                if not re.match(
+                    r"(?:对[^，；。]{1,12}(?:进行|做))?(?:经|被|受|能)?"
+                    r"(?:过滤|清理|校验|验证|阻止|拦截|拒绝|检测|检查|限制|可信|信任|需|要求)",
+                    tail,
+                ):
+                    raise FieldEvidenceError("field_relation_negative_or_unknown")
+        return
+    markers = {
+        "analysis": r"analy[sz]\w*|分析",
+        "defense": r"defen[sc]\w*|mitigat\w*|防御|缓解",
+        "experimental": r"experiment\w*|实验",
+    }
+    marker = markers[relation]
+    for clause in clauses:
+        if re.search(
+            r"\b(?:not|never|no(?:\s+longer)?|cannot|can't|doesn't|don't|didn't)\s+"
+            r"(?:\w+\s+){0,3}(?:" + marker + r")|"
+            r"(?:未|不|没有|并非|无|否认)[^，；。]{0,12}(?:" + marker + r")|"
+            r"(?:" + marker + r")[^;；。]{0,100}\b(?:is|was|remains?)\s+not\b",
+            clause,
+            re.IGNORECASE,
+        ):
+            raise FieldEvidenceError("field_relation_negative_or_unknown")
+
+
 def _validate_atlas(
     value: AtlasMappingValue,
     evidence: tuple[CandidateEvidence, ...],
@@ -153,6 +220,7 @@ def _validate_atlas(
     )
     if value.mechanism not in event_quotes:
         raise FieldEvidenceError("atlas_mechanism_context_missing")
+    _require_affirmative_relation(value.mechanism, "atlas")
     event_blocks = tuple(
         block.text
         for document in documents
@@ -164,28 +232,50 @@ def _validate_atlas(
         line
         for block_text in event_blocks
         for line in block_text.splitlines()
-        if re.search(r"attacker can|prerequisite|requires|前提|前置条件", line, re.IGNORECASE)
+        if re.search(
+            r"attacker can|prerequisite|requires|前提|前置条件|"
+            r"^(?:only when|only if|unless|仅当|只有|除非)",
+            line,
+            re.IGNORECASE,
+        )
     )
     for source_prerequisite in prerequisites:
         if not any(source_prerequisite in item for item in value.prerequisites):
             raise FieldEvidenceError("atlas_prerequisite_context_missing")
     for prerequisite in value.prerequisites:
         _require_text(prerequisite, event_quotes)
+    for document in documents:
+        if document.revision_id not in taxonomy_revisions:
+            _require_statement_qualifiers(
+                value.mechanism,
+                "\n".join((value.mechanism, *value.prerequisites)),
+                evidence,
+                document,
+                "atlas_prerequisite_context_missing",
+                False,
+            )
     return value
 
 
-def _require_version_qualifiers(
-    raw_expression: str, evidence: tuple[CandidateEvidence, ...], document: EnrichmentDocument
+def _require_statement_qualifiers(
+    statement: str,
+    retained_text: str,
+    evidence: tuple[CandidateEvidence, ...],
+    document: EnrichmentDocument,
+    error_code: str,
+    include_preceding: bool,
 ) -> None:
     """Retain explicit qualifiers and wrapped continuations in the quoted source paragraph."""
     for quote in evidence:
-        if quote.quote_text != raw_expression:
+        if quote.revision_id != document.revision_id or statement not in quote.quote_text:
             continue
         block = next(block for block in document.blocks if block.block_id == quote.block_id)
         separators = tuple(re.finditer(r"\r?\n[ \t]*\r?\n", block.text))
         start = max(
             (item.end() for item in separators if item.end() <= quote.start_offset), default=0
         )
+        if not include_preceding:
+            start = max(start, quote.start_offset)
         end = next(
             (item.start() for item in separators if item.start() >= quote.end_offset),
             len(block.text),
@@ -204,8 +294,8 @@ def _require_version_qualifiers(
             while last + 1 < len(lines) and not re.search(r"[.!?。！？]\s*$", lines[last]):
                 last += 1
             qualifier = "".join(lines[: last + 1]).rstrip("\r\n")
-            if qualifier not in raw_expression:
-                raise FieldEvidenceError("version_expression_context_missing")
+            if qualifier not in retained_text:
+                raise FieldEvidenceError(error_code)
 
 
 def _validate_versions(
@@ -221,7 +311,14 @@ def _validate_versions(
     _require_identifier(value.ecosystem, quotes)
     if value.raw_expression not in quotes:
         raise FieldEvidenceError("version_expression_context_missing")
-    _require_version_qualifiers(value.raw_expression, evidence, documents[0])
+    _require_statement_qualifiers(
+        value.raw_expression,
+        value.raw_expression,
+        evidence,
+        documents[0],
+        "version_expression_context_missing",
+        True,
+    )
     if value.intervals or value.explicit_versions:
         if re.search(
             r"not affected|not vulnerable|unaffected|unknown|uncertain|no evidence|"
@@ -297,6 +394,7 @@ def _validate_versions(
 def _validate_literature(
     value: LiteratureReferenceValue,
     quotes: tuple[str, ...],
+    evidence: tuple[CandidateEvidence, ...],
     documents: tuple[EnrichmentDocument, ...],
     all_documents: tuple[EnrichmentDocument, ...],
 ) -> LiteratureReferenceValue:
@@ -321,6 +419,18 @@ def _validate_literature(
         }
         if not re.search(markers[value.relation], value.support_summary, re.IGNORECASE):
             raise FieldEvidenceError("literature_relation_not_supported")
+        for quote in quotes:
+            if value.support_summary.casefold() in quote.casefold():
+                _require_affirmative_relation(quote, value.relation)
+        for document in documents:
+            _require_statement_qualifiers(
+                value.support_summary,
+                value.support_summary,
+                evidence,
+                document,
+                "literature_relation_context_missing",
+                False,
+            )
     targets = tuple(document for document in all_documents if document.canonical_uri == value.uri)
     if len(targets) > 1:
         raise FieldEvidenceError("literature_target_revision_ambiguous")
@@ -401,7 +511,7 @@ def validate_field_candidate(
     elif isinstance(value, VersionAssertionValue):
         value = _validate_versions(value, candidate.evidence, selected)
     elif isinstance(value, LiteratureReferenceValue):
-        value = _validate_literature(value, quotes, selected, documents)
+        value = _validate_literature(value, quotes, candidate.evidence, selected, documents)
     elif isinstance(value, ArtifactReferenceValue):
         value = _validate_poc(value, quotes)
     else:

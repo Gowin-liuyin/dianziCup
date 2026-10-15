@@ -1,0 +1,115 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_ test_precise_source_owner_field_binds_a_rule_fact_without_internal_uuid_in_text _
+
+graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_f572f20b0b9848d8b58f87ea7546e161+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-678/test_precise_source_owner_fiel0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000236C7915DC0>
+
+    def test_precise_source_owner_field_binds_a_rule_fact_without_internal_uuid_in_text(
+        graph_engine, tmp_path, monkeypatch
+    ):
+        event_id = uuid4()
+        value = {**VERSION, "raw_expression": "PyPI fixture-package affected versions: >=1.0,<1.4.2"}
+        template = prepared_submission(
+            graph_engine, tmp_path, predicate="version_assertion", claim_origin="rule_derived"
+        )
+        record = ClaimRecord.model_validate(
+            {
+                **template.record.model_dump(),
+                "schema_version": 3,
+                "subject": str(event_id),
+                "object_value": value,
+            }
+        )
+        source = replace_source_body(
+            graph_engine,
+            template.model_copy(update={"record": record}),
+            [value["raw_expression"], value["vendor_fix"], *value["mitigations"]],
+        )
+        with graph_engine.begin() as writer:
+            block_id = add_text_block(
+                writer,
+                source.revision_id.value,
+                2,
+                500,
+                500 + len(SOURCE_IDENTIFIER),
+                SOURCE_IDENTIFIER,
+            )
+            writer.execute(
+                text("UPDATE text_blocks SET json_pointer='/ghsa_id' WHERE block_id=:id"),
+                {"id": block_id},
+            )
+            span_id = attach_evidence_span(
+                writer,
+                source.revision_id.value,
+                500,
+                500 + len(SOURCE_IDENTIFIER),
+                "/ghsa_id",
+                SOURCE_IDENTIFIER,
+                True,
+                "public",
+                None,
+                NOW,
+                block_id=block_id,
+                verified_at=NOW,
+            )
+        owner_record = ClaimRecord.model_validate(
+            {
+                **template.record.model_dump(),
+                "claim_id": {"value": str(uuid4())},
+                "subject": str(event_id),
+                "predicate": "source_identifier",
+                "object_value": SOURCE_IDENTIFIER,
+            }
+        )
+        owner = template.model_copy(
+            update={
+                "record": owner_record,
+                "json_path": "/ghsa_id",
+                "evidence_links": (
+                    EvidenceLink(
+                        evidence_id={"value": span_id},
+                        support_kind="supports",
+                        validation_status="validated",
+                    ),
+                ),
+            }
+        )
+        publish_submission(graph_engine, source)
+        publish_submission(graph_engine, owner)
+        publish_event(graph_engine, event_id, [source])
+        import ai_intel.knowledge.evidence_graph as graph_module
+        from ai_intel.enrichment.field_sources import FieldEvidenceError
+    
+        original = graph_module.validate_field_candidate
+        codes = []
+    
+        def trace(candidate, loaded_documents):
+            try:
+                return original(candidate, loaded_documents)
+            except FieldEvidenceError as error:
+                codes.append(error.code)
+                raise
+    
+        monkeypatch.setattr(graph_module, "validate_field_candidate", trace)
+        result = read_graph(graph_engine, event_id)
+        with Session(graph_engine) as diagnostic:
+            rows = graph_module.EvidenceGraphReadService(diagnostic, publisher_scope(source.record.scope))._support_rows(event_id)
+        state = [(item["predicate"], item["json_pointer"], item["assertion_path"]) for item in rows]
+>       assert any(edge.relation_type == "affects_component_version" for edge in result.edges), (codes, state)
+E       AssertionError: ([], [('version_assertion', None, '$.value'), ('version_assertion', None, '$.value'), ('version_assertion', None, '$.value'), ('source_identifier', '/ghsa_id', '/ghsa_id')])
+E       assert False
+E        +  where False = any(<generator object test_precise_source_owner_field_binds_a_rule_fact_without_internal_uuid_in_text.<locals>.<genexpr> at 0x00000236C7E145F0>)
+
+tests\integration\test_r10_graph_validity_pg.py:408: AssertionError
+============================== warnings summary ===============================
+..\..\..\dianzi\backend\.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\dianzi\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\r10-pg-graph\reports\runs\recovery_r10_graph_validity_20261016\owner_field_diagnostic2.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r10_graph_validity_pg.py::test_precise_source_owner_field_binds_a_rule_fact_without_internal_uuid_in_text
+1 failed, 27 deselected, 1 warning in 3.05s

@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="4" skipped="0" tests="20" time="21.407" timestamp="2026-10-16T04:13:28.354957+08:00" hostname="yin"><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_unrelated_quote_cannot_become_supported_relation[same_event]" time="0.977" /><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_unrelated_quote_cannot_become_supported_relation[affects_component_version]" time="0.770" /><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_unrelated_quote_cannot_become_supported_relation[component_version_vulnerability]" time="0.832" /><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_unrelated_quote_cannot_become_supported_relation[mapped_atlas]" time="0.877" /><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_unrelated_quote_cannot_become_supported_relation[related_paper]" time="1.112" /><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_unrelated_quote_cannot_become_supported_relation[remediated_by]" time="1.088" /><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_http_does_not_return_snapshot_invalidated_before_response[source_acl]" time="1.501" /><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_http_does_not_return_snapshot_invalidated_before_response[document_acl]" time="1.028" /><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_http_does_not_return_snapshot_invalidated_before_response[revision_acl]" time="1.258" /><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_http_does_not_return_snapshot_invalidated_before_response[claim_withdrawn]" time="1.022" /><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_http_does_not_return_snapshot_invalidated_before_response[event_version]" time="0.971" /><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_http_rechecks_current_role_before_returning_private_graph" time="0.871" /><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_selected_graph_is_bounded_deterministic_and_canonical[1-1]" time="0.938"><failure message="AssertionError: assert False == ((1 &lt; 6))&#10; +  where False = GraphSnapshot(schema_version=1, event_id=UUID('ff79901b-5401-4f81-843d-088b39269dc4'), business_version=1, rule_versio...n='no_current_supported_relation')), content_sha256='e8975cfed0d75b1086ffd2964c52e5ba2991aca79aa9ff9dcb5c902bc13a7cfc').truncated">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_bb58f519b35c433e9894fd3baac09281+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-698/test_selected_graph_is_bounded0')
+max_nodes = 1, max_edges = 1
+
+    @pytest.mark.parametrize('max_nodes,max_edges', [(1, 1), (2, 400), (200, 1), (200, 400)])
+    def test_selected_graph_is_bounded_deterministic_and_canonical(graph_engine, tmp_path, max_nodes, max_edges):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        result = read_graph(graph_engine, event_id, max_nodes=max_nodes, max_edges=max_edges)
+        assert len(result.nodes) &lt;= max_nodes and len(result.edges) &lt;= max_edges
+        ids = {node.id for node in result.nodes}
+        assert all(edge.subject_id in ids and edge.object_id in ids for edge in result.edges)
+        payload = result.model_dump(mode='json', exclude={'content_sha256'})
+        expected = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        assert result.content_sha256 == expected
+        assert result == read_graph(graph_engine, event_id, max_nodes=max_nodes, max_edges=max_edges)
+&gt;       assert result.truncated == (max_nodes &lt; 6 or max_edges &lt; 5)
+E       AssertionError: assert False == ((1 &lt; 6))
+E        +  where False = GraphSnapshot(schema_version=1, event_id=UUID('ff79901b-5401-4f81-843d-088b39269dc4'), business_version=1, rule_versio...n='no_current_supported_relation')), content_sha256='e8975cfed0d75b1086ffd2964c52e5ba2991aca79aa9ff9dcb5c902bc13a7cfc').truncated
+
+..\reports\runs\recovery_r10_graph_validity_20261016\test_independent_graph_pg.py:211: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_selected_graph_is_bounded_deterministic_and_canonical[2-400]" time="0.937"><failure message="AssertionError: assert False == ((2 &lt; 6))&#10; +  where False = GraphSnapshot(schema_version=1, event_id=UUID('f5620f9f-30f0-4448-acad-af1486704d79'), business_version=1, rule_versio...n='no_current_supported_relation')), content_sha256='64fe96d2723c1dc80811cb0f26dbbbc7af17c406efc3bd1bbf8babd0be1c9be3').truncated">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_024893faca5f413fb52a6e9a054db8e0+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-698/test_selected_graph_is_bounded1')
+max_nodes = 2, max_edges = 400
+
+    @pytest.mark.parametrize('max_nodes,max_edges', [(1, 1), (2, 400), (200, 1), (200, 400)])
+    def test_selected_graph_is_bounded_deterministic_and_canonical(graph_engine, tmp_path, max_nodes, max_edges):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        result = read_graph(graph_engine, event_id, max_nodes=max_nodes, max_edges=max_edges)
+        assert len(result.nodes) &lt;= max_nodes and len(result.edges) &lt;= max_edges
+        ids = {node.id for node in result.nodes}
+        assert all(edge.subject_id in ids and edge.object_id in ids for edge in result.edges)
+        payload = result.model_dump(mode='json', exclude={'content_sha256'})
+        expected = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        assert result.content_sha256 == expected
+        assert result == read_graph(graph_engine, event_id, max_nodes=max_nodes, max_edges=max_edges)
+&gt;       assert result.truncated == (max_nodes &lt; 6 or max_edges &lt; 5)
+E       AssertionError: assert False == ((2 &lt; 6))
+E        +  where False = GraphSnapshot(schema_version=1, event_id=UUID('f5620f9f-30f0-4448-acad-af1486704d79'), business_version=1, rule_versio...n='no_current_supported_relation')), content_sha256='64fe96d2723c1dc80811cb0f26dbbbc7af17c406efc3bd1bbf8babd0be1c9be3').truncated
+
+..\reports\runs\recovery_r10_graph_validity_20261016\test_independent_graph_pg.py:211: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_selected_graph_is_bounded_deterministic_and_canonical[200-1]" time="1.215"><failure message="AssertionError: assert False == ((200 &lt; 6 or 1 &lt; 5))&#10; +  where False = GraphSnapshot(schema_version=1, event_id=UUID('76a3b924-6258-4721-a361-0e7f43d02120'), business_version=1, rule_versio...n='no_current_supported_relation')), content_sha256='5cf3ba6c131048217f279a132680a757e5ac78744adba97fdbc808bbf4776922').truncated">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_2a9795371a694f1e8b48e87ea93705a8+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-698/test_selected_graph_is_bounded2')
+max_nodes = 200, max_edges = 1
+
+    @pytest.mark.parametrize('max_nodes,max_edges', [(1, 1), (2, 400), (200, 1), (200, 400)])
+    def test_selected_graph_is_bounded_deterministic_and_canonical(graph_engine, tmp_path, max_nodes, max_edges):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        result = read_graph(graph_engine, event_id, max_nodes=max_nodes, max_edges=max_edges)
+        assert len(result.nodes) &lt;= max_nodes and len(result.edges) &lt;= max_edges
+        ids = {node.id for node in result.nodes}
+        assert all(edge.subject_id in ids and edge.object_id in ids for edge in result.edges)
+        payload = result.model_dump(mode='json', exclude={'content_sha256'})
+        expected = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        assert result.content_sha256 == expected
+        assert result == read_graph(graph_engine, event_id, max_nodes=max_nodes, max_edges=max_edges)
+&gt;       assert result.truncated == (max_nodes &lt; 6 or max_edges &lt; 5)
+E       AssertionError: assert False == ((200 &lt; 6 or 1 &lt; 5))
+E        +  where False = GraphSnapshot(schema_version=1, event_id=UUID('76a3b924-6258-4721-a361-0e7f43d02120'), business_version=1, rule_versio...n='no_current_supported_relation')), content_sha256='5cf3ba6c131048217f279a132680a757e5ac78744adba97fdbc808bbf4776922').truncated
+
+..\reports\runs\recovery_r10_graph_validity_20261016\test_independent_graph_pg.py:211: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_selected_graph_is_bounded_deterministic_and_canonical[200-400]" time="1.224" /><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_corrupt_rows_never_produce_supported_non_same_event_edges[predicate]" time="1.031" /><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_corrupt_rows_never_produce_supported_non_same_event_edges[object_schema]" time="0.875" /><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_corrupt_rows_never_produce_supported_non_same_event_edges[block_hash]" time="1.119" /><testcase classname="reports.runs.recovery_r10_graph_validity_20261016.test_independent_graph_pg" name="test_poc_reference_does_not_become_remediation_or_verification" time="0.833"><failure message="AssertionError: assert set() == {'same_event'}&#10;  &#10;  Extra items in the right set:&#10;  'same_event'&#10;  Use -v to get more diff">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_20261016?options=-c+search_path%3Dtest_r10_graph_c7cdbeaaecd04a7dbc944156700cac95+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-698/test_poc_reference_does_not_be0')
+
+    def test_poc_reference_does_not_become_remediation_or_verification(graph_engine, tmp_path):
+        event_id = uuid4()
+        value = {'kind': 'artifact_reference', 'uri': 'https://example.invalid/static-poc', 'title': 'Synthetic static PoC', 'artifact_kind': 'poc', 'static_status': 'static_reviewed'}
+        submission = publish_fact(graph_engine, tmp_path, event_id, value)
+        publish_event(graph_engine, event_id, [submission])
+        result = read_graph(graph_engine, event_id)
+&gt;       assert {edge.relation_type for edge in result.edges} == {'same_event'}
+E       AssertionError: assert set() == {'same_event'}
+E         
+E         Extra items in the right set:
+E         'same_event'
+E         Use -v to get more diff
+
+..\reports\runs\recovery_r10_graph_validity_20261016\test_independent_graph_pg.py:245: AssertionError</failure></testcase></testsuite></testsuites>
