@@ -127,6 +127,8 @@ class _HttpResponse:
             self._connection.check_deadline()
             try:
                 chunk = self._response.read(min(65536, self._max_response_bytes + 1 - consumed))
+            except TimeoutError:
+                raise NetworkTimeoutError("HTTP response read timed out") from None
             except (OSError, http.client.HTTPException):
                 self._connection.check_deadline()
                 raise NetworkRequestError("HTTP response read failed") from None
@@ -177,6 +179,8 @@ class PinnedHttpTransport:
             outcome = resolved.get(timeout=deadline.remaining_seconds())
         except queue.Empty:
             raise NetworkTimeoutError("DNS resolution exceeded total time limit") from None
+        if isinstance(outcome, TimeoutError):
+            raise NetworkTimeoutError("DNS resolution timed out") from None
         if isinstance(outcome, OSError):
             raise NetworkResolutionError("DNS resolution failed") from None
         return outcome
@@ -234,6 +238,8 @@ class PinnedHttpTransport:
         except ssl.SSLCertVerificationError:
             connection.check_deadline()
             raise NetworkTlsError("HTTPS certificate verification failed") from None
+        except TimeoutError:
+            raise NetworkTimeoutError("HTTP request timed out") from None
         except (OSError, http.client.HTTPException):
             connection.check_deadline()
             raise NetworkRequestError("HTTP request failed") from None
