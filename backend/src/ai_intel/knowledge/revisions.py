@@ -114,7 +114,11 @@ def save_document_revision(
     if revision_metadata is not None:
         try:
             encoded_metadata = json.dumps(
-                revision_metadata, ensure_ascii=False, allow_nan=False
+                revision_metadata,
+                ensure_ascii=False,
+                allow_nan=False,
+                sort_keys=True,
+                separators=(",", ":"),
             ).encode("utf-8")
         except (TypeError, ValueError, UnicodeError, RecursionError):
             raise ValueError("invalid document revision metadata") from None
@@ -150,11 +154,19 @@ def save_document_revision(
         .mappings()
         .first()
     )
-    if (
-        tip is not None
-        and tip["content_hash"] == stored.content_hash
-        and (revision_metadata is None or tip["source_metadata"] == revision_metadata)
-    ):
+    metadata_matches = revision_metadata is None
+    if revision_metadata is not None and tip is not None:
+        metadata_matches = (
+            json.dumps(
+                tip["source_metadata"],
+                ensure_ascii=False,
+                allow_nan=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+            == encoded_metadata
+        )
+    if tip is not None and tip["content_hash"] == stored.content_hash and metadata_matches:
         return SavedRevision(
             revision_id=str(tip["revision_id"]),
             revision_number=int(tip["revision_number"]),

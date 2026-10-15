@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 from uuid import NAMESPACE_URL, uuid5
 
 from pydantic import JsonValue
@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from ai_intel.domain.access import MANAGE_PUBLIC_SOURCES, READ_PUBLIC, AccessScope, Role
 from ai_intel.domain.enums import DocumentKind
 from ai_intel.infrastructure.content_store import ContentStorage
+from ai_intel.infrastructure.network import SENSITIVE_QUERY_KEYS
 from ai_intel.ingestion.parsing.text_blocks import ParseOutcome
 from ai_intel.ingestion.source_catalog import CATALOG_SOURCES, SourceCatalogError, SourceKind
 from ai_intel.knowledge.models import document_revisions, documents, scope_epochs, text_blocks
@@ -93,6 +94,7 @@ def _validate_document(source_kind: SourceKind, member: NormalizedSourceDocument
             and uri.username is None
             and uri.password is None
             and not uri.fragment
+            and not any(key.casefold() in SENSITIVE_QUERY_KEYS for key, _ in parse_qsl(uri.query))
         )
     except ValueError:
         raise SourceCatalogError("invalid source document URI") from None
@@ -172,131 +174,136 @@ def persist_catalog_documents(
         raise SourceCatalogError("source page contains duplicate or too many documents")
     for member in members:
         _validate_document(source_kind, member)
-    source_id = CATALOG_SOURCES[source_kind].source_id
-    revisions: list[str] = []
-    new_count = 0
-    for member in members:
-        document_id = str(
-            uuid5(NAMESPACE_URL, f"dianzi:document:{source_id}:{member.source_record_id}")
-        )
-        session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(document_id, 0))))
-        content = register_response_content(session, store, member.payload, ingested_at)
-        session.execute(
-            insert(documents)
-            .values(
-                document_id=document_id,
-                source_id=source_id,
-                kind=member.kind.value,
-                title=member.title,
-                published_at=member.published_at,
-                retrieved_at=observed_at,
-                content_hash=content.content_hash,
-                visibility="public",
-                tenant_id=None,
-                schema_version=2,
-            )
-            .on_conflict_do_nothing(index_elements=[documents.c.document_id])
-        )
-        existing = (
-            session.execute(
-                select(documents).where(documents.c.document_id == document_id).with_for_update()
-            )
-            .mappings()
-            .one()
-        )
-        if (
-            existing["source_id"],
-            existing["kind"],
-            existing["visibility"],
-            existing["tenant_id"],
-        ) != (source_id, member.kind.value, "public", None):
-            raise SourceCatalogError("source document identity or scope conflicts")
-        saved = save_document_revision(
-            session,
-            store,
-            document_id,
-            member.payload,
-            "public",
-            None,
-            ingested_at,
-            revision_metadata=_revision_metadata(member),
-        )
-        revisions.append(saved.revision_id)
-        if saved.reused:
-            continue
-        new_count += 1
-        prior_revisions = select(document_revisions.c.revision_id).where(
-            document_revisions.c.document_id == document_id,
-            document_revisions.c.revision_id != saved.revision_id,
-        )
-        session.execute(
-            update(claims)
-            .where(claims.c.source_revision_id.in_(prior_revisions))
-            .values(is_current=False)
-        )
-        session.execute(
-            update(document_revisions)
-            .where(document_revisions.c.revision_id == saved.revision_id)
-            .values(
-                canonical_uri=member.canonical_uri,
-                source_published_at=member.published_at,
-                source_modified_at=member.modified_at,
-                first_observed_at=observed_at,
-                ingested_at=ingested_at,
-                parser_version=member.parsed.parser_version,
-                normalizer_version=member.parsed.normalizer_version,
-                parse_status=member.parsed.status,
-                source_response_hash=response_hash,
-                source_json_pointer=member.source_locator,
-                source_metadata=_revision_metadata(member),
-            )
-        )
-        for block in member.parsed.blocks:
-            block_id = add_text_block(
-                session,
-                saved.revision_id,
-                block.ordinal,
-                block.start_offset,
-                block.end_offset,
-                block.text,
-            )
-            pointer = (
-                block.block_type.removeprefix("field:")
-                if block.block_type.startswith("field:")
-                else None
+    with session.begin_nested():
+        source_id = CATALOG_SOURCES[source_kind].source_id
+        revisions: list[str] = []
+        new_count = 0
+        for member in members:
+            document_id = str(
+                uuid5(NAMESPACE_URL, f"dianzi:document:{source_id}:{member.source_record_id}")
             )
             session.execute(
-                update(text_blocks)
-                .where(text_blocks.c.block_id == block_id)
+                select(func.pg_advisory_xact_lock(func.hashtextextended(document_id, 0)))
+            )
+            content = register_response_content(session, store, member.payload, ingested_at)
+            session.execute(
+                insert(documents)
                 .values(
-                    block_type="json_field" if pointer is not None else block.block_type,
-                    page_number=block.page_number,
-                    json_pointer=pointer,
+                    document_id=document_id,
+                    source_id=source_id,
+                    kind=member.kind.value,
+                    title=member.title,
+                    published_at=member.published_at,
+                    retrieved_at=observed_at,
+                    content_hash=content.content_hash,
+                    visibility="public",
+                    tenant_id=None,
+                    schema_version=2,
                 )
+                .on_conflict_do_nothing(index_elements=[documents.c.document_id])
             )
-            attach_evidence_span(
+            existing = (
+                session.execute(
+                    select(documents)
+                    .where(documents.c.document_id == document_id)
+                    .with_for_update()
+                )
+                .mappings()
+                .one()
+            )
+            if (
+                existing["source_id"],
+                existing["kind"],
+                existing["visibility"],
+                existing["tenant_id"],
+            ) != (source_id, member.kind.value, "public", None):
+                raise SourceCatalogError("source document identity or scope conflicts")
+            saved = save_document_revision(
                 session,
-                saved.revision_id,
-                block.start_offset,
-                block.end_offset,
-                f"page:{block.page_number}"
-                if block.page_number is not None
-                else (pointer or f"block:{block.ordinal}"),
-                block.text,
-                False,
+                store,
+                document_id,
+                member.payload,
                 "public",
                 None,
                 ingested_at,
-                block_id=block_id,
-                verified_at=ingested_at,
+                revision_metadata=_revision_metadata(member),
             )
-    if new_count:
-        session.execute(
-            insert(scope_epochs)
-            .values(scope_key="public", epoch=1, updated_at=ingested_at)
-            .on_conflict_do_update(
-                index_elements=[scope_epochs.c.scope_key],
-                set_={"epoch": scope_epochs.c.epoch + 1, "updated_at": ingested_at},
+            revisions.append(saved.revision_id)
+            if saved.reused:
+                continue
+            new_count += 1
+            prior_revisions = select(document_revisions.c.revision_id).where(
+                document_revisions.c.document_id == document_id,
+                document_revisions.c.revision_id != saved.revision_id,
             )
-        )
-    return SavedCatalogDocuments(tuple(revisions), new_count)
+            session.execute(
+                update(claims)
+                .where(claims.c.source_revision_id.in_(prior_revisions))
+                .values(is_current=False)
+            )
+            session.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == saved.revision_id)
+                .values(
+                    canonical_uri=member.canonical_uri,
+                    source_published_at=member.published_at,
+                    source_modified_at=member.modified_at,
+                    first_observed_at=observed_at,
+                    ingested_at=ingested_at,
+                    parser_version=member.parsed.parser_version,
+                    normalizer_version=member.parsed.normalizer_version,
+                    parse_status=member.parsed.status,
+                    source_response_hash=response_hash,
+                    source_json_pointer=member.source_locator,
+                    source_metadata=_revision_metadata(member),
+                )
+            )
+            for block in member.parsed.blocks:
+                block_id = add_text_block(
+                    session,
+                    saved.revision_id,
+                    block.ordinal,
+                    block.start_offset,
+                    block.end_offset,
+                    block.text,
+                )
+                pointer = (
+                    block.block_type.removeprefix("field:")
+                    if block.block_type.startswith("field:")
+                    else None
+                )
+                session.execute(
+                    update(text_blocks)
+                    .where(text_blocks.c.block_id == block_id)
+                    .values(
+                        block_type="json_field" if pointer is not None else block.block_type,
+                        page_number=block.page_number,
+                        json_pointer=pointer,
+                    )
+                )
+                attach_evidence_span(
+                    session,
+                    saved.revision_id,
+                    block.start_offset,
+                    block.end_offset,
+                    f"page:{block.page_number}"
+                    if block.page_number is not None
+                    else (pointer or f"block:{block.ordinal}"),
+                    block.text,
+                    False,
+                    "public",
+                    None,
+                    ingested_at,
+                    block_id=block_id,
+                    verified_at=ingested_at,
+                )
+        if new_count:
+            session.execute(
+                insert(scope_epochs)
+                .values(scope_key="public", epoch=1, updated_at=ingested_at)
+                .on_conflict_do_update(
+                    index_elements=[scope_epochs.c.scope_key],
+                    set_={"epoch": scope_epochs.c.epoch + 1, "updated_at": ingested_at},
+                )
+            )
+        return SavedCatalogDocuments(tuple(revisions), new_count)

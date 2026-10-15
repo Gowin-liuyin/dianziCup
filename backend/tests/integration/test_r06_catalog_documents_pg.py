@@ -166,7 +166,16 @@ def test_tenant_roles_cannot_publish_public_source_documents(catalog_engine, tmp
 
 @pytest.mark.parametrize(
     "mutation",
-    ["foreign_uri", "duplicate", "coordinates", "del_uri", "kind", "long_uri", "del_identifier"],
+    [
+        "foreign_uri",
+        "duplicate",
+        "coordinates",
+        "del_uri",
+        "kind",
+        "long_uri",
+        "del_identifier",
+        "sensitive_query",
+    ],
 )
 def test_bad_member_rejects_the_whole_page_without_partial_documents(
     catalog_engine, tmp_path, mutation
@@ -185,6 +194,8 @@ def test_bad_member_rejects_the_whole_page_without_partial_documents(
         bad = replace(bad, canonical_uri="https://arxiv.org/abs/" + "x" * 2083)
     elif mutation == "del_identifier":
         bad = replace(bad, source_record_id="2601.00002\x7f")
+    elif mutation == "sensitive_query":
+        bad = replace(bad, canonical_uri="https://arxiv.org/abs/2601.00002?access_token=synthetic")
     else:
         parsed = replace(
             bad.parsed,
@@ -232,3 +243,66 @@ def test_concurrent_replay_creates_only_one_revision(catalog_engine, tmp_path):
         results = [future.result(timeout=20) for future in futures]
     assert sum(result.new_revision_count for result in results) == 1
     assert results[0].revision_ids == results[1].revision_ids
+
+
+def test_boolean_and_number_metadata_changes_preserve_distinct_history(catalog_engine, tmp_path):
+    original = paper()
+    members = [
+        replace(original, metadata={**original.metadata, "upstream_flag": value})
+        for value in (True, 1, True)
+    ]
+    store = ContentStore(tmp_path / "raw")
+    ids = [
+        save(catalog_engine, store, (member,), at=NOW + timedelta(seconds=index)).revision_ids[0]
+        for index, member in enumerate(members)
+    ]
+    assert len(set(ids)) == 3
+    with catalog_engine.connect() as connection:
+        rows = (
+            connection.execute(
+                select(document_revisions.c.source_metadata).order_by(
+                    document_revisions.c.revision_number
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert [type(row["upstream_flag"]) for row in rows] == [bool, int, bool]
+
+
+def test_mid_page_storage_failure_cannot_commit_first_member(catalog_engine, tmp_path):
+    second_payload = b'{"title":"Second synthetic paper","abstract":"storage failure"}'
+    second = replace(
+        paper(),
+        source_record_id="2601.00002",
+        payload=second_payload,
+        parsed=parse_json_document(second_payload),
+    )
+
+    class FailingStore(ContentStore):
+        """Only the second document's bytes fail; the upstream response remains writable."""
+
+        def store_bytes(self, payload):
+            if payload == second_payload:
+                raise OSError("synthetic storage failure")
+            return super().store_bytes(payload)
+
+    store = FailingStore(tmp_path / "raw")
+    with Session(catalog_engine) as session, session.begin():
+        ensure_source_registration(session, ADMIN, "arxiv_security", NOW)
+        response = register_response_content(session, store, b"upstream synthetic response", NOW)
+        with pytest.raises(OSError):
+            persist_catalog_documents(
+                session,
+                store,
+                ADMIN,
+                "arxiv_security",
+                (paper(), second),
+                response_hash=response.content_hash,
+                observed_at=NOW,
+                ingested_at=NOW,
+            )
+    with catalog_engine.connect() as connection:
+        assert connection.scalar(select(func.count()).select_from(document_revisions)) == 0
+        assert connection.scalar(select(func.count()).select_from(evidence)) == 0
+        assert connection.scalar(select(func.count()).select_from(scope_epochs)) == 0

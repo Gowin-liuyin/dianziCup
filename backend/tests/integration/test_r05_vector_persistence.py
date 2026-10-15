@@ -41,12 +41,26 @@ def vector_database(isolated_test_database_url: str, tmp_path_factory: pytest.Te
         assert connection.scalar(text("SELECT current_database()")) == url.database
         connection.execute(CreateSchema(schema))
     isolated = url.update_query_dict(
-        {"options": f"-c search_path={schema},public -c statement_timeout=15000"}
+        {"options": f"-c search_path={schema} -c statement_timeout=15000"}
     )
     connection_url = isolated.render_as_string(hide_password=False)
-    engine = create_engine(isolated, connect_args={"connect_timeout": 5})
+    runtime_url = isolated.update_query_dict(
+        {"options": f"-c search_path={schema},public -c statement_timeout=15000"}
+    )
+    engine = create_engine(runtime_url, connect_args={"connect_timeout": 5})
     try:
         run_migrations(connection_url, "0013_revision_source_metadata")
+        with engine.connect() as connection:
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT n.nspname FROM pg_class c "
+                        "JOIN pg_namespace n ON n.oid=c.relnamespace "
+                        "WHERE c.oid=to_regclass('alembic_version')"
+                    )
+                )
+                == schema
+            )
         fixture = (
             Path(__file__).resolve().parents[3]
             / "fixtures/recorded/vllm_vendor_20261015_public.json"
