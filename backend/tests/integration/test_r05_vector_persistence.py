@@ -55,6 +55,7 @@ LEGACY_SEED_TABLES = (
 
 def load_legacy_0013_seed(engine: Engine, schema: str, store: ContentStore) -> tuple[Table, ...]:
     """Load the frozen old writer output using only the migrated 0013 column definitions."""
+    assert schema.startswith("test_r05_") and schema.isidentifier()
     recorded = Path(__file__).resolve().parents[3] / "fixtures/recorded"
     seed_bytes = (recorded / "r05_legacy_0013_vllm_public_v1.json").read_bytes()
     assert hashlib.sha256(seed_bytes).hexdigest() == (
