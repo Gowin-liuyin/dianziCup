@@ -1,0 +1,284 @@
+E501 Line too long (107 > 100)
+  --> src\ai_intel\enrichment\signal_sources.py:86:101
+   |
+85 | def _probability(value: object) -> float:
+86 |     if isinstance(value, bool) or not isinstance(value, (str, float, int)) or (isinstance(value, str) and (
+   |                                                                                                     ^^^^^^^
+87 |         len(value) > 32 or re.fullmatch(r"(?:0|1)(?:\.[0-9]+)?", value) is None
+88 |     )):
+   |
+
+E501 Line too long (101 > 100)
+   --> src\ai_intel\enrichment\signal_sources.py:244:101
+    |
+242 |         or not isinstance(response, dict) or selection.get("requested_cve_id") != cve_id
+243 |         or selection.get("complete_response") is not True
+244 |         or selection.get("query_scope") != ("single_cve" if signal == "epss" else "complete_catalog")
+    |                                                                                                     ^
+245 |         or not isinstance(selection.get("source_response_sha256"), str)
+246 |         or re.fullmatch(r"[0-9a-f]{64}", selection["source_response_sha256"]) is None
+    |
+
+E501 Line too long (103 > 100)
+   --> src\ai_intel\enrichment\signal_sources.py:286:101
+    |
+284 |         not 1 <= len(raw) <= MAX_SIGNAL_BYTES or not 1 <= len(cwe_ids) <= 20
+285 |         or len(set(cwe_ids)) != len(cwe_ids)
+286 |         or any(not isinstance(value, str) or CWE_PATTERN.fullmatch(value) is None for value in cwe_ids)
+    |                                                                                                     ^^^
+287 |     ):
+288 |         raise PublicSignalError("invalid_cwe_catalog_input")
+    |
+
+E501 Line too long (102 > 100)
+  --> src\ai_intel\enrichment\signals.py:87:101
+   |
+85 | ) -> CandidateEvidence:
+86 |     """The canonical JSON leaf representation and its pointer must both identify one block."""
+87 |     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, allow_nan=False)
+   |                                                                                                     ^^
+88 |     blocks = [block for block in document.blocks if block.json_pointer == pointer]
+89 |     prefix = pointer + ": "
+   |
+
+E501 Line too long (114 > 100)
+   --> src\ai_intel\enrichment\signals.py:191:101
+    |
+189 |         result.append(EvidenceBoundCandidate(
+190 |             dimension="cvss", value=CvssSignalValue(
+191 |                 standard_version=_standard_version(metric.version), base_score=metric.score, vector=metric.vector,
+    |                                                                                                     ^^^^^^^^^^^^^^
+192 |                 authority=metric.authority, scored_at=None,
+193 |             ), evidence=_evidence(document, (
+    |
+
+E501 Line too long (102 > 100)
+   --> src\ai_intel\enrichment\signals.py:200:101
+    |
+198 |             )), origin=ClaimOrigin.STRUCTURED_SOURCE,
+199 |             limitations=("Source-reported score and vector; not independently recomputed.",
+200 |                          "Scoring time is unknown; publication and modification times are distinct."),
+    |                                                                                                     ^^
+201 |         ))
+202 |     return tuple(result)
+    |
+
+E501 Line too long (101 > 100)
+   --> src\ai_intel\enrichment\signals.py:219:101
+    |
+217 |     if not isinstance(publisher, dict) or not isinstance(publisher.get("login"), str):
+218 |         raise PublicSignalError("cvss_authority_missing")
+219 |     if not isinstance(score, (int, float)) or isinstance(score, bool) or not isinstance(vector, str):
+    |                                                                                                     ^
+220 |         raise PublicSignalError("invalid_vendor_cvss")
+221 |     match = re.match(r"CVSS:(2\.0|3\.0|3\.1|4\.0)/", vector)
+    |
+
+E501 Line too long (102 > 100)
+   --> src\ai_intel\enrichment\signals.py:257:101
+    |
+255 |                 raise PublicSignalError("invalid_cwe_source")
+256 |             for ordinal, description in enumerate(entry["description"]):
+257 |                 if not isinstance(description, dict) or not isinstance(description.get("value"), str):
+    |                                                                                                     ^^
+258 |                     raise PublicSignalError("invalid_cwe_source")
+259 |                 if description["value"] in {"NVD-CWE-noinfo", "NVD-CWE-Other"}:
+    |
+
+E501 Line too long (103 > 100)
+   --> src\ai_intel\enrichment\signals.py:271:101
+    |
+269 |                 raise PublicSignalError("invalid_cwe_source")
+270 |             result.append((f"/cwes/{index}/cwe_id", entry["cwe_id"]))
+271 |     if len(result) > 100 or any(CWE_PATTERN.fullmatch(identifier) is None for _, identifier in result):
+    |                                                                                                     ^^^
+272 |         raise PublicSignalError("invalid_cwe_source")
+273 |     return tuple(result)
+    |
+
+E501 Line too long (108 > 100)
+   --> src\ai_intel\enrichment\signals.py:294:101
+    |
+292 |         raise PublicSignalError("invalid_cwe_selection")
+293 |     for key in ("source_response_sha256", "source_xml_sha256"):
+294 |         if not isinstance(selection.get(key), str) or re.fullmatch(r"[0-9a-f]{64}", selection[key]) is None:
+    |                                                                                                     ^^^^^^^^
+295 |             raise PublicSignalError("invalid_cwe_selection")
+296 |     requested = selection.get("requested_cwe_ids")
+    |
+
+E501 Line too long (105 > 100)
+   --> src\ai_intel\enrichment\signals.py:300:101
+    |
+298 |     if (
+299 |         not isinstance(requested, list) or not 1 <= len(requested) <= 20
+300 |         or any(not isinstance(value, str) or CWE_PATTERN.fullmatch(value) is None for value in requested)
+    |                                                                                                     ^^^^^
+301 |         or len(set(requested)) != len(requested) or not isinstance(missing, list)
+302 |         or any(not isinstance(value, str) or value not in requested for value in missing)
+    |
+
+E501 Line too long (109 > 100)
+   --> src\ai_intel\enrichment\signals.py:345:101
+    |
+343 |             ))
+344 |             result.append(EvidenceBoundCandidate(
+345 |                 dimension="cwe", value=WeaknessValue(cwe_id=identifier, taxonomy_version=version, name=name),
+    |                                                                                                     ^^^^^^^^^
+346 |                 evidence=(_field_evidence(document, pointer, identifier), *catalog_evidence),
+347 |                 origin=ClaimOrigin.STRUCTURED_SOURCE,
+    |
+
+E501 Line too long (108 > 100)
+   --> src\ai_intel\enrichment\signals.py:358:101
+    |
+356 |     payload = _payload(document)
+357 |     selection = payload.get("selection")
+358 |     if not isinstance(selection, dict) or selection.get("requested_cve_id") not in context.external_cve_ids:
+    |                                                                                                     ^^^^^^^^
+359 |         raise PublicSignalError("unsupported_signal_cve")
+360 |     cve = selection["requested_cve_id"]
+    |
+
+E501 Line too long (101 > 100)
+   --> src\ai_intel\enrichment\signals.py:363:101
+    |
+361 |     if not isinstance(cve, str):
+362 |         raise PublicSignalError("unsupported_signal_cve")
+363 |     if signal == "epss" and parse_qsl(urlsplit(str(document.canonical_uri)).query) != [("cve", cve)]:
+    |                                                                                                     ^
+364 |         raise PublicSignalError("cross_cve_epss_uri")
+365 |     row, version = validate_selected_signal(signal, payload, cve)
+    |
+
+E501 Line too long (110 > 100)
+   --> src\ai_intel\enrichment\signals.py:370:101
+    |
+368 |     if signal == "epss":
+369 |         value: EpssSignalValue | KevSignalValue = epss_value(row)
+370 |         fields = tuple((f"/response/data/0/{key}", row[key]) for key in ("cve", "epss", "percentile", "date"))
+    |                                                                                                     ^^^^^^^^^^
+371 |     else:
+372 |         value = kev_value(row, version)
+    |
+
+E501 Line too long (104 > 100)
+   --> src\ai_intel\enrichment\signals.py:375:101
+    |
+373 |         fields = (("/response/catalogVersion", version), *tuple(
+374 |             (f"/response/vulnerabilities/0/{key}", row[key])
+375 |             for key in ("cveID", "dateAdded", "requiredAction", "dueDate", "knownRansomwareCampaignUse")
+    |                                                                                                     ^^^^
+376 |             if key in row and row[key] is not None
+377 |         ))
+    |
+
+E501 Line too long (111 > 100)
+   --> src\ai_intel\enrichment\signals.py:398:101
+    |
+398 | def _attempt(dimension: SignalDimension, collected: _CollectedDimension, applicable: bool) -> DimensionAttempt:
+    |                                                                                                     ^^^^^^^^^^^
+399 |     sources = tuple(dict.fromkeys(document.source_id for document in collected.documents))
+400 |     times = [document.observed_at for document in collected.documents if document.observed_at is not None]
+    |
+
+E501 Line too long (106 > 100)
+   --> src\ai_intel\enrichment\signals.py:400:101
+    |
+398 | def _attempt(dimension: SignalDimension, collected: _CollectedDimension, applicable: bool) -> DimensionAttempt:
+399 |     sources = tuple(dict.fromkeys(document.source_id for document in collected.documents))
+400 |     times = [document.observed_at for document in collected.documents if document.observed_at is not None]
+    |                                                                                                     ^^^^^^
+401 |     values: dict[tuple[str, ...], set[str]] = defaultdict(set)
+402 |     unique: list[EvidenceBoundCandidate] = []
+    |
+
+E501 Line too long (124 > 100)
+   --> src\ai_intel\enrichment\signals.py:411:101
+    |
+409 |         values[_scope(candidate)].add(candidate.value.model_dump_json())
+410 |     if unique:
+411 |         status = DimensionStatus.CONFLICT if any(len(group) > 1 for group in values.values()) else DimensionStatus.AVAILABLE
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^
+412 |         error = "partial_signal_source_failure" if collected.errors else None
+413 |     elif collected.errors:
+    |
+
+E501 Line too long (102 > 100)
+   --> src\ai_intel\enrichment\signals.py:421:101
+    |
+419 |     elif not applicable:
+420 |         status, error = DimensionStatus.NOT_APPLICABLE, None
+421 |     elif collected.missing and collected.documents and len(times) == len(collected.documents) and all(
+    |                                                                                                     ^^
+422 |         document.blocks_complete for document in collected.documents
+423 |     ):
+    |
+
+E501 Line too long (103 > 100)
+   --> src\ai_intel\enrichment\signals.py:427:101
+    |
+425 |     else:
+426 |         status, error = DimensionStatus.PENDING, None
+427 |     versions = {document.source_version for document in collected.documents if document.source_version}
+    |                                                                                                     ^^^
+428 |     return DimensionAttempt(
+429 |         dimension=dimension, status=status, candidates=tuple(unique), source_ids=sources,
+    |
+
+E501 Line too long (106 > 100)
+   --> src\ai_intel\enrichment\signals.py:439:101
+    |
+437 |     context: EnrichmentContext, documents: tuple[EnrichmentDocument, ...]
+438 | ) -> tuple[DimensionAttempt, ...]:
+439 |     """Return proposals only; the service must validate scope, current revisions and stored raw hashes."""
+    |                                                                                                     ^^^^^^
+440 |     if (
+441 |         not 1 <= len(documents) <= 20 or len({document.revision_id for document in documents}) != len(documents)
+    |
+
+E501 Line too long (112 > 100)
+   --> src\ai_intel\enrichment\signals.py:441:101
+    |
+439 |     """Return proposals only; the service must validate scope, current revisions and stored raw hashes."""
+440 |     if (
+441 |         not 1 <= len(documents) <= 20 or len({document.revision_id for document in documents}) != len(documents)
+    |                                                                                                     ^^^^^^^^^^^^
+442 |         or any(document.revision_id not in context.revision_ids for document in documents)
+443 |     ):
+    |
+
+E501 Line too long (116 > 100)
+   --> src\ai_intel\enrichment\signals.py:467:101
+    |
+465 |                 result.missing = not candidates
+466 |             except ValueError as error:
+467 |                 result.errors.append(error.code if isinstance(error, PublicSignalError) else "invalid_signal_value")
+    |                                                                                                     ^^^^^^^^^^^^^^^^
+468 |             continue
+469 |         if publisher not in {"nvd", "vendor"}:
+    |
+
+E501 Line too long (129 > 100)
+   --> src\ai_intel\enrichment\signals.py:491:101
+    |
+489 |                         raise PublicSignalError("cross_cve_nvd_document")
+490 |                 if signal == "cvss":
+491 |                     candidates = _nvd_cvss(context, document, payload) if publisher == "nvd" else _vendor_cvss(document, payload)
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+492 |                 else:
+493 |                     candidates = _cwe_candidates(document, payload, publisher, catalogs)
+    |
+
+E501 Line too long (121 > 100)
+   --> src\ai_intel\enrichment\signals.py:509:101
+    |
+507 |                         result.missing = False
+508 |             except ValueError as error:
+509 |                 result.errors.append(error.code if isinstance(error, PublicSignalError) else "invalid_structured_signal")
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^
+510 |     applicable_by_dimension: dict[SignalDimension, bool] = {
+511 |         "cvss": applicable_cvss, "epss": bool(context.external_cve_ids),
+    |
+
+Found 27 errors (1 fixed, 26 remaining).
