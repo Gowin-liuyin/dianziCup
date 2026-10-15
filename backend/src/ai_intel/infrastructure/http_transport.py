@@ -10,6 +10,7 @@ import ssl
 import threading
 from collections.abc import Iterable
 from contextlib import suppress
+from typing import Literal
 from urllib.parse import urlsplit
 
 from ai_intel.infrastructure.network import (
@@ -186,7 +187,14 @@ class PinnedHttpTransport:
         addresses: tuple[str, ...],
         deadline: RequestDeadline,
         headers: dict[str, str],
+        *,
+        method: Literal["GET", "POST"] = "GET",
+        body: bytes | None = None,
     ) -> _HttpResponse:
+        if method not in ("GET", "POST") or (method == "GET" and body is not None):
+            raise ValueError("unsupported request method or body")
+        if method == "POST" and (type(body) is not bytes or not 1 <= len(body) <= 1048576):
+            raise ValueError("POST body must be bounded to 1 MiB")
         parts = urlsplit(url)
         hostname = parts.hostname or ""
         port = parts.port or (443 if parts.scheme == "https" else 80)
@@ -213,7 +221,7 @@ class PinnedHttpTransport:
             target = parts.path or "/"
             if parts.query:
                 target += "?" + parts.query
-            connection.request("GET", target, headers=request_headers)
+            connection.request(method, target, body=body, headers=request_headers)
             response = connection.getresponse()
             deadline.remaining_seconds()
             result = _HttpResponse(

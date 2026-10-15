@@ -499,6 +499,50 @@ class NetworkGateway:
         *,
         deadline: RequestDeadline | None = None,
     ) -> FetchResult:
+        return self._bounded_fetch(url, max_redirect_hops, deadline, self._transport.request)
+
+    def post_json(
+        self,
+        url: str,
+        payload: bytes,
+        *,
+        protocol_headers: Mapping[str, str] | None = None,
+        deadline: RequestDeadline | None = None,
+    ) -> FetchResult:
+        """JSON POST共享IP/TLS/预算边界；禁止重定向或调用方覆盖身份与Host。"""
+        if type(payload) is not bytes or not 1 <= len(payload) <= 1048576:
+            raise ValueError("JSON request body must be bounded to 1 MiB")
+        extra_headers = dict(protocol_headers or {})
+        if any(
+            key != "anthropic-version"
+            or not isinstance(value, str)
+            or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is None
+            for key, value in extra_headers.items()
+        ):
+            raise ValueError("unsupported protocol header")
+        return self._bounded_fetch(
+            url,
+            0,
+            deadline,
+            lambda target, addresses, budget, credentials: self._transport.request(
+                target,
+                addresses,
+                budget,
+                {**credentials, "Content-Type": "application/json", **extra_headers},
+                method="POST",
+                body=payload,
+            ),
+        )
+
+    def _bounded_fetch(
+        self,
+        url: str,
+        max_redirect_hops: int,
+        deadline: RequestDeadline | None,
+        transport: Callable[
+            [str, tuple[str, ...], RequestDeadline, dict[str, str]], TransportResponse
+        ],
+    ) -> FetchResult:
         expires_at = time.monotonic() + self._policy.total_timeout_seconds
         deadline = RequestDeadline(min(expires_at, deadline.expires_at) if deadline else expires_at)
         if not self._request_slots.acquire(timeout=deadline.remaining_seconds()):
@@ -507,7 +551,7 @@ class NetworkGateway:
             return _fetch(
                 self._policy,
                 url,
-                self._transport.request,
+                transport,
                 self._resolve_addresses or self._transport.resolve_addresses,
                 deadline,
                 max_redirect_hops,
