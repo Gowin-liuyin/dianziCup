@@ -49,6 +49,8 @@ describe("R04 event/detail/evidence — isolated fixture mode only", () => {
     expect(screen.getByText("未提供公开标识")).toBeTruthy();
     expect(screen.getByText("已过期")).toBeTruthy();
     expect(screen.queryByText("暂无风险")).toBeNull();
+    const firstSeen = screen.getByText("2026-10-15T10:00:00+08:00");
+    expect(firstSeen.getAttribute("datetime")).toBe(eventFixture.first_seen_at);
   });
   it("uses the opaque cursor without appending stale records as a new total", async () => {
     const requests = fixtureApi({ pagination: true });

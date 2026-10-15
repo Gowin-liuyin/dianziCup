@@ -3,6 +3,7 @@ import { ApiProblem, publicProblem } from "../../api/client";
 import { getEventDetail, getEventList, getEvidence, type EventFilters } from "../../api/knowledge-client";
 import type { ClaimOrigin, ClaimStatus, DimensionName, DimensionStatus, EventDetailResponse, EventListResponse, EvidenceResponse, Freshness } from "../../api/knowledge-contracts";
 import { useAuthSession } from "../../app/auth-session";
+import { formatShanghaiTimestamp } from "../../app/date-time";
 import { readEventSelection } from "../../app/workspace-navigation";
 import { EmptyState, ErrorPanel, StatusBadge } from "../../components/status";
 import { PreparedEventWorkspace } from "../preparation/capability-workspace";
@@ -15,7 +16,7 @@ const originLabels: Record<ClaimOrigin, string> = { source_explicit: "原文明�
 const freshnessLabels: Record<Freshness, string> = { current: "当前", stale: "已过期", unknown: "时效未知" };
 
 function SavedTime({ value }: { value: string | null }) {
-  return value === null ? <span className="unknown-value">未知 / 未留存</span> : <time dateTime={value}>{value}</time>;
+  return value === null ? <span className="unknown-value">未知 / 未留存</span> : <time dateTime={value}>{formatShanghaiTimestamp(value)}</time>;
 }
 
 function FreshnessBadge({ value }: { value: Freshness }) {

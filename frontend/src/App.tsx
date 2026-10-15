@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 
 import { getLiveness, getReadiness, publicProblem, type ApiProblem, type CurrentUser, type Readiness } from "./api/client";
 import { AuthProvider, useAuthSession } from "./app/auth-session";
+import { formatShanghaiTimestamp } from "./app/date-time";
 import { readWorkspacePage, workspacePages, type WorkspacePage } from "./app/workspace-navigation";
 import { EmptyState, ErrorPanel, StatusBadge } from "./components/status";
 import { AmbientBackdrop } from "./components/ambient-backdrop";
@@ -13,10 +14,6 @@ type HealthState = { kind: "loading" } | { kind: "checked"; live: boolean; readi
 
 const dependencyNames: Record<string, string> = { database: "数据库", cache: "缓存服务", search: "搜索服务", redis: "缓存服务", opensearch: "搜索服务", worker: "任务进程", scheduler: "调度进程" };
 const roleNames: Record<CurrentUser["role"], string> = { viewer: "查看者", analyst: "分析员", tenant_admin: "租户管理员", system_admin: "系统管理员" };
-
-function beijingTimestamp(): string {
-  return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, "+08:00");
-}
 
 function modeLabel(user: CurrentUser | undefined): string {
   if (user === undefined) return "登录后确认";
@@ -129,7 +126,7 @@ function Workbench() {
     const errors: ApiProblem[] = [];
     if (liveness.status === "rejected") errors.push(publicProblem(liveness.reason));
     if (readiness.status === "rejected") errors.push(publicProblem(readiness.reason));
-    setHealth({ kind: "checked", live: liveness.status === "fulfilled", readiness: readiness.status === "fulfilled" ? readiness.value : null, errors, checkedAt: beijingTimestamp() });
+    setHealth({ kind: "checked", live: liveness.status === "fulfilled", readiness: readiness.status === "fulfilled" ? readiness.value : null, errors, checkedAt: new Date().toISOString() });
   }, []);
 
   useEffect(() => {
@@ -181,7 +178,7 @@ function Workbench() {
               <div className="panel-heading"><div><p className="eyebrow">RUNTIME / 运行</p><h2 id="runtime-title">服务与依赖</h2></div><StatusBadge state={health.kind === "loading" ? "loading" : readiness?.status ?? "unknown"} /></div>
               <DependencyDetails health={health} />
               {health.kind === "checked" && health.errors.length > 0 && <ErrorPanel error={health.errors[0] ?? publicProblem(null)} message="健康探测未完成，请恢复连接后重新检查。" onRetry={() => void refreshHealth()} retryLabel="重新检查运行状态" />}
-              {health.kind === "checked" && <p className="checked-time">本页检查于 <time dateTime={health.checkedAt}>{health.checkedAt}</time></p>}
+              {health.kind === "checked" && <p className="checked-time">本页检查于 <time dateTime={health.checkedAt}>{formatShanghaiTimestamp(health.checkedAt)}</time></p>}
             </section>
             <SessionPanel />
           </div>
