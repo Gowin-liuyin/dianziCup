@@ -10,7 +10,7 @@ import re
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field, HttpUrl, ValidationError
+from pydantic import Field, HttpUrl, ValidationError, field_validator
 from sqlalchemy import Text, and_, column, exists, or_, select, table
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
@@ -61,6 +61,14 @@ class EventFilters(StrictRecord):
     product: str = Field(default="", max_length=500)
     risk_type: str = Field(default="", max_length=100)
     updated_after: UtcTimestamp | None = None
+
+    @field_validator("q", "product", "risk_type")
+    @classmethod
+    def valid_search_text(cls, value: str) -> str:
+        """拒绝 PG text 无法表示的输入，不把客户端错误转换为服务故障。"""
+        if "\x00" in value:
+            raise ValueError("search text must not contain NUL")
+        return value
 
     def fingerprint(self) -> str:
         serialized = self.model_dump_json()
@@ -496,7 +504,31 @@ class KnowledgeReadService:
                 .order_by(enrichment_results.c.dimension)
             ).mappings()
         )
+        for row in rows:
+            for name in ("source_scope", "claim_ids", "reference_ids"):
+                identifiers = row[name]
+                if not isinstance(identifiers, list) or len(identifiers) > 1000:
+                    raise KnowledgeProjectionError("dimension references invalid")
+                for identifier in identifiers:
+                    if not isinstance(identifier, str):
+                        raise KnowledgeProjectionError("dimension reference invalid")
+                    try:
+                        UUID(identifier)
+                    except ValueError:
+                        raise KnowledgeProjectionError("dimension reference invalid") from None
         source_ids = {source_id for row in rows for source_id in row["source_scope"]}
+        required_claims = {item for row in rows for item in row["claim_ids"]}
+        required_evidence = {item for row in rows for item in row["reference_ids"]}
+        for identifiers, id_column in (
+            (required_claims, claims.c.claim_id),
+            (required_evidence, evidence.c.evidence_id),
+            (source_ids, sources.c.source_id),
+        ):
+            existing: set[str] = set(
+                self.session.scalars(select(id_column).where(id_column.in_(identifiers)))
+            )
+            if identifiers - existing:
+                raise KnowledgeProjectionError("dimension reference missing")
         visible_sources: set[str] = set(
             self.session.scalars(
                 select(sources.c.source_id).where(
@@ -536,6 +568,7 @@ class KnowledgeReadService:
             if any(
                 not claim_by_id[item]["is_current"]
                 or claim_by_id[item]["claim_status"] in {"withdrawn", "superseded"}
+                or claim_by_id[item]["freshness"] == "stale"
                 for item in row["claim_ids"]
             ):
                 freshness = FreshnessStatus.STALE

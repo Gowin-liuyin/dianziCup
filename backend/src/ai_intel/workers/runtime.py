@@ -9,10 +9,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from ai_intel.infrastructure.content_storage_factory import build_content_storage
 from ai_intel.infrastructure.database import build_engine
 from ai_intel.infrastructure.outbox import relay_pending_events
 from ai_intel.infrastructure.runtime_observations import record_runtime_observation
 from ai_intel.infrastructure.settings import ConfigurationError, load_application_settings
+from ai_intel.ingestion.source_jobs import SOURCE_JOB_TYPE, build_source_page_handler
 from ai_intel.workers.executor import JobHandler, execute_job, record_source_fetch_failure
 from ai_intel.workers.jobs import recover_expired_job_deliveries
 
@@ -84,8 +86,12 @@ class ObservedScheduler(PersistentScheduler):
 
 
 celery_app = build_celery_application()
+source_settings = load_application_settings()
 EXECUTION_HANDLERS: dict[str, JobHandler] = {
     "record_source_fetch_failure": record_source_fetch_failure,
+    SOURCE_JOB_TYPE: build_source_page_handler(
+        build_content_storage(source_settings), dns_resolver=source_settings.dns_resolver
+    ),
 }
 
 

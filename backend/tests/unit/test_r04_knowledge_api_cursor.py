@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
+from pydantic import ValidationError
 
 from ai_intel.api.knowledge_read_service import (
     EventFilters,
@@ -17,6 +18,13 @@ from ai_intel.api.knowledge_read_service import (
 
 def encoded(payload: object) -> str:
     return base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+
+
+@pytest.mark.parametrize("field", ["q", "product", "risk_type"])
+@pytest.mark.parametrize("value", ["invalid\x00text", "invalid\ud800text"])
+def test_search_filters_reject_non_database_text(field: str, value: str) -> None:
+    with pytest.raises(ValidationError):
+        EventFilters(**{field: value})
 
 
 def test_cursor_matches_full_filters_and_timezone() -> None:
