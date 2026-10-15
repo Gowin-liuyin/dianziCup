@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import json
+import math
 from html.parser import HTMLParser
 
+from ai_intel.ingestion.parsing.pdf_text import PDF_PARSER_VERSION, parse_pdf_text_layer
 from ai_intel.ingestion.parsing.text_blocks import ParseOutcome, build_blocks_from_segments
 
 HTML_PARSER_VERSION = "html-1.0.0"
-JSON_PARSER_VERSION = "json-1.0.0"
-PDF_PARSER_VERSION = "pdf-1.0.0"
+JSON_PARSER_VERSION = "json-2.0.0"
+
+__all__ = [
+    "PDF_PARSER_VERSION",
+    "parse_html_document",
+    "parse_json_document",
+    "parse_pdf_text_layer",
+]
 
 
 class _HtmlSegmentExtractor(HTMLParser):
@@ -74,46 +82,60 @@ def parse_html_document(content: bytes) -> ParseOutcome:
     return build_blocks_from_segments(extractor.segments, HTML_PARSER_VERSION)
 
 
+def _unique_json_fields(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON field")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError("nonfinite JSON constant")
+
+
+def _json_segments(
+    value: object,
+    pointer: str,
+    depth: int,
+    segments: list[tuple[str, str, int | None]],
+) -> None:
+    if depth > 32 or len(segments) >= 10_000:
+        raise ValueError("JSON structural limit exceeded")
+    if isinstance(value, dict) and value:
+        for key, item in value.items():
+            token = str(key).replace("~", "~0").replace("/", "~1")
+            _json_segments(item, pointer + "/" + token, depth + 1, segments)
+    elif isinstance(value, list) and value:
+        for index, item in enumerate(value):
+            _json_segments(item, pointer + "/" + str(index), depth + 1, segments)
+    else:
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValueError("nonfinite JSON number")
+        segments.append(
+            ("field:" + pointer, pointer + ": " + json.dumps(value, ensure_ascii=False), None)
+        )
+
+
 def parse_json_document(content: bytes) -> ParseOutcome:
-    """结构化 JSON 解析: 字段成块; 非法 JSON 返回 unparseable 而非伪解析。"""
+    """严格JSON叶字段按RFC6901定位；拒绝重复键、非有限数字和过深结构。"""
+    if len(content) > 32 * 1024 * 1024:
+        return ParseOutcome(
+            status="unparseable",
+            notes=("json input limit exceeded",),
+            parser_version=JSON_PARSER_VERSION,
+        )
     try:
-        payload = json.loads(content.decode("utf-8"))
-    except (ValueError, UnicodeDecodeError):
+        payload = json.loads(
+            content.decode("utf-8"),
+            object_pairs_hook=_unique_json_fields,
+            parse_constant=_reject_json_constant,
+        )
+        segments: list[tuple[str, str, int | None]] = []
+        _json_segments(payload, "", 0, segments)
+    except (ValueError, UnicodeDecodeError, RecursionError):
         return ParseOutcome(
             status="unparseable", notes=("invalid json",), parser_version=JSON_PARSER_VERSION
         )
-    segments: list[tuple[str, str, int | None]] = []
-    if isinstance(payload, dict):
-        for key, value in payload.items():
-            segments.append((f"field:{key}", f"{key}: {value}", None))
-    elif isinstance(payload, list):
-        for index, item in enumerate(payload):
-            segments.append(("list_item", f"{index}: {item}", None))
-    else:
-        segments.append(("value", str(payload), None))
-    outcome = build_blocks_from_segments(segments, JSON_PARSER_VERSION)
-    return outcome
-
-
-def parse_pdf_text_layer(content: bytes) -> ParseOutcome:
-    """PDF 文本层解析: 无可靠文本层(扫描页)返回 partial/unparseable, 不伪造全文。"""
-    if not content.startswith(b"%PDF"):
-        return ParseOutcome(
-            status="unparseable", notes=("not a pdf",), parser_version=PDF_PARSER_VERSION
-        )
-    text_layer = [
-        line.decode("utf-8", errors="replace")
-        for line in content.splitlines()
-        if line.startswith(b"TEXTLAYER:")
-    ]
-    if not text_layer:
-        return ParseOutcome(
-            status="unparseable",
-            notes=("no reliable text layer (scanned page)",),
-            parser_version=PDF_PARSER_VERSION,
-        )
-    segments: list[tuple[str, str, int | None]] = [
-        ("paragraph", line.removeprefix("TEXTLAYER:"), 1) for line in text_layer
-    ]
-    outcome = build_blocks_from_segments(segments, PDF_PARSER_VERSION)
-    return outcome
+    return build_blocks_from_segments(segments, JSON_PARSER_VERSION)

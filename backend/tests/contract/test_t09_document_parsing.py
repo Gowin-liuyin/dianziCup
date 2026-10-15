@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from ai_intel.domain.access import AccessScope, CrossTenantAccessError, Role
@@ -58,7 +60,11 @@ def test_duplicate_quote_without_block_is_ambiguous_not_random_t09_c03() -> None
 
 def test_scanned_page_yields_unparseable_not_fake_fulltext_t09_c04() -> None:
     """T09-C04: 扫描页无文本层 → unparseable/partial, 不输出伪全文。"""
-    outcome = parse_pdf_text_layer(b"%PDF-1.4\n%%EOF")
+    outcome = parse_pdf_text_layer(
+        (
+            Path(__file__).resolve().parents[3] / "fixtures/synthetic/pdf_image_only_test.pdf"
+        ).read_bytes()
+    )
     assert outcome.status == "unparseable"
     assert outcome.blocks == ()
     assert any("no reliable text layer" in note for note in outcome.notes)
