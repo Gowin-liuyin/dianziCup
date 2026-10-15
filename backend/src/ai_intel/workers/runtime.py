@@ -1,15 +1,20 @@
 """真实Redis/Celery运行入口；PG记录执行观测，不使用Celery结果作为真相。"""
 
 from datetime import UTC, datetime
+from uuid import UUID, uuid4
 
 from celery import Celery
 from celery.beat import PersistentScheduler
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from ai_intel.infrastructure.database import build_engine
+from ai_intel.infrastructure.outbox import relay_pending_events
 from ai_intel.infrastructure.runtime_observations import record_runtime_observation
 from ai_intel.infrastructure.settings import ConfigurationError, load_application_settings
+from ai_intel.workers.executor import JobHandler, execute_job, record_source_fetch_failure
+from ai_intel.workers.jobs import recover_expired_job_deliveries
 
 
 def build_celery_application() -> Celery:
@@ -40,11 +45,16 @@ def build_celery_application() -> Celery:
         beat_max_loop_interval=10,
         beat_scheduler="ai_intel.workers.runtime:ObservedScheduler",
         beat_schedule={
+            "dispatch-durable-jobs": {
+                "task": "ai_intel.jobs.dispatch_pending",
+                "schedule": 5.0,
+                "options": {"expires": 10},
+            },
             "observe-worker": {
                 "task": "ai_intel.runtime.observe_worker",
                 "schedule": 10.0,
                 "options": {"expires": 20},
-            }
+            },
         },
     )
     return application
@@ -74,6 +84,42 @@ class ObservedScheduler(PersistentScheduler):
 
 
 celery_app = build_celery_application()
+EXECUTION_HANDLERS: dict[str, JobHandler] = {
+    "record_source_fetch_failure": record_source_fetch_failure,
+}
+
+
+def publish_job_event(event: dict[str, str]) -> None:
+    """消息只含UUID，topic不决定可执行函数；禁用broker额外重试。"""
+    job_id = str(UUID(event["job_id"]))
+    celery_app.send_task("ai_intel.jobs.execute", args=[job_id], retry=False)
+
+
+def dispatch_pending_jobs() -> dict[str, int]:
+    """实际beat经PG到期时间投递，恢复死亡worker不读取Celery业务结果。"""
+    engine = build_engine(load_application_settings())
+    try:
+        with Session(engine) as session, session.begin():
+            recovered = recover_expired_job_deliveries(session, datetime.now(UTC))
+            released = relay_pending_events(session, datetime.now(UTC), publisher=publish_job_event)
+        return {"published": len(released), "recovered": recovered}
+    except SQLAlchemyError:
+        raise RuntimeError("runtime database unavailable") from None
+    finally:
+        engine.dispose()
+
+
+def consume_job(job_id: str) -> dict[str, str]:
+    """实际Celery消费受控handler；worker身份不由队列请求参数提供。"""
+    UUID(job_id)
+    engine = build_engine(load_application_settings())
+    try:
+        outcome = execute_job(engine, job_id, "celery-" + uuid4().hex, EXECUTION_HANDLERS)
+        return {"job_id": job_id, "outcome": outcome}
+    except SQLAlchemyError:
+        raise RuntimeError("runtime database unavailable") from None
+    finally:
+        engine.dispose()
 
 
 def observe_worker() -> dict[str, str]:
@@ -82,3 +128,5 @@ def observe_worker() -> dict[str, str]:
 
 
 celery_app.task(name="ai_intel.runtime.observe_worker", ignore_result=True)(observe_worker)
+celery_app.task(name="ai_intel.jobs.execute", ignore_result=True, autoretry_for=())(consume_job)
+celery_app.task(name="ai_intel.jobs.dispatch_pending", ignore_result=True)(dispatch_pending_jobs)

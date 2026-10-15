@@ -25,7 +25,7 @@ def test_transient_failure_parks_in_retry_wait_then_retries_exactly_once(migrate
         first_claim = claim_next_job(connection, "worker-1", now, job_type=job_type)
         assert first_claim is not None and first_claim["job_id"] == job_id
         outcome = schedule_retry_or_fail(
-            connection, job_id, "worker-1", permanent=False, failed_at=now
+            connection, job_id, "worker-1", permanent=False, failed_at=now, expected_attempt=1
         )
         parked = connection.execute(
             select(job_runs.c.status, job_runs.c.attempt_count, job_runs.c.lease_owner).where(
@@ -44,7 +44,7 @@ def test_transient_failure_parks_in_retry_wait_then_retries_exactly_once(migrate
             select(job_runs.c.attempt_count).where(job_runs.c.job_id == job_id)
         ).scalar_one()
         observed_retry_count = int(observed) - 1
-        complete_job(connection, job_id, "worker-2", "succeeded", recovery_at)
+        complete_job(connection, job_id, "worker-2", "succeeded", recovery_at, expected_attempt=2)
         further_retry = claim_next_job(
             connection, "worker-3", recovery_at + timedelta(minutes=1), job_type=job_type
         )

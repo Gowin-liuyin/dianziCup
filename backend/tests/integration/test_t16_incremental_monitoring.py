@@ -1,4 +1,4 @@
-"""T16 增量监测集成验收测试: 覆盖 T16-C01—C06（注入式抓取, 真库不依赖）。"""
+"""T16-C01—C06 的显式 fixture 判断测试；不冒充真实数据库或来源验证。"""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from ai_intel.ingestion.scheduler import (
 
 def make_state() -> StreamState:
     """构造 source+stream 租约状态。"""
-    return StreamState(source_id="src-1", stream_name="advisories")
+    return StreamState(source_id="src-1", stream_name="advisories", fixture_mode=True)
 
 
 def test_multi_page_window_records_every_entry_and_advances_watermark_t16_c01() -> None:
