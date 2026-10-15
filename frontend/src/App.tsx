@@ -5,7 +5,8 @@ import { AuthProvider, useAuthSession } from "./app/auth-session";
 import { readWorkspacePage, workspacePages, type WorkspacePage } from "./app/workspace-navigation";
 import { EmptyState, ErrorPanel, StatusBadge } from "./components/status";
 import { AmbientBackdrop } from "./components/ambient-backdrop";
-import { CapabilityWorkspace, PreparedEventWorkspace } from "./features/preparation/capability-workspace";
+import { CapabilityWorkspace } from "./features/preparation/capability-workspace";
+import { EventWorkspace } from "./features/events/event-workspace";
 import "./styles.css";
 
 type HealthState = { kind: "loading" } | { kind: "checked"; live: boolean; readiness: Readiness | null; errors: ApiProblem[]; checkedAt: string };
@@ -115,7 +116,7 @@ function DependencyDetails({ health }: { health: HealthState }) {
 }
 
 function Workbench() {
-  const { state } = useAuthSession();
+  const { state, sessionGeneration } = useAuthSession();
   const [page, setPage] = useState<WorkspacePage | "missing">(() => readWorkspacePage(window.location.hash));
   const [health, setHealth] = useState<HealthState>({ kind: "loading" });
   const healthGeneration = useRef(0);
@@ -146,6 +147,7 @@ function Workbench() {
   const readiness = health.kind === "checked" ? health.readiness : null;
   const dataMode = modeLabel(state.kind === "authenticated" ? state.user : undefined);
   const currentPage = page === "missing" ? null : workspacePages[page];
+  const sessionScopeKey = state.kind === "authenticated" ? JSON.stringify([state.user.user_id, state.user.tenant_id, state.user.permission_version, state.user.data_mode, sessionGeneration]) : state.kind;
   let processLabel = "无法确认";
   if (health.kind === "loading") processLabel = "检查中";
   if (health.kind === "checked" && health.live) processLabel = "可响应";
@@ -186,7 +188,7 @@ function Workbench() {
           <section className="research-entry" aria-labelledby="research-entry-title"><div><p className="eyebrow">RESEARCH WORKSPACE</p><h2 id="research-entry-title">从线索到证据</h2><p>事件、原文版本与判断依据，在同一工作区核查。</p></div><a className="button secondary" href="#events">进入情报工作区<span aria-hidden="true">↗</span></a></section>
           </>}
           {page === "session" && <div className="session-workspace"><SessionPanel /><div className="access-guidance"><p className="eyebrow">TRUST BOUNDARY / 授权边界</p><h2>按权限查看<br />按证据判断</h2><p>登录后，身份与权限由服务端确认。会话失效或退出时，页面立即清除身份信息。</p><a href="#runtime" className="text-link">返回运行概览 →</a></div></div>}
-          {page === "events" && <PreparedEventWorkspace authenticated={state.kind === "authenticated"} />}
+          {page === "events" && <EventWorkspace key={sessionScopeKey} />}
           {page !== "runtime" && page !== "session" && page !== "events" && page !== "missing" && <CapabilityWorkspace page={page} authenticated={state.kind === "authenticated"} />}
           {page === "missing" && <section className="panel missing-page"><EmptyState title="工作区不存在" description="请通过导航选择已登记页面。该地址没有触发业务请求。" /><a className="button secondary" href="#runtime">返回运行状态</a></section>}
           {state.kind === "authenticated" && <footer className="workspace-footer"><span>{state.user.app_env ? `环境 ${state.user.app_env}` : "环境未由服务端标明"}</span><span>{state.user.platform_version ? `版本 ${state.user.platform_version}` : "版本未由服务端标明"}</span></footer>}

@@ -9,9 +9,12 @@ interface SessionContext {
   actionPending: boolean;
   error: ApiProblem | null;
   logoutUnconfirmed: boolean;
+  sessionGeneration: number;
   refreshSession: (signal?: AbortSignal) => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  expireSession: (expectedGeneration: number) => void;
+  isSessionCurrent: (expectedGeneration: number) => boolean;
 }
 
 const AuthContext = createContext<SessionContext | null>(null);
@@ -92,7 +95,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  return <AuthContext.Provider value={{ state, error, actionPending, logoutUnconfirmed, refreshSession, login, logout }}>{children}</AuthContext.Provider>;
+  const isSessionCurrent = useCallback((expectedGeneration: number) => requestGeneration.current === expectedGeneration && csrfToken.current !== null, []);
+
+  const expireSession = useCallback((expectedGeneration: number) => {
+    if (!isSessionCurrent(expectedGeneration)) return;
+    requestGeneration.current += 1;
+    csrfToken.current = null;
+    setState({ kind: "anonymous" });
+    setError(new ApiProblem(401, "session_expired", false));
+    setActionPending(false);
+    setLogoutUnconfirmed(false);
+  }, [isSessionCurrent]);
+
+  return <AuthContext.Provider value={{ state, error, actionPending, logoutUnconfirmed, sessionGeneration: requestGeneration.current, refreshSession, login, logout, expireSession, isSessionCurrent }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuthSession(): SessionContext {

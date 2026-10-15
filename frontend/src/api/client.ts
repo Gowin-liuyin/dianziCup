@@ -75,7 +75,7 @@ function parseProblem(value: unknown, status: number): ApiProblem {
   return new ApiProblem(status, code, value.error.retryable === true, traceId);
 }
 
-async function fetchJson(path: string, options: RequestInit = {}, signal?: AbortSignal, acceptedStatuses: number[] = []): Promise<unknown> {
+export async function fetchJson(path: string, options: RequestInit = {}, signal?: AbortSignal, acceptedStatuses: number[] = []): Promise<unknown> {
   const controller = new AbortController();
   const abortRequest = () => controller.abort();
   signal?.addEventListener("abort", abortRequest, { once: true });

@@ -17,9 +17,17 @@ function isWorkspacePage(page: string): page is WorkspacePage {
   return Object.hasOwn(workspacePages, page);
 }
 
+export function readEventSelection(hash: string): { eventId: string; evidenceId: string | null; revisionId: string | null } | null {
+  const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+  const match = new RegExp(`^#events/(${uuid})(?:/evidence/(${uuid})(?:/revision/(${uuid}))?)?$`, "i").exec(hash);
+  const eventId = match?.[1];
+  return eventId === undefined ? null : { eventId: eventId.toLowerCase(), evidenceId: match?.[2]?.toLowerCase() ?? null, revisionId: match?.[3]?.toLowerCase() ?? null };
+}
+
 /** Hash 导航仅表示页面，不持久化私有数据；未知页面保留可解释的返回路径。 */
 export function readWorkspacePage(hash: string): WorkspacePage | "missing" {
   const page = hash.replace(/^#/, "");
   if (!page || page === "main-content") return "runtime";
+  if (readEventSelection(hash) !== null) return "events";
   return isWorkspacePage(page) ? page : "missing";
 }
