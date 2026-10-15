@@ -384,11 +384,11 @@ def test_session_hash_only_is_stored(pg_auth: AuthCase) -> None:
         pg_auth.username, pg_auth.password, ORIGIN, pg_auth.username
     )
     with pg_auth.engine.connect() as connection:
-        stored = connection.execute(
+        session_hash = connection.execute(
             select(auth_sessions.c.session_hash).where(
                 auth_sessions.c.user_id == pg_auth.account.user_id
             )
         ).scalar_one()
-    assert bool(stored == hashlib.sha256(token.encode()).hexdigest())
-    assert bool(stored != token)
-    assert bool(stored == record.session_id)
+    assert bool(session_hash == hashlib.sha256(token.encode()).hexdigest())
+    assert bool(session_hash != token)
+    assert bool(session_hash == record.session_id)
