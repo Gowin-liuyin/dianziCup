@@ -1,0 +1,39 @@
+.F..F.....                                                               [100%]
+================================== FAILURES ===================================
+_ test_cache_ttl_never_exceeds_fractional_pg_retrieval_remaining[86399.5-expected_ttls1-available] _
+
+age_seconds = 86399.5, expected_ttls = [], status = 'available'
+
+    @pytest.mark.parametrize("age_seconds,expected_ttls,status", [
+        (86399, [1], "available"), (86399.5, [], "available"), (86400, [], "unknown"),
+    ])
+    def test_cache_ttl_never_exceeds_fractional_pg_retrieval_remaining(age_seconds, expected_ttls, status):
+        service, repository, connector, cache = build_fixture_service(age_seconds)
+        result = service.collect_provider_aggregate_observation("hunter", "ollama", SCOPE, now=NOW)
+>       assert [write[2] for write in cache.writes] == expected_ttls
+E       assert [1] == []
+E         
+E         Left contains one more item: 1
+E         Use -v to get more diff
+
+tests\unit\test_r08_cache_ttl_fix1.py:85: AssertionError
+_ test_observed_time_remaining_also_limits_cache_ttl[86399.5-expected_ttls1] __
+
+observed_age_seconds = 86399.5, expected_ttls = []
+
+    @pytest.mark.parametrize("observed_age_seconds,expected_ttls", [(86399, [1]), (86399.5, []), (86400, [])])
+    def test_observed_time_remaining_also_limits_cache_ttl(observed_age_seconds, expected_ttls):
+        service, _, _, cache = build_fixture_service(observed_age_seconds=observed_age_seconds)
+        result = service.collect_provider_aggregate_observation("hunter", "ollama", SCOPE, now=NOW)
+>       assert [write[2] for write in cache.writes] == expected_ttls
+E       assert [1] == []
+E         
+E         Left contains one more item: 1
+E         Use -v to get more diff
+
+tests\unit\test_r08_cache_ttl_fix1.py:96: AssertionError
+- generated xml file: D:\wt\r08-cache-ttl-fix1\reports\runs\recovery_r08_cache_ttl_fix1_20261016\unit_red.xml -
+=========================== short test summary info ===========================
+FAILED tests/unit/test_r08_cache_ttl_fix1.py::test_cache_ttl_never_exceeds_fractional_pg_retrieval_remaining[86399.5-expected_ttls1-available]
+FAILED tests/unit/test_r08_cache_ttl_fix1.py::test_observed_time_remaining_also_limits_cache_ttl[86399.5-expected_ttls1]
+2 failed, 8 passed in 0.37s

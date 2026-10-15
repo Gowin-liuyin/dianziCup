@@ -1,0 +1,633 @@
+E501 Line too long (102 > 100)
+ --> src\ai_intel\assets\aggregate_repository.py:1:101
+  |
+1 | """Append-only aggregate persistence; identity collisions and storage errors remain typed failures."""
+  |                                                                                                     ^^
+2 |
+3 | from __future__ import annotations
+  |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> src\ai_intel\assets\aggregate_repository.py:3:1
+   |
+ 1 |   """Append-only aggregate persistence; identity collisions and storage errors remain typed failures."""
+ 2 |
+ 3 | / from __future__ import annotations
+ 4 | |
+ 5 | | import hashlib
+ 6 | | import json
+ 7 | | import re
+ 8 | | from dataclasses import dataclass
+ 9 | | from datetime import datetime
+10 | | from typing import Literal
+11 | | from uuid import UUID, uuid4
+12 | |
+13 | | from sqlalchemy import select
+14 | | from sqlalchemy.dialects.postgresql import insert
+15 | | from sqlalchemy.engine import Engine, RowMapping
+16 | | from sqlalchemy.exc import SQLAlchemyError
+17 | |
+18 | | from ai_intel.assets.aggregate_observations import (
+19 | |     LIMITATIONS, QUERY_VERSION, AggregateObservation, AggregateProvider, AggregateQueryId,
+20 | |     require_query_id, retrieval_time,
+21 | | )
+22 | | from ai_intel.assets.aggregate_persistence_models import aggregate_observations
+23 | | from ai_intel.domain.access import MANAGE_PUBLIC_SOURCES, READ_ASSET, READ_PUBLIC, WRITE_ASSET, AccessScope
+   | |___________________________________________________________________________________________________________^
+help: Organize imports
+   |
+18 | from ai_intel.assets.aggregate_observations import (
+   -     LIMITATIONS, QUERY_VERSION, AggregateObservation, AggregateProvider, AggregateQueryId,
+   -     require_query_id, retrieval_time,
+19 +     LIMITATIONS,
+20 +     QUERY_VERSION,
+21 +     AggregateObservation,
+22 +     AggregateProvider,
+23 +     AggregateQueryId,
+24 +     require_query_id,
+25 +     retrieval_time,
+26 | )
+27 | from ai_intel.assets.aggregate_persistence_models import aggregate_observations
+   - from ai_intel.domain.access import MANAGE_PUBLIC_SOURCES, READ_ASSET, READ_PUBLIC, WRITE_ASSET, AccessScope
+28 + from ai_intel.domain.access import (
+29 +     MANAGE_PUBLIC_SOURCES,
+30 +     READ_ASSET,
+31 +     READ_PUBLIC,
+32 +     WRITE_ASSET,
+33 +     AccessScope,
+34 + )
+35 |
+   |
+
+E501 Line too long (107 > 100)
+  --> src\ai_intel\assets\aggregate_repository.py:23:101
+   |
+21 | )
+22 | from ai_intel.assets.aggregate_persistence_models import aggregate_observations
+23 | from ai_intel.domain.access import MANAGE_PUBLIC_SOURCES, READ_ASSET, READ_PUBLIC, WRITE_ASSET, AccessScope
+   |                                                                                                     ^^^^^^^
+
+E501 Line too long (108 > 100)
+  --> src\ai_intel\assets\aggregate_repository.py:92:101
+   |
+90 |                 or validated.value.limitations != LIMITATIONS):
+91 |             raise ValueError("persisted aggregate requires the frozen query version and TTL")
+92 |         if validated.value.observed_at is not None and validated.value.observed_at > validated.retrieved_at:
+   |                                                                                                     ^^^^^^^^
+93 |             raise ValueError("aggregate observation cannot follow retrieval")
+94 |     canonical = json.dumps(validated.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+   |
+
+E501 Line too long (117 > 100)
+   --> src\ai_intel\assets\aggregate_repository.py:104:101
+    |
+102 |     if digest != row["payload_sha256"] or any(
+103 |         row[column] != getattr(observation, column)
+104 |         for column in ("provider", "query_id", "query_version", "retrieved_at", "outcome", "error_code", "data_mode")
+    |                                                                                                     ^^^^^^^^^^^^^^^^^
+105 |     ) or row["observed_at"] != (observation.value.observed_at if observation.value else None):
+106 |         raise AggregatePersistenceError("aggregate storage integrity failed")
+    |
+
+E501 Line too long (125 > 100)
+   --> src\ai_intel\assets\aggregate_repository.py:149:101
+    |
+147 |                 row = connection.execute(select(aggregate_observations).where(
+148 |                     aggregate_observations.c.observation_id == record_id)).mappings().one()
+149 |                 if row["payload_sha256"] != digest or row["call_key"] != values["call_key"] or row["scope_key"] != scope_key:
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^
+150 |                     raise AggregateIdentityCollision("aggregate observation identity collision")
+151 |                 stored = stored_aggregate(row)
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> src\ai_intel\assets\aggregate_service.py:3:1
+   |
+ 1 |   """One bounded provider call per child; the two-provider convenience entry is sequential (40s)."""
+ 2 |
+ 3 | / from __future__ import annotations
+ 4 | |
+ 5 | | import hashlib
+ 6 | | import json
+ 7 | | from dataclasses import dataclass
+ 8 | | from datetime import datetime
+ 9 | | from threading import BoundedSemaphore, Lock
+10 | | from typing import Literal, Protocol
+11 | | from uuid import UUID
+12 | |
+13 | | from ai_intel.assets.aggregate_observations import (
+14 | |     AggregateErrorCode, AggregateObservation, AggregateOutcome, AggregateProvider,
+15 | |     AggregateQueryId, aggregate_freshness, require_query_id, retrieval_time,
+16 | | )
+17 | | from ai_intel.assets.aggregate_repository import (
+18 | |     AggregatePersistenceError, AggregateServerPolicy, StoredAggregate,
+19 | |     aggregate_call_key, aggregate_scope_key, canonical_observation,
+20 | | )
+21 | | from ai_intel.domain.access import MANAGE_PUBLIC_SOURCES, WRITE_ASSET, AccessScope, PermissionDeniedError
+22 | | from ai_intel.domain.enrichment_values import ExposureAggregateValue
+   | |____________________________________________________________________^
+23 |
+24 |   ServiceErrorCode = AggregateErrorCode | Literal["persistence_failed", "adapter_failed", "adapter_contract_invalid"]
+   |
+help: Organize imports
+   |
+13 | from ai_intel.assets.aggregate_observations import (
+   -     AggregateErrorCode, AggregateObservation, AggregateOutcome, AggregateProvider,
+   -     AggregateQueryId, aggregate_freshness, require_query_id, retrieval_time,
+14 +     AggregateErrorCode,
+15 +     AggregateObservation,
+16 +     AggregateOutcome,
+17 +     AggregateProvider,
+18 +     AggregateQueryId,
+19 +     aggregate_freshness,
+20 +     require_query_id,
+21 +     retrieval_time,
+22 | )
+23 | from ai_intel.assets.aggregate_repository import (
+   -     AggregatePersistenceError, AggregateServerPolicy, StoredAggregate,
+   -     aggregate_call_key, aggregate_scope_key, canonical_observation,
+24 +     AggregatePersistenceError,
+25 +     AggregateServerPolicy,
+26 +     StoredAggregate,
+27 +     aggregate_call_key,
+28 +     aggregate_scope_key,
+29 +     canonical_observation,
+30 + )
+31 + from ai_intel.domain.access import (
+32 +     MANAGE_PUBLIC_SOURCES,
+33 +     WRITE_ASSET,
+34 +     AccessScope,
+35 +     PermissionDeniedError,
+36 | )
+   - from ai_intel.domain.access import MANAGE_PUBLIC_SOURCES, WRITE_ASSET, AccessScope, PermissionDeniedError
+37 | from ai_intel.domain.enrichment_values import ExposureAggregateValue
+   |
+
+E501 Line too long (105 > 100)
+  --> src\ai_intel\assets\aggregate_service.py:21:101
+   |
+19 |     aggregate_call_key, aggregate_scope_key, canonical_observation,
+20 | )
+21 | from ai_intel.domain.access import MANAGE_PUBLIC_SOURCES, WRITE_ASSET, AccessScope, PermissionDeniedError
+   |                                                                                                     ^^^^^
+22 | from ai_intel.domain.enrichment_values import ExposureAggregateValue
+   |
+
+E501 Line too long (115 > 100)
+  --> src\ai_intel\assets\aggregate_service.py:24:101
+   |
+22 | from ai_intel.domain.enrichment_values import ExposureAggregateValue
+23 |
+24 | ServiceErrorCode = AggregateErrorCode | Literal["persistence_failed", "adapter_failed", "adapter_contract_invalid"]
+   |                                                                                                     ^^^^^^^^^^^^^^^
+25 | CacheStatus = Literal["not_configured", "bypassed_fixture", "miss", "verified", "written", "invalid", "failed"]
+26 | ServiceReason = Literal["missing_product_query", "collection_not_authorized", "collection_in_progress",
+   |
+
+E501 Line too long (111 > 100)
+  --> src\ai_intel\assets\aggregate_service.py:25:101
+   |
+24 | ServiceErrorCode = AggregateErrorCode | Literal["persistence_failed", "adapter_failed", "adapter_contract_invalid"]
+25 | CacheStatus = Literal["not_configured", "bypassed_fixture", "miss", "verified", "written", "invalid", "failed"]
+   |                                                                                                     ^^^^^^^^^^^
+26 | ServiceReason = Literal["missing_product_query", "collection_not_authorized", "collection_in_progress",
+27 |     "no_observation", "stale", "future_retrieval", "provider_result", "persistence_failed",
+   |
+
+E501 Line too long (103 > 100)
+  --> src\ai_intel\assets\aggregate_service.py:26:101
+   |
+24 | ServiceErrorCode = AggregateErrorCode | Literal["persistence_failed", "adapter_failed", "adapter_contract_invalid"]
+25 | CacheStatus = Literal["not_configured", "bypassed_fixture", "miss", "verified", "written", "invalid", "failed"]
+26 | ServiceReason = Literal["missing_product_query", "collection_not_authorized", "collection_in_progress",
+   |                                                                                                     ^^^
+27 |     "no_observation", "stale", "future_retrieval", "provider_result", "persistence_failed",
+28 |     "adapter_failed", "adapter_contract_invalid"]
+   |
+
+E501 Line too long (119 > 100)
+  --> src\ai_intel\assets\aggregate_service.py:34:101
+   |
+32 |     """Production implementations use the existing allowlisted gateway deadline of 20 seconds."""
+33 |
+34 |     def collect(self, query_id: AggregateQueryId, *, retrieved_at: datetime | None = None) -> AggregateObservation: ...
+   |                                                                                                     ^^^^^^^^^^^^^^^^^^^
+
+E501 Line too long (102 > 100)
+  --> src\ai_intel\assets\aggregate_service.py:48:101
+   |
+47 | class SafeAggregateCache(Protocol):
+48 |     """A server-injected cache stores only safe persisted totals, never credentials or wire bodies."""
+   |                                                                                                     ^^
+49 |
+50 |     def get(self, identity: str) -> str | None: ...
+   |
+
+E501 Line too long (108 > 100)
+  --> src\ai_intel\assets\aggregate_service.py:82:101
+   |
+80 |         "data_mode": observation.data_mode, "service_count": observation.value.service_count,
+81 |         "retrieved_at": observation.retrieved_at.isoformat(),
+82 |         "observed_at": observation.value.observed_at.isoformat() if observation.value.observed_at else None,
+   |                                                                                                     ^^^^^^^^
+83 |     }, sort_keys=True, separators=(",", ":"))
+   |
+
+E501 Line too long (112 > 100)
+  --> src\ai_intel\assets\aggregate_service.py:96:101
+   |
+94 |     def __init__(self, repository: AggregateRepository,
+95 |                  connectors: dict[AggregateProvider, AggregateConnector],
+96 |                  server_policy: AggregateServerPolicy, *, safe_cache: SafeAggregateCache | None = None) -> None:
+   |                                                                                                     ^^^^^^^^^^^^
+97 |         if not 1 <= len(connectors) <= 2 or any(provider not in ("hunter", "quake") for provider in connectors):
+98 |             raise ValueError("aggregate service requires one or two fixed providers")
+   |
+
+E501 Line too long (112 > 100)
+  --> src\ai_intel\assets\aggregate_service.py:97:101
+   |
+95 |                  connectors: dict[AggregateProvider, AggregateConnector],
+96 |                  server_policy: AggregateServerPolicy, *, safe_cache: SafeAggregateCache | None = None) -> None:
+97 |         if not 1 <= len(connectors) <= 2 or any(provider not in ("hunter", "quake") for provider in connectors):
+   |                                                                                                     ^^^^^^^^^^^^
+98 |             raise ValueError("aggregate service requires one or two fixed providers")
+99 |         self.repository = repository
+   |
+
+E501 Line too long (114 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:142:101
+    |
+140 |         freshness: Literal["current", "stale", "unknown"] = "unknown"
+141 |         status = observation.outcome
+142 |         cache_status: CacheStatus = "bypassed_fixture" if observation.data_mode == "fixture" else "not_configured"
+    |                                                                                                     ^^^^^^^^^^^^^^
+143 |         if observation.retrieved_at > now:
+144 |             value, status, reason = None, "unknown", "future_retrieval"
+    |
+
+E501 Line too long (119 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:161:101
+    |
+159 |     def read_current_provider_aggregate(self, provider: AggregateProvider,
+160 |                                         query_id: AggregateQueryId | None,
+161 |                                         scope: AccessScope, *, now: datetime | None = None) -> AggregateProviderResult:
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^
+162 |         evaluated_at = retrieval_time(now)
+163 |         aggregate_scope_key(scope, self.server_policy)
+    |
+
+E501 Line too long (113 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:170:101
+    |
+168 |         require_query_id(query_id)
+169 |         try:
+170 |             stored = self.repository.read_latest(provider, query_id, scope, self.server_policy, now=evaluated_at)
+    |                                                                                                     ^^^^^^^^^^^^^
+171 |             if stored is None:
+172 |                 return AggregateProviderResult(provider, query_id, "unknown", "no_observation")
+    |
+
+E501 Line too long (127 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:175:101
+    |
+173 |             return self._result(stored, scope, evaluated_at)
+174 |         except AggregatePersistenceError:
+175 |             return AggregateProviderResult(provider, query_id, "failed", "persistence_failed", error_code="persistence_failed")
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+176 |
+177 |     def collect_provider_aggregate_observation(self, provider: AggregateProvider,
+    |
+
+E501 Line too long (126 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:179:101
+    |
+177 |     def collect_provider_aggregate_observation(self, provider: AggregateProvider,
+178 |                                                query_id: AggregateQueryId | None,
+179 |                                                scope: AccessScope, *, now: datetime | None = None) -> AggregateProviderResult:
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+180 |         evaluated_at = retrieval_time(now)
+181 |         existing = self.read_current_provider_aggregate(provider, query_id, scope, now=evaluated_at)
+    |
+
+RUF021 [*] Parenthesize `a and b` expressions when chaining `and` and `or` together, to make the precedence clear
+   --> src\ai_intel\assets\aggregate_service.py:182:32
+    |
+180 |         evaluated_at = retrieval_time(now)
+181 |         existing = self.read_current_provider_aggregate(provider, query_id, scope, now=evaluated_at)
+182 |         if query_id is None or existing.status == "failed" and existing.error_code == "persistence_failed":
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+183 |             return existing
+184 |         if not self.server_policy.collection_authorized:
+    |
+help: Parenthesize the `and` subexpression
+    |
+181 |         existing = self.read_current_provider_aggregate(provider, query_id, scope, now=evaluated_at)
+    -         if query_id is None or existing.status == "failed" and existing.error_code == "persistence_failed":
+182 +         if query_id is None or (existing.status == "failed" and existing.error_code == "persistence_failed"):
+183 |             return existing
+    |
+
+E501 Line too long (107 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:182:101
+    |
+180 |         evaluated_at = retrieval_time(now)
+181 |         existing = self.read_current_provider_aggregate(provider, query_id, scope, now=evaluated_at)
+182 |         if query_id is None or existing.status == "failed" and existing.error_code == "persistence_failed":
+    |                                                                                                     ^^^^^^^
+183 |             return existing
+184 |         if not self.server_policy.collection_authorized:
+    |
+
+E501 Line too long (107 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:185:101
+    |
+183 |             return existing
+184 |         if not self.server_policy.collection_authorized:
+185 |             return AggregateProviderResult(provider, query_id, "unauthorized", "collection_not_authorized")
+    |                                                                                                     ^^^^^^^
+186 |         try:
+187 |             scope.requires(MANAGE_PUBLIC_SOURCES if self.server_policy.visibility == "public" else WRITE_ASSET)
+    |
+
+E501 Line too long (111 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:187:101
+    |
+185 |             return AggregateProviderResult(provider, query_id, "unauthorized", "collection_not_authorized")
+186 |         try:
+187 |             scope.requires(MANAGE_PUBLIC_SOURCES if self.server_policy.visibility == "public" else WRITE_ASSET)
+    |                                                                                                     ^^^^^^^^^^^
+188 |         except PermissionDeniedError:
+189 |             return AggregateProviderResult(provider, query_id, "unauthorized", "collection_not_authorized")
+    |
+
+E501 Line too long (107 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:189:101
+    |
+187 |             scope.requires(MANAGE_PUBLIC_SOURCES if self.server_policy.visibility == "public" else WRITE_ASSET)
+188 |         except PermissionDeniedError:
+189 |             return AggregateProviderResult(provider, query_id, "unauthorized", "collection_not_authorized")
+    |                                                                                                     ^^^^^^^
+190 |         if existing.status == "available":
+191 |             return existing
+    |
+
+E501 Line too long (123 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:193:101
+    |
+191 |             return existing
+192 |         scope_key = aggregate_scope_key(scope, self.server_policy)
+193 |         key = hashlib.sha256((aggregate_call_key(provider, query_id, self.server_policy) + scope_key).encode()).hexdigest()
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^
+194 |         with self._flight_guard:
+195 |             if key in self._in_flight or not self._capacity.acquire(blocking=False):
+    |
+
+E501 Line too long (108 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:196:101
+    |
+194 |         with self._flight_guard:
+195 |             if key in self._in_flight or not self._capacity.acquire(blocking=False):
+196 |                 return AggregateProviderResult(provider, query_id, "rate_limited", "collection_in_progress")
+    |                                                                                                     ^^^^^^^^
+197 |             self._in_flight.add(key)
+198 |         try:
+    |
+
+E501 Line too long (162 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:201:101
+    |
+199 | …
+200 | …
+201 | …ed_at=evaluated_at) if self.server_policy.data_mode == "fixture" else connector.collect(query_id)
+    |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+202 | …
+203 | …n.query_id != query_id or observation.data_mode != self.server_policy.data_mode:
+    |
+
+E501 Line too long (145 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:203:101
+    |
+201 | … retrieved_at=evaluated_at) if self.server_policy.data_mode == "fixture" else connector.collect(query_id)
+202 | …
+203 | …servation.query_id != query_id or observation.data_mode != self.server_policy.data_mode:
+    |                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+204 | …smatch")
+205 | …):
+    |
+
+E501 Line too long (143 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:206:101
+    |
+204 | …ismatch")
+205 | …r):
+206 | … query_id, "failed", "adapter_contract_invalid", error_code="adapter_contract_invalid")
+    |                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+207 | …
+208 | … query_id, "failed", "adapter_failed", error_code="adapter_failed")
+    |
+
+E501 Line too long (123 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:208:101
+    |
+206 | …         return AggregateProviderResult(provider, query_id, "failed", "adapter_contract_invalid", error_code="adapter_contract_inval…
+207 | …     except Exception:
+208 | …         return AggregateProviderResult(provider, query_id, "failed", "adapter_failed", error_code="adapter_failed")
+    |                                                                                               ^^^^^^^^^^^^^^^^^^^^^^^
+209 | …     completed_at = evaluated_at if now is not None else retrieval_time(None)
+210 | …     try:
+    |
+
+E501 Line too long (123 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:211:101
+    |
+209 |             completed_at = evaluated_at if now is not None else retrieval_time(None)
+210 |             try:
+211 |                 stored = self.repository.save_observation(observation, scope, self.server_policy, recorded_at=completed_at)
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^
+212 |                 return self._result(stored, scope, completed_at, write_cache=True)
+213 |             except AggregatePersistenceError:
+    |
+
+E501 Line too long (131 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:214:101
+    |
+212 |                 return self._result(stored, scope, completed_at, write_cache=True)
+213 |             except AggregatePersistenceError:
+214 |                 return AggregateProviderResult(provider, query_id, "failed", "persistence_failed", error_code="persistence_failed")
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+215 |         finally:
+216 |             with self._flight_guard:
+    |
+
+E501 Line too long (137 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:221:101
+    |
+220 | …query_id: AggregateQueryId | None,
+221 | …AccessScope, *, now: datetime | None = None) -> tuple[AggregateProviderResult, ...]:
+    |                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+222 | …calls; R07 can instead schedule two children."""
+223 | …observation(provider, query_id, scope, now=now)
+    |
+
+E501 Line too long (101 > 100)
+   --> src\ai_intel\assets\aggregate_service.py:222:101
+    |
+220 |     def collect_product_aggregate_observations(self, query_id: AggregateQueryId | None,
+221 |                                               scope: AccessScope, *, now: datetime | None = None) -> tuple[AggregateProviderResult, .…
+222 |         """At most two sequential 20-second provider calls; R07 can instead schedule two children."""
+    |                                                                                                     ^
+223 |         return tuple(self.collect_provider_aggregate_observation(provider, query_id, scope, now=now)
+224 |                      for provider in self.connectors)
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests\unit\test_r08_aggregate_service.py:3:1
+   |
+ 1 |   """Explicit fixture adapters exercise the persistence/service surface with zero wire requests."""
+ 2 |
+ 3 | / from datetime import UTC, datetime, timedelta
+ 4 | | from threading import Event
+ 5 | | from uuid import uuid4
+ 6 | |
+ 7 | | import pytest
+ 8 | |
+ 9 | | from ai_intel.assets.aggregate_observations import AggregateObservation, total_result
+10 | | from ai_intel.assets.aggregate_repository import (
+11 | |     AggregatePersistenceError, AggregateServerPolicy, StoredAggregate,
+12 | |     aggregate_call_key, canonical_observation,
+13 | | )
+14 | | from ai_intel.assets.aggregate_service import AggregateService
+15 | | from ai_intel.domain.access import AccessScope, Role
+   | |____________________________________________________^
+16 |
+17 |   NOW = datetime(2026, 10, 15, 20, 0, tzinfo=UTC)
+   |
+help: Organize imports
+   |
+10 | from ai_intel.assets.aggregate_repository import (
+   -     AggregatePersistenceError, AggregateServerPolicy, StoredAggregate,
+   -     aggregate_call_key, canonical_observation,
+11 +     AggregatePersistenceError,
+12 +     AggregateServerPolicy,
+13 +     StoredAggregate,
+14 +     aggregate_call_key,
+15 +     canonical_observation,
+16 | )
+   |
+
+E501 Line too long (104 > 100)
+  --> tests\unit\test_r08_aggregate_service.py:32:101
+   |
+30 |         _, digest = canonical_observation(observation)
+31 |         record = StoredAggregate(observation_id or uuid4(), observation, digest,
+32 |                                  aggregate_call_key(observation.provider, observation.query_id, policy),
+   |                                                                                                     ^^^^
+33 |                                  "public", recorded_at)
+34 |         self.records.append(record)
+   |
+
+E501 Line too long (101 > 100)
+  --> tests\unit\test_r08_aggregate_service.py:39:101
+   |
+37 |     def read_latest(self, provider, query_id, scope, policy, *, now, available_only=False):
+38 |         key = aggregate_call_key(provider, query_id, policy)
+39 |         records = [r for r in self.records if r.call_key == key and r.observation.retrieved_at <= now
+   |                                                                                                     ^
+40 |                    and (not available_only or r.observation.outcome == "available")]
+41 |         return max(records, key=lambda r: r.observation.retrieved_at, default=None)
+   |
+
+E501 Line too long (107 > 100)
+  --> tests\unit\test_r08_aggregate_service.py:74:101
+   |
+72 | def make_service(observation=None, policy=POLICY, cache=None):
+73 |     repository = FixtureRepository()
+74 |     connector = FixtureConnector(observation or total_result("hunter", "ollama", 0, NOW, policy.data_mode))
+   |                                                                                                     ^^^^^^^
+75 |     service = AggregateService(repository, {"hunter": connector}, policy, safe_cache=cache)
+76 |     return service, repository, connector
+   |
+
+E501 Line too long (115 > 100)
+  --> tests\unit\test_r08_aggregate_service.py:93:101
+   |
+93 | @pytest.mark.parametrize("outcome,error", [("unknown", "missing_total"), ("unauthorized", "provider_unauthorized"),
+   |                                                                                                     ^^^^^^^^^^^^^^^
+94 |     ("rate_limited", "provider_rate_limited"), ("failed", "network_timeout"), ("not_configured", "credential_missing")])
+95 | def test_typed_provider_failure_is_persisted_without_a_value(outcome, error):
+   |
+
+E501 Line too long (120 > 100)
+  --> tests\unit\test_r08_aggregate_service.py:94:101
+   |
+93 | @pytest.mark.parametrize("outcome,error", [("unknown", "missing_total"), ("unauthorized", "provider_unauthorized"),
+94 |     ("rate_limited", "provider_rate_limited"), ("failed", "network_timeout"), ("not_configured", "credential_missing")])
+   |                                                                                                     ^^^^^^^^^^^^^^^^^^^^
+95 | def test_typed_provider_failure_is_persisted_without_a_value(outcome, error):
+96 |     observation = AggregateObservation(provider="hunter", query_id="ollama", retrieved_at=NOW,
+   |
+
+E501 Line too long (103 > 100)
+   --> tests\unit\test_r08_aggregate_service.py:120:101
+    |
+118 | def test_new_failure_does_not_reuse_previous_success_as_current():
+119 |     service, repository, connector = make_service()
+120 |     repository.save_observation(total_result("hunter", "ollama", 12, NOW-timedelta(days=2), "fixture"),
+    |                                                                                                     ^^^
+121 |                                 SCOPE, POLICY, recorded_at=NOW)
+122 |     connector.observation = AggregateObservation(provider="hunter", query_id="ollama", retrieved_at=NOW,
+    |
+
+E501 Line too long (104 > 100)
+   --> tests\unit\test_r08_aggregate_service.py:122:101
+    |
+120 |     repository.save_observation(total_result("hunter", "ollama", 12, NOW-timedelta(days=2), "fixture"),
+121 |                                 SCOPE, POLICY, recorded_at=NOW)
+122 |     connector.observation = AggregateObservation(provider="hunter", query_id="ollama", retrieved_at=NOW,
+    |                                                                                                     ^^^^
+123 |         outcome="failed", error_code="network_timeout", data_mode="fixture")
+124 |     result = service.collect_provider_aggregate_observation("hunter", "ollama", SCOPE, now=NOW)
+    |
+
+E501 Line too long (106 > 100)
+   --> tests\unit\test_r08_aggregate_service.py:135:101
+    |
+133 |     service, repository, connector = make_service()
+134 |     repository.save_observation(connector.observation, SCOPE, POLICY, recorded_at=NOW)
+135 |     result = service.read_current_provider_aggregate("hunter", "ollama", SCOPE, now=NOW+timedelta(days=1))
+    |                                                                                                     ^^^^^^
+136 |     assert result.status == "unknown" and result.reason == "stale"
+137 |     assert result.freshness == "stale" and result.value is None
+    |
+
+E501 Line too long (106 > 100)
+   --> tests\unit\test_r08_aggregate_service.py:152:101
+    |
+151 | def test_future_retrieval_is_persisted_but_never_displayed_as_current():
+152 |     service, _, _ = make_service(total_result("hunter", "ollama", 3, NOW+timedelta(seconds=1), "fixture"))
+    |                                                                                                     ^^^^^^
+153 |     result = service.collect_provider_aggregate_observation("hunter", "ollama", SCOPE, now=NOW)
+154 |     assert result.status == "unknown" and result.reason == "future_retrieval"
+    |
+
+E501 Line too long (105 > 100)
+   --> tests\unit\test_r08_aggregate_service.py:160:101
+    |
+158 | def test_fixture_live_identity_is_disjoint():
+159 |     live = AggregateServerPolicy("authorized-test", "live", True)
+160 |     assert aggregate_call_key("hunter", "ollama", live) != aggregate_call_key("hunter", "ollama", POLICY)
+    |                                                                                                     ^^^^^
+
+E501 Line too long (116 > 100)
+   --> tests\unit\test_r08_aggregate_service.py:168:101
+    |
+166 |         service.collect_product_aggregate_observations("ollama; all", SCOPE, now=NOW)
+167 |     with pytest.raises(ValueError):
+168 |         AggregateService(FixtureRepository(), {"hunter": connector, "quake": connector, "other": connector}, POLICY)
+    |                                                                                                     ^^^^^^^^^^^^^^^^
+169 |     assert connector.calls == 0
+    |
+
+Found 48 errors.
+[*] 4 fixable with the `--fix` option.
