@@ -1,0 +1,1618 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="23" skipped="0" tests="36" time="0.375" timestamp="2026-10-16T02:35:28.661387+08:00" hostname="yin"><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_permission_permutations_share_identity_and_retain_original_order" time="0.001"><failure message="AssertionError: assert 6 == 1&#10; +  where 6 = len({'42f4d560ac208dea08bc44ab2ead13914a433a8b0d61bef2ff0f68c739a703d8', '741cdd57e95393e92396d2371a8120ce2293e55f64ded598...b95781a9b578c1973581db0b935e271b394629af4324bc10f', 'cf368571edff602a7881e8d283716c648b9383a1a1e4ba70ccb37506bdee77f3'})">def test_all_permission_permutations_share_identity_and_retain_original_order() -&gt; None:
+        orders = tuple(permutations(("read:inventory", "read:evidence", "read:events")))
+        results = tuple(parse_fixture(manifest_fixture(tool_permissions=list(order))) for order in orders)
+&gt;       assert len({result.snapshot.snapshot_sha256 for result in results}) == 1
+E       AssertionError: assert 6 == 1
+E        +  where 6 = len({'42f4d560ac208dea08bc44ab2ead13914a433a8b0d61bef2ff0f68c739a703d8', '741cdd57e95393e92396d2371a8120ce2293e55f64ded598...b95781a9b578c1973581db0b935e271b394629af4324bc10f', 'cf368571edff602a7881e8d283716c648b9383a1a1e4ba70ccb37506bdee77f3'})
+
+tests\unit\test_r11_manifest_parser_identity_time.py:39: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_permission_identity_is_not_trimmed_or_coerced[Read:inventory]" time="0.001" /><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_permission_identity_is_not_trimmed_or_coerced[ read:inventory]" time="0.000" /><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_permission_identity_is_not_trimmed_or_coerced[read:inventory ]" time="0.000" /><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_unknown_permission_declaration_and_explicit_empty_keep_distinct_identity" time="0.000" /><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_dependency_path_keeps_order_sensitive_identity" time="0.000" /><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[naive-observed_at]" time="0.001"><failure message="AssertionError: assert '/' == '/observed_at'&#10;  &#10;  - /observed_at&#10;  + /">field = 'observed_at', timestamp = datetime.datetime(2026, 10, 15, 12, 0)
+code = 'timezone_required'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+            parse_fixture(manifest_fixture(), **{field: timestamp})
+        assert error.value.code == code
+&gt;       assert error.value.locator == f"/{field}"
+E       AssertionError: assert '/' == '/observed_at'
+E         
+E         - /observed_at
+E         + /
+
+tests\unit\test_r11_manifest_parser_identity_time.py:130: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[naive-recorded_at]" time="0.000"><failure message="AssertionError: assert '/' == '/recorded_at'&#10;  &#10;  - /recorded_at&#10;  + /">field = 'recorded_at', timestamp = datetime.datetime(2026, 10, 15, 12, 0)
+code = 'timezone_required'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+            parse_fixture(manifest_fixture(), **{field: timestamp})
+        assert error.value.code == code
+&gt;       assert error.value.locator == f"/{field}"
+E       AssertionError: assert '/' == '/recorded_at'
+E         
+E         - /recorded_at
+E         + /
+
+tests\unit\test_r11_manifest_parser_identity_time.py:130: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[offset-missing-observed_at]" time="0.000"><failure message="Failed: DID NOT RAISE &lt;class 'ai_intel.assets.manifest_parser.ManifestValidationError'&gt;">field = 'observed_at'
+timestamp = datetime.datetime(2026, 10, 15, 12, 0, tzinfo=&lt;test_r11_manifest_parser_identity_time.MissingOffsetZone object at 0x000001F7D96AAB40&gt;)
+code = 'timezone_required'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+&gt;       with pytest.raises(ManifestValidationError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE &lt;class 'ai_intel.assets.manifest_parser.ManifestValidationError'&gt;
+
+tests\unit\test_r11_manifest_parser_identity_time.py:127: Failed</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[offset-missing-recorded_at]" time="0.000"><failure message="Failed: DID NOT RAISE &lt;class 'ai_intel.assets.manifest_parser.ManifestValidationError'&gt;">field = 'recorded_at'
+timestamp = datetime.datetime(2026, 10, 15, 12, 0, tzinfo=&lt;test_r11_manifest_parser_identity_time.MissingOffsetZone object at 0x000001F7D96AAB40&gt;)
+code = 'timezone_required'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+&gt;       with pytest.raises(ManifestValidationError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE &lt;class 'ai_intel.assets.manifest_parser.ManifestValidationError'&gt;
+
+tests\unit\test_r11_manifest_parser_identity_time.py:127: Failed</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[lower-utc-overflow-observed_at]" time="0.001"><failure message="OverflowError: date value out of range">field = 'observed_at'
+timestamp = datetime.datetime(1, 1, 1, 0, 0, tzinfo=datetime.timezone(datetime.timedelta(seconds=50400)))
+code = 'invalid_timestamp'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+&gt;           parse_fixture(manifest_fixture(), **{field: timestamp})
+
+tests\unit\test_r11_manifest_parser_identity_time.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\unit\test_r11_manifest_parser_identity_time.py:29: in parse_fixture
+    return parse_manifest(raw, **{**FIXTURE_CONTEXT, **changes})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+raw_bytes = b'{"format_version": 1, "components": []}'
+
+    def parse_manifest(
+        raw_bytes: bytes,
+        *,
+        manifest_format: str,
+        scope: AccessScope,
+        authorized_asset_tenant_id: str,
+        asset_id: str,
+        snapshot_number: int,
+        source_version: str,
+        observed_at: datetime,
+        recorded_at: datetime,
+        csv_column_mapping: Mapping[str, str] | None = None,
+    ) -&gt; ManifestParseResult:
+        """仅接受调用方认证的租户与资产引用；READ_ASSET不授予持久化导入权限。
+    
+        JSON仅支持本模块的format_version=1；CSV仅支持显式映射组件列。
+        purl保留受限不含qualifier/subpath的来源标签，不推断生态或版本，也不验证包一致性。
+        原始字节、source_version与字段定位只构成候选证据，不证明声明真实或清单完整。
+        """
+        if not isinstance(scope, AccessScope):
+            raise PermissionDeniedError("authenticated asset scope required")
+        scope.requires(READ_ASSET)
+        if not scope.tenant_id or not authorized_asset_tenant_id:
+            raise PermissionDeniedError("tenant asset scope required")
+        scope.enforce_visible("tenant", authorized_asset_tenant_id)
+        if manifest_format not in {"json_manifest_v1", "csv_components_v1"}:
+            raise ManifestValidationError("unsupported_format")
+        if type(raw_bytes) is not bytes:
+            raise ManifestValidationError("bytes_required")
+        if not 1 &lt;= len(raw_bytes) &lt;= MAX_MANIFEST_BYTES:
+            raise ManifestValidationError("manifest_size_limit")
+        if type(snapshot_number) is not int or snapshot_number &lt; 1:
+            raise ManifestValidationError("invalid_snapshot_number")
+        try:
+            asset_id = str(UUID(asset_id))
+        except (ValueError, AttributeError, TypeError):
+            raise ManifestValidationError("invalid_asset_id") from None
+        _text(source_version, "/source_version", nullable=False)
+        for timestamp in (observed_at, recorded_at):
+            if not isinstance(timestamp, datetime) or timestamp.tzinfo is None:
+                raise ManifestValidationError("timezone_required")
+        if manifest_format == "json_manifest_v1":
+            if csv_column_mapping is not None:
+                raise ManifestValidationError("unexpected_csv_mapping")
+            manifest, rows = _json_rows(raw_bytes)
+        else:
+            manifest = {}
+            rows = _csv_rows(raw_bytes, csv_column_mapping)
+        completeness_value = manifest.get("inventory_completeness", "unknown")
+        completeness: InventoryCompleteness
+        if completeness_value == "complete_for_declared_scope":
+            completeness = "complete_for_declared_scope"
+        elif completeness_value == "partial":
+            completeness = "partial"
+        elif completeness_value == "unknown":
+            completeness = "unknown"
+        else:
+            raise ManifestValidationError("invalid_inventory_completeness", "/inventory_completeness")
+        declared_scope = _text_list(manifest.get("declared_scope", []), "/declared_scope")
+        if completeness == "complete_for_declared_scope" and not declared_scope:
+            raise ManifestValidationError("missing_declared_scope", "/declared_scope")
+        components = tuple(_component(row, locator, scope.tenant_id, asset_id) for row, locator in rows)
+        if len({component.component_id for component in components}) != len(components):
+            raise ManifestValidationError("duplicate_component", "/components")
+        configuration = _declared_fields(
+            manifest.get("configuration", {}), CONFIGURATION_TYPES, "/configuration"
+        )
+        tool_permissions = None
+        if manifest.get("tool_permissions") is not None:
+            tool_permissions = _text_list(manifest["tool_permissions"], "/tool_permissions")
+        input_channels = None
+        if manifest.get("input_channels") is not None:
+            input_channels = _declared_fields(
+                manifest["input_channels"], dict.fromkeys(INPUT_CHANNELS, bool), "/input_channels"
+            )
+        network_exposure = None
+        if manifest.get("network_exposure") is not None:
+            network_exposure = _declared_fields(
+                manifest["network_exposure"], dict.fromkeys(NETWORK_FIELDS, bool), "/network_exposure"
+            )
+        component_values = [
+            [
+                component.ecosystem,
+                component.package_name,
+                component.display_name,
+                component.purl,
+                component.version,
+                component.version_scheme,
+                component.image_digest,
+                component.dependency_path,
+            ]
+            for component in components
+        ]
+        semantic_value = [
+            sorted(component_values, key=lambda value: json.dumps(value)),
+            completeness,
+            sorted(declared_scope),
+            [(value.name, value.value) for value in configuration],
+            tool_permissions,
+            None if input_channels is None else [(value.name, value.value) for value in input_channels],
+            None
+            if network_exposure is None
+            else [(value.name, value.value) for value in network_exposure],
+        ]
+        snapshot_sha256 = hashlib.sha256(
+            json.dumps(semantic_value, sort_keys=True).encode()
+        ).hexdigest()
+        snapshot_id = str(
+            uuid5(NAMESPACE_URL, f"{scope.tenant_id}:{asset_id}:{snapshot_number}:{snapshot_sha256}")
+        )
+        snapshot = SnapshotCandidate(
+            "r11-asset-candidate-1",
+            snapshot_id,
+            asset_id,
+            scope.tenant_id,
+            snapshot_number,
+&gt;           observed_at.astimezone(UTC),
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            recorded_at.astimezone(UTC),
+            manifest_format,
+            completeness,
+            declared_scope,
+            components,
+            configuration,
+            tool_permissions,
+            input_channels,
+            network_exposure,
+            snapshot_sha256,
+        )
+E       OverflowError: date value out of range
+
+src\ai_intel\assets\manifest_parser.py:436: OverflowError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[lower-utc-overflow-recorded_at]" time="0.001"><failure message="OverflowError: date value out of range">field = 'recorded_at'
+timestamp = datetime.datetime(1, 1, 1, 0, 0, tzinfo=datetime.timezone(datetime.timedelta(seconds=50400)))
+code = 'invalid_timestamp'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+&gt;           parse_fixture(manifest_fixture(), **{field: timestamp})
+
+tests\unit\test_r11_manifest_parser_identity_time.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\unit\test_r11_manifest_parser_identity_time.py:29: in parse_fixture
+    return parse_manifest(raw, **{**FIXTURE_CONTEXT, **changes})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+raw_bytes = b'{"format_version": 1, "components": []}'
+
+    def parse_manifest(
+        raw_bytes: bytes,
+        *,
+        manifest_format: str,
+        scope: AccessScope,
+        authorized_asset_tenant_id: str,
+        asset_id: str,
+        snapshot_number: int,
+        source_version: str,
+        observed_at: datetime,
+        recorded_at: datetime,
+        csv_column_mapping: Mapping[str, str] | None = None,
+    ) -&gt; ManifestParseResult:
+        """仅接受调用方认证的租户与资产引用；READ_ASSET不授予持久化导入权限。
+    
+        JSON仅支持本模块的format_version=1；CSV仅支持显式映射组件列。
+        purl保留受限不含qualifier/subpath的来源标签，不推断生态或版本，也不验证包一致性。
+        原始字节、source_version与字段定位只构成候选证据，不证明声明真实或清单完整。
+        """
+        if not isinstance(scope, AccessScope):
+            raise PermissionDeniedError("authenticated asset scope required")
+        scope.requires(READ_ASSET)
+        if not scope.tenant_id or not authorized_asset_tenant_id:
+            raise PermissionDeniedError("tenant asset scope required")
+        scope.enforce_visible("tenant", authorized_asset_tenant_id)
+        if manifest_format not in {"json_manifest_v1", "csv_components_v1"}:
+            raise ManifestValidationError("unsupported_format")
+        if type(raw_bytes) is not bytes:
+            raise ManifestValidationError("bytes_required")
+        if not 1 &lt;= len(raw_bytes) &lt;= MAX_MANIFEST_BYTES:
+            raise ManifestValidationError("manifest_size_limit")
+        if type(snapshot_number) is not int or snapshot_number &lt; 1:
+            raise ManifestValidationError("invalid_snapshot_number")
+        try:
+            asset_id = str(UUID(asset_id))
+        except (ValueError, AttributeError, TypeError):
+            raise ManifestValidationError("invalid_asset_id") from None
+        _text(source_version, "/source_version", nullable=False)
+        for timestamp in (observed_at, recorded_at):
+            if not isinstance(timestamp, datetime) or timestamp.tzinfo is None:
+                raise ManifestValidationError("timezone_required")
+        if manifest_format == "json_manifest_v1":
+            if csv_column_mapping is not None:
+                raise ManifestValidationError("unexpected_csv_mapping")
+            manifest, rows = _json_rows(raw_bytes)
+        else:
+            manifest = {}
+            rows = _csv_rows(raw_bytes, csv_column_mapping)
+        completeness_value = manifest.get("inventory_completeness", "unknown")
+        completeness: InventoryCompleteness
+        if completeness_value == "complete_for_declared_scope":
+            completeness = "complete_for_declared_scope"
+        elif completeness_value == "partial":
+            completeness = "partial"
+        elif completeness_value == "unknown":
+            completeness = "unknown"
+        else:
+            raise ManifestValidationError("invalid_inventory_completeness", "/inventory_completeness")
+        declared_scope = _text_list(manifest.get("declared_scope", []), "/declared_scope")
+        if completeness == "complete_for_declared_scope" and not declared_scope:
+            raise ManifestValidationError("missing_declared_scope", "/declared_scope")
+        components = tuple(_component(row, locator, scope.tenant_id, asset_id) for row, locator in rows)
+        if len({component.component_id for component in components}) != len(components):
+            raise ManifestValidationError("duplicate_component", "/components")
+        configuration = _declared_fields(
+            manifest.get("configuration", {}), CONFIGURATION_TYPES, "/configuration"
+        )
+        tool_permissions = None
+        if manifest.get("tool_permissions") is not None:
+            tool_permissions = _text_list(manifest["tool_permissions"], "/tool_permissions")
+        input_channels = None
+        if manifest.get("input_channels") is not None:
+            input_channels = _declared_fields(
+                manifest["input_channels"], dict.fromkeys(INPUT_CHANNELS, bool), "/input_channels"
+            )
+        network_exposure = None
+        if manifest.get("network_exposure") is not None:
+            network_exposure = _declared_fields(
+                manifest["network_exposure"], dict.fromkeys(NETWORK_FIELDS, bool), "/network_exposure"
+            )
+        component_values = [
+            [
+                component.ecosystem,
+                component.package_name,
+                component.display_name,
+                component.purl,
+                component.version,
+                component.version_scheme,
+                component.image_digest,
+                component.dependency_path,
+            ]
+            for component in components
+        ]
+        semantic_value = [
+            sorted(component_values, key=lambda value: json.dumps(value)),
+            completeness,
+            sorted(declared_scope),
+            [(value.name, value.value) for value in configuration],
+            tool_permissions,
+            None if input_channels is None else [(value.name, value.value) for value in input_channels],
+            None
+            if network_exposure is None
+            else [(value.name, value.value) for value in network_exposure],
+        ]
+        snapshot_sha256 = hashlib.sha256(
+            json.dumps(semantic_value, sort_keys=True).encode()
+        ).hexdigest()
+        snapshot_id = str(
+            uuid5(NAMESPACE_URL, f"{scope.tenant_id}:{asset_id}:{snapshot_number}:{snapshot_sha256}")
+        )
+        snapshot = SnapshotCandidate(
+            "r11-asset-candidate-1",
+            snapshot_id,
+            asset_id,
+            scope.tenant_id,
+            snapshot_number,
+            observed_at.astimezone(UTC),
+&gt;           recorded_at.astimezone(UTC),
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            manifest_format,
+            completeness,
+            declared_scope,
+            components,
+            configuration,
+            tool_permissions,
+            input_channels,
+            network_exposure,
+            snapshot_sha256,
+        )
+E       OverflowError: date value out of range
+
+src\ai_intel\assets\manifest_parser.py:437: OverflowError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[upper-utc-overflow-observed_at]" time="0.001"><failure message="OverflowError: date value out of range">field = 'observed_at'
+timestamp = datetime.datetime(9999, 12, 31, 23, 0, tzinfo=datetime.timezone(datetime.timedelta(days=-1, seconds=36000)))
+code = 'invalid_timestamp'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+&gt;           parse_fixture(manifest_fixture(), **{field: timestamp})
+
+tests\unit\test_r11_manifest_parser_identity_time.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\unit\test_r11_manifest_parser_identity_time.py:29: in parse_fixture
+    return parse_manifest(raw, **{**FIXTURE_CONTEXT, **changes})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+raw_bytes = b'{"format_version": 1, "components": []}'
+
+    def parse_manifest(
+        raw_bytes: bytes,
+        *,
+        manifest_format: str,
+        scope: AccessScope,
+        authorized_asset_tenant_id: str,
+        asset_id: str,
+        snapshot_number: int,
+        source_version: str,
+        observed_at: datetime,
+        recorded_at: datetime,
+        csv_column_mapping: Mapping[str, str] | None = None,
+    ) -&gt; ManifestParseResult:
+        """仅接受调用方认证的租户与资产引用；READ_ASSET不授予持久化导入权限。
+    
+        JSON仅支持本模块的format_version=1；CSV仅支持显式映射组件列。
+        purl保留受限不含qualifier/subpath的来源标签，不推断生态或版本，也不验证包一致性。
+        原始字节、source_version与字段定位只构成候选证据，不证明声明真实或清单完整。
+        """
+        if not isinstance(scope, AccessScope):
+            raise PermissionDeniedError("authenticated asset scope required")
+        scope.requires(READ_ASSET)
+        if not scope.tenant_id or not authorized_asset_tenant_id:
+            raise PermissionDeniedError("tenant asset scope required")
+        scope.enforce_visible("tenant", authorized_asset_tenant_id)
+        if manifest_format not in {"json_manifest_v1", "csv_components_v1"}:
+            raise ManifestValidationError("unsupported_format")
+        if type(raw_bytes) is not bytes:
+            raise ManifestValidationError("bytes_required")
+        if not 1 &lt;= len(raw_bytes) &lt;= MAX_MANIFEST_BYTES:
+            raise ManifestValidationError("manifest_size_limit")
+        if type(snapshot_number) is not int or snapshot_number &lt; 1:
+            raise ManifestValidationError("invalid_snapshot_number")
+        try:
+            asset_id = str(UUID(asset_id))
+        except (ValueError, AttributeError, TypeError):
+            raise ManifestValidationError("invalid_asset_id") from None
+        _text(source_version, "/source_version", nullable=False)
+        for timestamp in (observed_at, recorded_at):
+            if not isinstance(timestamp, datetime) or timestamp.tzinfo is None:
+                raise ManifestValidationError("timezone_required")
+        if manifest_format == "json_manifest_v1":
+            if csv_column_mapping is not None:
+                raise ManifestValidationError("unexpected_csv_mapping")
+            manifest, rows = _json_rows(raw_bytes)
+        else:
+            manifest = {}
+            rows = _csv_rows(raw_bytes, csv_column_mapping)
+        completeness_value = manifest.get("inventory_completeness", "unknown")
+        completeness: InventoryCompleteness
+        if completeness_value == "complete_for_declared_scope":
+            completeness = "complete_for_declared_scope"
+        elif completeness_value == "partial":
+            completeness = "partial"
+        elif completeness_value == "unknown":
+            completeness = "unknown"
+        else:
+            raise ManifestValidationError("invalid_inventory_completeness", "/inventory_completeness")
+        declared_scope = _text_list(manifest.get("declared_scope", []), "/declared_scope")
+        if completeness == "complete_for_declared_scope" and not declared_scope:
+            raise ManifestValidationError("missing_declared_scope", "/declared_scope")
+        components = tuple(_component(row, locator, scope.tenant_id, asset_id) for row, locator in rows)
+        if len({component.component_id for component in components}) != len(components):
+            raise ManifestValidationError("duplicate_component", "/components")
+        configuration = _declared_fields(
+            manifest.get("configuration", {}), CONFIGURATION_TYPES, "/configuration"
+        )
+        tool_permissions = None
+        if manifest.get("tool_permissions") is not None:
+            tool_permissions = _text_list(manifest["tool_permissions"], "/tool_permissions")
+        input_channels = None
+        if manifest.get("input_channels") is not None:
+            input_channels = _declared_fields(
+                manifest["input_channels"], dict.fromkeys(INPUT_CHANNELS, bool), "/input_channels"
+            )
+        network_exposure = None
+        if manifest.get("network_exposure") is not None:
+            network_exposure = _declared_fields(
+                manifest["network_exposure"], dict.fromkeys(NETWORK_FIELDS, bool), "/network_exposure"
+            )
+        component_values = [
+            [
+                component.ecosystem,
+                component.package_name,
+                component.display_name,
+                component.purl,
+                component.version,
+                component.version_scheme,
+                component.image_digest,
+                component.dependency_path,
+            ]
+            for component in components
+        ]
+        semantic_value = [
+            sorted(component_values, key=lambda value: json.dumps(value)),
+            completeness,
+            sorted(declared_scope),
+            [(value.name, value.value) for value in configuration],
+            tool_permissions,
+            None if input_channels is None else [(value.name, value.value) for value in input_channels],
+            None
+            if network_exposure is None
+            else [(value.name, value.value) for value in network_exposure],
+        ]
+        snapshot_sha256 = hashlib.sha256(
+            json.dumps(semantic_value, sort_keys=True).encode()
+        ).hexdigest()
+        snapshot_id = str(
+            uuid5(NAMESPACE_URL, f"{scope.tenant_id}:{asset_id}:{snapshot_number}:{snapshot_sha256}")
+        )
+        snapshot = SnapshotCandidate(
+            "r11-asset-candidate-1",
+            snapshot_id,
+            asset_id,
+            scope.tenant_id,
+            snapshot_number,
+&gt;           observed_at.astimezone(UTC),
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            recorded_at.astimezone(UTC),
+            manifest_format,
+            completeness,
+            declared_scope,
+            components,
+            configuration,
+            tool_permissions,
+            input_channels,
+            network_exposure,
+            snapshot_sha256,
+        )
+E       OverflowError: date value out of range
+
+src\ai_intel\assets\manifest_parser.py:436: OverflowError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[upper-utc-overflow-recorded_at]" time="0.001"><failure message="OverflowError: date value out of range">field = 'recorded_at'
+timestamp = datetime.datetime(9999, 12, 31, 23, 0, tzinfo=datetime.timezone(datetime.timedelta(days=-1, seconds=36000)))
+code = 'invalid_timestamp'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+&gt;           parse_fixture(manifest_fixture(), **{field: timestamp})
+
+tests\unit\test_r11_manifest_parser_identity_time.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\unit\test_r11_manifest_parser_identity_time.py:29: in parse_fixture
+    return parse_manifest(raw, **{**FIXTURE_CONTEXT, **changes})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+raw_bytes = b'{"format_version": 1, "components": []}'
+
+    def parse_manifest(
+        raw_bytes: bytes,
+        *,
+        manifest_format: str,
+        scope: AccessScope,
+        authorized_asset_tenant_id: str,
+        asset_id: str,
+        snapshot_number: int,
+        source_version: str,
+        observed_at: datetime,
+        recorded_at: datetime,
+        csv_column_mapping: Mapping[str, str] | None = None,
+    ) -&gt; ManifestParseResult:
+        """仅接受调用方认证的租户与资产引用；READ_ASSET不授予持久化导入权限。
+    
+        JSON仅支持本模块的format_version=1；CSV仅支持显式映射组件列。
+        purl保留受限不含qualifier/subpath的来源标签，不推断生态或版本，也不验证包一致性。
+        原始字节、source_version与字段定位只构成候选证据，不证明声明真实或清单完整。
+        """
+        if not isinstance(scope, AccessScope):
+            raise PermissionDeniedError("authenticated asset scope required")
+        scope.requires(READ_ASSET)
+        if not scope.tenant_id or not authorized_asset_tenant_id:
+            raise PermissionDeniedError("tenant asset scope required")
+        scope.enforce_visible("tenant", authorized_asset_tenant_id)
+        if manifest_format not in {"json_manifest_v1", "csv_components_v1"}:
+            raise ManifestValidationError("unsupported_format")
+        if type(raw_bytes) is not bytes:
+            raise ManifestValidationError("bytes_required")
+        if not 1 &lt;= len(raw_bytes) &lt;= MAX_MANIFEST_BYTES:
+            raise ManifestValidationError("manifest_size_limit")
+        if type(snapshot_number) is not int or snapshot_number &lt; 1:
+            raise ManifestValidationError("invalid_snapshot_number")
+        try:
+            asset_id = str(UUID(asset_id))
+        except (ValueError, AttributeError, TypeError):
+            raise ManifestValidationError("invalid_asset_id") from None
+        _text(source_version, "/source_version", nullable=False)
+        for timestamp in (observed_at, recorded_at):
+            if not isinstance(timestamp, datetime) or timestamp.tzinfo is None:
+                raise ManifestValidationError("timezone_required")
+        if manifest_format == "json_manifest_v1":
+            if csv_column_mapping is not None:
+                raise ManifestValidationError("unexpected_csv_mapping")
+            manifest, rows = _json_rows(raw_bytes)
+        else:
+            manifest = {}
+            rows = _csv_rows(raw_bytes, csv_column_mapping)
+        completeness_value = manifest.get("inventory_completeness", "unknown")
+        completeness: InventoryCompleteness
+        if completeness_value == "complete_for_declared_scope":
+            completeness = "complete_for_declared_scope"
+        elif completeness_value == "partial":
+            completeness = "partial"
+        elif completeness_value == "unknown":
+            completeness = "unknown"
+        else:
+            raise ManifestValidationError("invalid_inventory_completeness", "/inventory_completeness")
+        declared_scope = _text_list(manifest.get("declared_scope", []), "/declared_scope")
+        if completeness == "complete_for_declared_scope" and not declared_scope:
+            raise ManifestValidationError("missing_declared_scope", "/declared_scope")
+        components = tuple(_component(row, locator, scope.tenant_id, asset_id) for row, locator in rows)
+        if len({component.component_id for component in components}) != len(components):
+            raise ManifestValidationError("duplicate_component", "/components")
+        configuration = _declared_fields(
+            manifest.get("configuration", {}), CONFIGURATION_TYPES, "/configuration"
+        )
+        tool_permissions = None
+        if manifest.get("tool_permissions") is not None:
+            tool_permissions = _text_list(manifest["tool_permissions"], "/tool_permissions")
+        input_channels = None
+        if manifest.get("input_channels") is not None:
+            input_channels = _declared_fields(
+                manifest["input_channels"], dict.fromkeys(INPUT_CHANNELS, bool), "/input_channels"
+            )
+        network_exposure = None
+        if manifest.get("network_exposure") is not None:
+            network_exposure = _declared_fields(
+                manifest["network_exposure"], dict.fromkeys(NETWORK_FIELDS, bool), "/network_exposure"
+            )
+        component_values = [
+            [
+                component.ecosystem,
+                component.package_name,
+                component.display_name,
+                component.purl,
+                component.version,
+                component.version_scheme,
+                component.image_digest,
+                component.dependency_path,
+            ]
+            for component in components
+        ]
+        semantic_value = [
+            sorted(component_values, key=lambda value: json.dumps(value)),
+            completeness,
+            sorted(declared_scope),
+            [(value.name, value.value) for value in configuration],
+            tool_permissions,
+            None if input_channels is None else [(value.name, value.value) for value in input_channels],
+            None
+            if network_exposure is None
+            else [(value.name, value.value) for value in network_exposure],
+        ]
+        snapshot_sha256 = hashlib.sha256(
+            json.dumps(semantic_value, sort_keys=True).encode()
+        ).hexdigest()
+        snapshot_id = str(
+            uuid5(NAMESPACE_URL, f"{scope.tenant_id}:{asset_id}:{snapshot_number}:{snapshot_sha256}")
+        )
+        snapshot = SnapshotCandidate(
+            "r11-asset-candidate-1",
+            snapshot_id,
+            asset_id,
+            scope.tenant_id,
+            snapshot_number,
+            observed_at.astimezone(UTC),
+&gt;           recorded_at.astimezone(UTC),
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            manifest_format,
+            completeness,
+            declared_scope,
+            components,
+            configuration,
+            tool_permissions,
+            input_channels,
+            network_exposure,
+            snapshot_sha256,
+        )
+E       OverflowError: date value out of range
+
+src\ai_intel\assets\manifest_parser.py:437: OverflowError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[invalid-offset-observed_at]" time="0.001"><failure message="ValueError: offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24).">field = 'observed_at'
+timestamp = datetime.datetime(2026, 10, 15, 12, 0, tzinfo=&lt;test_r11_manifest_parser_identity_time.InvalidOffsetZone object at 0x000001F7D96A89B0&gt;)
+code = 'invalid_timestamp'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+&gt;           parse_fixture(manifest_fixture(), **{field: timestamp})
+
+tests\unit\test_r11_manifest_parser_identity_time.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\unit\test_r11_manifest_parser_identity_time.py:29: in parse_fixture
+    return parse_manifest(raw, **{**FIXTURE_CONTEXT, **changes})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+raw_bytes = b'{"format_version": 1, "components": []}'
+
+    def parse_manifest(
+        raw_bytes: bytes,
+        *,
+        manifest_format: str,
+        scope: AccessScope,
+        authorized_asset_tenant_id: str,
+        asset_id: str,
+        snapshot_number: int,
+        source_version: str,
+        observed_at: datetime,
+        recorded_at: datetime,
+        csv_column_mapping: Mapping[str, str] | None = None,
+    ) -&gt; ManifestParseResult:
+        """仅接受调用方认证的租户与资产引用；READ_ASSET不授予持久化导入权限。
+    
+        JSON仅支持本模块的format_version=1；CSV仅支持显式映射组件列。
+        purl保留受限不含qualifier/subpath的来源标签，不推断生态或版本，也不验证包一致性。
+        原始字节、source_version与字段定位只构成候选证据，不证明声明真实或清单完整。
+        """
+        if not isinstance(scope, AccessScope):
+            raise PermissionDeniedError("authenticated asset scope required")
+        scope.requires(READ_ASSET)
+        if not scope.tenant_id or not authorized_asset_tenant_id:
+            raise PermissionDeniedError("tenant asset scope required")
+        scope.enforce_visible("tenant", authorized_asset_tenant_id)
+        if manifest_format not in {"json_manifest_v1", "csv_components_v1"}:
+            raise ManifestValidationError("unsupported_format")
+        if type(raw_bytes) is not bytes:
+            raise ManifestValidationError("bytes_required")
+        if not 1 &lt;= len(raw_bytes) &lt;= MAX_MANIFEST_BYTES:
+            raise ManifestValidationError("manifest_size_limit")
+        if type(snapshot_number) is not int or snapshot_number &lt; 1:
+            raise ManifestValidationError("invalid_snapshot_number")
+        try:
+            asset_id = str(UUID(asset_id))
+        except (ValueError, AttributeError, TypeError):
+            raise ManifestValidationError("invalid_asset_id") from None
+        _text(source_version, "/source_version", nullable=False)
+        for timestamp in (observed_at, recorded_at):
+            if not isinstance(timestamp, datetime) or timestamp.tzinfo is None:
+                raise ManifestValidationError("timezone_required")
+        if manifest_format == "json_manifest_v1":
+            if csv_column_mapping is not None:
+                raise ManifestValidationError("unexpected_csv_mapping")
+            manifest, rows = _json_rows(raw_bytes)
+        else:
+            manifest = {}
+            rows = _csv_rows(raw_bytes, csv_column_mapping)
+        completeness_value = manifest.get("inventory_completeness", "unknown")
+        completeness: InventoryCompleteness
+        if completeness_value == "complete_for_declared_scope":
+            completeness = "complete_for_declared_scope"
+        elif completeness_value == "partial":
+            completeness = "partial"
+        elif completeness_value == "unknown":
+            completeness = "unknown"
+        else:
+            raise ManifestValidationError("invalid_inventory_completeness", "/inventory_completeness")
+        declared_scope = _text_list(manifest.get("declared_scope", []), "/declared_scope")
+        if completeness == "complete_for_declared_scope" and not declared_scope:
+            raise ManifestValidationError("missing_declared_scope", "/declared_scope")
+        components = tuple(_component(row, locator, scope.tenant_id, asset_id) for row, locator in rows)
+        if len({component.component_id for component in components}) != len(components):
+            raise ManifestValidationError("duplicate_component", "/components")
+        configuration = _declared_fields(
+            manifest.get("configuration", {}), CONFIGURATION_TYPES, "/configuration"
+        )
+        tool_permissions = None
+        if manifest.get("tool_permissions") is not None:
+            tool_permissions = _text_list(manifest["tool_permissions"], "/tool_permissions")
+        input_channels = None
+        if manifest.get("input_channels") is not None:
+            input_channels = _declared_fields(
+                manifest["input_channels"], dict.fromkeys(INPUT_CHANNELS, bool), "/input_channels"
+            )
+        network_exposure = None
+        if manifest.get("network_exposure") is not None:
+            network_exposure = _declared_fields(
+                manifest["network_exposure"], dict.fromkeys(NETWORK_FIELDS, bool), "/network_exposure"
+            )
+        component_values = [
+            [
+                component.ecosystem,
+                component.package_name,
+                component.display_name,
+                component.purl,
+                component.version,
+                component.version_scheme,
+                component.image_digest,
+                component.dependency_path,
+            ]
+            for component in components
+        ]
+        semantic_value = [
+            sorted(component_values, key=lambda value: json.dumps(value)),
+            completeness,
+            sorted(declared_scope),
+            [(value.name, value.value) for value in configuration],
+            tool_permissions,
+            None if input_channels is None else [(value.name, value.value) for value in input_channels],
+            None
+            if network_exposure is None
+            else [(value.name, value.value) for value in network_exposure],
+        ]
+        snapshot_sha256 = hashlib.sha256(
+            json.dumps(semantic_value, sort_keys=True).encode()
+        ).hexdigest()
+        snapshot_id = str(
+            uuid5(NAMESPACE_URL, f"{scope.tenant_id}:{asset_id}:{snapshot_number}:{snapshot_sha256}")
+        )
+        snapshot = SnapshotCandidate(
+            "r11-asset-candidate-1",
+            snapshot_id,
+            asset_id,
+            scope.tenant_id,
+            snapshot_number,
+&gt;           observed_at.astimezone(UTC),
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            recorded_at.astimezone(UTC),
+            manifest_format,
+            completeness,
+            declared_scope,
+            components,
+            configuration,
+            tool_permissions,
+            input_channels,
+            network_exposure,
+            snapshot_sha256,
+        )
+E       ValueError: offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24).
+
+src\ai_intel\assets\manifest_parser.py:436: ValueError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[invalid-offset-recorded_at]" time="0.001"><failure message="ValueError: offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24).">field = 'recorded_at'
+timestamp = datetime.datetime(2026, 10, 15, 12, 0, tzinfo=&lt;test_r11_manifest_parser_identity_time.InvalidOffsetZone object at 0x000001F7D96A89B0&gt;)
+code = 'invalid_timestamp'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+&gt;           parse_fixture(manifest_fixture(), **{field: timestamp})
+
+tests\unit\test_r11_manifest_parser_identity_time.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\unit\test_r11_manifest_parser_identity_time.py:29: in parse_fixture
+    return parse_manifest(raw, **{**FIXTURE_CONTEXT, **changes})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+raw_bytes = b'{"format_version": 1, "components": []}'
+
+    def parse_manifest(
+        raw_bytes: bytes,
+        *,
+        manifest_format: str,
+        scope: AccessScope,
+        authorized_asset_tenant_id: str,
+        asset_id: str,
+        snapshot_number: int,
+        source_version: str,
+        observed_at: datetime,
+        recorded_at: datetime,
+        csv_column_mapping: Mapping[str, str] | None = None,
+    ) -&gt; ManifestParseResult:
+        """仅接受调用方认证的租户与资产引用；READ_ASSET不授予持久化导入权限。
+    
+        JSON仅支持本模块的format_version=1；CSV仅支持显式映射组件列。
+        purl保留受限不含qualifier/subpath的来源标签，不推断生态或版本，也不验证包一致性。
+        原始字节、source_version与字段定位只构成候选证据，不证明声明真实或清单完整。
+        """
+        if not isinstance(scope, AccessScope):
+            raise PermissionDeniedError("authenticated asset scope required")
+        scope.requires(READ_ASSET)
+        if not scope.tenant_id or not authorized_asset_tenant_id:
+            raise PermissionDeniedError("tenant asset scope required")
+        scope.enforce_visible("tenant", authorized_asset_tenant_id)
+        if manifest_format not in {"json_manifest_v1", "csv_components_v1"}:
+            raise ManifestValidationError("unsupported_format")
+        if type(raw_bytes) is not bytes:
+            raise ManifestValidationError("bytes_required")
+        if not 1 &lt;= len(raw_bytes) &lt;= MAX_MANIFEST_BYTES:
+            raise ManifestValidationError("manifest_size_limit")
+        if type(snapshot_number) is not int or snapshot_number &lt; 1:
+            raise ManifestValidationError("invalid_snapshot_number")
+        try:
+            asset_id = str(UUID(asset_id))
+        except (ValueError, AttributeError, TypeError):
+            raise ManifestValidationError("invalid_asset_id") from None
+        _text(source_version, "/source_version", nullable=False)
+        for timestamp in (observed_at, recorded_at):
+            if not isinstance(timestamp, datetime) or timestamp.tzinfo is None:
+                raise ManifestValidationError("timezone_required")
+        if manifest_format == "json_manifest_v1":
+            if csv_column_mapping is not None:
+                raise ManifestValidationError("unexpected_csv_mapping")
+            manifest, rows = _json_rows(raw_bytes)
+        else:
+            manifest = {}
+            rows = _csv_rows(raw_bytes, csv_column_mapping)
+        completeness_value = manifest.get("inventory_completeness", "unknown")
+        completeness: InventoryCompleteness
+        if completeness_value == "complete_for_declared_scope":
+            completeness = "complete_for_declared_scope"
+        elif completeness_value == "partial":
+            completeness = "partial"
+        elif completeness_value == "unknown":
+            completeness = "unknown"
+        else:
+            raise ManifestValidationError("invalid_inventory_completeness", "/inventory_completeness")
+        declared_scope = _text_list(manifest.get("declared_scope", []), "/declared_scope")
+        if completeness == "complete_for_declared_scope" and not declared_scope:
+            raise ManifestValidationError("missing_declared_scope", "/declared_scope")
+        components = tuple(_component(row, locator, scope.tenant_id, asset_id) for row, locator in rows)
+        if len({component.component_id for component in components}) != len(components):
+            raise ManifestValidationError("duplicate_component", "/components")
+        configuration = _declared_fields(
+            manifest.get("configuration", {}), CONFIGURATION_TYPES, "/configuration"
+        )
+        tool_permissions = None
+        if manifest.get("tool_permissions") is not None:
+            tool_permissions = _text_list(manifest["tool_permissions"], "/tool_permissions")
+        input_channels = None
+        if manifest.get("input_channels") is not None:
+            input_channels = _declared_fields(
+                manifest["input_channels"], dict.fromkeys(INPUT_CHANNELS, bool), "/input_channels"
+            )
+        network_exposure = None
+        if manifest.get("network_exposure") is not None:
+            network_exposure = _declared_fields(
+                manifest["network_exposure"], dict.fromkeys(NETWORK_FIELDS, bool), "/network_exposure"
+            )
+        component_values = [
+            [
+                component.ecosystem,
+                component.package_name,
+                component.display_name,
+                component.purl,
+                component.version,
+                component.version_scheme,
+                component.image_digest,
+                component.dependency_path,
+            ]
+            for component in components
+        ]
+        semantic_value = [
+            sorted(component_values, key=lambda value: json.dumps(value)),
+            completeness,
+            sorted(declared_scope),
+            [(value.name, value.value) for value in configuration],
+            tool_permissions,
+            None if input_channels is None else [(value.name, value.value) for value in input_channels],
+            None
+            if network_exposure is None
+            else [(value.name, value.value) for value in network_exposure],
+        ]
+        snapshot_sha256 = hashlib.sha256(
+            json.dumps(semantic_value, sort_keys=True).encode()
+        ).hexdigest()
+        snapshot_id = str(
+            uuid5(NAMESPACE_URL, f"{scope.tenant_id}:{asset_id}:{snapshot_number}:{snapshot_sha256}")
+        )
+        snapshot = SnapshotCandidate(
+            "r11-asset-candidate-1",
+            snapshot_id,
+            asset_id,
+            scope.tenant_id,
+            snapshot_number,
+            observed_at.astimezone(UTC),
+&gt;           recorded_at.astimezone(UTC),
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            manifest_format,
+            completeness,
+            declared_scope,
+            components,
+            configuration,
+            tool_permissions,
+            input_channels,
+            network_exposure,
+            snapshot_sha256,
+        )
+E       ValueError: offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24).
+
+src\ai_intel\assets\manifest_parser.py:437: ValueError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[offset-error-observed_at]" time="0.001"><failure message="ValueError: fixture-sensitive-error-canary">field = 'observed_at'
+timestamp = datetime.datetime(2026, 10, 15, 12, 0, tzinfo=&lt;test_r11_manifest_parser_identity_time.FailingOffsetZone object at 0x000001F7D96A8A10&gt;)
+code = 'invalid_timestamp'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+&gt;           parse_fixture(manifest_fixture(), **{field: timestamp})
+
+tests\unit\test_r11_manifest_parser_identity_time.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\unit\test_r11_manifest_parser_identity_time.py:29: in parse_fixture
+    return parse_manifest(raw, **{**FIXTURE_CONTEXT, **changes})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\assets\manifest_parser.py:436: in parse_manifest
+    observed_at.astimezone(UTC),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;test_r11_manifest_parser_identity_time.FailingOffsetZone object at 0x000001F7D96A8A10&gt;
+value = datetime.datetime(2026, 10, 15, 12, 0, tzinfo=&lt;test_r11_manifest_parser_identity_time.FailingOffsetZone object at 0x000001F7D96A8A10&gt;)
+
+    def utcoffset(self, value: datetime | None) -&gt; timedelta:
+&gt;       raise ValueError("fixture-sensitive-error-canary")
+E       ValueError: fixture-sensitive-error-canary
+
+tests\unit\test_r11_manifest_parser_identity_time.py:89: ValueError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[offset-error-recorded_at]" time="0.001"><failure message="ValueError: fixture-sensitive-error-canary">field = 'recorded_at'
+timestamp = datetime.datetime(2026, 10, 15, 12, 0, tzinfo=&lt;test_r11_manifest_parser_identity_time.FailingOffsetZone object at 0x000001F7D96A8A10&gt;)
+code = 'invalid_timestamp'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+&gt;           parse_fixture(manifest_fixture(), **{field: timestamp})
+
+tests\unit\test_r11_manifest_parser_identity_time.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\unit\test_r11_manifest_parser_identity_time.py:29: in parse_fixture
+    return parse_manifest(raw, **{**FIXTURE_CONTEXT, **changes})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\assets\manifest_parser.py:437: in parse_manifest
+    recorded_at.astimezone(UTC),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = &lt;test_r11_manifest_parser_identity_time.FailingOffsetZone object at 0x000001F7D96A8A10&gt;
+value = datetime.datetime(2026, 10, 15, 12, 0, tzinfo=&lt;test_r11_manifest_parser_identity_time.FailingOffsetZone object at 0x000001F7D96A8A10&gt;)
+
+    def utcoffset(self, value: datetime | None) -&gt; timedelta:
+&gt;       raise ValueError("fixture-sensitive-error-canary")
+E       ValueError: fixture-sensitive-error-canary
+
+tests\unit\test_r11_manifest_parser_identity_time.py:89: ValueError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[none-observed_at]" time="0.000"><failure message="AssertionError: assert '/' == '/observed_at'&#10;  &#10;  - /observed_at&#10;  + /">field = 'observed_at', timestamp = None, code = 'timezone_required'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+            parse_fixture(manifest_fixture(), **{field: timestamp})
+        assert error.value.code == code
+&gt;       assert error.value.locator == f"/{field}"
+E       AssertionError: assert '/' == '/observed_at'
+E         
+E         - /observed_at
+E         + /
+
+tests\unit\test_r11_manifest_parser_identity_time.py:130: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[none-recorded_at]" time="0.000"><failure message="AssertionError: assert '/' == '/recorded_at'&#10;  &#10;  - /recorded_at&#10;  + /">field = 'recorded_at', timestamp = None, code = 'timezone_required'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+            parse_fixture(manifest_fixture(), **{field: timestamp})
+        assert error.value.code == code
+&gt;       assert error.value.locator == f"/{field}"
+E       AssertionError: assert '/' == '/recorded_at'
+E         
+E         - /recorded_at
+E         + /
+
+tests\unit\test_r11_manifest_parser_identity_time.py:130: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[string-observed_at]" time="0.000"><failure message="AssertionError: assert '/' == '/observed_at'&#10;  &#10;  - /observed_at&#10;  + /">field = 'observed_at', timestamp = '2026-10-15T12:00:00+08:00'
+code = 'timezone_required'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+            parse_fixture(manifest_fixture(), **{field: timestamp})
+        assert error.value.code == code
+&gt;       assert error.value.locator == f"/{field}"
+E       AssertionError: assert '/' == '/observed_at'
+E         
+E         - /observed_at
+E         + /
+
+tests\unit\test_r11_manifest_parser_identity_time.py:130: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[string-recorded_at]" time="0.000"><failure message="AssertionError: assert '/' == '/recorded_at'&#10;  &#10;  - /recorded_at&#10;  + /">field = 'recorded_at', timestamp = '2026-10-15T12:00:00+08:00'
+code = 'timezone_required'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+            parse_fixture(manifest_fixture(), **{field: timestamp})
+        assert error.value.code == code
+&gt;       assert error.value.locator == f"/{field}"
+E       AssertionError: assert '/' == '/recorded_at'
+E         
+E         - /recorded_at
+E         + /
+
+tests\unit\test_r11_manifest_parser_identity_time.py:130: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[bool-observed_at]" time="0.000"><failure message="AssertionError: assert '/' == '/observed_at'&#10;  &#10;  - /observed_at&#10;  + /">field = 'observed_at', timestamp = True, code = 'timezone_required'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+            parse_fixture(manifest_fixture(), **{field: timestamp})
+        assert error.value.code == code
+&gt;       assert error.value.locator == f"/{field}"
+E       AssertionError: assert '/' == '/observed_at'
+E         
+E         - /observed_at
+E         + /
+
+tests\unit\test_r11_manifest_parser_identity_time.py:130: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[bool-recorded_at]" time="0.000"><failure message="AssertionError: assert '/' == '/recorded_at'&#10;  &#10;  - /recorded_at&#10;  + /">field = 'recorded_at', timestamp = True, code = 'timezone_required'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+            parse_fixture(manifest_fixture(), **{field: timestamp})
+        assert error.value.code == code
+&gt;       assert error.value.locator == f"/{field}"
+E       AssertionError: assert '/' == '/recorded_at'
+E         
+E         - /recorded_at
+E         + /
+
+tests\unit\test_r11_manifest_parser_identity_time.py:130: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[integer-observed_at]" time="0.000"><failure message="AssertionError: assert '/' == '/observed_at'&#10;  &#10;  - /observed_at&#10;  + /">field = 'observed_at', timestamp = 1, code = 'timezone_required'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+            parse_fixture(manifest_fixture(), **{field: timestamp})
+        assert error.value.code == code
+&gt;       assert error.value.locator == f"/{field}"
+E       AssertionError: assert '/' == '/observed_at'
+E         
+E         - /observed_at
+E         + /
+
+tests\unit\test_r11_manifest_parser_identity_time.py:130: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[integer-recorded_at]" time="0.000"><failure message="AssertionError: assert '/' == '/recorded_at'&#10;  &#10;  - /recorded_at&#10;  + /">field = 'recorded_at', timestamp = 1, code = 'timezone_required'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+            parse_fixture(manifest_fixture(), **{field: timestamp})
+        assert error.value.code == code
+&gt;       assert error.value.locator == f"/{field}"
+E       AssertionError: assert '/' == '/recorded_at'
+E         
+E         - /recorded_at
+E         + /
+
+tests\unit\test_r11_manifest_parser_identity_time.py:130: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[object-observed_at]" time="0.000"><failure message="AssertionError: assert '/' == '/observed_at'&#10;  &#10;  - /observed_at&#10;  + /">field = 'observed_at', timestamp = {}, code = 'timezone_required'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+            parse_fixture(manifest_fixture(), **{field: timestamp})
+        assert error.value.code == code
+&gt;       assert error.value.locator == f"/{field}"
+E       AssertionError: assert '/' == '/observed_at'
+E         
+E         - /observed_at
+E         + /
+
+tests\unit\test_r11_manifest_parser_identity_time.py:130: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_reject_missing_or_unrepresentable_time[object-recorded_at]" time="0.000"><failure message="AssertionError: assert '/' == '/recorded_at'&#10;  &#10;  - /recorded_at&#10;  + /">field = 'recorded_at', timestamp = {}, code = 'timezone_required'
+
+    @pytest.mark.parametrize("field", ["observed_at", "recorded_at"])
+    @pytest.mark.parametrize(
+        ("timestamp", "code"),
+        [
+            (datetime(2026, 10, 15, 12), "timezone_required"),
+            (datetime(2026, 10, 15, 12, tzinfo=MissingOffsetZone()), "timezone_required"),
+            (datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14))), "invalid_timestamp"),
+            (datetime(9999, 12, 31, 23, tzinfo=timezone(timedelta(hours=-14))), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=InvalidOffsetZone()), "invalid_timestamp"),
+            (datetime(2026, 10, 15, 12, tzinfo=FailingOffsetZone()), "invalid_timestamp"),
+            (None, "timezone_required"),
+            ("2026-10-15T12:00:00+08:00", "timezone_required"),
+            (True, "timezone_required"),
+            (1, "timezone_required"),
+            ({}, "timezone_required"),
+        ],
+        ids=[
+            "naive", "offset-missing", "lower-utc-overflow", "upper-utc-overflow", "invalid-offset",
+            "offset-error", "none", "string", "bool", "integer", "object",
+        ],
+    )
+    def test_all_timestamp_fields_reject_missing_or_unrepresentable_time(
+        field: str, timestamp: object, code: str
+    ) -&gt; None:
+        with pytest.raises(ManifestValidationError) as error:
+            parse_fixture(manifest_fixture(), **{field: timestamp})
+        assert error.value.code == code
+&gt;       assert error.value.locator == f"/{field}"
+E       AssertionError: assert '/' == '/recorded_at'
+E         
+E         - /recorded_at
+E         + /
+
+tests\unit\test_r11_manifest_parser_identity_time.py:130: AssertionError</failure></testcase><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_normalize_supported_boundaries_to_utc[real-plus-eight-observed_at]" time="0.000" /><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_normalize_supported_boundaries_to_utc[real-plus-eight-recorded_at]" time="0.000" /><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_normalize_supported_boundaries_to_utc[min-utc-observed_at]" time="0.000" /><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_normalize_supported_boundaries_to_utc[min-utc-recorded_at]" time="0.000" /><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_normalize_supported_boundaries_to_utc[max-utc-observed_at]" time="0.000" /><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_all_timestamp_fields_normalize_supported_boundaries_to_utc[max-utc-recorded_at]" time="0.000" /><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_offset_is_read_once_before_normalization[observed_at]" time="0.000" /><testcase classname="tests.unit.test_r11_manifest_parser_identity_time" name="test_offset_is_read_once_before_normalization[recorded_at]" time="0.000" /></testsuite></testsuites>
