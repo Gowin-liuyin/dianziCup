@@ -549,7 +549,7 @@ def _scope(candidate: EvidenceBoundCandidate, cvss_targets: dict[UUID, str]) -> 
     value = candidate.value
     if isinstance(value, CvssSignalValue):
         target = cvss_targets[candidate.evidence[0].revision_id]
-        return ("cvss", target, value.standard_version)
+        return ("cvss", target, value.standard_version, value.authority)
     if value.kind == "epss_signal":
         return ("epss", value.cve_id, str(value.data_date), str(value.model_version))
     if value.kind == "kev_signal":
