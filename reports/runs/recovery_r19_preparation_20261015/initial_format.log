@@ -1,0 +1,703 @@
+unformatted: File would be reformatted
+   --> scripts\annotation\prepare.py:61:20
+    |
+60  |     return hashlib.sha256(
+    -         json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+61  +         json.dumps(
+62  +             value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+63  +         ).encode()
+64  |     ).hexdigest()
+--------------------------------------------------------------------------------
+131 |             if case["data_kind"] == "synthetic":
+    -                 if source["source_kind"] != "fixture" or not uri.startswith("urn:synthetic:"):
+132 +                 if source["source_kind"] != "fixture" or not uri.startswith(
+133 +                     "urn:synthetic:"
+134 +                 ):
+135 |                     raise PreparationError("SYNTHETIC_PROVENANCE_REQUIRED")
+--------------------------------------------------------------------------------
+144 |                 raise PreparationError("PUBLIC_PROVENANCE_REQUIRED")
+    -             identities.extend(["uri:" + uri, "document:" + string_value(source["document_id"])])
+145 +             identities.extend(
+146 +                 ["uri:" + uri, "document:" + string_value(source["document_id"])]
+147 +             )
+148 |         for evidence in object_list(case["evidence"]):
+--------------------------------------------------------------------------------
+152 |                 raise PreparationError("QUOTE_HASH_MISMATCH")
+    -             if integer_value(evidence["end_offset"]) - integer_value(evidence["start_offset"]) != len(quote):
+153 +             if integer_value(evidence["end_offset"]) - integer_value(
+154 +                 evidence["start_offset"]
+155 +             ) != len(quote):
+156 |                 raise PreparationError("QUOTE_OFFSET_MISMATCH")
+--------------------------------------------------------------------------------
+163 |             if evidence["locator_kind"] == "json_pointer" and not (
+    -                 isinstance(evidence["json_pointer"], str) and evidence["json_pointer"].startswith("/")
+164 +                 isinstance(evidence["json_pointer"], str)
+165 +                 and evidence["json_pointer"].startswith("/")
+166 |             ):
+167 |                 raise PreparationError("EVIDENCE_LOCATOR_REQUIRED")
+    -             if evidence["locator_kind"] == "pdf_page" and evidence["page_number"] is None:
+168 +             if (
+169 +                 evidence["locator_kind"] == "pdf_page"
+170 +                 and evidence["page_number"] is None
+171 +             ):
+172 |                 raise PreparationError("EVIDENCE_LOCATOR_REQUIRED")
+    -         evidence_by_id = {evidence["span_id"]: evidence for evidence in object_list(case["evidence"])}
+173 +         evidence_by_id = {
+174 +             evidence["span_id"]: evidence for evidence in object_list(case["evidence"])
+175 +         }
+176 |         for reference in object_list(case["input_refs"]):
+177 |             if reference["kind"] == "evidence" and (
+178 |                 reference["ref_id"] not in evidence_by_id
+    -                 or reference["sha256"] != evidence_by_id[reference["ref_id"]]["quote_sha256"]
+179 +                 or reference["sha256"]
+180 +                 != evidence_by_id[reference["ref_id"]]["quote_sha256"]
+181 |             ):
+--------------------------------------------------------------------------------
+186 |             split_by_identity[identity] = split
+    -     if "candidate_sha256" in document and document["candidate_sha256"] != digest(candidate_payload(document)):
+187 +     if "candidate_sha256" in document and document["candidate_sha256"] != digest(
+188 +         candidate_payload(document)
+189 +     ):
+190 |         raise PreparationError("CANDIDATE_HASH_MISMATCH")
+--------------------------------------------------------------------------------
+197 |     """Preserves every label revision and reports readiness, without promoting labels to gold."""
+    -     states = {"awaiting_human_label": len(cases), "awaiting_adjudication": 0,
+    -               "awaiting_identity_verification": 0, "ready_for_manual_review": 0}
+198 +     states = {
+199 +         "awaiting_human_label": len(cases),
+200 +         "awaiting_adjudication": 0,
+201 +         "awaiting_identity_verification": 0,
+202 +         "ready_for_manual_review": 0,
+203 +     }
+204 |     if annotations is None:
+205 |         return states
+206 |     validate_schema(annotations, "annotation_bundle")
+    -     if annotations["data_mode"] == "fixture" and any(case["data_kind"] != "synthetic" for case in cases):
+207 +     if annotations["data_mode"] == "fixture" and any(
+208 +         case["data_kind"] != "synthetic" for case in cases
+209 +     ):
+210 |         raise PreparationError("FIXTURE_LABELS_REQUIRE_SYNTHETIC_CASES")
+--------------------------------------------------------------------------------
+237 |         case_id = string_value(case["case_id"])
+    -         records = [record for (label_case, _), record in latest.items() if label_case == case_id]
+238 +         records = [
+239 +             record
+240 +             for (label_case, _), record in latest.items()
+241 +             if label_case == case_id
+242 +         ]
+243 |         if len(records) > 2:
+--------------------------------------------------------------------------------
+259 |             validate_time(decision["recorded_at"])
+    -             if (
+    -                 set(string_value(item) for item in list_value(decision["label_sha256s"])) != hashes
+    -                 or decision["adjudicator_id"] in {record["annotator_id"] for record in records}
+    -             ):
+260 +             if set(
+261 +                 string_value(item) for item in list_value(decision["label_sha256s"])
+262 +             ) != hashes or decision["adjudicator_id"] in {
+263 +                 record["annotator_id"] for record in records
+264 +             }:
+265 |                 raise PreparationError("ADJUDICATION_INVALID_OR_STALE")
+--------------------------------------------------------------------------------
+272 |         if (
+    -             set(string_value(item) for item in list_value(check["annotator_ids"])) != {record["annotator_id"] for record in records}
+    -             or set(string_value(item) for item in list_value(check["label_sha256s"])) != hashes
+273 +             set(string_value(item) for item in list_value(check["annotator_ids"]))
+274 +             != {record["annotator_id"] for record in records}
+275 +             or set(string_value(item) for item in list_value(check["label_sha256s"]))
+276 +             != hashes
+277 |             or check["verified_by"] in {record["annotator_id"] for record in records}
+278 |         ):
+279 |             raise PreparationError("IDENTITY_ATTESTATION_INVALID_OR_STALE")
+280 |         states["ready_for_manual_review"] += 1
+    -     if any(item["case_id"] not in current_cases for item in adjudications + identity_checks):
+281 +     if any(
+282 +         item["case_id"] not in current_cases for item in adjudications + identity_checks
+283 +     ):
+284 |         raise PreparationError("REVIEW_CASE_UNKNOWN")
+--------------------------------------------------------------------------------
+290 |     for claim in object_list(label["expected_claims"]):
+    -         if not set(string_value(item) for item in list_value(claim["evidence_ids"])).issubset(evidence_ids):
+291 +         if not set(
+292 +             string_value(item) for item in list_value(claim["evidence_ids"])
+293 +         ).issubset(evidence_ids):
+294 |             raise PreparationError("LABEL_EVIDENCE_UNKNOWN")
+295 |
+296 |
+    - def summarize(cases: list[dict[str, object]], annotations: dict[str, object] | None) -> dict[str, object]:
+297 + def summarize(
+298 +     cases: list[dict[str, object]], annotations: dict[str, object] | None
+299 + ) -> dict[str, object]:
+300 |     return {
+--------------------------------------------------------------------------------
+307 |         "human_gold_count": 0,
+    -         "formal_evaluation": {"status": "not_run", "numerator": None, "denominator": None},
+308 +         "formal_evaluation": {
+309 +             "status": "not_run",
+310 +             "numerator": None,
+311 +             "denominator": None,
+312 +         },
+313 |     }
+--------------------------------------------------------------------------------
+318 |         ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+    -         cwd=ROOT, capture_output=True, text=True, check=True,
+319 +         cwd=ROOT,
+320 +         capture_output=True,
+321 +         text=True,
+322 +         check=True,
+323 |     ).stdout.strip()
+    -     return [ROOT, Path(common).resolve().parent, *(path.resolve() for path in extra_roots)]
+324 +     return [
+325 +         ROOT,
+326 +         Path(common).resolve().parent,
+327 +         *(path.resolve() for path in extra_roots),
+328 +     ]
+329 |
+--------------------------------------------------------------------------------
+352 |     for case in holdout:
+    -         needles.update([string_value(case["case_id"]), string_value(case["event_family_id"])])
+    -         needles.update(string_value(alias) for alias in list_value(case["family_aliases"]))
+    -         needles.update(string_value(source["uri"]) for source in object_list(case["source_refs"]))
+    -         needles.update(string_value(evidence["quote_text"]) for evidence in object_list(case["evidence"]))
+353 +         needles.update(
+354 +             [string_value(case["case_id"]), string_value(case["event_family_id"])]
+355 +         )
+356 +         needles.update(
+357 +             string_value(alias) for alias in list_value(case["family_aliases"])
+358 +         )
+359 +         needles.update(
+360 +             string_value(source["uri"]) for source in object_list(case["source_refs"])
+361 +         )
+362 +         needles.update(
+363 +             string_value(evidence["quote_text"])
+364 +             for evidence in object_list(case["evidence"])
+365 +         )
+366 |     for root in roots:
+--------------------------------------------------------------------------------
+385 |     parser.add_argument("--labels", type=Path)
+    -     parser.add_argument("--purpose", choices=("annotation", "prompt", "index", "image", "fixture"), default="annotation")
+386 +     parser.add_argument(
+387 +         "--purpose",
+388 +         choices=("annotation", "prompt", "index", "image", "fixture"),
+389 +         default="annotation",
+390 +     )
+391 |     parser.add_argument("--product-root", type=Path, action="append", default=[])
+--------------------------------------------------------------------------------
+404 |             raise PreparationError("DUPLICATE_ANNOTATION_INPUT")
+    -         labels = read_document(args.labels) if args.labels else (
+    -             object_value(document["annotations"]) if "annotations" in document else None
+405 +         labels = (
+406 +             read_document(args.labels)
+407 +             if args.labels
+408 +             else (
+409 +                 object_value(document["annotations"])
+410 +                 if "annotations" in document
+411 +                 else None
+412 +             )
+413 |         )
+--------------------------------------------------------------------------------
+429 |                     raise PreparationError("HOLDOUT_EXPORT_REFUSED")
+    -             output = {**candidate_payload(document), "candidate_sha256": digest(candidate_payload(document)), "summary": summary}
+430 +             output = {
+431 +                 **candidate_payload(document),
+432 +                 "candidate_sha256": digest(candidate_payload(document)),
+433 +                 "summary": summary,
+434 +             }
+435 |             if labels is not None:
+--------------------------------------------------------------------------------
+439 |         return 0
+    -     except (PreparationError, OSError, ValueError, subprocess.CalledProcessError) as error:
+    -         code = str(error) if isinstance(error, PreparationError) else "INPUT_OR_OUTPUT_ERROR"
+440 +     except (
+441 +         PreparationError,
+442 +         OSError,
+443 +         ValueError,
+444 +         subprocess.CalledProcessError,
+445 +     ) as error:
+446 +         code = (
+447 +             str(error)
+448 +             if isinstance(error, PreparationError)
+449 +             else "INPUT_OR_OUTPUT_ERROR"
+450 +         )
+451 |         print(f"PREPARATION_INVALID: {code}", file=sys.stderr)
+    |
+
+unformatted: File would be reformatted
+   --> scripts\annotation\tests\test_prepare.py:15:10
+    |
+14  | from scripts.annotation.prepare import (
+    -     ROOT, PreparationError, digest, inspect_annotations, scan_leaks, summarize,
+15  +     ROOT,
+16  +     PreparationError,
+17  +     digest,
+18  +     inspect_annotations,
+19  +     scan_leaks,
+20  +     summarize,
+21  |     validate_candidates,
+--------------------------------------------------------------------------------
+30  |     return {
+    -         "schema_version": 1, "prepared_at": NOW,
+    -         "cases": [{
+    -             "case_id": "SYN-ANNOTATION-01", "event_family_id": "SYN-FAMILY-01",
+    -             "family_aliases": ["SYN-EVENT-01"], "data_kind": "synthetic", "split": "dev",
+    -             "source_refs": [{
+    -                 "source_kind": "fixture", "uri": "urn:synthetic:annotation-01",
+    -                 "document_id": "SYN-DOCUMENT-01", "revision_id": "SYN-REVISION-01",
+    -                 "revision_number": 1, "title": "Explicit synthetic annotation fixture",
+    -                 "source_published_at": None, "source_modified_at": None, "observed_at": NOW,
+    -             }],
+    -             "source_snapshot_time": NOW,
+    -             "input_refs": [{"kind": "evidence", "ref_id": "SYN-SPAN-01", "sha256": QUOTE_HASH, "path": None}],
+    -             "license": {"status": "unknown", "identifier": None, "uri": None, "redistribution": "unverified"},
+    -             "candidate_origin": "human_curated", "candidate_task": "Synthetic evidence checking exercise",
+    -             "evidence": [{
+    -                 "span_id": "SYN-SPAN-01", "revision_id": "SYN-REVISION-01", "block_id": "SYN-BLOCK-01",
+    -                 "start_offset": 10, "end_offset": 29, "quote_text": QUOTE, "quote_sha256": QUOTE_HASH,
+    -                 "locator_kind": "json_pointer", "page_number": None, "json_pointer": "/synthetic/name",
+    -                 "source_uri": "urn:synthetic:annotation-01", "verified_at": NOW,
+    -                 "field_meaning": "Synthetic component name; not real source material",
+    -             }],
+    -             "limitations": ["Synthetic only"], "label_status": "awaiting_human_label",
+    -         }],
+31  +         "schema_version": 1,
+32  +         "prepared_at": NOW,
+33  +         "cases": [
+34  +             {
+35  +                 "case_id": "SYN-ANNOTATION-01",
+36  +                 "event_family_id": "SYN-FAMILY-01",
+37  +                 "family_aliases": ["SYN-EVENT-01"],
+38  +                 "data_kind": "synthetic",
+39  +                 "split": "dev",
+40  +                 "source_refs": [
+41  +                     {
+42  +                         "source_kind": "fixture",
+43  +                         "uri": "urn:synthetic:annotation-01",
+44  +                         "document_id": "SYN-DOCUMENT-01",
+45  +                         "revision_id": "SYN-REVISION-01",
+46  +                         "revision_number": 1,
+47  +                         "title": "Explicit synthetic annotation fixture",
+48  +                         "source_published_at": None,
+49  +                         "source_modified_at": None,
+50  +                         "observed_at": NOW,
+51  +                     }
+52  +                 ],
+53  +                 "source_snapshot_time": NOW,
+54  +                 "input_refs": [
+55  +                     {
+56  +                         "kind": "evidence",
+57  +                         "ref_id": "SYN-SPAN-01",
+58  +                         "sha256": QUOTE_HASH,
+59  +                         "path": None,
+60  +                     }
+61  +                 ],
+62  +                 "license": {
+63  +                     "status": "unknown",
+64  +                     "identifier": None,
+65  +                     "uri": None,
+66  +                     "redistribution": "unverified",
+67  +                 },
+68  +                 "candidate_origin": "human_curated",
+69  +                 "candidate_task": "Synthetic evidence checking exercise",
+70  +                 "evidence": [
+71  +                     {
+72  +                         "span_id": "SYN-SPAN-01",
+73  +                         "revision_id": "SYN-REVISION-01",
+74  +                         "block_id": "SYN-BLOCK-01",
+75  +                         "start_offset": 10,
+76  +                         "end_offset": 29,
+77  +                         "quote_text": QUOTE,
+78  +                         "quote_sha256": QUOTE_HASH,
+79  +                         "locator_kind": "json_pointer",
+80  +                         "page_number": None,
+81  +                         "json_pointer": "/synthetic/name",
+82  +                         "source_uri": "urn:synthetic:annotation-01",
+83  +                         "verified_at": NOW,
+84  +                         "field_meaning": "Synthetic component name; not real source material",
+85  +                     }
+86  +                 ],
+87  +                 "limitations": ["Synthetic only"],
+88  +                 "label_status": "awaiting_human_label",
+89  +             }
+90  +         ],
+91  |     }
+--------------------------------------------------------------------------------
+95  |     return {
+    -         "case_id": "SYN-ANNOTATION-01", "annotator_id": annotator, "recorded_at": NOW,
+    -         "revision": revision, "previous_sha256": None, "change_reason": None,
+    -         "affected_case_ids": [], "retest_refs": [],
+    -         "label": {"expected_claims": [], "expected_conditions": [], "expected_status": status},
+96  +         "case_id": "SYN-ANNOTATION-01",
+97  +         "annotator_id": annotator,
+98  +         "recorded_at": NOW,
+99  +         "revision": revision,
+100 +         "previous_sha256": None,
+101 +         "change_reason": None,
+102 +         "affected_case_ids": [],
+103 +         "retest_refs": [],
+104 +         "label": {
+105 +             "expected_claims": [],
+106 +             "expected_conditions": [],
+107 +             "expected_status": status,
+108 +         },
+109 |     }
+--------------------------------------------------------------------------------
+113 |     return {
+    -         "schema_version": 1, "data_mode": "fixture", "annotators": [],
+    -         "adjudication": [], "identity_checks": [],
+114 +         "schema_version": 1,
+115 +         "data_mode": "fixture",
+116 +         "annotators": [],
+117 +         "adjudication": [],
+118 +         "identity_checks": [],
+119 |     }
+--------------------------------------------------------------------------------
+123 |     return {
+    -         "case_id": "SYN-ANNOTATION-01", "adjudicator_id": "fixture-adjudicator",
+    -         "recorded_at": NOW, "label_sha256s": [digest(record) for record in records],
+124 +         "case_id": "SYN-ANNOTATION-01",
+125 +         "adjudicator_id": "fixture-adjudicator",
+126 +         "recorded_at": NOW,
+127 +         "label_sha256s": [digest(record) for record in records],
+128 |         "reason": "Synthetic exercise: missing evidence requires unknown",
+    -         "label": {"expected_claims": [], "expected_conditions": [], "expected_status": "unknown"},
+129 +         "label": {
+130 +             "expected_claims": [],
+131 +             "expected_conditions": [],
+132 +             "expected_status": "unknown",
+133 +         },
+134 |     }
+--------------------------------------------------------------------------------
+138 |     return {
+    -         "case_id": "SYN-ANNOTATION-01", "annotator_ids": [record["annotator_id"] for record in records],
+    -         "label_sha256s": [digest(record) for record in records], "verified_by": "fixture-checker",
+    -         "verified_at": NOW, "method": "Explicit synthetic attestation, not human verification",
+    -         "evidence_ref": "SYN-IDENTITY-CHECK-01", "independent_submission_confirmed": True,
+139 +         "case_id": "SYN-ANNOTATION-01",
+140 +         "annotator_ids": [record["annotator_id"] for record in records],
+141 +         "label_sha256s": [digest(record) for record in records],
+142 +         "verified_by": "fixture-checker",
+143 +         "verified_at": NOW,
+144 +         "method": "Explicit synthetic attestation, not human verification",
+145 +         "evidence_ref": "SYN-IDENTITY-CHECK-01",
+146 +         "independent_submission_confirmed": True,
+147 |     }
+148 |
+149 |
+150 | class CandidateContractTests(unittest.TestCase):
+    -     def test_t46_c01_multilingual_revision_and_derived_question_same_split(self) -> None:
+151 +     def test_t46_c01_multilingual_revision_and_derived_question_same_split(
+152 +         self,
+153 +     ) -> None:
+154 |         document = fixture_bundle()
+--------------------------------------------------------------------------------
+169 |                 related = deepcopy(document["cases"][0])
+    -                 related.update(case_id="SYN-02", event_family_id="SYN-FAMILY-02", split="holdout")
+170 +                 related.update(
+171 +                     case_id="SYN-02", event_family_id="SYN-FAMILY-02", split="holdout"
+172 +                 )
+173 |                 if overlap != "alias":
+--------------------------------------------------------------------------------
+186 |         real = deepcopy(document["cases"][0])
+    -         real.update(case_id="REAL-01", event_family_id="REAL-FAMILY-01", data_kind="real", family_aliases=[])
+    -         real["source_refs"][0].update(source_kind="public_document", uri="https://example.org/public", document_id="PUBLIC-DOC")
+187 +         real.update(
+188 +             case_id="REAL-01",
+189 +             event_family_id="REAL-FAMILY-01",
+190 +             data_kind="real",
+191 +             family_aliases=[],
+192 +         )
+193 +         real["source_refs"][0].update(
+194 +             source_kind="public_document",
+195 +             uri="https://example.org/public",
+196 +             document_id="PUBLIC-DOC",
+197 +         )
+198 |         real["evidence"][0]["source_uri"] = "https://example.org/public"
+199 |         document["cases"].append(real)
+200 |         summary = summarize(validate_candidates(document), None)
+    -         self.assertEqual(summary["candidate_counts_by_data_kind"], {"real": 1, "synthetic": 1, "redacted": 0, "replay": 0})
+201 +         self.assertEqual(
+202 +             summary["candidate_counts_by_data_kind"],
+203 +             {"real": 1, "synthetic": 1, "redacted": 0, "replay": 0},
+204 +         )
+205 |
+--------------------------------------------------------------------------------
+224 |         self.assertEqual(summary["human_gold_count"], 0)
+    -         self.assertEqual(summary["formal_evaluation"], {"status": "not_run", "numerator": None, "denominator": None})
+225 +         self.assertEqual(
+226 +             summary["formal_evaluation"],
+227 +             {"status": "not_run", "numerator": None, "denominator": None},
+228 +         )
+229 |
+--------------------------------------------------------------------------------
+243 |     def test_path_traversal_and_absolute_paths_refused(self) -> None:
+    -         for path in ("../secret.json", "C:/secret.json", "/secret.json", "inputs\\secret.json", "a/./b"):
+244 +         for path in (
+245 +             "../secret.json",
+246 +             "C:/secret.json",
+247 +             "/secret.json",
+248 +             "inputs\\secret.json",
+249 +             "a/./b",
+250 +         ):
+251 |             with self.subTest(path=path):
+--------------------------------------------------------------------------------
+279 |         labels = fixture_annotations()
+    -         labels["annotators"] = [fixture_label("fixture-a"), fixture_label("fixture-b", "conflict")]
+    -         self.assertEqual(inspect_annotations(self.cases, labels)["awaiting_adjudication"], 1)
+280 +         labels["annotators"] = [
+281 +             fixture_label("fixture-a"),
+282 +             fixture_label("fixture-b", "conflict"),
+283 +         ]
+284 +         self.assertEqual(
+285 +             inspect_annotations(self.cases, labels)["awaiting_adjudication"], 1
+286 +         )
+287 |         labels["adjudication"] = [fixture_decision(labels["annotators"])]
+    -         self.assertEqual(inspect_annotations(self.cases, labels)["awaiting_identity_verification"], 1)
+288 +         self.assertEqual(
+289 +             inspect_annotations(self.cases, labels)["awaiting_identity_verification"], 1
+290 +         )
+291 |         labels["identity_checks"] = [fixture_identity(labels["annotators"])]
+    -         self.assertEqual(inspect_annotations(self.cases, labels)["ready_for_manual_review"], 1)
+292 +         self.assertEqual(
+293 +             inspect_annotations(self.cases, labels)["ready_for_manual_review"], 1
+294 +         )
+295 |         self.assertEqual(summarize(self.cases, labels)["human_gold_count"], 0)
+--------------------------------------------------------------------------------
+299 |         labels["annotators"] = [fixture_label("fixture-a"), fixture_label("fixture-b")]
+    -         self.assertEqual(inspect_annotations(self.cases, labels)["awaiting_identity_verification"], 1)
+300 +         self.assertEqual(
+301 +             inspect_annotations(self.cases, labels)["awaiting_identity_verification"], 1
+302 +         )
+303 |
+--------------------------------------------------------------------------------
+309 |
+    -     def test_label_revision_requires_reason_impact_retest_and_previous_hash(self) -> None:
+310 +     def test_label_revision_requires_reason_impact_retest_and_previous_hash(
+311 +         self,
+312 +     ) -> None:
+313 |         first = fixture_label("fixture-a")
+314 |         second = fixture_label("fixture-a", "conflict", 2)
+    -         second.update(previous_sha256=digest(first), change_reason="Synthetic correction",
+    -                       affected_case_ids=["SYN-ANNOTATION-01"], retest_refs=["SYN-RETEST-01"])
+315 +         second.update(
+316 +             previous_sha256=digest(first),
+317 +             change_reason="Synthetic correction",
+318 +             affected_case_ids=["SYN-ANNOTATION-01"],
+319 +             retest_refs=["SYN-RETEST-01"],
+320 +         )
+321 |         labels = fixture_annotations()
+322 |         labels["annotators"] = [first, second]
+    -         self.assertEqual(inspect_annotations(self.cases, labels)["awaiting_human_label"], 1)
+    -         for field, value in (("change_reason", None), ("previous_sha256", "0" * 64), ("affected_case_ids", []), ("retest_refs", [])):
+323 +         self.assertEqual(
+324 +             inspect_annotations(self.cases, labels)["awaiting_human_label"], 1
+325 +         )
+326 +         for field, value in (
+327 +             ("change_reason", None),
+328 +             ("previous_sha256", "0" * 64),
+329 +             ("affected_case_ids", []),
+330 +             ("retest_refs", []),
+331 +         ):
+332 |             with self.subTest(field=field):
+333 |                 invalid = deepcopy(labels)
+334 |                 invalid["annotators"][-1][field] = value
+    -                 with self.assertRaisesRegex(PreparationError, "LABEL_REVISION_AUDIT_REQUIRED"):
+335 +                 with self.assertRaisesRegex(
+336 +                     PreparationError, "LABEL_REVISION_AUDIT_REQUIRED"
+337 +                 ):
+338 |                     inspect_annotations(self.cases, invalid)
+339 |
+340 |     def test_stale_or_self_adjudication_refused(self) -> None:
+341 |         labels = fixture_annotations()
+    -         labels["annotators"] = [fixture_label("fixture-a"), fixture_label("fixture-b", "conflict")]
+342 +         labels["annotators"] = [
+343 +             fixture_label("fixture-a"),
+344 +             fixture_label("fixture-b", "conflict"),
+345 +         ]
+346 |         decision = fixture_decision(labels["annotators"])
+347 |         labels["adjudication"] = [decision]
+    -         for field, value in (("adjudicator_id", "fixture-a"), ("label_sha256s", ["0" * 64, "1" * 64])):
+348 +         for field, value in (
+349 +             ("adjudicator_id", "fixture-a"),
+350 +             ("label_sha256s", ["0" * 64, "1" * 64]),
+351 +         ):
+352 |             with self.subTest(field=field):
+353 |                 invalid = deepcopy(labels)
+354 |                 invalid["adjudication"][0][field] = value
+    -                 with self.assertRaisesRegex(PreparationError, "ADJUDICATION_INVALID_OR_STALE"):
+355 +                 with self.assertRaisesRegex(
+356 +                     PreparationError, "ADJUDICATION_INVALID_OR_STALE"
+357 +                 ):
+358 |                     inspect_annotations(self.cases, invalid)
+--------------------------------------------------------------------------------
+366 |         labels["data_mode"] = "fixture"
+    -         labels["annotators"][0]["label"]["expected_claims"] = [{"claim": "Synthetic", "evidence_ids": ["UNKNOWN"]}]
+367 +         labels["annotators"][0]["label"]["expected_claims"] = [
+368 +             {"claim": "Synthetic", "evidence_ids": ["UNKNOWN"]}
+369 +         ]
+370 |         with self.assertRaisesRegex(PreparationError, "LABEL_EVIDENCE_UNKNOWN"):
+--------------------------------------------------------------------------------
+387 |     def cli(self, *arguments: str) -> subprocess.CompletedProcess[str]:
+    -         return subprocess.run([sys.executable, str(ROOT / "scripts/annotation/prepare.py"), *arguments],
+    -                               cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=30)
+388 +         return subprocess.run(
+389 +             [sys.executable, str(ROOT / "scripts/annotation/prepare.py"), *arguments],
+390 +             cwd=ROOT,
+391 +             capture_output=True,
+392 +             text=True,
+393 +             encoding="utf-8",
+394 +             timeout=30,
+395 +         )
+396 |
+397 |     def test_import_validate_export_round_trip_and_replay_refusal(self) -> None:
+398 |         imported = self.path / "imported.json"
+    -         self.assertEqual(self.cli("import", "--input", str(self.input), "--output", str(imported)).returncode, 0)
+399 +         self.assertEqual(
+400 +             self.cli(
+401 +                 "import", "--input", str(self.input), "--output", str(imported)
+402 +             ).returncode,
+403 +             0,
+404 +         )
+405 |         self.assertEqual(self.cli("validate", "--input", str(imported)).returncode, 0)
+    -         result = self.cli("import", "--input", str(self.input), "--output", str(imported))
+406 +         result = self.cli(
+407 +             "import", "--input", str(self.input), "--output", str(imported)
+408 +         )
+409 |         self.assertEqual(result.returncode, 2)
+410 |         self.assertIn("OUTPUT_EXISTS", result.stderr)
+411 |         exported = self.path / "exported.json"
+    -         self.assertEqual(self.cli("export", "--input", str(imported), "--output", str(exported), "--purpose", "prompt").returncode, 0)
+412 +         self.assertEqual(
+413 +             self.cli(
+414 +                 "export",
+415 +                 "--input",
+416 +                 str(imported),
+417 +                 "--output",
+418 +                 str(exported),
+419 +                 "--purpose",
+420 +                 "prompt",
+421 +             ).returncode,
+422 +             0,
+423 +         )
+424 |         self.assertEqual(self.cli("validate", "--input", str(exported)).returncode, 0)
+--------------------------------------------------------------------------------
+430 |         self.write(labels_path, labels)
+    -         result = self.cli("validate", "--input", str(self.input), "--labels", str(labels_path))
+    -         self.assertEqual(json.loads(result.stdout)["annotation_readiness"]["awaiting_human_label"], 1)
+431 +         result = self.cli(
+432 +             "validate", "--input", str(self.input), "--labels", str(labels_path)
+433 +         )
+434 +         self.assertEqual(
+435 +             json.loads(result.stdout)["annotation_readiness"]["awaiting_human_label"], 1
+436 +         )
+437 |         labels["annotators"].append(fixture_label("fixture-b", "conflict"))
+438 |         self.write(labels_path, labels)
+    -         result = self.cli("validate", "--input", str(self.input), "--labels", str(labels_path))
+    -         self.assertEqual(json.loads(result.stdout)["annotation_readiness"]["awaiting_adjudication"], 1)
+439 +         result = self.cli(
+440 +             "validate", "--input", str(self.input), "--labels", str(labels_path)
+441 +         )
+442 +         self.assertEqual(
+443 +             json.loads(result.stdout)["annotation_readiness"]["awaiting_adjudication"],
+444 +             1,
+445 +         )
+446 |         labels["adjudication"] = [fixture_decision(labels["annotators"])]
+447 |         labels["identity_checks"] = [fixture_identity(labels["annotators"])]
+448 |         self.write(labels_path, labels)
+449 |         exported = self.path / "synthetic_annotation_export.json"
+    -         result = self.cli("export", "--input", str(self.input), "--labels", str(labels_path), "--output", str(exported))
+450 +         result = self.cli(
+451 +             "export",
+452 +             "--input",
+453 +             str(self.input),
+454 +             "--labels",
+455 +             str(labels_path),
+456 +             "--output",
+457 +             str(exported),
+458 +         )
+459 |         self.assertEqual(result.returncode, 0, result.stderr)
+460 |         self.assertNotIn("expected_status", result.stdout)
+    -         self.assertEqual(json.loads(result.stdout)["annotation_readiness"]["ready_for_manual_review"], 1)
+461 +         self.assertEqual(
+462 +             json.loads(result.stdout)["annotation_readiness"][
+463 +                 "ready_for_manual_review"
+464 +             ],
+465 +             1,
+466 +         )
+467 |         self.assertEqual(self.cli("validate", "--input", str(exported)).returncode, 0)
+--------------------------------------------------------------------------------
+476 |                 output = self.path / (surface + ".json")
+    -                 result = self.cli("export", "--input", str(self.input), "--output", str(output), "--purpose", surface)
+477 +                 result = self.cli(
+478 +                     "export",
+479 +                     "--input",
+480 +                     str(self.input),
+481 +                     "--output",
+482 +                     str(output),
+483 +                     "--purpose",
+484 +                     surface,
+485 +                 )
+486 |                 self.assertEqual(result.returncode, 2)
+487 |                 self.assertIn("HOLDOUT_EXPORT_REFUSED", result.stderr)
+488 |                 scan_root = self.path / surface
+489 |                 scan_root.mkdir()
+    -                 (scan_root / "synthetic_manifest.txt").write_text("SYN-FAMILY-01", encoding="utf-8")
+    -                 result = self.cli("scan", "--input", str(self.input), "--scan-root", str(scan_root))
+490 +                 (scan_root / "synthetic_manifest.txt").write_text(
+491 +                     "SYN-FAMILY-01", encoding="utf-8"
+492 +                 )
+493 +                 result = self.cli(
+494 +                     "scan", "--input", str(self.input), "--scan-root", str(scan_root)
+495 +                 )
+496 |                 self.assertEqual(result.returncode, 2)
+--------------------------------------------------------------------------------
+508 |         self.write(path, labels)
+    -         result = self.cli("export", "--input", str(self.input), "--labels", str(path), "--output", str(ROOT / "benchmarks/manifests/forbidden.json"))
+509 +         result = self.cli(
+510 +             "export",
+511 +             "--input",
+512 +             str(self.input),
+513 +             "--labels",
+514 +             str(path),
+515 +             "--output",
+516 +             str(ROOT / "benchmarks/manifests/forbidden.json"),
+517 +         )
+518 |         self.assertEqual(result.returncode, 2)
+519 |         self.assertIn("HUMAN_OR_HOLDOUT_PATH_MUST_BE_EXTERNAL", result.stderr)
+520 |         mounted = self.path / "mounted-product"
+521 |         mounted.mkdir()
+    -         result = self.cli("export", "--input", str(self.input), "--labels", str(path), "--output", str(mounted / "labels.json"), "--product-root", str(mounted))
+522 +         result = self.cli(
+523 +             "export",
+524 +             "--input",
+525 +             str(self.input),
+526 +             "--labels",
+527 +             str(path),
+528 +             "--output",
+529 +             str(mounted / "labels.json"),
+530 +             "--product-root",
+531 +             str(mounted),
+532 +         )
+533 |         self.assertEqual(result.returncode, 2)
+--------------------------------------------------------------------------------
+537 |         output = self.path / "concurrent.json"
+    -         command = [sys.executable, str(ROOT / "scripts/annotation/prepare.py"), "export", "--input", str(self.input), "--output", str(output)]
+    -         processes = [subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE) for _ in range(2)]
+538 +         command = [
+539 +             sys.executable,
+540 +             str(ROOT / "scripts/annotation/prepare.py"),
+541 +             "export",
+542 +             "--input",
+543 +             str(self.input),
+544 +             "--output",
+545 +             str(output),
+546 +         ]
+547 +         processes = [
+548 +             subprocess.Popen(
+549 +                 command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+550 +             )
+551 +             for _ in range(2)
+552 +         ]
+553 |         for process in processes:
+    |
+
+2 files would be reformatted

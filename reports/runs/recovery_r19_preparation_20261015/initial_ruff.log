@@ -1,0 +1,156 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> scripts\annotation\prepare.py:3:1
+   |
+ 1 |   """Local candidate import, annotation checks and safe exports; never freezes gold labels."""
+ 2 |
+ 3 | / from __future__ import annotations
+ 4 | |
+ 5 | | import argparse
+ 6 | | import hashlib
+ 7 | | import json
+ 8 | | from datetime import datetime, timedelta
+ 9 | | from pathlib import Path, PurePosixPath
+10 | | import subprocess
+11 | | import sys
+12 | | from urllib.parse import urlsplit
+13 | |
+14 | | from jsonschema import Draft202012Validator, FormatChecker
+   | |__________________________________________________________^
+15 |
+16 |   ROOT = Path(__file__).resolve().parents[2]
+   |
+help: Organize imports
+   |
+7  | import json
+8  + import subprocess
+9  + import sys
+10 | from datetime import datetime, timedelta
+11 | from pathlib import Path, PurePosixPath
+   - import subprocess
+   - import sys
+12 | from urllib.parse import urlsplit
+   |
+
+RUF100 [*] Unused `noqa` directive (non-enabled: `E402`)
+  --> scripts\annotation\prepare.py:18:44
+   |
+16 | ROOT = Path(__file__).resolve().parents[2]
+17 | sys.path.insert(0, str(ROOT))
+18 | from scripts.verify_plan import load_json  # noqa: E402
+   |                                            ^^^^^^^^^^^^
+help: Remove unused `noqa` directive
+   |
+17 | sys.path.insert(0, str(ROOT))
+   - from scripts.verify_plan import load_json  # noqa: E402
+18 + from scripts.verify_plan import load_json
+19 |
+   |
+
+C401 Unnecessary generator (rewrite as a set comprehension)
+   --> scripts\annotation\prepare.py:234:17
+    |
+232 |             validate_time(decision["recorded_at"])
+233 |             if (
+234 |                 set(string_value(item) for item in list_value(decision["label_sha256s"])) != hashes
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+235 |                 or decision["adjudicator_id"] in {record["annotator_id"] for record in records}
+236 |             ):
+    |
+help: Rewrite as a set comprehension
+
+C401 Unnecessary generator (rewrite as a set comprehension)
+   --> scripts\annotation\prepare.py:245:13
+    |
+243 |         validate_time(check["verified_at"])
+244 |         if (
+245 |             set(string_value(item) for item in list_value(check["annotator_ids"])) != {record["annotator_id"] for record in records}
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+246 |             or set(string_value(item) for item in list_value(check["label_sha256s"])) != hashes
+247 |             or check["verified_by"] in {record["annotator_id"] for record in records}
+    |
+help: Rewrite as a set comprehension
+
+C401 Unnecessary generator (rewrite as a set comprehension)
+   --> scripts\annotation\prepare.py:246:16
+    |
+244 |         if (
+245 |             set(string_value(item) for item in list_value(check["annotator_ids"])) != {record["annotator_id"] for record in records}
+246 |             or set(string_value(item) for item in list_value(check["label_sha256s"])) != hashes
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+247 |             or check["verified_by"] in {record["annotator_id"] for record in records}
+248 |         ):
+    |
+help: Rewrite as a set comprehension
+
+C401 Unnecessary generator (rewrite as a set comprehension)
+   --> scripts\annotation\prepare.py:259:16
+    |
+257 |     evidence_ids = {evidence["span_id"] for evidence in object_list(case["evidence"])}
+258 |     for claim in object_list(label["expected_claims"]):
+259 |         if not set(string_value(item) for item in list_value(claim["evidence_ids"])).issubset(evidence_ids):
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+260 |             raise PreparationError("LABEL_EVIDENCE_UNKNOWN")
+    |
+help: Rewrite as a set comprehension
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> scripts\annotation\tests\test_prepare.py:3:1
+   |
+ 1 |   """Explicit synthetic fixtures exercise T46 preparation; they are not human gold labels."""
+ 2 |
+ 3 | / from __future__ import annotations
+ 4 | |
+ 5 | | from copy import deepcopy
+ 6 | | import hashlib
+ 7 | | import json
+ 8 | | from pathlib import Path
+ 9 | | import subprocess
+10 | | import sys
+11 | | import tempfile
+12 | | import unittest
+13 | |
+14 | | from scripts.annotation.prepare import (
+15 | |     ROOT, PreparationError, digest, inspect_annotations, scan_leaks, summarize,
+16 | |     validate_candidates,
+17 | | )
+   | |_^
+18 |
+19 |   NOW = "2026-10-15T22:00:00+08:00"
+   |
+help: Organize imports
+   |
+4  |
+   - from copy import deepcopy
+5  | import hashlib
+6  | import json
+   - from pathlib import Path
+7  | import subprocess
+8  | import sys
+9  | import tempfile
+10 | import unittest
+11 + from copy import deepcopy
+12 + from pathlib import Path
+13 |
+14 | from scripts.annotation.prepare import (
+   -     ROOT, PreparationError, digest, inspect_annotations, scan_leaks, summarize,
+15 +     ROOT,
+16 +     PreparationError,
+17 +     digest,
+18 +     inspect_annotations,
+19 +     scan_leaks,
+20 +     summarize,
+21 |     validate_candidates,
+   |
+
+PLW1510 `subprocess.run` without explicit `check` argument
+   --> scripts\annotation\tests\test_prepare.py:263:16
+    |
+262 |     def cli(self, *arguments: str) -> subprocess.CompletedProcess[str]:
+263 |         return subprocess.run([sys.executable, str(ROOT / "scripts/annotation/prepare.py"), *arguments],
+    |                ^^^^^^^^^^^^^^
+264 |                               cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=30)
+    |
+help: Add explicit `check=False`
+
+Found 8 errors.
+[*] 3 fixable with the `--fix` option (4 hidden fixes can be enabled with the `--unsafe-fixes` option).
