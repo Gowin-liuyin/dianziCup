@@ -75,7 +75,7 @@ function parseProblem(value: unknown, status: number): ApiProblem {
   return new ApiProblem(status, code, value.error.retryable === true, traceId);
 }
 
-export async function fetchJson(path: string, options: RequestInit = {}, signal?: AbortSignal, acceptedStatuses: number[] = [], requestTimeoutMilliseconds = 10_000): Promise<unknown> {
+export async function fetchJson(path: string, options: RequestInit = {}, signal?: AbortSignal, acceptedStatuses: number[] = [], requestTimeoutMilliseconds = 10_000, expectedStatuses?: readonly number[]): Promise<unknown> {
   if (!Number.isInteger(requestTimeoutMilliseconds) || requestTimeoutMilliseconds < 1 || requestTimeoutMilliseconds > 120_000) throw new RangeError("request timeout must be between 1 and 120000 milliseconds");
   const controller = new AbortController();
   const abortRequest = () => controller.abort();
@@ -93,6 +93,7 @@ export async function fetchJson(path: string, options: RequestInit = {}, signal?
       return invalidResponse();
     }
     if (!response.ok && !acceptedStatuses.includes(response.status)) throw parseProblem(body, response.status);
+    if (expectedStatuses !== undefined && !expectedStatuses.includes(response.status)) return invalidResponse();
     return body;
   } catch (error: unknown) {
     if (error instanceof ApiProblem) throw error;

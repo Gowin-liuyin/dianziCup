@@ -119,3 +119,11 @@ describe("HTTP errors with non-JSON upstream bodies", () => {
     await expect(getCurrentUser()).rejects.toMatchObject({ status });
   });
 });
+
+describe("R15 opt-in expected HTTP status · explicit synthetic transport", () => {
+  it("rejects a 202 body even when it resembles a completed receipt", async () => { mockResponse({ generation_id: "synthetic-future-generation", completed: true }, 202); await expect(fetchJson("/api/v1/subscriptions/synthetic/generate", {}, undefined, [], 10_000, [200])).rejects.toMatchObject({ status: 502, code: "invalid_response" }); });
+  it.each([200, 201, 202])("preserves legacy default acceptance of successful status %s", async (status) => { const body = { synthetic: "legacy-response" }; mockResponse(body, status); expect(await fetchJson("/synthetic-legacy")).toEqual(body); });
+  it.each([200, 201])("accepts an explicitly allowed creation status %s", async (status) => { mockResponse({ synthetic: "creation" }, status); expect(await fetchJson("/api/v1/subscriptions", {}, undefined, [], 10_000, [200, 201])).toEqual({ synthetic: "creation" }); });
+  it.each([401, 403])("keeps access denial %s ahead of expected-status checking", async (status) => { mockResponse({ error: { code: status === 401 ? "session_expired" : "forbidden", retryable: false } }, status); await expect(fetchJson("/api/v1/reports", {}, undefined, [], 10_000, [200])).rejects.toMatchObject({ status, code: status === 401 ? "session_expired" : "forbidden" }); });
+  it("preserves parsing errors without disclosing non-JSON response content", async () => { vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("synthetic-private-source", { status: 200 }))); await expect(fetchJson("/api/v1/reports", {}, undefined, [], 10_000, [200])).rejects.toMatchObject({ code: "invalid_response" }); });
+});
