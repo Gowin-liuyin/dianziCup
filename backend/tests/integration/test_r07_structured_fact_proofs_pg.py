@@ -41,7 +41,11 @@ from ai_intel.enrichment.signals import enrich_structured_fields
 from ai_intel.infrastructure.content_store import ContentStore
 from ai_intel.infrastructure.database import run_migrations
 from ai_intel.ingestion.parsing.parsers import parse_json_document
-from ai_intel.ingestion.source_documents import SourceResponse, persist_source_response
+from ai_intel.ingestion.source_documents import (
+    SourceResponse,
+    persist_source_response,
+    source_data_mode_metadata,
+)
 from ai_intel.knowledge.event_linking import EventRepository, EventSubmission
 from ai_intel.knowledge.models import document_revisions, documents, evidence, text_blocks, users
 from ai_intel.knowledge.persistence_models import (
@@ -162,6 +166,7 @@ def add_document(engine, store, source, event_id, scope):
             None,
             NOW,
             revision_metadata={
+                **source_data_mode_metadata("fixture"),
                 "content_coverage": "full_text",
                 "version_label": source.source_version or "fixture-signal-1",
             },
@@ -256,6 +261,7 @@ def seed_facts(engine, tmp_path, register, dimension="cvss", conflict=False, two
                 json.dumps(payload).encode(),
                 "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=ollama&resultsPerPage=100&startIndex=0",
                 NOW,
+                data_mode="fixture",
             ),
             ingested_at=NOW,
         )

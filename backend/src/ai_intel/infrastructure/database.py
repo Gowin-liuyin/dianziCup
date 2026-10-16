@@ -82,10 +82,13 @@ def current_migration_revision(database_url: str) -> str | None:
     from sqlalchemy import text
 
     engine = create_engine(database_url)
-    with engine.connect() as connection:
-        exists = connection.execute(
-            text("SELECT to_regclass(:name)"), {"name": "alembic_version"}
-        ).scalar()
-        if exists is None:
-            return None
-        return connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
+    try:
+        with engine.connect() as connection:
+            exists = connection.execute(
+                text("SELECT to_regclass(:name)"), {"name": "alembic_version"}
+            ).scalar()
+            if exists is None:
+                return None
+            return connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
+    finally:
+        engine.dispose()

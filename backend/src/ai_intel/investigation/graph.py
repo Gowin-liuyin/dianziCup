@@ -12,6 +12,17 @@ from ai_intel.investigation.graph_contracts import Strategy, WorkflowState
 
 RoleExecutor = Callable[[AgentRole, WorkflowState], WorkflowState]
 UNKNOWN_OPERATION_REASONS = ("model_outcome_unknown", "operation_outcome_unknown")
+OUTPUT_BUDGET_FAILURE = "operation_output_budget_exhausted"
+STOP_OPERATION_REASONS = (OUTPUT_BUDGET_FAILURE, *UNKNOWN_OPERATION_REASONS)
+
+
+def get_operation_stop_reason(state: WorkflowState) -> str | None:
+    """A persisted output rejection takes priority over an uncertain external outcome."""
+    if state["stop_reason"] == OUTPUT_BUDGET_FAILURE or any(
+        receipt.get("reason_code") == OUTPUT_BUDGET_FAILURE for receipt in state["receipts"]
+    ):
+        return OUTPUT_BUDGET_FAILURE
+    return get_unknown_operation_reason(state)
 
 
 def get_unknown_operation_reason(state: WorkflowState) -> str | None:
@@ -26,6 +37,17 @@ def get_unknown_operation_reason(state: WorkflowState) -> str | None:
 
 def normalize_unknown_operation_state(state: WorkflowState) -> WorkflowState:
     """Stop unknown work without replacing a stronger safety outcome or a confirmed conflict."""
+    if get_operation_stop_reason(state) == OUTPUT_BUDGET_FAILURE:
+        return {
+            **state,
+            "receipts": [],
+            "evidence": [],
+            "draft": None,
+            "verified": False,
+            "candidate_action_id": None,
+            "status": "partial",
+            "stop_reason": OUTPUT_BUDGET_FAILURE,
+        }
     reason = get_unknown_operation_reason(state)
     if reason is None or state["status"] in {"failed", "waiting_approval", "stale"}:
         return state
@@ -50,7 +72,7 @@ def build_investigation_graph(
     def stage(roles: tuple[AgentRole, ...]) -> Callable[[WorkflowState], WorkflowState]:
         def execute(state: WorkflowState) -> WorkflowState:
             for role in roles:
-                unknown_reason = get_unknown_operation_reason(state)
+                unknown_reason = get_operation_stop_reason(state)
                 if unknown_reason is not None:
                     return normalize_unknown_operation_state(state)
                 state = execute_role(role, state)
@@ -68,7 +90,7 @@ def build_investigation_graph(
 
         def route(state: WorkflowState, successor: str = next_node) -> str:
             stopped = state["status"] in {"failed", "waiting_approval", "stale"}
-            return END if stopped or get_unknown_operation_reason(state) is not None else successor
+            return END if stopped or get_operation_stop_reason(state) is not None else successor
 
         builder.add_conditional_edges(name, route, {END: END, next_node: next_node})
     return builder.compile(checkpointer=checkpointer, name="r14-investigation")

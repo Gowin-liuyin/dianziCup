@@ -34,6 +34,7 @@ from ai_intel.domain.enums import SourceCategory
 from ai_intel.domain.records import StrictRecord
 from ai_intel.domain.values import UtcTimestamp
 from ai_intel.knowledge.models import document_revisions, documents
+from ai_intel.knowledge.revision_mode import homogeneous_revision_mode
 
 sources = table(
     "sources",
@@ -137,11 +138,27 @@ class _DocumentMetadata(BaseModel):
 class DocumentReadService:
     """资料不强制转换为漏洞事件；历史始终按选定修订读取。"""
 
-    def __init__(self, session: Session, scope: AccessScope, data_mode: DataMode) -> None:
+    def __init__(
+        self,
+        session: Session,
+        scope: AccessScope,
+        data_mode: DataMode,
+        *,
+        require_expected_mode: bool = True,
+    ) -> None:
         scope.requires(READ_PUBLIC)
+        homogeneous_revision_mode((), data_mode, require_expected_mode=require_expected_mode)
         self.session = session
         self.scope = scope
         self.data_mode = data_mode
+        self.require_expected_mode = require_expected_mode
+
+    def _revision_mode(self, rows: list[RowMapping] | tuple[RowMapping, ...]) -> DataMode:
+        return homogeneous_revision_mode(
+            tuple(row["source_metadata"] for row in rows),
+            self.data_mode,
+            require_expected_mode=self.require_expected_mode,
+        )
 
     @staticmethod
     def _visible() -> ColumnElement[bool]:
@@ -241,7 +258,7 @@ class DocumentReadService:
         return DocumentListResponse(
             items=tuple(self._summary(row) for row in selected),
             next_cursor=next_cursor,
-            data_mode=self.data_mode,
+            data_mode=self._revision_mode(selected),
         )
 
     def document_detail(
@@ -264,9 +281,13 @@ class DocumentReadService:
         row = self.session.execute(query).mappings().one_or_none()
         if row is None:
             raise CrossTenantAccessError("resource not found")
+        data_mode = self._revision_mode((row,))
         metadata = _DocumentMetadata.model_validate(row["source_metadata"])
         items, total = KnowledgeReadService(
-            self.session, self.scope, self.data_mode
+            self.session,
+            self.scope,
+            self.data_mode,
+            require_expected_mode=self.require_expected_mode,
         ).read_public_revision_evidence(UUID(row["revision_id"]), evidence_offset, evidence_limit)
         if total > 2000:
             raise ValueError("document evidence exceeds supported source bounds")
@@ -285,7 +306,7 @@ class DocumentReadService:
             license_identifier=metadata.license_identifier,
             license_uri=metadata.license_uri,
             source_notes=notes,
-            data_mode=self.data_mode,
+            data_mode=data_mode,
         )
 
     def list_revisions(
@@ -308,5 +329,5 @@ class DocumentReadService:
         return DocumentRevisionListResponse(
             items=tuple(self._summary(row) for row in rows[:limit]),
             next_offset=offset + limit if len(rows) > limit else None,
-            data_mode=self.data_mode,
+            data_mode=self._revision_mode(rows[:limit]),
         )

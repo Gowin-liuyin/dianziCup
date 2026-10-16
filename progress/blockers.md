@@ -587,3 +587,29 @@ PG最多A/B两个heavy，每槽NullPool≤2conn/一个pytest/marked自有测试D
 ea失败却commit秘密边界历史仍未push；registry精确25+ZIP7锁hash例外待Root实现，不扫目录放宽。loader9c043真实6refs仅固定13paths/15members0matches仍不等于ZIP私有资产/holdout上下文安全，freshreview优化assert风险正在复现。CPU硬界原两个Must仍未闭合。独立功能代码尚多，不能称只剩人工或目标blocked/complete。
 
 下一：Root已审模块精确源归档与默认API/工作台冻结→新非作者真实PG/API/Edge；R14完整driver/preclaim/outbox/QA/read工具默认接线，R16持久key默认worker+fan-in/历史/旧新空撤回；R06新Product资源身份门后真实单版本6h；R18六producer/tools/三插件；标注/性能/恢复CI/正式评测/材料/干净复现。人工双核/裁决、FOFA授权资产范围、CNNVD登录下载仍未知；PPT后置不取消。R24-A→R23→R24-B保持。
+
+
+## 2026-10-17T02:45:18+08:00 · 主控批次13与新并行流水线
+
+Root固定checkpoint bc089809c03472582f6256b495a6f9a2a308a5d2；不是阶段验收，push尚未发生。442+107-5重叠+105=649 distinct offline，mypy193、Ruff13通过；新PG/e2e/live未运行。原源与状态历史保留，R01/R06新回归不得继续绿。费用unknown；本轮产品paid模型/来源调用0。宿主16slots，滚动约10工作角色；独立WT/唯一写者，不由作者签accepted。
+- R01: 当前Root仍含自建Engine释放回归，迁移env/current_migration_revision旧f3真实target3→1→0；新作者912d8b38 8微型/真实PG2通过，新非作者独立8+PG2+42703异常probe通过正冻结报告，Root未合修复。原G-A历史验收保留但不能给当前回归签绿。新PG辅助顺序/日志故障隔离修复另跟进；历史head/SQL6red及作者峰12违规保留。
+- R06: 修订mode24诊断6pass18fail，Root当前版本仍可能fixture/None标live，verification.unit纠正failed。fixed CR已bc冻结，独立作者实施。控制fix3 7719作者63pass；非作者63+原2负例复核通过，待报告freeze。Product f3连接回归使启动阻断，新912生命周期独审准备接绑定；七门false/同版本6h尚未启动，旧窗口不拼。CNNVD实际新官方tab仍登录页，下载0，blocked_login。
+- R07: 40冻结文件批次13已Root bc089809完整整合(本卡8)，全部input SHA核对；来源报告reader/caller模式两阶段围栏由R06唯一作者修，SourceEnricher/实际UTF8预算R14作者实现。649 distinct Root离线不是九维全部live通过，强图/QA原支持规则不放宽。
+- R10: r10_default_graph_consumer_closure独立972 WT实现图policy，27offline已pass，仅collect PG，真实GraphProjectionStore复用，不覆盖hybrid。Root待正式CR/defaultruntime接线+新独审/Neo4j真实环境；knowledge_change继续partial，不借R16全局签完成。
+- R14: Root bc已导入未知/读取共享原件；SourceEnricher真实typed报告及UTF8完成预算新作者独立bc WT，approved CR保留immutable output_bytes reservation，completed实际从JSON派生且所有reserve/recovery一致，新version绑定。PG/live/default完整协作仍未验，不能把现offline等同真Agent全链。
+- R16: Root完整ccbdf7eb 11文件已bc整合；Root定点fanin105pass/0skip，原新非作者历史214+2offline/PG26限定通过作为前证不替Root新consumer。两真实asset fixture误范围已修原assert不变。整history/watch/retraction默认live仍partial。
+- R17: 新default产品独审在bc固定WT准备真实API+浏览器A≤240s；独立实现r17_workbench_visual_and_states仅frontend，以bc及实际ui-design.md d0f10f63为base，小修加载/分页返回/证据提示/真实调查入口/退订旧selection/登录状态，不伪装typedtask可用。旧staticEdge10不是完整业务e2e；用户tsbuildinfo不改。
+- R18: 四GET已Root默认App挂载bc，107offline含5oldshared重复；新产品非作者DefaultApp实际HTTP/SDK/Auth/浏览器准备，不替换路由业务。typedtask503/ask-stack发布/HTTPMCP/OAuth/三类插件仍未闭；R06独占public read modeclassifier，不共享多writer。
+- R19: r19_qualified_annotation_integration从972仅6298完整prepare3文件，writer26/labels25已pass；旧FD独审094只M01不扩签、原资源cap4违规仍红。新CLI大组60s超时exit124，需完整分批复跑原15Oracle，不把12dots计通过。双人工/裁决未取得，gold0/awaiting_human_label。
+- R20: 新的终态race source a6eadd5f/materiala1e9，focused15/related83重叠不得累加，Native0；fresh独审已派。原normal CPU1.03125仍failed，near held终态1.0不能称预算内误杀，限制不改。全秘密/实际索引恢复/CI/备份全链仍缺，旧有限原始日志/资源违规保留。
+
+
+## 2026-10-17T03:52:19+08:00 · 主控批次14冻结，未验收阶段
+
+Root基线bc089809，完整导入R06 ff972ebb/R14 db922460/R01 dbf99272的25冻结文件；修订mode错误、SourceEnricher消费者、UTF8累计预算、Engine释放修复已接线，新的整合PG独审待运行。Root模式/预算/释放联合783例passed/0fail/0error/0skip，配置36例passed（单列不相加），mypy204源码passed、Ruff14和format14passed。原Root遗漏冻结样本导致8 FileNotFound/误拼settings路径/配置继承fixture/样式E501红均保留。
+
+Source实际独立912控制器03:34:02.196146至03:34:22.012818提前退出19.816672秒，formal_six_hour_pass=false；不是6h持续采集。fixed控制前置b7a1244独审通过，七门Root登记，不证明实际五actor完成。首API确定缺langchain_core：launch选旧runtime_env，与冻结产品锁不一致；worker未到ready，原收据不足区分15秒timeout与launcher exit。新独立诊断见R06-first-912-start-diagnosis.md。历史ledger42是已用/总450，不是cap42；余408，不reset。actor/MinIO退出ACK保存，不复用旧窗口冒同版本稳定。离线缺38包已安装，库存96同锁，模块smoke/完整重启仍待验证，不能据库存签ready。
+
+并行：R17新独审d7d3068对8e4发现M01刷新竞态，779distinct既有用例/Edge11fixture通过不消除该红；作者在新WT修所有subscription caller。R19新独审8f326cd仅3文件Ship/69fixture，人工gold0。R18独立适配与assessment同事务read由唯一作者实现；Root持有App/QA身份/seletor/typedtaskbinding。R10默认worker工厂CR已经登记，后续独立作者复用Neo4j与PG/租约/graph policy；公开schema、迁移/lock仍Root独占。R20 strict1CPU红仍未关闭，产品默认30与startup诊断不同，不能下调门槛。
+
+宿主16Agent槽，按能力依赖滚动6–10包；运行资源另行独占，普通完整进程10/60s、CBM16/60s、Edge16有界。默认shell/profile共同延迟已通过显式C:/Program Files/PowerShell/7/pwsh.exe、login=false恢复；原长延迟未洗成合规。真实Source成本unknown，本轮模型/测绘paid调用0。无新阶段放行/push，G-C仍in_progress/partial；用户tsbuildinfo/push台账保护。人工双标/授权资产/CNNVD登录仍缺，最终未验收。

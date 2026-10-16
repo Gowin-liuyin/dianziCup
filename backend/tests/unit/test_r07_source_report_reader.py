@@ -113,7 +113,11 @@ def read_case(monkeypatch, tmp_path):
         "parse_status": "parsed",
         "kind": "advisory",
         "normalizer_version": source.source_version,
-        "source_metadata": {"content_coverage": "full_text", "data_mode": "live"},
+        "source_metadata": {
+            "content_coverage": "full_text",
+            "data_mode": "fixture",
+            "data_mode_policy_version": "trusted-source-runtime-v1",
+        },
     }
     snapshot = bridge._FactInputs(
         event_row={"status": "active", "visibility": "public", "tenant_id": None},
@@ -241,6 +245,12 @@ def test_normal_read_keeps_typed_value_proof_identity_and_unknown_states(read_ca
 @pytest.mark.parametrize("mode", ("fixture", "live"))
 def test_only_explicit_server_mode_survives_external_metadata(read_case, mode):
     read_case.reader.data_mode = mode
+    for parent in read_case.snapshot.parents:
+        parent["source_metadata"] = {
+            **parent["source_metadata"],
+            "data_mode": mode,
+            "data_mode_policy_version": "trusted-source-runtime-v1",
+        }
     result = read_case.reader.read(read_case.request, time.monotonic() + 4)
     assert result.data_mode == mode
     assert all(item.data_mode == mode for item in result.facts[0].supporting_evidence)

@@ -660,3 +660,32 @@ root默认PG认证/空库与旧库升级/0009前向迁移87通过、coverage72.7
 
 
 2026-10-14T22:19:34+08:00：独立reviewer /root/r00_independent_review 已在冻结15d0272bd2a9e25d19397d8147e9c3cbe6016f9b完成56/56与静态检查、切片正负例、新干净Windows/WSL基线0/0。依据[reports/reviews/recovery/G-A-R00-review-1-recheck.md](../reports/reviews/recovery/G-A-R00-review-1-recheck.md)仅登记R00与三个R00输出切片accepted、九CR生效；原整T不自动接受，G-A未过门、未push。R01质量/前端从该批准合同基线独立worktree实施。真实PG16.14/pgvector0.8.2与Redis7.4.11资源已认证读写/重启/负例，仍非应用集成。
+
+
+## 2026-10-17T02:45:18+08:00 · 主控批次13与新并行流水线
+
+Root固定checkpoint bc089809c03472582f6256b495a6f9a2a308a5d2；不是阶段验收，push尚未发生。442+107-5重叠+105=649 distinct offline，mypy193、Ruff13通过；新PG/e2e/live未运行。原源与状态历史保留，R01/R06新回归不得继续绿。费用unknown；本轮产品paid模型/来源调用0。宿主16slots，滚动约10工作角色；独立WT/唯一写者，不由作者签accepted。
+
+| 工作包 | 独立Agent/基线 | 唯一文件所有权 | 当前证据/结束条件 |
+|---|---|---|---|
+| R01资源释放实现/复核 | r01_migration_engine_disposal_fix / r01_engine_disposal_first_independent_review，f3→912 | 作者仅env.py、current_migration_revision与新test；reviewer报告 | 作者新PG2，非作者PG2+异常probe已实际通过，等待限定报告；测试辅助修复独立 |
+| R06采集启动控制/独审 | r06_same_version_activation_binding_implementation / r06_activation_first_independent_gate，7719固定 | 启动CORE/OPS候选控制及直属test，独审只报告 | 63+原2负例亲跑；Product f3池偏差未闭前七门false/采集0 |
+| R06历史模式 | r06_revision_mode_read_root_cause，bc | revision_mode新函数、两reader/两router、R18 classifier、R07 reader围栏+直属fixture | 24原负例、模式历史PG/defaultconsumer严格，不能重写历史 |
+| R14来源报告/预算 | r14_source_report_budget_implementation，bc | workflow_service/runtime/graph必要预算调用、直属tests | 新version/immutable reservation/实际UTF8，PG与新独审必需 |
+| R10图默认消费者 | r10_default_graph_consumer_closure，972 | 图policy新模块、graph_projection必要内部函数、直属tests | 独立27offline；共享runtime/settings/CR归Root |
+| R19标注整合 | r19_qualified_annotation_integration，972 | annotation既有已审3files+直属tests/空白双人证据包 | 26+25offline；原CLI超时保留，人工gold未取得 |
+| R17工作台收尾 | r17_workbench_visual_and_states_implementation，bc | frontend/src与直属tests/static asset | 实际参考已读，缺口小修；不碰tsbuildinfo/lock/后端 |
+| 默认产品初审 | batch13_default_product_first_independent_review，bc固定 | own报告/探针 | 默认App真实API/SDK、Auth、单Edge≤240s/A；不改业务 |
+| R20终态race初审 | r20_terminal_race_first_independent_review，a6eadd固定 | own报告/探针 | 新初审非作者，Native0；CPU原红不能扩签 |
+| 当前索引增量定位 | root_batch13_index_refresh，bc | 仅own索引收据/报告 | ≤60s/16，shared worker/config callers；不索引秘密 |
+
+
+## 2026-10-17T03:52:19+08:00 · 主控批次14冻结，未验收阶段
+
+Root基线bc089809，完整导入R06 ff972ebb/R14 db922460/R01 dbf99272的25冻结文件；修订mode错误、SourceEnricher消费者、UTF8累计预算、Engine释放修复已接线，新的整合PG独审待运行。Root模式/预算/释放联合783例passed/0fail/0error/0skip，配置36例passed（单列不相加），mypy204源码passed、Ruff14和format14passed。原Root遗漏冻结样本导致8 FileNotFound/误拼settings路径/配置继承fixture/样式E501红均保留。
+
+Source实际独立912控制器03:34:02.196146至03:34:22.012818提前退出19.816672秒，formal_six_hour_pass=false；不是6h持续采集。fixed控制前置b7a1244独审通过，七门Root登记，不证明实际五actor完成。首API确定缺langchain_core：launch选旧runtime_env，与冻结产品锁不一致；worker未到ready，原收据不足区分15秒timeout与launcher exit。新独立诊断见R06-first-912-start-diagnosis.md。历史ledger42是已用/总450，不是cap42；余408，不reset。actor/MinIO退出ACK保存，不复用旧窗口冒同版本稳定。离线缺38包已安装，库存96同锁，模块smoke/完整重启仍待验证，不能据库存签ready。
+
+并行：R17新独审d7d3068对8e4发现M01刷新竞态，779distinct既有用例/Edge11fixture通过不消除该红；作者在新WT修所有subscription caller。R19新独审8f326cd仅3文件Ship/69fixture，人工gold0。R18独立适配与assessment同事务read由唯一作者实现；Root持有App/QA身份/seletor/typedtaskbinding。R10默认worker工厂CR已经登记，后续独立作者复用Neo4j与PG/租约/graph policy；公开schema、迁移/lock仍Root独占。R20 strict1CPU红仍未关闭，产品默认30与startup诊断不同，不能下调门槛。
+
+宿主16Agent槽，按能力依赖滚动6–10包；运行资源另行独占，普通完整进程10/60s、CBM16/60s、Edge16有界。默认shell/profile共同延迟已通过显式C:/Program Files/PowerShell/7/pwsh.exe、login=false恢复；原长延迟未洗成合规。真实Source成本unknown，本轮模型/测绘paid调用0。无新阶段放行/push，G-C仍in_progress/partial；用户tsbuildinfo/push台账保护。人工双标/授权资产/CNNVD登录仍缺，最终未验收。

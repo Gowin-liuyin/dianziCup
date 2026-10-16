@@ -44,6 +44,9 @@ class ApplicationSettings(BaseSettings):
     opensearch_username: str | None = None
     opensearch_password: SecretStr | None = None
     opensearch_ca_file: str | None = None
+    neo4j_uri: str | None = None
+    neo4j_username: str | None = None
+    neo4j_password: SecretStr | None = None
     auth_secret_ref: SecretStr | None = None
     allowed_origins: tuple[str, ...] = ("http://localhost:5173", "http://127.0.0.1:25173")
     dependency_timeout_seconds: float = Field(default=3.0, gt=0, le=10)
@@ -71,6 +74,43 @@ class ApplicationSettings(BaseSettings):
     enrichment_generation_enabled: bool = False
     enrichment_private_egress_granted: bool = False
     enrichment_aggregate_enabled: bool = False
+
+    @model_validator(mode="after")
+    def validate_graph_connection_security(self) -> ApplicationSettings:
+        """Graph credentials stay outside the URI; local plaintext is limited to test runs."""
+        fields = (self.neo4j_uri, self.neo4j_username, self.neo4j_password)
+        if all(value is None for value in fields):
+            return self
+        if any(value is None for value in fields):
+            raise ConfigurationError("Neo4j URI, username and password must be configured together")
+        if (
+            self.neo4j_username is None
+            or re.fullmatch(r"[A-Za-z0-9_.@-]{1,100}", self.neo4j_username) is None
+            or self.neo4j_password is None
+            or not self.neo4j_password.get_secret_value().strip()
+        ):
+            raise ConfigurationError("Neo4j credentials must be nonempty")
+        try:
+            parsed = urlsplit(self.neo4j_uri or "")
+            port = parsed.port
+            if (
+                parsed.scheme not in {"bolt", "bolt+s"}
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+                or (port is not None and port < 1)
+            ):
+                raise ValueError
+        except ValueError:
+            raise ConfigurationError(
+                "NEO4J_URI requires a bolt(s) origin without credentials"
+            ) from None
+        if parsed.scheme == "bolt" and self.app_env != "test":
+            raise ConfigurationError("plaintext Neo4j is allowed only when APP_ENV=test")
+        return self
 
     @model_validator(mode="after")
     def validate_revalidation_cursor_signing_key(self) -> ApplicationSettings:

@@ -67,7 +67,9 @@ def build_document_router(
                 if current.user_id != initial.user_id or current.tenant_id != initial.tenant_id:
                     raise PermissionDeniedError("document authorization changed")
                 current.requires(READ_PUBLIC)
-                return operation(DocumentReadService(session, current, data_mode))
+                return operation(
+                    DocumentReadService(session, current, data_mode, require_expected_mode=False)
+                )
         except (SessionExpiredError, InvalidCredentialsError):
             return problem_response(request, 401, "session_expired", "session is not valid")
         except PermissionDeniedError:

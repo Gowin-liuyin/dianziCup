@@ -36,6 +36,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Connection, Engine, RowMapping
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from ai_intel.answering.contracts import GeneratedAnswer, GroundedAnswerFailure, SupportVerification
@@ -67,6 +68,8 @@ from ai_intel.domain.access import (
     Role,
 )
 from ai_intel.domain.enums import ClaimStatus, ToolStatus
+from ai_intel.enrichment.source_report_reader import build_source_report_reader
+from ai_intel.infrastructure.content_store import ContentStorage
 from ai_intel.infrastructure.models.generation import (
     AttemptMetadata,
     GenerationClient,
@@ -82,9 +85,10 @@ from ai_intel.investigation.checkpoint_runtime import (
     validate_checkpoint_schema,
 )
 from ai_intel.investigation.graph import (
-    UNKNOWN_OPERATION_REASONS,
+    OUTPUT_BUDGET_FAILURE,
+    STOP_OPERATION_REASONS,
     build_investigation_graph,
-    get_unknown_operation_reason,
+    get_operation_stop_reason,
     normalize_unknown_operation_state,
 )
 from ai_intel.investigation.graph_contracts import (
@@ -99,6 +103,7 @@ from ai_intel.investigation.graph_contracts import (
     json_object,
 )
 from ai_intel.investigation.read_adapters import PostgresReadToolAdapter
+from ai_intel.investigation.source_report_node import read_enrichment_source_reports
 from ai_intel.investigation.tool_contracts import (
     ChangesPage,
     CompareVersionsCall,
@@ -115,6 +120,7 @@ from ai_intel.investigation.tool_contracts import (
 from ai_intel.investigation.tool_gateway import BudgetLimits, PostgresEvidenceReader, ToolGateway
 from ai_intel.knowledge.evidence_graph import EvidenceGraphReadService
 from ai_intel.knowledge.models import job_runs, metadata
+from ai_intel.knowledge.structured_fact_proofs import StructuredFactProofChangedError
 from ai_intel.workers.executor import JobExecutionContext
 from ai_intel.workers.jobs import (
     complete_job,
@@ -125,6 +131,21 @@ from ai_intel.workers.jobs import (
 
 JOB_TYPE = "investigation"
 SHARED_READ_CONSUMER_VERSION = "r14-shared-read-consumers-1"
+SOURCE_REPORT_CONSUMER_VERSION = "r14-source-report-consumer-1"
+OPERATION_OUTPUT_ACCOUNTING_VERSION = "r14-operation-output-accounting-1"
+MAX_WORKFLOW_OPERATIONS = len(AgentRole) + 8 + 6
+
+
+def _output_json_bytes(output: dict[str, JsonValue]) -> int:
+    """Count the frozen UTF-8 representation, independently of PostgreSQL JSONB formatting."""
+    return len(
+        json.dumps(
+            output, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
+    )
+
+
+OUTPUT_BUDGET_FAILURE_BYTES = _output_json_bytes({"error_code": OUTPUT_BUDGET_FAILURE})
 
 investigation_workflows = Table(
     "investigation_workflows",
@@ -318,6 +339,7 @@ class InvestigationWorkflowService:
         model_factory: ModelClientFactory | None = None,
         model_provider: str | None = None,
         model_version: str | None = None,
+        content_store: ContentStorage | None = None,
     ) -> None:
         if engine.dialect.name != "postgresql":
             raise ValueError("authenticated PostgreSQL server dependency required")
@@ -333,6 +355,11 @@ class InvestigationWorkflowService:
         self._checkpoint_schema = validate_checkpoint_schema(checkpoint_schema)
         self.data_mode = data_mode
         self.model_factory = model_factory
+        self._content_store = content_store
+        self._source_report_consumer_version = (
+            SOURCE_REPORT_CONSUMER_VERSION if content_store is not None else "not_configured"
+        )
+        self._operation_output_accounting_version = OPERATION_OUTPUT_ACCOUNTING_VERSION
         self._model_config: dict[str, JsonValue] = {
             "provider": model_provider,
             "model_version": model_version,
@@ -357,6 +384,8 @@ class InvestigationWorkflowService:
             "data_mode": self.data_mode,
             "model_config": self._model_config,
             "shared_read_consumer_version": SHARED_READ_CONSUMER_VERSION,
+            "source_report_consumer_version": self._source_report_consumer_version,
+            "operation_output_accounting_version": self._operation_output_accounting_version,
         }
         payload = json.dumps(envelope, ensure_ascii=False, sort_keys=True).encode()
         if len(payload) > budget.max_input_bytes:
@@ -563,6 +592,7 @@ class _WorkflowRuntime:
         self.deadline: datetime | None = None
         self.input_sha256 = ""
         self.job_status = "queued"
+        self.job_error_code: str | None = None
         self.last_operation_error: str | None = None
 
     @contextmanager
@@ -636,7 +666,13 @@ class _WorkflowRuntime:
             or envelope["data_mode"] != self.service.data_mode
         ):
             raise WorkflowChangedError("workflow_configuration_changed")
-        if envelope.get("shared_read_consumer_version") != SHARED_READ_CONSUMER_VERSION:
+        if (
+            envelope.get("shared_read_consumer_version") != SHARED_READ_CONSUMER_VERSION
+            or envelope.get("source_report_consumer_version")
+            != self.service._source_report_consumer_version
+            or envelope.get("operation_output_accounting_version")
+            != self.service._operation_output_accounting_version
+        ):
             self.input_sha256 = str(row["input_sha256"])
             self.job_status = str(job["status"])
             raise WorkflowChangedError("workflow_configuration_changed")
@@ -661,6 +697,8 @@ class _WorkflowRuntime:
             raise ValueError("invalid workflow deadline")
         self.deadline = deadline
         self.job_status = str(job["status"])
+        error_code = job["error_code"]
+        self.job_error_code = error_code if isinstance(error_code, str) else None
         source_snapshot = _plain_object(row["scope_epochs"])
         reader = EvidenceGraphReadService(session, scope)
         epochs = [list(item) for item in reader.read_scope_epochs(lock=True)]
@@ -712,7 +750,23 @@ class _WorkflowRuntime:
 
     def restore_node_state(self, state: WorkflowState) -> WorkflowState:
         """Recover unknown outcomes from PG receipts without replaying IO or rewriting history."""
-        if get_unknown_operation_reason(state) is not None:
+        if self.job_error_code == OUTPUT_BUDGET_FAILURE:
+            state = {**state, "stop_reason": OUTPUT_BUDGET_FAILURE}
+        if getattr(self.service, "_operation_output_accounting_version", None) is not None:
+            with self.transaction() as session:
+                failure = session.scalar(
+                    select(investigation_operations.c.operation_key)
+                    .where(
+                        investigation_operations.c.job_id == self.context.job_id,
+                        investigation_operations.c.status == "failed",
+                        investigation_operations.c.output_json
+                        == {"error_code": OUTPUT_BUDGET_FAILURE},
+                    )
+                    .limit(1)
+                )
+            if failure is not None:
+                state = {**state, "stop_reason": OUTPUT_BUDGET_FAILURE}
+        if get_operation_stop_reason(state) is not None:
             return normalize_unknown_operation_state(state)
         if len(state["receipts"]) > len(AgentRole):
             raise ValueError("invalid checkpoint receipt count")
@@ -723,7 +777,7 @@ class _WorkflowRuntime:
                     continue
                 previous = self.lookup(key)
                 reason = previous.get("error_code") if previous is not None else None
-                if reason in UNKNOWN_OPERATION_REASONS:
+                if reason in STOP_OPERATION_REASONS:
                     restored_receipt = {
                         **item,
                         "status": "partial",
@@ -739,6 +793,36 @@ class _WorkflowRuntime:
                     }
                     return normalize_unknown_operation_state(state)
         return normalize_unknown_operation_state(state)
+
+    def operation_rows(self, session: Session) -> list[RowMapping]:
+        """Serialize budget decisions and bound this job to nine nodes, eight tools, six models.
+
+        The immutable output_bytes column is the original reservation. Completed usage
+        is derived from output_json with the same frozen encoding as candidate output.
+        """
+        session.execute(
+            select(investigation_workflows.c.job_id)
+            .where(investigation_workflows.c.job_id == self.context.job_id)
+            .with_for_update()
+        )
+        rows = list(
+            session.execute(
+                select(investigation_operations)
+                .where(investigation_operations.c.job_id == self.context.job_id)
+                .limit(MAX_WORKFLOW_OPERATIONS + 1)
+            )
+            .mappings()
+            .all()
+        )
+        if len(rows) > MAX_WORKFLOW_OPERATIONS:
+            raise ValueError("workflow_operation_count_invalid")
+        return rows
+
+    @staticmethod
+    def operation_output_bytes(row: RowMapping) -> int:
+        if row["status"] == "reserved":
+            return int(row["output_bytes"])
+        return _output_json_bytes(_plain_object(row["output_json"]))
 
     def reserve(
         self,
@@ -758,26 +842,19 @@ class _WorkflowRuntime:
         if self.remaining_seconds() <= 0:
             return "deadline_exhausted"
         inputs = len(request_bytes) if input_bytes is None else input_bytes
+        output_bytes = max(output_bytes, OUTPUT_BUDGET_FAILURE_BYTES)
         with self.transaction() as session:
             self.guard_session(session, require_lease=True)
-            session.execute(
-                select(investigation_workflows.c.job_id)
-                .where(investigation_workflows.c.job_id == self.context.job_id)
-                .with_for_update()
-            )
-            counts = session.execute(
-                select(
-                    func.coalesce(func.sum(investigation_operations.c.input_bytes), 0),
-                    func.coalesce(func.sum(investigation_operations.c.output_bytes), 0),
-                    func.coalesce(func.sum(investigation_operations.c.model_calls), 0),
-                    func.coalesce(func.sum(investigation_operations.c.tool_calls), 0),
-                ).where(investigation_operations.c.job_id == self.context.job_id)
-            ).one()
+            rows = self.operation_rows(session)
             if (
-                counts[0] + inputs > self.budget.max_input_bytes
-                or counts[1] + output_bytes > self.budget.max_output_bytes
-                or counts[2] + model_calls > self.budget.max_model_calls
-                or counts[3] + tool_calls > self.budget.max_tool_calls
+                sum(int(row["input_bytes"]) for row in rows) + inputs > self.budget.max_input_bytes
+                or sum(self.operation_output_bytes(row) for row in rows) + output_bytes
+                > self.budget.max_output_bytes
+                or sum(int(row["model_calls"]) for row in rows) + model_calls
+                > self.budget.max_model_calls
+                or sum(int(row["tool_calls"]) for row in rows) + tool_calls
+                > self.budget.max_tool_calls
+                or len(rows) == MAX_WORKFLOW_OPERATIONS
             ):
                 return "budget_exhausted"
             digest = hashlib.sha256(request_bytes).hexdigest()
@@ -822,10 +899,37 @@ class _WorkflowRuntime:
         key: str,
         output: dict[str, JsonValue],
         status: Literal["succeeded", "partial", "failed"] = "succeeded",
-    ) -> None:
+    ) -> str | None:
+        """Persist only accepted actual bytes or the pre-reserved fixed failure receipt."""
+        output = _plain_object(output)
+        actual_bytes = _output_json_bytes(output)
         self.guard(require_lease=True)
         with self.transaction() as session:
             self.guard_session(session, require_lease=True)
+            rows = self.operation_rows(session)
+            target = next((row for row in rows if row["operation_key"] == key), None)
+            if target is None:
+                raise ValueError("operation_reservation_missing")
+            if target["status"] != "reserved":
+                previous = _plain_object(target["output_json"])
+                if previous == {"error_code": OUTPUT_BUDGET_FAILURE}:
+                    return OUTPUT_BUDGET_FAILURE
+                if previous != output or target["status"] != status:
+                    raise ValueError("operation_receipt_already_completed")
+                return None
+            remaining_bytes = self.budget.max_output_bytes - sum(
+                self.operation_output_bytes(row) for row in rows if row["operation_key"] != key
+            )
+            failure = None
+            if actual_bytes > remaining_bytes:
+                if (
+                    int(target["output_bytes"]) < OUTPUT_BUDGET_FAILURE_BYTES
+                    or remaining_bytes < OUTPUT_BUDGET_FAILURE_BYTES
+                ):
+                    raise ValueError("operation_failure_receipt_not_reserved")
+                output = {"error_code": OUTPUT_BUDGET_FAILURE}
+                status = "failed"
+                failure = OUTPUT_BUDGET_FAILURE
             session.execute(
                 update(investigation_operations)
                 .where(
@@ -836,14 +940,19 @@ class _WorkflowRuntime:
                 .values(status=status, output_json=output, completed_at=datetime.now(UTC))
             )
             self.connection.exec_driver_sql("SET CONSTRAINTS ALL IMMEDIATE")
+        return failure
 
     def tool(self, role: AgentRole, call: ToolCall, key: str) -> ToolResult | None:
-        if self.last_operation_error in UNKNOWN_OPERATION_REASONS:
+        if self.last_operation_error in STOP_OPERATION_REASONS:
             return None
         prior = self.lookup(key)
         if prior is not None:
             if "error_code" in prior and "tool_run_id" not in prior:
-                self.last_operation_error = "operation_outcome_unknown"
+                self.last_operation_error = (
+                    OUTPUT_BUDGET_FAILURE
+                    if prior["error_code"] == OUTPUT_BUDGET_FAILURE
+                    else "operation_outcome_unknown"
+                )
                 return None
             return _record(ToolResult, prior)
         raw = call.model_dump_json().encode()
@@ -880,17 +989,20 @@ class _WorkflowRuntime:
             ),
         )
         result = gateway.execute(role, raw)
-        self.complete_operation(
+        failure = self.complete_operation(
             key,
             json_object(result),
             "succeeded" if result.status == ToolStatus.SUCCEEDED else "partial",
         )
+        if failure is not None:
+            self.last_operation_error = failure
+            return None
         return result
 
     def model[T: BaseModel](
         self, role: AgentRole, request: GenerationRequest, schema: type[T], key: str
     ) -> T | None:
-        if self.last_operation_error in UNKNOWN_OPERATION_REASONS:
+        if self.last_operation_error in STOP_OPERATION_REASONS:
             return None
         previous = self.lookup(key)
         if previous is not None:
@@ -939,9 +1051,11 @@ class _WorkflowRuntime:
             raise ValueError("model_factory_configuration_changed")
         if client.limits.total_timeout_seconds > self.remaining_seconds():
             self.last_operation_error = "deadline_exhausted"
-            self.complete_operation(
+            failure = self.complete_operation(
                 key, {"error_code": "deadline_exhausted", "attempts": []}, "partial"
             )
+            if failure is not None:
+                self.last_operation_error = failure
             return None
         try:
             generated = client.generate(
@@ -957,16 +1071,21 @@ class _WorkflowRuntime:
                 }
             )
             value = schema.model_validate_json(generated.value.model_dump_json())
-            self.complete_operation(key, {"value": json_object(value), **attempts})
+            failure = self.complete_operation(key, {"value": json_object(value), **attempts})
+            if failure is not None:
+                self.last_operation_error = failure
+                return None
             return value
         except GenerationFailure as error:
             self.last_operation_error = error.code
             attempts_json: JsonValue = json.loads(
                 TypeAdapter(tuple[AttemptMetadata, ...]).dump_json(error.attempts)
             )
-            self.complete_operation(
+            failure = self.complete_operation(
                 key, {"error_code": error.code, "attempts": attempts_json}, "failed"
             )
+            if failure is not None:
+                self.last_operation_error = failure
             return None
 
     def projections(self, state: WorkflowState) -> tuple[CitationProjection, ...]:
@@ -1042,7 +1161,7 @@ class _WorkflowRuntime:
         """
         self.guard(require_lease=True)
         state = self.restore_node_state(state)
-        unknown_reason = get_unknown_operation_reason(state)
+        unknown_reason = get_operation_stop_reason(state)
         if unknown_reason is not None:
             return normalize_unknown_operation_state(state)
         self.last_operation_error = None
@@ -1051,10 +1170,22 @@ class _WorkflowRuntime:
         if previous is not None:
             if "state" in previous:
                 return self.restore_node_state(_state(previous["state"]))
+            if previous.get("error_code") == OUTPUT_BUDGET_FAILURE:
+                return normalize_unknown_operation_state(
+                    {**state, "stop_reason": OUTPUT_BUDGET_FAILURE}
+                )
             if previous.get("error_code") != "operation_outcome_unknown":
                 return {**state, "status": "partial", "stop_reason": "operation_outcome_unknown"}
-        elif self.reserve(key, "node", role, self.input_sha256.encode(), input_bytes=0):
-            return {**state, "status": "partial", "stop_reason": "budget_exhausted"}
+        else:
+            reservation_reason = self.reserve(
+                key, "node", role, self.input_sha256.encode(), input_bytes=0
+            )
+            if reservation_reason is not None:
+                if reservation_reason == "budget_exhausted":
+                    return normalize_unknown_operation_state(
+                        {**state, "stop_reason": OUTPUT_BUDGET_FAILURE}
+                    )
+                return {**state, "status": "partial", "stop_reason": reservation_reason}
         outcome: Literal["succeeded", "partial", "failed", "not_configured", "skipped"] = (
             "succeeded"
         )
@@ -1171,7 +1302,7 @@ class _WorkflowRuntime:
                             "status": "waiting_approval",
                             "stop_reason": "permission_required",
                         }
-                    if self.last_operation_error in UNKNOWN_OPERATION_REASONS:
+                    if self.last_operation_error in STOP_OPERATION_REASONS:
                         break
             state = {**state, "evidence": evidence_items}
             if not evidence_items:
@@ -1195,6 +1326,55 @@ class _WorkflowRuntime:
             if any(item.status == ClaimStatus.DISPUTED for item in detail.claims):
                 state = {**state, "stop_reason": "critical_conflict"}
             outcome, reason = "partial", "enrichment_write_adapter_not_configured"
+            content_store = getattr(self.service, "_content_store", None)
+            source_reports: list[JsonValue] = []
+            read_status = "not_configured"
+            read_reason = "source_report_reader_not_configured"
+            if content_store is not None and not self.request.evidence_refs:
+                read_status, read_reason = "not_found", "source_report_references_missing"
+            elif content_store is not None:
+                self.guard(require_lease=True)
+                deadline = time.monotonic() + min(5, self.remaining_seconds())
+                source_report_reader = build_source_report_reader(
+                    self.connection,
+                    self.actor_reference,
+                    self.scope,
+                    content_store,
+                    self.service.data_mode,
+                )
+                try:
+                    reports = read_enrichment_source_reports(
+                        source_report_reader, self.request, deadline
+                    )
+                except StructuredFactProofChangedError as error:
+                    raise WorkflowChangedError("source_report_inputs_changed") from error
+                except TimeoutError:
+                    read_status, read_reason = "partial", "source_report_deadline_exhausted"
+                except DBAPIError as error:
+                    sqlstate: object = getattr(error.orig, "sqlstate", None)
+                    if not isinstance(sqlstate, str) or sqlstate not in {"57014", "55P03"}:
+                        raise
+                    read_status, read_reason = "partial", "source_report_deadline_exhausted"
+                else:
+                    source_reports = [json_object(report) for report in reports]
+                    if all(report.status == "reported" for report in reports):
+                        read_status, read_reason = "reported", "source_reports_reported"
+                    elif all(report.status == "not_found" for report in reports):
+                        read_status, read_reason = "not_found", "source_reports_not_found"
+                    else:
+                        read_status, read_reason = "partial", "source_reports_partial"
+                    if any(report.conflicts for report in reports):
+                        state = {**state, "stop_reason": "critical_conflict"}
+            output.update(
+                {
+                    "source_reports": source_reports,
+                    "source_report_read_status": read_status,
+                    "source_report_reason": read_reason,
+                    "enrichment_write": "not_configured",
+                }
+            )
+            if content_store is not None and read_status != "reported":
+                reason = read_reason
         elif role == AgentRole.GRAPH_WRITER:
             with self.transaction() as session:
                 reader = EvidenceGraphReadService(session, self.scope)
@@ -1227,7 +1407,7 @@ class _WorkflowRuntime:
                     outcome, reason = "partial", "version_ordering_unavailable"
                 else:
                     reason = "version_ordering_complete"
-            elif self.last_operation_error not in UNKNOWN_OPERATION_REASONS:
+            elif self.last_operation_error not in STOP_OPERATION_REASONS:
                 if self.request.asset_snapshot_id is None:
                     raise ValueError("paired asset snapshot required")
                 key_inventory = "tool:assessor:get_inventory"
@@ -1311,7 +1491,7 @@ class _WorkflowRuntime:
                         ),
                         key_critic,
                     )
-                    if checked is None and self.last_operation_error in UNKNOWN_OPERATION_REASONS:
+                    if checked is None and self.last_operation_error in STOP_OPERATION_REASONS:
                         state = {**state, "draft": None, "verified": False}
                         break
                     if (
@@ -1357,6 +1537,7 @@ class _WorkflowRuntime:
             seen_cursors: set[str] = set()
             changes_read_status = "skipped"
             unresolved_stops = {
+                OUTPUT_BUDGET_FAILURE,
                 "critical_conflict",
                 "model_outcome_unknown",
                 "operation_outcome_unknown",
@@ -1425,6 +1606,7 @@ class _WorkflowRuntime:
                 stop_reason = reason
             if not state["verified"]:
                 for priority in (
+                    OUTPUT_BUDGET_FAILURE,
                     "critical_conflict",
                     "model_outcome_unknown",
                     "operation_outcome_unknown",
@@ -1439,7 +1621,12 @@ class _WorkflowRuntime:
             if state["status"] != "waiting_approval":
                 state = {**state, "status": "partial", "stop_reason": stop_reason}
         operation_error = self.last_operation_error
-        if operation_error is not None and operation_error in UNKNOWN_OPERATION_REASONS:
+        if operation_error == OUTPUT_BUDGET_FAILURE:
+            self.complete_operation(key, {"error_code": OUTPUT_BUDGET_FAILURE}, "failed")
+            return normalize_unknown_operation_state(
+                {**state, "stop_reason": OUTPUT_BUDGET_FAILURE}
+            )
+        if operation_error is not None and operation_error in STOP_OPERATION_REASONS:
             outcome, reason = "partial", operation_error
         if outcome != "succeeded" and state["status"] == "running":
             state = {**state, "status": "partial"}
@@ -1459,11 +1646,13 @@ class _WorkflowRuntime:
         )
         state = {**state, "receipts": [*state["receipts"], json_object(receipt)]}
         state = normalize_unknown_operation_state(state)
-        self.complete_operation(
+        failure = self.complete_operation(
             "node:" + role.value,
             {"state": _plain_object(state)},
             "failed" if outcome == "failed" else "succeeded",
         )
+        if failure is not None:
+            return normalize_unknown_operation_state({**state, "stop_reason": failure})
         return state
 
     def result(

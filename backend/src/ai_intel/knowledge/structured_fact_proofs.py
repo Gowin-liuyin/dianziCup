@@ -57,6 +57,7 @@ from ai_intel.knowledge.persistence_models import (
     event_external_ids,
     events,
 )
+from ai_intel.knowledge.revision_mode import homogeneous_revision_mode
 
 MAX_FACTS = 8
 MAX_FACT_SOURCES = 8
@@ -831,6 +832,9 @@ class StructuredFactProofReader:
             with connection.begin(), Session(bind=connection) as session:
                 self._authorize()
                 candidate = self._read_inputs(session, request)
+                homogeneous_revision_mode(
+                    tuple(row["source_metadata"] for row in candidate.parents), self.data_mode
+                )
             loaded: dict[str, EnrichmentDocument] = {}
             errors: dict[str, str] = {}
             if (
@@ -881,6 +885,9 @@ class StructuredFactProofReader:
                 self._authorize()
                 self._lock_inputs(session, request, candidate)
                 current = self._read_inputs(session, request)
+                homogeneous_revision_mode(
+                    tuple(row["source_metadata"] for row in current.parents), self.data_mode
+                )
                 if current.fingerprint() != candidate.fingerprint():
                     association_only_change = (
                         replace(current, associations=candidate.associations).fingerprint()

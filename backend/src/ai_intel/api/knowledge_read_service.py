@@ -43,6 +43,11 @@ from ai_intel.knowledge.persistence_models import (
     event_external_ids,
     events,
 )
+from ai_intel.knowledge.revision_mode import (
+    MAX_REVISION_MODE_INPUTS,
+    RevisionModeUnavailableError,
+    homogeneous_revision_mode,
+)
 
 sources = table(
     "sources", column("source_id", Text), column("visibility", Text), column("tenant_id", Text)
@@ -138,11 +143,32 @@ def safe_source_uri(value: str | None) -> HttpUrl | None:
 class KnowledgeReadService:
     """只读服务复用已保存的版本与逐维状态，不自行推断安全或模型事实。"""
 
-    def __init__(self, session: Session, scope: AccessScope, data_mode: DataMode) -> None:
+    def __init__(
+        self,
+        session: Session,
+        scope: AccessScope,
+        data_mode: DataMode,
+        *,
+        require_expected_mode: bool = True,
+    ) -> None:
         scope.requires(READ_PUBLIC)
+        homogeneous_revision_mode((), data_mode, require_expected_mode=require_expected_mode)
         self.session = session
         self.scope = scope
         self.data_mode = data_mode
+        self.require_expected_mode = require_expected_mode
+
+    def _revision_mode(self, rows: tuple[RowMapping, ...] | list[RowMapping]) -> DataMode:
+        if len(rows) > MAX_REVISION_MODE_INPUTS:
+            raise KnowledgeProjectionError("source_mode_input_limit_exceeded")
+        try:
+            return homogeneous_revision_mode(
+                tuple(row["source_metadata"] for row in rows),
+                self.data_mode,
+                require_expected_mode=self.require_expected_mode,
+            )
+        except RevisionModeUnavailableError as error:
+            raise KnowledgeProjectionError(str(error)) from error
 
     def _visible(self, relation: FromClause) -> ColumnElement[bool]:
         visible = and_(relation.c.visibility == "public", relation.c.tenant_id.is_(None))
@@ -240,17 +266,17 @@ class KnowledgeReadService:
             ).mappings()
         )
         selected = rows[:limit]
-        summaries = self._summaries(selected)
+        summaries, data_mode = self._summaries(selected)
         return EventListResponse(
             items=tuple(summaries[row["event_id"]] for row in selected),
             next_cursor=encode_event_cursor(selected[-1], filters) if len(rows) > limit else None,
-            data_mode=self.data_mode,
+            data_mode=data_mode,
         )
 
-    def _summaries(self, rows: list[RowMapping]) -> dict[str, EventSummary]:
+    def _summaries(self, rows: list[RowMapping]) -> tuple[dict[str, EventSummary], DataMode]:
         ids = tuple(row["event_id"] for row in rows)
         if not ids:
-            return {}
+            return {}, self.data_mode
         external: dict[str, list[str]] = {event_id: [] for event_id in ids}
         for event_id, value in self.session.execute(
             select(event_external_ids.c.event_id, event_external_ids.c.id_value)
@@ -283,9 +309,15 @@ class KnowledgeReadService:
                 document_revisions.c.revision_number.desc(),
                 document_revisions.c.revision_id.desc(),
             )
+            .limit(MAX_REVISION_MODE_INPUTS + 1)
         )
         for revision in self.session.execute(query).mappings():
             associated[revision["event_id"]].append(revision)
+        if any(not values for values in associated.values()):
+            raise KnowledgeProjectionError("event_source_mode_unavailable")
+        data_mode = self._revision_mode(
+            tuple(revision for values in associated.values() for revision in values)
+        )
         return {
             row["event_id"]: EventSummary(
                 event_id=UUID(row["event_id"]),
@@ -306,7 +338,7 @@ class KnowledgeReadService:
                 freshness=FreshnessStatus.UNKNOWN,
             )
             for row in rows
-        }
+        }, data_mode
 
     def event_detail(self, event_id: UUID) -> EventDetailResponse:
         row = (
@@ -333,8 +365,10 @@ class KnowledgeReadService:
                     document_revisions.c.revision_number.desc(),
                     document_revisions.c.revision_id.desc(),
                 )
+                .limit(MAX_REVISION_MODE_INPUTS + 1)
             ).mappings()
         )
+        data_mode = self._revision_mode(revisions)
         revision_ids = tuple(revision["revision_id"] for revision in revisions)
         claim_rows = list(
             self.session.execute(
@@ -348,11 +382,34 @@ class KnowledgeReadService:
         links: dict[str, list[UUID]] = {item["claim_id"]: [] for item in claim_rows}
         declared_revisions = {item["claim_id"]: {item["source_revision_id"]} for item in claim_rows}
         for claim_id, revision_id in self.session.execute(
-            select(claim_assertions.c.claim_id, claim_assertions.c.revision_id).where(
-                claim_assertions.c.claim_id.in_(tuple(links))
+            select(claim_assertions.c.claim_id, claim_assertions.c.revision_id)
+            .select_from(
+                claim_assertions.join(
+                    self._revision_join(),
+                    claim_assertions.c.revision_id == document_revisions.c.revision_id,
+                )
             )
+            .where(claim_assertions.c.claim_id.in_(tuple(links)), self._revision_visible())
         ):
             declared_revisions[claim_id].add(revision_id)
+        declared_ids = {
+            identifier for values in declared_revisions.values() for identifier in values
+        }
+        other_ids = declared_ids.difference(revision_ids)
+        if len(other_ids) + len(revisions) > MAX_REVISION_MODE_INPUTS:
+            raise KnowledgeProjectionError("source_mode_input_limit_exceeded")
+        if other_ids:
+            other_revisions = list(
+                self.session.execute(
+                    select(document_revisions)
+                    .select_from(self._revision_join())
+                    .where(
+                        document_revisions.c.revision_id.in_(other_ids), self._revision_visible()
+                    )
+                    .limit(MAX_REVISION_MODE_INPUTS + 1)
+                ).mappings()
+            )
+            data_mode = self._revision_mode([*revisions, *other_revisions])
         for claim_id, evidence_id in self.session.execute(
             select(claim_evidence.c.claim_id, claim_evidence.c.evidence_id)
             .where(claim_evidence.c.claim_id.in_(tuple(links)))
@@ -376,12 +433,15 @@ class KnowledgeReadService:
             )
             for item in claim_rows
         )
+        summaries, summary_mode = self._summaries([row])
+        if summary_mode != data_mode:
+            raise KnowledgeProjectionError("stored_source_modes_disagree")
         return EventDetailResponse(
-            event=self._summaries([row])[str(event_id)],
+            event=summaries[str(event_id)],
             revisions=tuple(self._revision_summary(item) for item in revisions),
             claims=projected_claims,
             dimensions=self._dimensions(row, claim_rows, evidence_by_id),
-            data_mode=self.data_mode,
+            data_mode=data_mode,
         )
 
     def _revision_summary(self, row: RowMapping) -> RevisionSummary:
@@ -416,6 +476,7 @@ class KnowledgeReadService:
                 document_revisions.c.source_modified_at,
                 document_revisions.c.first_observed_at,
                 document_revisions.c.ingested_at,
+                document_revisions.c.source_metadata,
                 document_revisions.c.is_current.label("revision_current"),
                 text_blocks.c.page_number,
                 text_blocks.c.json_pointer,
@@ -543,7 +604,7 @@ class KnowledgeReadService:
             source_modified_at=row["source_modified_at"],
             first_observed_at=row["first_observed_at"],
             ingested_at=row["ingested_at"],
-            data_mode=self.data_mode,
+            data_mode=self._revision_mode((row,)),
         )
 
     def _dimensions(

@@ -50,6 +50,10 @@ from ai_intel.knowledge.persistence_models import (
     event_external_ids,
     events,
 )
+from ai_intel.knowledge.revision_mode import (
+    RevisionModeUnavailableError,
+    homogeneous_revision_mode,
+)
 
 JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
 ENRICHMENT_VALUE: TypeAdapter[EnrichmentValue] = TypeAdapter(EnrichmentValue)
@@ -112,13 +116,10 @@ def validate_page_inputs(q: str | None, limit: int, cursor: str | None) -> None:
 
 def classify_revision_mode(metadata: object, configured: DataMode) -> DataMode:
     """Deployment mode cannot relabel an unmarked or differently marked stored source."""
-    if not isinstance(metadata, dict) or not isinstance(metadata.get("data_mode"), str):
-        raise PublicReadUnavailable("stored source data mode is not configured")
-    if metadata["data_mode"] not in {"live", "fixture"}:
-        raise PublicReadUnavailable("stored source data mode is not configured")
-    if metadata["data_mode"] != configured:
-        raise PublicReadUnavailable("stored source data modes disagree")
-    return configured
+    try:
+        return homogeneous_revision_mode((metadata,), configured)
+    except RevisionModeUnavailableError as error:
+        raise PublicReadUnavailable(str(error)) from error
 
 
 def derive_source_health(observations: tuple[tuple[datetime, str], ...]) -> str:

@@ -6,6 +6,7 @@ from sqlalchemy.engine import Engine
 
 from ai_intel.api.actor_references import ActorReference
 from ai_intel.api.credentials import AuthenticatedCredential
+from ai_intel.infrastructure.content_storage_factory import build_content_storage
 from ai_intel.infrastructure.models.generation import GenerationClient, GenerationLimits
 from ai_intel.infrastructure.settings import ApplicationSettings
 from ai_intel.investigation.workflow_service import InvestigationWorkflowService
@@ -52,4 +53,5 @@ def build_investigation_service(
         model_factory=factory,
         model_provider=provider,
         model_version=version,
+        content_store=build_content_storage(settings),
     )

@@ -65,7 +65,9 @@ def build_knowledge_router(
                 )
             with Session(engine) as session:
                 session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
-                reader = KnowledgeReadService(session, scope, data_mode)
+                reader = KnowledgeReadService(
+                    session, scope, data_mode, require_expected_mode=False
+                )
                 return operation(reader)
         except (SessionExpiredError, InvalidCredentialsError):
             return problem_response(request, 401, "session_expired", "session is not valid")

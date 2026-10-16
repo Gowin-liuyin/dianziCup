@@ -36,10 +36,13 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     """在线模式: 真实连接目标库执行迁移。"""
     engine = create_engine(_database_url())
-    with engine.connect() as connection:
-        context.configure(connection=connection)
-        with context.begin_transaction():
-            context.run_migrations()
+    try:
+        with engine.connect() as connection:
+            context.configure(connection=connection)
+            with context.begin_transaction():
+                context.run_migrations()
+    finally:
+        engine.dispose()
 
 
 if context.is_offline_mode():

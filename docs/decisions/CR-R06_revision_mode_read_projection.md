@@ -31,3 +31,5 @@ R18 classify_revision_mode 复用同一严格分类和 expected-mode 规则；�
 ## 修订记录
 
 2026-10-17T01:56:52+08:00，Root：根据真实 clock 转北京时间冻结兼容方案；尚未实施、未 push，整卡 partial。
+
+2026-10-17T02:45:18+08:00，Root：模式集合容量复用R18既有2000输入上限，limit2001只检测超限并明确503，不丢历史/改游标/伪空。仅两个直属合成fixture输入改显式fixture（或明确trusted合成live），原业务Oracle与24诊断不改，不计live；所有可见实际修订必须核模式。
