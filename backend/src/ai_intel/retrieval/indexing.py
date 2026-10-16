@@ -6,12 +6,15 @@ import hashlib
 import json
 import math
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import and_, delete, func, or_, select
+import psycopg
+from sqlalchemy import and_, delete, event, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine, ExecutionContext
 from sqlalchemy.orm import Session
 
 from ai_intel.domain.access import AccessScope, Role
@@ -49,6 +52,117 @@ from ai_intel.retrieval.service import EventEvidenceRetriever, SemanticModels
 MAX_SCOPE_CHUNKS = 10000
 
 
+def require_projection_deadline(deadline: float | None) -> None:
+    if deadline is not None:
+        if type(deadline) not in (int, float) or not math.isfinite(deadline):
+            raise ValueError("index deadline must be a finite monotonic timestamp")
+        if deadline - time.monotonic() < 0.001:
+            raise HybridRetrievalError("corpus_projection_deadline_exceeded")
+
+
+def _timeout_milliseconds(value: str) -> int:
+    for suffix, factor in (("ms", 1), ("min", 60000), ("s", 1000), ("h", 3600000), ("d", 86400000)):
+        if value.endswith(suffix):
+            return int(float(value[: -len(suffix)]) * factor)
+    return int(value)
+
+
+@contextmanager
+def projection_database_deadline(session: Session, deadline: float | None) -> Iterator[None]:
+    """Bound statement execution on this connection, preserving stricter server timeouts."""
+    require_projection_deadline(deadline)
+    if deadline is None:
+        yield
+        return
+    connection = session.connection()
+    database = connection.connection.dbapi_connection
+    if not isinstance(database, psycopg.Connection):
+        raise HybridRetrievalError("corpus_projection_database_not_supported")
+    with database.cursor() as cursor:
+        cursor.execute("SHOW statement_timeout")
+        statement_row = cursor.fetchone()
+        cursor.execute("SHOW lock_timeout")
+        lock_row = cursor.fetchone()
+    if statement_row is None or lock_row is None:
+        raise HybridRetrievalError("corpus_projection_database_timeout_unavailable")
+    statement_timeout = _timeout_milliseconds(str(statement_row[0]))
+    lock_timeout = _timeout_milliseconds(str(lock_row[0]))
+
+    def apply_remaining_timeout() -> None:
+        require_projection_deadline(deadline)
+        remaining = int((deadline - time.monotonic()) * 1000)
+        if remaining < 1:
+            raise HybridRetrievalError("corpus_projection_deadline_exceeded")
+        with database.cursor() as cursor:
+            cursor.execute(
+                "SELECT set_config('statement_timeout', %s, true), "
+                "set_config('lock_timeout', %s, true)",
+                (
+                    str(min(statement_timeout, remaining) if statement_timeout else remaining),
+                    str(min(lock_timeout, remaining) if lock_timeout else remaining),
+                ),
+            )
+
+    def before_statement(
+        active_connection: Connection,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        execution_context: ExecutionContext,
+        executemany: bool,
+    ) -> None:
+        apply_remaining_timeout()
+
+    event.listen(connection, "before_cursor_execute", before_statement)
+    try:
+        apply_remaining_timeout()
+        yield
+    finally:
+        event.remove(connection, "before_cursor_execute", before_statement)
+
+
+def _reject_projection_sql_after_constraints(
+    connection: Connection,
+    cursor: object,
+    statement: str,
+    parameters: object,
+    execution_context: ExecutionContext,
+    executemany: bool,
+) -> None:
+    raise HybridRetrievalError("corpus_projection_sql_after_constraints")
+
+
+@contextmanager
+def _projection_session(engine: Engine, deadline: float | None) -> Iterator[Session]:
+    with engine.connect() as connection, Session(connection) as session:
+        try:
+            with projection_database_deadline(session, deadline):
+                yield session
+                if deadline is None:
+                    session.commit()
+                else:
+                    require_projection_deadline(deadline)
+                    session.flush()
+                    session.execute(text("SET CONSTRAINTS ALL IMMEDIATE"))
+                    require_projection_deadline(deadline)
+                    event.listen(
+                        connection,
+                        "before_cursor_execute",
+                        _reject_projection_sql_after_constraints,
+                    )
+                    try:
+                        session.commit()
+                    finally:
+                        event.remove(
+                            connection,
+                            "before_cursor_execute",
+                            _reject_projection_sql_after_constraints,
+                        )
+        except BaseException:
+            session.rollback()
+            raise
+
+
 class HybridIndexer:
     def __init__(
         self,
@@ -60,9 +174,10 @@ class HybridIndexer:
         generation.require_fixed_space()
         self.engine, self.models, self.search, self.generation = engine, models, search, generation
 
-    def prepare_generation(self) -> None:
+    def prepare_generation(self, *, deadline: float | None = None) -> None:
         """Root must first apply the proposed migration; this method never creates PG tables."""
-        with Session(self.engine) as session, session.begin():
+        require_projection_deadline(deadline)
+        with _projection_session(self.engine, deadline) as session:
             existing = (
                 session.execute(
                     select(hybrid_index_generations).where(
@@ -89,15 +204,10 @@ class HybridIndexer:
             )
 
     def refresh_scope(self, change: IndexChange, *, deadline: float | None = None) -> IndexReceipt:
-        """An optional worker deadline bounds IO and prevents a late PG receipt commit."""
-        if deadline is not None and (
-            type(deadline) not in (int, float) or not math.isfinite(deadline)
-        ):
-            raise ValueError("index deadline must be a finite monotonic timestamp")
+        """Bound IO and terminal constraint checks; COMMIT acknowledgement can remain uncertain."""
 
         def require_deadline() -> None:
-            if deadline is not None and time.monotonic() >= deadline:
-                raise HybridRetrievalError("corpus_projection_deadline_exceeded")
+            require_projection_deadline(deadline)
 
         require_deadline()
         UUID(change.outbox_id)
@@ -108,7 +218,7 @@ class HybridIndexer:
         else:
             raise ValueError("invalid index scope")
         worker_scope = AccessScope.for_authenticated_user("internal-indexer", tenant, Role.ANALYST)
-        with Session(self.engine) as session, session.begin():
+        with _projection_session(self.engine, deadline) as session:
             session.execute(
                 select(
                     func.pg_advisory_xact_lock(
@@ -229,10 +339,11 @@ class HybridIndexer:
                 )
             )
             now = datetime.now(UTC)
+            chunk_values = []
             for candidate, vector in zip(candidates, vectors, strict=True):
                 require_deadline()
-                session.execute(
-                    insert(hybrid_chunks).values(
+                chunk_values.append(
+                    dict(
                         **candidate_values(candidate),
                         generation_id=self.generation.generation_id,
                         model_version=self.generation.model_version,
@@ -241,6 +352,8 @@ class HybridIndexer:
                         indexed_at=now,
                     )
                 )
+            for start in range(0, len(chunk_values), 64):
+                session.execute(insert(hybrid_chunks), chunk_values[start : start + 64])
             digest = hashlib.sha256(
                 json.dumps(
                     [[item.chunk_id, item.text_sha256] for item in candidates],
