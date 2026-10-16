@@ -12,7 +12,9 @@
 
 锁顺序credential+users→job/workflow owner→业务资源，与现有enqueue一致，不反序等待。job_runs只有tenant没有owner，单tenant不足；R14 owner必须来自同事务锁住的investigation_workflows；R15来自subscription/generation复合owner。不能信任body或调用者自报owner。实际绑定服务同PG锁查job_id/tenant并与受信owner记录核对，public接口不暴露reference构造或解析。
 
-兼容：旧cookie函数名/str参数路径及旧服务语义保留，直接35调用方与类型需核查，不自行批量扩大constructor；APIkey管理、公用路由及worker挂载另root集成，不以内部模块宣称接通。迁移无需新增身份表；回滚关闭新reference入口保留既有事实，不存回raw凭据。测试覆盖两个租户/用户、引用伪造、jobowner不同、锁后expiry/撤销/角色变化、权限交集、key版本/resource、重启恢复与秘密不序列化。unit/contract、安全/真实PG分别记录；frontend/e2e/live未跑写not_run。
+兼容：旧cookie函数名/str参数路径及旧服务语义保留，全部直接调用与两跳类型消费者需核查（冻结312958业务src有16次直接调用/11文件；CBM两跳35包括file/heuristic，不能称直接35），不自行批量扩大constructor；APIkey管理、公用路由及worker挂载另root集成，不以内部模块宣称接通。迁移无需新增身份表；回滚关闭新reference入口保留既有事实，不存回raw凭据。测试覆盖两个租户/用户、引用伪造、jobowner不同、锁后expiry/撤销/角色变化、权限交集、key版本/resource、重启恢复与秘密不序列化。unit/contract、安全/真实PG分别记录；frontend/e2e/live未跑写not_run。
 
 本次写作结束时间：2026-10-16T12:28:28+08:00
-最后更新时间：2026-10-16T12:28:28+08:00
+最后更新时间：2026-10-16T13:13:42+08:00
+
+修订记录：2026-10-16T13:13:42+08:00，依据独立src/AST/图核对纠正直接调用计数口径；worker旧锁序接线仍待短事务执行端口。

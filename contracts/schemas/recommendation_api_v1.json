@@ -1,0 +1,1359 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dianzi:recommendation-api:v1",
+  "schema_version": 1,
+  "$defs": {
+    "SubscriptionSpec": {
+      "additionalProperties": false,
+      "description": "Internal spec; public minimum_priority mapping is owned by the API adapter.",
+      "properties": {
+        "product_keys": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Product Keys",
+          "type": "array"
+        },
+        "asset_ids": {
+          "default": [],
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Asset Ids",
+          "type": "array"
+        },
+        "risk_topics": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Risk Topics",
+          "type": "array"
+        },
+        "maximum_priority_bucket": {
+          "default": 3,
+          "maximum": 3,
+          "minimum": 0,
+          "title": "Maximum Priority Bucket",
+          "type": "integer"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "SubscriptionSpec",
+      "type": "object"
+    },
+    "SubscriptionRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "r15-subscription-1",
+          "default": "r15-subscription-1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "subscription_id": {
+          "format": "uuid",
+          "title": "Subscription Id",
+          "type": "string"
+        },
+        "tenant_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "user_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "User Id",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "spec": {
+          "$ref": "#/$defs/SubscriptionSpec"
+        },
+        "spec_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Spec Sha256",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subscription_id",
+        "tenant_id",
+        "user_id",
+        "version",
+        "spec",
+        "spec_sha256",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "SubscriptionRecord",
+      "type": "object"
+    },
+    "SubscriptionPage": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/SubscriptionRecord"
+          },
+          "maxItems": 200,
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "SubscriptionPage",
+      "type": "object"
+    },
+    "AssessmentReference": {
+      "additionalProperties": false,
+      "description": "Original receipt result and evidence, retained without reevaluation.",
+      "properties": {
+        "assessment_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Assessment Id",
+          "type": "string"
+        },
+        "asset_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "asset_snapshot_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Asset Snapshot Id",
+          "type": "string"
+        },
+        "rule_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "rule_version": {
+          "minimum": 1,
+          "title": "Rule Version",
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/AssessmentStatus"
+        },
+        "knowledge_epoch": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Knowledge Epoch"
+        },
+        "scope_epoch_map": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Scope Epoch Map",
+          "type": "object"
+        },
+        "input_digest": {
+          "title": "Input Digest",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceReference"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "missing_requirements": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Requirements",
+          "type": "array"
+        },
+        "conflicts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Conflicts",
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "assessment_id",
+        "asset_id",
+        "asset_snapshot_id",
+        "rule_id",
+        "rule_version",
+        "status",
+        "knowledge_epoch",
+        "scope_epoch_map",
+        "input_digest",
+        "evidence",
+        "missing_requirements",
+        "conflicts",
+        "limitations"
+      ],
+      "title": "AssessmentReference",
+      "type": "object"
+    },
+    "AssessmentStatus": {
+      "description": "研判结论: 四态表达, 不等价于已入侵或绝对安全。",
+      "enum": [
+        "supported_applicability",
+        "excluded_with_evidence",
+        "insufficient_evidence",
+        "conflicting_evidence"
+      ],
+      "title": "AssessmentStatus",
+      "type": "string"
+    },
+    "CitationProjection": {
+      "additionalProperties": false,
+      "description": "引用保留版本与定位；它的存在本身不证明支撑关系。",
+      "properties": {
+        "evidence_id": {
+          "format": "uuid",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "revision_id": {
+          "format": "uuid",
+          "title": "Revision Id",
+          "type": "string"
+        },
+        "quote": {
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        },
+        "locator": {
+          "minLength": 1,
+          "title": "Locator",
+          "type": "string"
+        },
+        "source_uri": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Source Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "revision_id",
+        "quote",
+        "locator",
+        "source_uri"
+      ],
+      "title": "CitationProjection",
+      "type": "object"
+    },
+    "ClaimStatus": {
+      "description": "事实记录状态; 不与条件真假混用。",
+      "enum": [
+        "supported",
+        "disputed",
+        "unverified",
+        "superseded",
+        "withdrawn"
+      ],
+      "title": "ClaimStatus",
+      "type": "string"
+    },
+    "EvidenceReference": {
+      "additionalProperties": false,
+      "description": "Caller checked coordinates/support; pure checks cannot authenticate stored source text.",
+      "properties": {
+        "evidence_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "document_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "revision_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Revision Id",
+          "type": "string"
+        },
+        "block_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Block Id",
+          "type": "string"
+        },
+        "start_offset": {
+          "minimum": 0,
+          "title": "Start Offset",
+          "type": "integer"
+        },
+        "end_offset": {
+          "minimum": 1,
+          "title": "End Offset",
+          "type": "integer"
+        },
+        "quote_text": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Quote Text",
+          "type": "string"
+        },
+        "quote_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Quote Sha256",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/VisibilityScope"
+        },
+        "support_kind": {
+          "enum": [
+            "supports",
+            "refutes",
+            "context"
+          ],
+          "title": "Support Kind",
+          "type": "string"
+        },
+        "validation_status": {
+          "enum": [
+            "validated",
+            "unverified"
+          ],
+          "title": "Validation Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "source_id",
+        "document_id",
+        "revision_id",
+        "block_id",
+        "start_offset",
+        "end_offset",
+        "quote_text",
+        "quote_sha256",
+        "scope",
+        "support_kind",
+        "validation_status"
+      ],
+      "title": "EvidenceReference",
+      "type": "object"
+    },
+    "FreshnessStatus": {
+      "description": "时效状态: 缺观察时间不得填 current。",
+      "enum": [
+        "current",
+        "stale",
+        "unknown"
+      ],
+      "title": "FreshnessStatus",
+      "type": "string"
+    },
+    "RecommendationCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/RecommendationKey"
+        },
+        "tenant_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "user_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "User Id",
+          "type": "string"
+        },
+        "policy_version": {
+          "const": "r15-recommendation-policy-1",
+          "default": "r15-recommendation-policy-1",
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "supported_risk",
+            "prioritize_verification",
+            "excluded_with_evidence",
+            "intelligence_update"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "priority_bucket": {
+          "maximum": 3,
+          "minimum": 0,
+          "title": "Priority Bucket",
+          "type": "integer"
+        },
+        "reasons": {
+          "items": {
+            "$ref": "#/$defs/RecommendationReason"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "assessments": {
+          "items": {
+            "$ref": "#/$defs/AssessmentReference"
+          },
+          "title": "Assessments",
+          "type": "array"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "source_changed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Changed At"
+        },
+        "valid_from": {
+          "format": "date-time",
+          "title": "Valid From",
+          "type": "string"
+        },
+        "valid_until": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Valid Until"
+        },
+        "validity_as_of": {
+          "format": "date-time",
+          "title": "Validity As Of",
+          "type": "string"
+        },
+        "freshness_at_cutoff": {
+          "$ref": "#/$defs/FreshnessStatus"
+        },
+        "current_status": {
+          "$ref": "#/$defs/ClaimStatus"
+        },
+        "current_freshness": {
+          "$ref": "#/$defs/FreshnessStatus"
+        },
+        "current_state_checked_at": {
+          "format": "date-time",
+          "title": "Current State Checked At",
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "key",
+        "tenant_id",
+        "user_id",
+        "kind",
+        "priority_bucket",
+        "reasons",
+        "assessments",
+        "observed_at",
+        "source_changed_at",
+        "valid_from",
+        "valid_until",
+        "validity_as_of",
+        "freshness_at_cutoff",
+        "current_status",
+        "current_freshness",
+        "current_state_checked_at",
+        "limitations"
+      ],
+      "title": "RecommendationCandidate",
+      "type": "object"
+    },
+    "RecommendationKey": {
+      "additionalProperties": false,
+      "properties": {
+        "subscription_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Subscription Id",
+          "type": "string"
+        },
+        "event_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        },
+        "material_version": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Material Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subscription_id",
+        "event_id",
+        "material_version"
+      ],
+      "title": "RecommendationKey",
+      "type": "object"
+    },
+    "RecommendationReason": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "product_match",
+            "risk_topic_match",
+            "asset_assessment",
+            "high_consequence"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "matched_key": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Matched Key",
+          "type": "string"
+        },
+        "claim_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Claim Id"
+        },
+        "citations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CitationProjection"
+          },
+          "title": "Citations",
+          "type": "array"
+        },
+        "assessment_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Assessment Id"
+        }
+      },
+      "required": [
+        "code",
+        "matched_key"
+      ],
+      "title": "RecommendationReason",
+      "type": "object"
+    },
+    "VisibilityScope": {
+      "description": "可见范围: public 记录 tenant_id 必须为空, tenant 记录必须非空。",
+      "properties": {
+        "visibility": {
+          "pattern": "^(public|tenant)$",
+          "title": "Visibility",
+          "type": "string"
+        },
+        "tenant_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tenant Id"
+        }
+      },
+      "required": [
+        "visibility"
+      ],
+      "title": "VisibilityScope",
+      "type": "object"
+    },
+    "RecommendationRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "recommendation_id": {
+          "format": "uuid",
+          "title": "Recommendation Id",
+          "type": "string"
+        },
+        "generation_id": {
+          "format": "uuid",
+          "title": "Generation Id",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "content": {
+          "$ref": "#/$defs/RecommendationCandidate"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "read_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Read At"
+        },
+        "current_status": {
+          "enum": [
+            "current",
+            "stale",
+            "withdrawn",
+            "unknown"
+          ],
+          "title": "Current Status",
+          "type": "string"
+        },
+        "current_reason": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Current Reason",
+          "type": "string"
+        },
+        "current_checked_at": {
+          "format": "date-time",
+          "title": "Current Checked At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "recommendation_id",
+        "generation_id",
+        "content_sha256",
+        "content",
+        "created_at",
+        "read_at",
+        "current_status",
+        "current_reason",
+        "current_checked_at"
+      ],
+      "title": "RecommendationRecord",
+      "type": "object"
+    },
+    "RecommendationPage": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/RecommendationRecord"
+          },
+          "maxItems": 200,
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "RecommendationPage",
+      "type": "object"
+    },
+    "CandidateGap": {
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Event Id"
+        },
+        "asset_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Id"
+        },
+        "code": {
+          "enum": [
+            "no_current_semantic_support",
+            "selector_evidence_budget_exceeded",
+            "claim_not_current",
+            "source_time_unavailable",
+            "assessment_not_current",
+            "assessment_unavailable",
+            "graph_partial",
+            "source_withdrawn",
+            "event_not_active",
+            "unsupported_topic",
+            "input_scope_partial",
+            "consequence_selector_unavailable"
+          ],
+          "title": "Code",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "title": "CandidateGap",
+      "type": "object"
+    },
+    "ReportCandidate": {
+      "additionalProperties": false,
+      "description": "An immutable report proposal, not a persisted report or a statement of current truth.",
+      "properties": {
+        "policy_version": {
+          "const": "r15-recommendation-policy-1",
+          "default": "r15-recommendation-policy-1",
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "subscription_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Subscription Id",
+          "type": "string"
+        },
+        "tenant_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "user_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "User Id",
+          "type": "string"
+        },
+        "frequency": {
+          "enum": [
+            "day",
+            "week"
+          ],
+          "title": "Frequency",
+          "type": "string"
+        },
+        "window_start": {
+          "format": "date-time",
+          "title": "Window Start",
+          "type": "string"
+        },
+        "cutoff_at": {
+          "format": "date-time",
+          "title": "Cutoff At",
+          "type": "string"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "title": "Generated At",
+          "type": "string"
+        },
+        "temporal_mode": {
+          "const": "as_of_cutoff",
+          "default": "as_of_cutoff",
+          "title": "Temporal Mode",
+          "type": "string"
+        },
+        "window_basis": {
+          "const": "first_material_observed_at",
+          "default": "first_material_observed_at",
+          "title": "Window Basis",
+          "type": "string"
+        },
+        "supported_risks": {
+          "items": {
+            "$ref": "#/$defs/RecommendationCandidate"
+          },
+          "title": "Supported Risks",
+          "type": "array"
+        },
+        "verification_items": {
+          "items": {
+            "$ref": "#/$defs/RecommendationCandidate"
+          },
+          "title": "Verification Items",
+          "type": "array"
+        },
+        "excluded_items": {
+          "items": {
+            "$ref": "#/$defs/RecommendationCandidate"
+          },
+          "title": "Excluded Items",
+          "type": "array"
+        },
+        "intelligence_updates": {
+          "items": {
+            "$ref": "#/$defs/RecommendationCandidate"
+          },
+          "title": "Intelligence Updates",
+          "type": "array"
+        },
+        "partial": {
+          "title": "Partial",
+          "type": "boolean"
+        },
+        "continuation_keys": {
+          "items": {
+            "$ref": "#/$defs/RecommendationKey"
+          },
+          "title": "Continuation Keys",
+          "type": "array"
+        },
+        "stop_reason": {
+          "enum": [
+            "disabled",
+            "no_items_in_window",
+            "complete",
+            "item_budget"
+          ],
+          "title": "Stop Reason",
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "subscription_id",
+        "tenant_id",
+        "user_id",
+        "frequency",
+        "window_start",
+        "cutoff_at",
+        "generated_at",
+        "supported_risks",
+        "verification_items",
+        "excluded_items",
+        "intelligence_updates",
+        "partial",
+        "continuation_keys",
+        "stop_reason",
+        "limitations"
+      ],
+      "title": "ReportCandidate",
+      "type": "object"
+    },
+    "StoredReportContent": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "r15-report-1",
+          "default": "r15-report-1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "report": {
+          "$ref": "#/$defs/ReportCandidate"
+        },
+        "generation_id": {
+          "format": "uuid",
+          "title": "Generation Id",
+          "type": "string"
+        },
+        "event_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 2000,
+          "title": "Event Ids",
+          "type": "array"
+        },
+        "data_mode": {
+          "enum": [
+            "live",
+            "fixture"
+          ],
+          "title": "Data Mode",
+          "type": "string"
+        },
+        "gaps": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CandidateGap"
+          },
+          "title": "Gaps",
+          "type": "array"
+        },
+        "max_items": {
+          "maximum": 200,
+          "minimum": 1,
+          "title": "Max Items",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "report",
+        "generation_id",
+        "event_ids",
+        "data_mode",
+        "max_items"
+      ],
+      "title": "StoredReportContent",
+      "type": "object"
+    },
+    "ReportReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "report_id": {
+          "format": "uuid",
+          "title": "Report Id",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "content": {
+          "$ref": "#/$defs/StoredReportContent"
+        },
+        "current_status": {
+          "enum": [
+            "current",
+            "stale",
+            "withdrawn",
+            "unknown"
+          ],
+          "title": "Current Status",
+          "type": "string"
+        },
+        "current_reason": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Current Reason",
+          "type": "string"
+        },
+        "current_checked_at": {
+          "format": "date-time",
+          "title": "Current Checked At",
+          "type": "string"
+        },
+        "reused": {
+          "default": false,
+          "title": "Reused",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "report_id",
+        "content_sha256",
+        "content",
+        "current_status",
+        "current_reason",
+        "current_checked_at"
+      ],
+      "title": "ReportReceipt",
+      "type": "object"
+    },
+    "ReportPage": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ReportReceipt"
+          },
+          "maxItems": 200,
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "ReportPage",
+      "type": "object"
+    },
+    "PublicSubscriptionSpec": {
+      "additionalProperties": false,
+      "description": "Internal spec; public minimum_priority mapping is owned by the API adapter.",
+      "properties": {
+        "product_keys": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Product Keys",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "asset_ids": {
+          "default": [],
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Asset Ids",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "risk_topics": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Risk Topics",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "minimum_priority": {
+          "default": 3,
+          "maximum": 3,
+          "minimum": 0,
+          "title": "Maximum Priority Bucket",
+          "type": "integer",
+          "description": "Lowest included priority: identical integer maps to internal maximum_priority_bucket; 0 highest only, 3 all."
+        }
+      },
+      "title": "PublicSubscriptionSpec",
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "product_keys": {
+              "minItems": 1
+            }
+          },
+          "required": [
+            "product_keys"
+          ]
+        },
+        {
+          "properties": {
+            "asset_ids": {
+              "minItems": 1
+            }
+          },
+          "required": [
+            "asset_ids"
+          ]
+        },
+        {
+          "properties": {
+            "risk_topics": {
+              "minItems": 1
+            }
+          },
+          "required": [
+            "risk_topics"
+          ]
+        }
+      ]
+    },
+    "CreateSubscription": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "spec"
+      ],
+      "properties": {
+        "spec": {
+          "$ref": "#/$defs/PublicSubscriptionSpec"
+        }
+      }
+    },
+    "ReplaceSubscription": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expected_version",
+        "spec"
+      ],
+      "properties": {
+        "expected_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "spec": {
+          "$ref": "#/$defs/PublicSubscriptionSpec"
+        }
+      }
+    },
+    "SetSubscriptionEnabled": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expected_version",
+        "enabled"
+      ],
+      "properties": {
+        "expected_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "GenerateRecommendations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_candidates": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 200
+        }
+      }
+    },
+    "GenerationResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generation_id",
+        "recommendation_ids",
+        "partial",
+        "gaps",
+        "reused",
+        "data_mode"
+      ],
+      "properties": {
+        "generation_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "recommendation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "maxItems": 200
+        },
+        "partial": {
+          "type": "boolean"
+        },
+        "gaps": {
+          "type": "array",
+          "maxItems": 2000,
+          "items": {
+            "$ref": "#/$defs/CandidateGap"
+          }
+        },
+        "reused": {
+          "type": "boolean"
+        },
+        "data_mode": {
+          "enum": [
+            "live",
+            "fixture"
+          ]
+        }
+      }
+    },
+    "CreateReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subscription_id",
+        "generation_id",
+        "frequency"
+      ],
+      "properties": {
+        "subscription_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "generation_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "frequency": {
+          "enum": [
+            "day",
+            "week"
+          ]
+        },
+        "max_items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 20
+        }
+      }
+    }
+  },
+  "x-change-records": [
+    "CR-R15_persistent_subscription_interfaces",
+    "CR-R15_public_workbench_contract"
+  ]
+}

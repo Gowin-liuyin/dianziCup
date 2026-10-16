@@ -4,9 +4,9 @@
 本次写作开始时间：2026-10-16T12:25:25+08:00
 状态：approved_for_implementation；独立审查与产品验收待执行。
 
-依据本次完整批次及已批准 CR-R04 的真实九职责、LangGraph 与 PostgreSQL 建设目标，采用 LangGraph 1.2.15 和 langgraph-checkpoint-postgres 3.2.0。官方版本及 wheel 哈希已核对：[LangGraph](https://pypi.org/project/langgraph/)、[PG checkpointer](https://pypi.org/project/langgraph-checkpoint-postgres/)。[官方配置要求](https://github.com/langchain-ai/langgraph/blob/main/libs/checkpoint-postgres/README.md)的 autocommit、dict_row 和 setup 必须落实；setup 仅受控部署/隔离测试命令执行。不得隐式开启远程 tracing、使用不可信 pickle 或类动态导入。
+依据本次完整批次及已批准 CR-R01/CR-R02 的真实九职责、LangGraph 与 PostgreSQL 建设目标，采用 LangGraph 1.2.15 和 langgraph-checkpoint-postgres 3.2.0。官方版本及 wheel 哈希已核对：[LangGraph](https://pypi.org/project/langgraph/)、[PG checkpointer](https://pypi.org/project/langgraph-checkpoint-postgres/)。[官方配置要求](https://github.com/langchain-ai/langgraph/blob/main/libs/checkpoint-postgres/README.md)的 autocommit、dict_row 和 setup 必须落实；setup 仅受控部署/隔离测试命令执行。不得隐式开启远程 tracing、使用不可信 pickle 或类动态导入。
 
-新增依赖仅用于确实要求的持久恢复。锁文件新增20个传递包，原113个包版本保持；133包锁已在仓外独立 runtime frozen sync，exit0，2026-10-16T12:04:54+08:00 至12:05:04+08:00。证据：[dependency_receipt.json](../../reports/runs/recovery_r14_langgraph_dependencies_20261016/dependency_receipt.json)。主 backend 环境未同步、未下载模型；安装成功不是工作流成功。LangSmith 是传递依赖，不授权向其传输数据。
+新增依赖仅用于确实要求的持久恢复。锁文件新增2个直接依赖及18个传递包，共20包，原113个包版本保持；133包锁已在仓外独立 runtime frozen sync，exit0，2026-10-16T12:04:54+08:00 至12:05:04+08:00。证据：[dependency_receipt.json](../../reports/runs/recovery_r14_langgraph_dependencies_20261016/dependency_receipt.json)。主 backend 环境未同步、未下载模型；安装成功不是工作流成功。LangSmith 是传递依赖，不授权向其传输数据。
 
 输入为受限 InvestigationRequest：question、event_id、最多8个 evidence refs、可选 asset/snapshot、B2/B2b/B3。预算、身份、thread、角色、权限由服务端决定。enqueue 同 PostgreSQL 事务创建既有 job/payload/outbox 并绑定 owner；不能认领任意已有 job。执行只接受真实 JobExecutionContext/租约。thread ID 由 owner、tenant、job、graph version 确定；不暴露任意 checkpoint 查询或列举。
 
@@ -19,4 +19,6 @@
 兼容性：不改旧工具合同/角色权限/原预算与评分；新入口新增，既有任务仍权威。迁移：前向0028与受控 checkpointer setup；不用请求启动建表。回滚：撤销新handler/入口，保留PG事实、任务与审计，不自动downgrade。测试影响：严格输入、无配置、owner/tenant、撤销/锁后过期、重放/并发、两进程恢复、epoch/资产变化、预算与未知模型消费、真实模型/PG路径。unit/contract fixture不计live。实现冻结后由新非作者审查，阶段仍partial。
 
 本次写作结束时间：2026-10-16T12:28:28+08:00
-最后更新时间：2026-10-16T12:28:28+08:00
+最后更新时间：2026-10-16T13:13:42+08:00
+
+修订记录：2026-10-16T13:13:42+08:00，依据独立审查纠正授权条款与依赖分类。旧executor先持job锁，R14不得直接挂其长事务handler；root须用短认领、释放事务、带租约/actor重验的独立执行端口，外部IO不持认证/job锁；接线前置仍未完成。
