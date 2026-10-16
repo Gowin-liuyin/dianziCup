@@ -1,3 +1,17 @@
+## 当前权威续接与所有权 · 2026-10-16T14:50:57+08:00
+
+主控codex/full-delivery-recovery@9e6abcab95916340655f7dcdd163bf4cf851c7a4；origin授权URL不变，最后已核远端仍G-B c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7，G-C未放行/未push，G-D/G-E仅独立准备。受保护用户frontend/tsconfig.tsbuildinfo SHA 3c587edfd308fb5cf04efa6e2d87b7005ef28c8c656842059b2eca405738e43d，不stage/build/restore。原60T、金标、阈值、分母和历史保留；整卡状态不因局部Ship提升。
+
+实际集成：312958正式5CR/2直接+18传递依赖；84871补root遗漏job_types；048c工具网关、7ae推荐策略、52b变化候选；e4c289精确补3冻结R15 fixture；9e6 root0027四表迁移/public27defs/文档精度修订。主仓离线3492=3469pass/22fail/1error/69.41%，原日志recovery_integrated_offline_20261016_1238保存，尚未整批重跑：三fixture红已恢复依赖待复核，16旧codec预期、旧迁移head、2真CPU红和T07 PG缺配置分列，不能改skip。源集成曾漏job_types与fixture是主控实际缺陷，非依赖环境借口。
+
+正在并行：R06原独立reviewer fresh fix2；R12最后封包（全部PG audit0已released）；R14新非作者LangGraph审查；R17新非作者推荐/报告UI审查；R15持久服务材料冻结；Detached作者12PG；Actor原reviewer fresh组合PG。root负责公共合同/0028–29迁移/API/App/worker、资源与秘密配置、续接/阶段文档、唯一commit/push。作者和review均独立WT，不写main业务/progress，不自行push/accepted或递归spawn。每批初审必须新非作者；旧review只定向复核同批修复。
+
+PG最多2heavy batches：当前Detached与Actor各一个、每人串行pytest/NullPool≤2conn；R14新review先offline准备后申请。原R12 max3两独占窗均已结束audit0，不能当全局并发扩大。PG25432/Redis26379/OS29200期限2026-10-17T21:49:15+08，Neo4j期限2026-10-16T19:35:43.312788+08。真来源6h尚未新启动，9-script配置与资源启动门仍待root。原06:19:43–06:47:34段1670.457817秒不算6h。
+
+关键接线：R15已0027/schema但API/PG request receipt未实现；R14 graph源码已出，但default120/max600秒与旧lease60/Celery25/30秒需实际一致方案，Detached未注册；Actor窄key消费方误拒已作者修，须复核后源集成；SDK async闭环组合待源集成；前端521c导出workspace尚未App挂载和/api/v1代理。正式live/人工/性能/持续时效/盲测/cleanrepro与R24-A→R23→R24-B仍不完整，不是仅剩外部阻塞。
+
+模型/API费用用户已授权任务内使用、不设人工费用上限；仍需每任务调用/并发/期限上限和实际usage/cost未知记unknown。已有授权凭据旧仓外locator需重新定位，不能把Codex账号当产品密钥或向Agent传密钥。人工双人独立label/裁决、FOFA授权资产范围、CNNVD登录/下载未确认；PPT后置未取消。Goal active，继续实施/审查/集成，不能结束或假称后台不停工作。
+
 ## 当前权威续接与所有权 · 2026-10-16T10:56:44+08:00
 
 主控codex/full-delivery-recovery@8d62b54d83a3e6b56aeeb23102faa777496328db，origin=https://github.com/Gowin-liuyin/dianziCup.git本轮真实复核。最后已核远端G-B/c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7，未G-C阶段放行/push；G-C仍in_progress/partial，G-D/G-E明确独立准备。原60T和历史不变；保护用户frontend/tsconfig.tsbuildinfo SHA3c587e，不stage/build/restore。
