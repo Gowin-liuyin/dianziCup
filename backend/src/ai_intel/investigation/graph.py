@@ -11,6 +11,27 @@ from ai_intel.investigation.capabilities import B2_ROLE_MAP, AgentRole
 from ai_intel.investigation.graph_contracts import Strategy, WorkflowState
 
 RoleExecutor = Callable[[AgentRole, WorkflowState], WorkflowState]
+UNKNOWN_OPERATION_REASONS = ("model_outcome_unknown", "operation_outcome_unknown")
+
+
+def get_unknown_operation_reason(state: WorkflowState) -> str | None:
+    """Persisted unknown outcomes stop further work even when an earlier gap occupied state."""
+    for reason in UNKNOWN_OPERATION_REASONS:
+        if state["stop_reason"] == reason or any(
+            receipt.get("reason_code") == reason for receipt in state["receipts"]
+        ):
+            return reason
+    return None
+
+
+def normalize_unknown_operation_state(state: WorkflowState) -> WorkflowState:
+    """Stop unknown work without replacing a stronger safety outcome or a confirmed conflict."""
+    reason = get_unknown_operation_reason(state)
+    if reason is None or state["status"] in {"failed", "waiting_approval", "stale"}:
+        return state
+    if state["stop_reason"] == "critical_conflict":
+        return {**state, "status": "partial"}
+    return {**state, "status": "partial", "stop_reason": reason, "verified": False}
 
 
 def build_investigation_graph(
@@ -29,6 +50,9 @@ def build_investigation_graph(
     def stage(roles: tuple[AgentRole, ...]) -> Callable[[WorkflowState], WorkflowState]:
         def execute(state: WorkflowState) -> WorkflowState:
             for role in roles:
+                unknown_reason = get_unknown_operation_reason(state)
+                if unknown_reason is not None:
+                    return normalize_unknown_operation_state(state)
                 state = execute_role(role, state)
                 if state["status"] in {"failed", "waiting_approval", "stale"}:
                     break
@@ -43,7 +67,8 @@ def build_investigation_graph(
         next_node = groups[index + 1][0] if index + 1 < len(groups) else END
 
         def route(state: WorkflowState, successor: str = next_node) -> str:
-            return END if state["status"] in {"failed", "waiting_approval", "stale"} else successor
+            stopped = state["status"] in {"failed", "waiting_approval", "stale"}
+            return END if stopped or get_unknown_operation_reason(state) is not None else successor
 
         builder.add_conditional_edges(name, route, {END: END, next_node: next_node})
     return builder.compile(checkpointer=checkpointer, name="r14-investigation")

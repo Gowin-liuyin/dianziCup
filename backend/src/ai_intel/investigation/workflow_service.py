@@ -81,7 +81,12 @@ from ai_intel.investigation.checkpoint_runtime import (
     open_postgres_checkpointer,
     validate_checkpoint_schema,
 )
-from ai_intel.investigation.graph import build_investigation_graph
+from ai_intel.investigation.graph import (
+    UNKNOWN_OPERATION_REASONS,
+    build_investigation_graph,
+    get_unknown_operation_reason,
+    normalize_unknown_operation_state,
+)
 from ai_intel.investigation.graph_contracts import (
     GRAPH_VERSION,
     InvestigationRequest,
@@ -93,8 +98,16 @@ from ai_intel.investigation.graph_contracts import (
     configuration_digest,
     json_object,
 )
+from ai_intel.investigation.read_adapters import PostgresReadToolAdapter
 from ai_intel.investigation.tool_contracts import (
+    ChangesPage,
     CompareVersionsCall,
+    FindChangesArguments,
+    FindChangesCall,
+    GetAdvisoryArguments,
+    GetAdvisoryCall,
+    GetInventoryArguments,
+    GetInventoryCall,
     ReadEvidenceCall,
     ToolCall,
     ToolResult,
@@ -111,6 +124,7 @@ from ai_intel.workers.jobs import (
 )
 
 JOB_TYPE = "investigation"
+SHARED_READ_CONSUMER_VERSION = "r14-shared-read-consumers-1"
 
 investigation_workflows = Table(
     "investigation_workflows",
@@ -342,6 +356,7 @@ class InvestigationWorkflowService:
             "graph_version": GRAPH_VERSION,
             "data_mode": self.data_mode,
             "model_config": self._model_config,
+            "shared_read_consumer_version": SHARED_READ_CONSUMER_VERSION,
         }
         payload = json.dumps(envelope, ensure_ascii=False, sort_keys=True).encode()
         if len(payload) > budget.max_input_bytes:
@@ -621,6 +636,10 @@ class _WorkflowRuntime:
             or envelope["data_mode"] != self.service.data_mode
         ):
             raise WorkflowChangedError("workflow_configuration_changed")
+        if envelope.get("shared_read_consumer_version") != SHARED_READ_CONSUMER_VERSION:
+            self.input_sha256 = str(row["input_sha256"])
+            self.job_status = str(job["status"])
+            raise WorkflowChangedError("workflow_configuration_changed")
         request = _record(InvestigationRequest, envelope["request"])
         budget = _record(WorkflowBudget, row["budget_json"])
         if json_object(budget) != envelope["budget"]:
@@ -690,6 +709,36 @@ class _WorkflowRuntime:
                     else "operation_outcome_unknown"
                 }
             return _plain_object(row["output_json"])
+
+    def restore_node_state(self, state: WorkflowState) -> WorkflowState:
+        """Recover unknown outcomes from PG receipts without replaying IO or rewriting history."""
+        if get_unknown_operation_reason(state) is not None:
+            return normalize_unknown_operation_state(state)
+        if len(state["receipts"]) > len(AgentRole):
+            raise ValueError("invalid checkpoint receipt count")
+        for index, item in enumerate(state["receipts"]):
+            receipt = _record(RoleReceipt, item)
+            for key in receipt.operation_keys:
+                if not key.startswith(("tool:", "model:")):
+                    continue
+                previous = self.lookup(key)
+                reason = previous.get("error_code") if previous is not None else None
+                if reason in UNKNOWN_OPERATION_REASONS:
+                    restored_receipt = {
+                        **item,
+                        "status": "partial",
+                        "reason_code": reason,
+                    }
+                    state = {
+                        **state,
+                        "receipts": [
+                            *state["receipts"][:index],
+                            restored_receipt,
+                            *state["receipts"][index + 1 :],
+                        ],
+                    }
+                    return normalize_unknown_operation_state(state)
+        return normalize_unknown_operation_state(state)
 
     def reserve(
         self,
@@ -789,13 +838,14 @@ class _WorkflowRuntime:
             self.connection.exec_driver_sql("SET CONSTRAINTS ALL IMMEDIATE")
 
     def tool(self, role: AgentRole, call: ToolCall, key: str) -> ToolResult | None:
+        if self.last_operation_error in UNKNOWN_OPERATION_REASONS:
+            return None
         prior = self.lookup(key)
         if prior is not None:
-            return (
-                None
-                if "error_code" in prior and "tool_run_id" not in prior
-                else _record(ToolResult, prior)
-            )
+            if "error_code" in prior and "tool_run_id" not in prior:
+                self.last_operation_error = "operation_outcome_unknown"
+                return None
+            return _record(ToolResult, prior)
         raw = call.model_dump_json().encode()
         reason = self.reserve(
             key,
@@ -807,6 +857,7 @@ class _WorkflowRuntime:
             output_bytes=self.budget.tool_result_bytes,
         )
         if reason:
+            self.last_operation_error = reason
             return None
         seconds = self.remaining_seconds()
         gateway = ToolGateway(
@@ -824,6 +875,9 @@ class _WorkflowRuntime:
             evidence_reader=PostgresEvidenceReader(
                 self.connection, self.actor_reference, self.service.data_mode
             ),
+            read_adapter=PostgresReadToolAdapter(
+                self.connection, self.actor_reference, self.service.data_mode
+            ),
         )
         result = gateway.execute(role, raw)
         self.complete_operation(
@@ -836,6 +890,8 @@ class _WorkflowRuntime:
     def model[T: BaseModel](
         self, role: AgentRole, request: GenerationRequest, schema: type[T], key: str
     ) -> T | None:
+        if self.last_operation_error in UNKNOWN_OPERATION_REASONS:
+            return None
         previous = self.lookup(key)
         if previous is not None:
             if "value" not in previous:
@@ -985,12 +1041,16 @@ class _WorkflowRuntime:
         unknown outcomes or confirmed values, so replay cannot repeat a paid model call.
         """
         self.guard(require_lease=True)
+        state = self.restore_node_state(state)
+        unknown_reason = get_unknown_operation_reason(state)
+        if unknown_reason is not None:
+            return normalize_unknown_operation_state(state)
         self.last_operation_error = None
         key = "node:" + role.value
         previous = self.lookup(key)
         if previous is not None:
             if "state" in previous:
-                return _state(previous["state"])
+                return self.restore_node_state(_state(previous["state"]))
             if previous.get("error_code") != "operation_outcome_unknown":
                 return {**state, "status": "partial", "stop_reason": "operation_outcome_unknown"}
         elif self.reserve(key, "node", role, self.input_sha256.encode(), input_bytes=0):
@@ -1045,12 +1105,37 @@ class _WorkflowRuntime:
             else:
                 outcome, reason = "partial", "evidence_unavailable"
         elif role == AgentRole.COLLECTOR:
-            outcome, reason = "not_configured", "collection_adapter_not_configured"
+            operation_key = "tool:collector:get_advisory"
+            operations.append(operation_key)
+            advisory = self.tool(
+                role,
+                GetAdvisoryCall(
+                    tool_name="get_advisory",
+                    arguments=GetAdvisoryArguments(event_id=self.request.event_id),
+                    goal_id=UUID(self.context.job_id),
+                ),
+                operation_key,
+            )
+            outcome, reason = "partial", "collection_adapter_not_configured"
             output = {
-                "revision_ids": [
+                "requested_revision_ids": [
                     str(reference.revision_id) for reference in self.request.evidence_refs
-                ]
+                ],
+                "advisory": json_object(advisory) if advisory is not None else None,
+                "data_mode": self.service.data_mode,
+                "collection_write": "not_configured",
             }
+            if advisory is None or advisory.status != ToolStatus.SUCCEEDED:
+                if advisory is None:
+                    reason = self.last_operation_error or "advisory_unavailable"
+                else:
+                    reason = advisory.error_code or "advisory_unavailable"
+            if advisory is not None and advisory.status == ToolStatus.DENIED:
+                state = {
+                    **state,
+                    "status": "waiting_approval",
+                    "stop_reason": "permission_required",
+                }
         elif role == AgentRole.TRIAGE:
             refs = self.request.evidence_refs
             if self.request.strategy == "B3":
@@ -1086,6 +1171,8 @@ class _WorkflowRuntime:
                             "status": "waiting_approval",
                             "stop_reason": "permission_required",
                         }
+                    if self.last_operation_error in UNKNOWN_OPERATION_REASONS:
+                        break
             state = {**state, "evidence": evidence_items}
             if not evidence_items:
                 outcome, reason = "partial", "evidence_unavailable"
@@ -1140,9 +1227,39 @@ class _WorkflowRuntime:
                     outcome, reason = "partial", "version_ordering_unavailable"
                 else:
                     reason = "version_ordering_complete"
-            else:
+            elif self.last_operation_error not in UNKNOWN_OPERATION_REASONS:
+                if self.request.asset_snapshot_id is None:
+                    raise ValueError("paired asset snapshot required")
+                key_inventory = "tool:assessor:get_inventory"
+                operations.append(key_inventory)
+                inventory = self.tool(
+                    role,
+                    GetInventoryCall(
+                        tool_name="get_inventory",
+                        arguments=GetInventoryArguments(
+                            asset_id=self.request.asset_id,
+                            snapshot_id=self.request.asset_snapshot_id,
+                        ),
+                        goal_id=UUID(self.context.job_id),
+                    ),
+                    key_inventory,
+                )
                 output["asset_snapshot_id"] = str(self.request.asset_snapshot_id)
-                outcome, reason = "not_configured", "assessment_adapter_not_configured"
+                output["inventory"] = json_object(inventory) if inventory is not None else None
+                output["data_mode"] = self.service.data_mode
+                output["assessment_write"] = "not_configured"
+                outcome, reason = "partial", "assessment_adapter_not_configured"
+                if inventory is None or inventory.status != ToolStatus.SUCCEEDED:
+                    if inventory is None:
+                        reason = self.last_operation_error or "inventory_unavailable"
+                    else:
+                        reason = inventory.error_code or "inventory_unavailable"
+                if inventory is not None and inventory.status == ToolStatus.DENIED:
+                    state = {
+                        **state,
+                        "status": "waiting_approval",
+                        "stop_reason": "permission_required",
+                    }
         elif role == AgentRole.QA:
             if not self.projections(state) or state["stop_reason"] == "critical_conflict":
                 outcome, reason = (
@@ -1194,6 +1311,9 @@ class _WorkflowRuntime:
                         ),
                         key_critic,
                     )
+                    if checked is None and self.last_operation_error in UNKNOWN_OPERATION_REASONS:
+                        state = {**state, "draft": None, "verified": False}
+                        break
                     if (
                         checked is None
                         or checked.status != ToolStatus.SUCCEEDED
@@ -1231,15 +1351,78 @@ class _WorkflowRuntime:
                             outcome, reason = "partial", "claim_support_missing"
         elif role == AgentRole.REPORTER:
             outcome, reason = "partial", "report_export_adapter_not_configured"
+            changes_pages: list[JsonValue] = []
+            changes_complete = False
+            changes_cursor: str | None = None
+            seen_cursors: set[str] = set()
+            changes_read_status = "skipped"
+            unresolved_stops = {
+                "critical_conflict",
+                "model_outcome_unknown",
+                "operation_outcome_unknown",
+                "deadline_exhausted",
+                "budget_exhausted",
+            }
+            if state["stop_reason"] not in unresolved_stops:
+                changes_read_status = "incomplete"
+                while True:
+                    key_changes = "tool:reporter:find_changes:" + str(len(changes_pages))
+                    operations.append(key_changes)
+                    changes = self.tool(
+                        role,
+                        FindChangesCall(
+                            tool_name="find_changes",
+                            arguments=FindChangesArguments(
+                                event_id=self.request.event_id, limit=25, cursor=changes_cursor
+                            ),
+                            goal_id=UUID(self.context.job_id),
+                        ),
+                        key_changes,
+                    )
+                    if changes is None:
+                        reason = self.last_operation_error or "changes_unavailable"
+                        break
+                    changes_pages.append(json_object(changes))
+                    if changes.status == ToolStatus.DENIED:
+                        state = {
+                            **state,
+                            "status": "waiting_approval",
+                            "stop_reason": "permission_required",
+                        }
+                    if isinstance(changes.data, ChangesPage):
+                        changes_cursor = changes.data.next_cursor
+                    if changes.status not in {
+                        ToolStatus.SUCCEEDED,
+                        ToolStatus.NO_RESULT,
+                    } or not isinstance(changes.data, ChangesPage):
+                        reason = changes.error_code or "changes_incomplete"
+                        break
+                    if changes_cursor is None:
+                        changes_complete = True
+                        changes_read_status = "complete"
+                        break
+                    if changes_cursor in seen_cursors:
+                        reason = "changes_continuation_invalid"
+                        break
+                    seen_cursors.add(changes_cursor)
             output = {
                 "answer_verified": state["verified"],
+                "changes_pages": changes_pages,
+                "changes_complete": changes_complete,
+                "changes_read_status": changes_read_status,
+                "changes_next_cursor": changes_cursor,
+                "data_mode": self.service.data_mode,
+                "report_export": "not_configured",
                 "limitations": [
                     "调查仅覆盖提供的证据；无命中不等于否定。",
+                    "变化列表仅覆盖当前事件与可见范围，完整分页不证明不存在风险。",
                     "采集、写入富化、图投影、资产完整评估与报告导出适配仍未配置。",
                 ],
             }
-            reasons = {receipt["reason_code"] for receipt in state["receipts"]}
+            reasons = {receipt["reason_code"] for receipt in state["receipts"]} | {reason}
             stop_reason = "adapter_gaps" if state["verified"] else "insufficient_evidence"
+            if reason in {"budget_exhausted", "deadline_exhausted", "operation_outcome_unknown"}:
+                stop_reason = reason
             if not state["verified"]:
                 for priority in (
                     "critical_conflict",
@@ -1253,7 +1436,11 @@ class _WorkflowRuntime:
                     if priority in reasons or state["stop_reason"] == priority:
                         stop_reason = priority
                         break
-            state = {**state, "status": "partial", "stop_reason": stop_reason}
+            if state["status"] != "waiting_approval":
+                state = {**state, "status": "partial", "stop_reason": stop_reason}
+        operation_error = self.last_operation_error
+        if operation_error is not None and operation_error in UNKNOWN_OPERATION_REASONS:
+            outcome, reason = "partial", operation_error
         if outcome != "succeeded" and state["status"] == "running":
             state = {**state, "status": "partial"}
         if outcome == "failed":
@@ -1271,6 +1458,7 @@ class _WorkflowRuntime:
             output=output,
         )
         state = {**state, "receipts": [*state["receipts"], json_object(receipt)]}
+        state = normalize_unknown_operation_state(state)
         self.complete_operation(
             "node:" + role.value,
             {"state": _plain_object(state)},
@@ -1344,6 +1532,8 @@ class _WorkflowRuntime:
     def finish_stale(self) -> None:
         if not self.input_sha256:
             raise WorkflowChangedError("workflow_configuration_changed")
+        if self.job_status in {"succeeded", "partial", "failed", "waiting_approval", "cancelled"}:
+            return
         with self.transaction() as session:
             complete_job(
                 session,
@@ -1377,6 +1567,7 @@ class _WorkflowRuntime:
             candidate = _plain_object(value)
             if "state" in candidate:
                 state = _state(candidate["state"])
+        state = self.restore_node_state(state)
         return self.result(
             state,
             status=self.job_status

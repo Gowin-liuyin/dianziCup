@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
@@ -34,6 +35,7 @@ from ai_intel.revalidation.runtime_policy import (
 )
 from ai_intel.revalidation.service import RevalidationError, RevalidationService
 from ai_intel.workers.executor import execute_job
+from ai_intel.workers.jobs import TERMINAL_JOB_STATUSES
 
 pytestmark = pytest.mark.real_pg
 RUN_ID = "r16_runtime_20261016"
@@ -193,24 +195,129 @@ def execute(engine, seeded, job_id):
     )
 
 
-def drive(engine, seeded, *, limit=100):
-    outcomes = []
-    for _ in range(limit):
-        with engine.connect() as connection:
-            job = connection.scalar(
-                select(job_runs.c.job_id)
-                .where(
-                    job_runs.c.tenant_id == seeded["tenant"],
-                    job_runs.c.job_type.in_(("revalidate_change", "revalidate_assessment")),
-                    job_runs.c.status == "queued",
+def drive(engine, seeded, *, limit=100, journal_path=None):
+    """Drain the unique fixture tenant's R16 cohort using real retry times and bounded waits."""
+    if not 1 <= limit <= 100:
+        raise ValueError("execution limit must be between 1 and 100")
+    if journal_path is None:
+        journal_path = Path(os.environ["R16_RUNTIME_EVIDENCE_DIR"]) / (
+            "drive_" + uuid4().hex + ".jsonl"
+        )
+    started = time.monotonic()
+    executions = 0
+    observed_job_ids = set()
+    active_statuses = {"queued", "running", "retry_wait"}
+    query = (
+        select(
+            job_runs.c.job_id,
+            job_runs.c.status,
+            job_runs.c.attempt_count,
+            job_runs.c.next_retry_at,
+            job_runs.c.error_code,
+        )
+        .where(
+            job_runs.c.tenant_id == seeded["tenant"],
+            job_runs.c.job_type.in_(("revalidate_change", "revalidate_assessment")),
+        )
+        .order_by(job_runs.c.created_at, job_runs.c.job_id)
+    )
+    with Path(journal_path).open("x", encoding="utf-8") as journal:
+
+        def record(event, **fields):
+            journal.write(
+                json.dumps(
+                    dict(
+                        event=event,
+                        observed_at=datetime.now(UTC).isoformat(),
+                        elapsed_seconds=time.monotonic() - started,
+                        execution_calls=executions,
+                        tenant_id=seeded["tenant"],
+                        **fields,
+                    ),
+                    default=str,
                 )
-                .order_by(job_runs.c.created_at, job_runs.c.job_id)
-                .limit(1)
+                + "\n"
             )
-        if job is None:
-            return outcomes
-        outcomes.append((job, execute(engine, seeded, job)))
-    raise AssertionError("owned finite work queue did not terminate")
+            journal.flush()
+
+        while True:
+            with engine.connect() as connection:
+                jobs = [dict(job) for job in connection.execute(query).mappings()]
+            active = [job for job in jobs if job["status"] in active_statuses]
+            active_counts = {
+                status: sum(job["status"] == status for job in jobs)
+                for status in sorted(active_statuses)
+            }
+            record(
+                "snapshot", jobs=jobs, active_count=len(active), active_status_counts=active_counts
+            )
+            current_job_ids = {job["job_id"] for job in jobs}
+            if not jobs or observed_job_ids - current_job_ids:
+                raise AssertionError("owned cohort job state is missing")
+            observed_job_ids.update(current_job_ids)
+            if any(
+                job["status"] not in active_statuses | set(TERMINAL_JOB_STATUSES) for job in jobs
+            ):
+                raise AssertionError("owned cohort has an unknown job status")
+            remaining = 30 - (time.monotonic() - started)
+            if remaining <= 0:
+                record("deadline_exhausted", active_count=len(active))
+                raise AssertionError("owned finite work queue exceeded 30 seconds")
+            if not active:
+                outcomes = [(job["job_id"], job["status"]) for job in jobs]
+                record(
+                    "finished",
+                    outcomes=outcomes,
+                    active_count=0,
+                    active_status_counts=active_counts,
+                )
+                return outcomes
+            now = datetime.now(UTC)
+            eligible = next(
+                (
+                    job
+                    for job in active
+                    if job["status"] == "queued"
+                    or (
+                        job["status"] == "retry_wait"
+                        and (job["next_retry_at"] is None or job["next_retry_at"] <= now)
+                    )
+                ),
+                None,
+            )
+            if eligible is None:
+                future_retries = [
+                    (job["next_retry_at"] - now).total_seconds()
+                    for job in active
+                    if job["status"] == "retry_wait" and job["next_retry_at"] is not None
+                ]
+                delay = min(1.0, remaining, *future_retries)
+                record("wait", seconds=delay, active_count=len(active))
+                time.sleep(delay)
+                continue
+            if executions >= limit:
+                record("attempt_budget_exhausted", active_count=len(active))
+                raise AssertionError("owned finite work queue exceeded execution limit")
+            executions += 1
+            record("execution_started", job=eligible)
+            outcome = execute(engine, seeded, eligible["job_id"])
+            current = row(engine, eligible["job_id"])
+            record(
+                "execution_returned",
+                job_id=eligible["job_id"],
+                outcome=outcome,
+                status=current["status"],
+                attempt_count=current["attempt_count"],
+                next_retry_at=current["next_retry_at"],
+                error_code=current["error_code"],
+            )
+            if time.monotonic() - started >= 30:
+                record("deadline_exhausted")
+                raise AssertionError("owned finite work queue exceeded 30 seconds")
+            if outcome not in {"retry_wait", *TERMINAL_JOB_STATUSES}:
+                raise AssertionError(
+                    "owned execution did not return a classified persisted outcome"
+                )
 
 
 def assessment_payloads(engine, seeded):
@@ -450,7 +557,15 @@ def test_page_budget_preserves_blocked_owned_continuation(pg_engine, tmp_path):
     assert execute(pg_engine, seeded, job) == "partial"
     parent = row(pg_engine, job)
     assert parent["error_code"] == "revalidation_page_budget_exhausted"
-    continuation = row(pg_engine, parent["result_ref"].removeprefix("pg:job:"))
+    completion_id = parent["result_ref"].removeprefix("pg:job:")
+    with pg_engine.connect() as connection:
+        completion_payload = bytes(
+            connection.scalar(
+                select(job_payloads.c.payload).where(job_payloads.c.job_id == completion_id)
+            )
+        )
+    completion = RevalidationChangeRequest.model_validate_json(completion_payload)
+    continuation = row(pg_engine, completion.fan_in.next_page_job_id)
     assert continuation["status"] == "blocked"
     assert execute(pg_engine, seeded, continuation["job_id"]) == "not_claimed"
     with pg_engine.connect() as connection:

@@ -446,7 +446,8 @@ def test_real_pg_supported_path_has_distinct_receipts_shared_evidence_and_no_rep
                 func.sum(investigation_operations.c.tool_calls),
             ).where(investigation_operations.c.job_id == str(job_id))
         ).one()
-        assert counters == (model_calls, 2)
+        expected_tool_calls = 1 + 2 * len(request.evidence_refs) + 1
+        assert counters == (model_calls, expected_tool_calls)
         assert (
             connection.scalar(select(job_runs.c.status).where(job_runs.c.job_id == str(job_id)))
             == "partial"
@@ -871,7 +872,9 @@ engine.dispose()
             select(func.sum(investigation_operations.c.tool_calls)).where(
                 investigation_operations.c.job_id == str(job_id)
             )
-        ) == (2 if with_model else 1)
+        ) == (
+            1 + len(request.evidence_refs) + (len(request.evidence_refs) if with_model else 0) + 1
+        )
         assert connection.scalar(
             select(func.sum(investigation_operations.c.model_calls)).where(
                 investigation_operations.c.job_id == str(job_id)

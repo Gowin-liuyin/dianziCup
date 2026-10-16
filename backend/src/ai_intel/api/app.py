@@ -32,6 +32,7 @@ from ai_intel.api.investigation_routes import build_investigation_router
 from ai_intel.api.job_routes import build_job_router
 from ai_intel.api.knowledge_routes import build_knowledge_router
 from ai_intel.api.problems import problem_response
+from ai_intel.api.public_extension_routes import build_public_extension_router
 from ai_intel.api.question_routes import build_question_router
 from ai_intel.api.recommendation_routes import build_recommendation_router
 from ai_intel.api.source_routes import build_source_router
@@ -170,6 +171,14 @@ def create_application(
     application.include_router(assessment_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(investigation_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(recommendation_router, prefix="/api/v1", include_in_schema=False)
+    application.include_router(
+        build_public_extension_router(
+            engine,
+            configuration.data_mode,
+            source_polling_enabled=configuration.source_polling_enabled,
+        ),
+        prefix="/api/v1",
+    )
     application.include_router(auth_router, include_in_schema=False)
     application.include_router(health_router, include_in_schema=False)
     return application

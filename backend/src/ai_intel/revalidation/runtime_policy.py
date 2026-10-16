@@ -33,10 +33,24 @@ from ai_intel.revalidation.candidates import (
 from ai_intel.revalidation.execution_contracts import (
     ReassessmentRequest,
     RevalidationChangeRequest,
+    RevalidationFanInManifest,
     RevalidationPlan,
+)
+from ai_intel.revalidation.fan_in import (
+    check_fan_in,
+    guard_completed_fan_in,
+    read_completed_assessments,
+    require_current_scope,
 )
 from ai_intel.revalidation.persistence_models import revalidation_job_bindings
 from ai_intel.revalidation.service import LATEST_RULE_QUERY, RevalidationError, RevalidationService
+from ai_intel.revalidation.verified_content import (
+    FrozenVerifiedContent,
+    VerificationBudgetExceeded,
+    VerifiedContentInvalid,
+    VerifiedFanInResult,
+    VerifiedSourceProof,
+)
 from ai_intel.workers.executor import (
     DetachedJobHandler,
     JobExecutionContext,
@@ -53,21 +67,28 @@ class RevalidationJobOwner:
     """Only the immutable authenticated binding is an owner; ordinary payloads are not."""
 
     def lock_actor_job_owner(self, connection: Connection, job_id: str) -> ActorJobOwner | None:
-        row = (
-            connection.execute(
-                select(
-                    revalidation_job_bindings,
-                    job_runs.c.job_type,
-                    job_runs.c.payload_sha256.label("job_digest"),
-                    job_runs.c.payload_ref,
-                )
-                .join(job_runs, job_runs.c.job_id == revalidation_job_bindings.c.job_id)
-                .where(job_runs.c.job_id == job_id)
-                .with_for_update(of=(job_runs, revalidation_job_bindings))
+        return self._read_actor_job_owner(connection, job_id, lock_job=True)
+
+    def read_actor_job_owner(self, connection: Connection, job_id: str) -> ActorJobOwner | None:
+        """Immutable bindings can prove dependencies without locking another executing job."""
+        return self._read_actor_job_owner(connection, job_id, lock_job=False)
+
+    def _read_actor_job_owner(
+        self, connection: Connection, job_id: str, *, lock_job: bool
+    ) -> ActorJobOwner | None:
+        query = (
+            select(
+                revalidation_job_bindings,
+                job_runs.c.job_type,
+                job_runs.c.payload_sha256.label("job_digest"),
+                job_runs.c.payload_ref,
             )
-            .mappings()
-            .first()
+            .join(job_runs, job_runs.c.job_id == revalidation_job_bindings.c.job_id)
+            .where(job_runs.c.job_id == job_id)
         )
+        if lock_job:
+            query = query.with_for_update(of=(job_runs, revalidation_job_bindings))
+        row = connection.execute(query).mappings().first()
         if row is None or row["job_type"] not in {
             REASSESSMENT_JOB_TYPE,
             REVALIDATION_CHANGE_JOB_TYPE,
@@ -104,7 +125,13 @@ class RevalidationJobOwner:
 
 
 def _enqueue_owned_job(
-    session: Session, actor: ActorReference, job_type: str, payload: bytes, created_at: datetime
+    session: Session,
+    actor: ActorReference,
+    job_type: str,
+    payload: bytes,
+    created_at: datetime,
+    *,
+    max_attempts: int = 3,
 ) -> str:
     scope = lock_actor_reference_scope(session.connection(), actor, created_at)
     scope.requires(READ_ASSET)
@@ -122,7 +149,7 @@ def _enqueue_owned_job(
         payload,
         created_at,
         idempotency_key="revalidation:" + key_digest,
-        max_attempts=3,
+        max_attempts=max_attempts,
     )
     prior = (
         session.execute(
@@ -191,12 +218,19 @@ def enqueue_revalidation_change(
         or request.assessment_created_before > created_at
     ):
         raise RevalidationError("revalidation_change_not_authoritative")
+    if request.fan_in is not None and (
+        request.fan_in.effective_epoch != current_epoch
+        or request.frozen_scope_epoch_map is None
+        or request.frozen_scope_epoch_map.get(change["scope_key"]) != current_epoch
+    ):
+        raise RevalidationError("revalidation_change_not_authoritative")
     return _enqueue_owned_job(
         session,
         actor,
         REVALIDATION_CHANGE_JOB_TYPE,
         request.model_dump_json().encode(),
         created_at,
+        max_attempts=request.fan_in.remaining_checks if request.fan_in is not None else 3,
     )
 
 
@@ -347,6 +381,35 @@ def _pause_continuation(session: Session, job_id: str, reason: str, at: datetime
         record_job_transition(session, dict(row), "blocked", reason, at)
 
 
+def _enqueue_completion_job(
+    session: Session,
+    actor: ActorReference,
+    request: RevalidationChangeRequest,
+    parent_job_id: str,
+    plan: RevalidationPlan,
+    child_job_ids: tuple[str, ...],
+    next_page_job_id: str | None,
+    incomplete_reasons: tuple[str, ...],
+    created_at: datetime,
+) -> str:
+    completion_request = request.model_copy(
+        update={
+            "continuation": None,
+            "rule_after_id": None,
+            "frozen_scope_epoch_map": plan.scope_epoch_map,
+            "frozen_rule_scope_fingerprint": plan.rule_scope_fingerprint,
+            "fan_in": RevalidationFanInManifest(
+                parent_job_id=parent_job_id,
+                effective_epoch=plan.target_epoch,
+                child_job_ids=child_job_ids,
+                next_page_job_id=next_page_job_id,
+                plan_incomplete_reasons=incomplete_reasons,
+            ),
+        }
+    )
+    return enqueue_revalidation_change(session, actor, completion_request, created_at)
+
+
 def make_revalidation_change_handler(
     engine: Engine, content_store: ContentStorage, cursor_signing_key: SecretStr
 ) -> DetachedJobHandler:
@@ -357,6 +420,28 @@ def make_revalidation_change_handler(
         try:
             with Session(engine) as session, session.begin():
                 actor = _lock_bound_actor(session, context, payload)
+                if request.fan_in is not None:
+                    result, completed_children = check_fan_in(session, actor, request, context)
+            if request.fan_in is not None:
+                if result.outcome == "succeeded":
+                    content_by_hash = read_completed_assessments(
+                        engine, actor, content_store, request, completed_children
+                    )
+                    if actor.tenant_id is None:
+                        raise PermissionDeniedError("tenant session required for revalidation jobs")
+                    proof = VerifiedSourceProof(
+                        job_id=context.job_id,
+                        worker_id=context.worker_id,
+                        attempt_count=context.attempt_count,
+                        tenant_id=actor.tenant_id,
+                        actor=actor,
+                        request_sha256=hashlib.sha256(payload).hexdigest(),
+                        content_by_hash=content_by_hash,
+                    )
+                    return VerifiedFanInResult(
+                        result.outcome, result.result_ref, result.error_code, proof=proof
+                    )
+                return result
             service = RevalidationService(engine, actor, content_store, cursor_signing_key)
             try:
                 plan = service.plan_change(
@@ -392,12 +477,23 @@ def make_revalidation_change_handler(
             with Session(engine) as session, session.begin():
                 _lock_bound_actor(session, context, payload)
                 if len(plan.targets) > request.remaining_children:
+                    budget_completion_job = _enqueue_completion_job(
+                        session,
+                        actor,
+                        request,
+                        context.job_id,
+                        plan,
+                        (),
+                        None,
+                        ("revalidation_child_budget_exhausted",),
+                        now,
+                    )
                     return JobExecutionResult(
                         outcome="partial",
-                        result_ref="pg:job:" + context.job_id,
+                        result_ref="pg:job:" + budget_completion_job,
                         error_code="revalidation_child_budget_exhausted",
                     )
-                enqueue_reassessment_plan(session, actor, plan, now)
+                children = enqueue_reassessment_plan(session, actor, plan, now)
                 has_continuation = (
                     plan.next_rule_after_id is not None or plan.continuation is not None
                 )
@@ -433,21 +529,86 @@ def make_revalidation_change_handler(
                     error_code = "revalidation_child_jobs_pending"
                 if error_code is None and plan.incomplete_reasons:
                     error_code = plan.incomplete_reasons[0]
+                completion_job = None
+                if has_continuation or children or plan.incomplete_reasons:
+                    incomplete_reasons = tuple(
+                        reason
+                        for reason in plan.incomplete_reasons
+                        if reason
+                        not in {"candidate_pages_remaining", "visible_rule_roster_budget_exceeded"}
+                    )
+                    if stopped is not None:
+                        incomplete_reasons = (*incomplete_reasons, stopped)
+                    completion_job = _enqueue_completion_job(
+                        session,
+                        actor,
+                        request,
+                        context.job_id,
+                        plan,
+                        children,
+                        next_job,
+                        incomplete_reasons,
+                        now,
+                    )
                 return JobExecutionResult(
                     outcome=outcome,
-                    result_ref="pg:job:" + next_job
-                    if next_job
+                    result_ref="pg:job:" + completion_job
+                    if completion_job
                     else "pg:change:" + request.change_id,
                     error_code=error_code,
                 )
         except PermissionError:
             raise JobExecutionError("revalidation_authority_revoked", blocked=True) from None
+        except VerificationBudgetExceeded:
+            return JobExecutionResult(
+                "partial",
+                "pg:change:" + request.change_id,
+                "revalidation_verification_budget_exhausted",
+            )
+        except VerifiedContentInvalid as error:
+            raise JobExecutionError(str(error), blocked=True) from None
         except RevalidationError as error:
             raise JobExecutionError(str(error)) from None
         except CandidateDiscoveryError as error:
             raise JobExecutionError(str(error), blocked=True) from None
 
-    return DetachedJobHandler(plan_change)
+    def guard_completion(
+        session: Session, context: JobExecutionContext, payload: bytes, result: JobExecutionResult
+    ) -> None:
+        request = RevalidationChangeRequest.model_validate_json(payload)
+        if request.fan_in is None:
+            return
+        try:
+            actor = _lock_bound_actor(session, context, payload)
+            require_current_scope(session, actor, request)
+            if result.outcome == "succeeded":
+                if not isinstance(result, VerifiedFanInResult):
+                    raise VerifiedContentInvalid("revalidation_verified_proof_unavailable")
+                proof = result.proof
+                if (
+                    proof.job_id != context.job_id
+                    or proof.worker_id != context.worker_id
+                    or proof.attempt_count != context.attempt_count
+                    or proof.tenant_id != context.tenant_id
+                    or proof.actor != actor
+                    or proof.request_sha256 != hashlib.sha256(payload).hexdigest()
+                ):
+                    raise VerifiedContentInvalid("revalidation_verified_proof_identity_changed")
+                guard_completed_fan_in(
+                    session, engine, actor, FrozenVerifiedContent(proof), request, context
+                )
+        except PermissionError:
+            raise JobExecutionError("revalidation_authority_revoked", blocked=True) from None
+        except RevalidationError as error:
+            raise JobExecutionError(str(error), blocked=True) from None
+        except VerifiedContentInvalid as error:
+            raise JobExecutionError(str(error), blocked=True) from None
+        except VerificationBudgetExceeded:
+            raise JobExecutionError(
+                "revalidation_verification_budget_exhausted", blocked=True
+            ) from None
+
+    return DetachedJobHandler(plan_change, completion_guard=guard_completion)
 
 
 def make_revalidation_job_handlers(

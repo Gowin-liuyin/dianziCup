@@ -1,6 +1,7 @@
 """Internal bounded plans distinguish candidate discovery from committed reassessment."""
 
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import Field, model_validator
 
@@ -78,6 +79,36 @@ class ReassessmentRequest(ConditionContract):
     rule_version: int = Field(ge=1, strict=True)
 
 
+class RevalidationFanInManifest(ConditionContract):
+    """An owned completion job records the exact cohort without rewriting prior jobs."""
+
+    parent_job_id: Label
+    effective_epoch: int = Field(ge=0, strict=True)
+    child_job_ids: tuple[Label, ...] = Field(max_length=100)
+    next_page_job_id: Label | None = None
+    plan_incomplete_reasons: tuple[
+        Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,99}$")], ...
+    ] = Field(default=(), max_length=8)
+    remaining_checks: int = Field(default=10, ge=1, le=10, strict=True)
+
+    @model_validator(mode="after")
+    def require_distinct_bounded_cohort(self) -> "RevalidationFanInManifest":
+        identities = (self.parent_job_id, *self.child_job_ids)
+        if self.next_page_job_id is not None:
+            identities = (*identities, self.next_page_job_id)
+        for identity in identities:
+            if str(UUID(identity)) != identity:
+                raise ValueError("completion job references require canonical UUIDs")
+        if len(identities) != len(set(identities)):
+            raise ValueError("completion job references must be distinct")
+        if set(self.plan_incomplete_reasons) & {
+            "candidate_pages_remaining",
+            "visible_rule_roster_budget_exceeded",
+        }:
+            raise ValueError("pagination belongs to the continuation job")
+        return self
+
+
 class RevalidationChangeRequest(ConditionContract):
     schema_version: Literal["r16-change-job-1"] = "r16-change-job-1"
     change_id: Label
@@ -89,6 +120,9 @@ class RevalidationChangeRequest(ConditionContract):
     frozen_rule_scope_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     remaining_pages: int = Field(default=100, ge=1, le=100, strict=True)
     remaining_children: int = Field(default=1000, ge=1, le=1000, strict=True)
+    fan_in: RevalidationFanInManifest | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def require_paired_continuation_context(self) -> "RevalidationChangeRequest":
@@ -96,4 +130,12 @@ class RevalidationChangeRequest(ConditionContract):
             raise ValueError("frozen continuation context requires epochs and rule scope")
         if self.frozen_scope_epoch_map is not None and not self.frozen_scope_epoch_map:
             raise ValueError("frozen continuation epochs cannot be empty")
+        if self.fan_in is not None and (
+            self.frozen_scope_epoch_map is None
+            or self.continuation is not None
+            or self.rule_after_id is not None
+        ):
+            raise ValueError("completion requires frozen inputs without discovery positions")
+        if self.fan_in is not None and self.fan_in.effective_epoch < self.target_epoch:
+            raise ValueError("completion effective epoch cannot precede the requested epoch")
         return self
