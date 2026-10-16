@@ -32,9 +32,11 @@ from ai_intel.api.job_routes import build_job_router
 from ai_intel.api.knowledge_routes import build_knowledge_router
 from ai_intel.api.problems import problem_response
 from ai_intel.api.question_routes import build_question_router
+from ai_intel.api.recommendation_routes import build_recommendation_router
 from ai_intel.api.source_routes import build_source_router
 from ai_intel.assets.inventory_routes import build_inventory_router
 from ai_intel.enrichment.runtime_policy import build_enrichment_job_service
+from ai_intel.infrastructure.content_storage_factory import build_content_storage
 from ai_intel.infrastructure.database import MIGRATIONS_DIR, build_engine
 from ai_intel.infrastructure.runtime_observations import read_runtime_readiness
 from ai_intel.infrastructure.settings import ApplicationSettings, load_application_settings
@@ -131,6 +133,12 @@ def create_application(
     graph_router = build_graph_router(lambda: service, engine)
     inventory_router = build_inventory_router(lambda: service, engine)
     question_router = build_question_router(lambda: service, engine, configuration)
+    recommendation_router = build_recommendation_router(
+        lambda: service,
+        engine,
+        build_content_storage(configuration) if engine is not None else None,
+        data_mode=configuration.data_mode,
+    )
     application.include_router(auth_router, prefix="/v1")
     application.include_router(health_router, prefix="/v1")
     application.include_router(knowledge_router, prefix="/v1")
@@ -141,6 +149,7 @@ def create_application(
     application.include_router(job_router, prefix="/v1")
     application.include_router(graph_router, prefix="/v1")
     application.include_router(inventory_router, prefix="/v1")
+    application.include_router(recommendation_router, prefix="/v1")
     application.include_router(auth_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(health_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(knowledge_router, prefix="/api/v1", include_in_schema=False)
@@ -151,6 +160,7 @@ def create_application(
     application.include_router(job_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(graph_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(inventory_router, prefix="/api/v1", include_in_schema=False)
+    application.include_router(recommendation_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(auth_router, include_in_schema=False)
     application.include_router(health_router, include_in_schema=False)
     return application
