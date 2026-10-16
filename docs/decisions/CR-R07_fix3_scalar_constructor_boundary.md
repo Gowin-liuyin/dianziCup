@@ -1,0 +1,15 @@
+# CR-R07 · Fix3 成熟 YAML 标量构造错误边界
+
+状态：awaiting_review；root针对独立reviewer新增explicit timestamp Must的有界授权。记录日2026-10-16，Asia/Shanghai。保持原source7aeb85ae/material4c339e6f及历史原红材料；本次另冻source/material与fix3 run，不改旧manifest。
+
+实证：原独立reviewer27探针中26通过、新增metadata: !!timestamp nope一项泄漏PyYAML6.0.3 SafeLoader.construct_yaml_timestamp的AttributeError。匹配regexp返回None后直接groupdict；原parser只归一ValueError/KeyError等，漏此构造异常。安装库源码与原生负例矩阵另确认空int/float与单sign int有IndexError；timestamp无匹配/非法日期、bool非法键等属于同一成熟标量构造边界。真实constructor.py rawhash90d8247da78b524c10618fd0e857f54f3d97570fe91b5c5513d024ef3faf88b0。
+
+最小变更：唯一taxonomy_inputs.py的既有AST检查对ScalarNode先调用既有SafeLoader.construct_object；仅这一个成熟调用入口的ValueError、KeyError、AttributeError、IndexError、OverflowError转固定taxonomy_yaml_invalid，无原文回显。其余AST/来源/身份/对象/identifier投影逻辑不广捕AttributeError，非constructor业务缺陷仍抛出，不伪装坏来源。PyYAML负责解析与构造，本模块没有新YAML parser、手写timestamp语法或替代成熟转换。二进制标签原来不支持，本次正常/异常binary都继续taxonomy_yaml_tag_forbidden；不扩大格式支持。
+
+兼容：错误归一只影响此前未被合法接纳的坏source输入；成功目录的ID、版本、hash、原Unicode引用保持。alias/duplicate/customtag、depth64/node100000/原bytes限制与已有具体错误码不改。公共model_fields/field_sources、状态、支持规则、schema、prompt/selection版本、预算、阈值、金标、评分均不改。完整坏候选仍FAILED，合法未见span仍原BLOCKED规则；原26/23/PG7和相关断言不修改。
+
+调用者范围：本WT CBM独立src index/schema/architecture与parser/loader trace、rg确认生产路径仅load_taxonomy_catalogue按kind分发至parse_atlas_catalogue；parser/loader尚无默认App注册。当前model_fields和Graph不直接调用该parser，因此不改其文件。root后接线仍须PG source/doc/rev ACL/current/hash，窄parser通过不等于默认App集成或完整schema通过。
+
+验收：新增13种坏标量在key/value两位置的有界矩阵、12种正常scalar成员/原文位置控制、binary不放行、非constructor AttributeError不吞；原新增timestamp探针先红再绿，正常969/170与170引用控制不改。原官方整schema126错误/旧org404/595预算红保留。六类原覆盖与相关回归复跑，frontend/e2e/live/manual仍not_run，调用/费用不增加。
+
+迁移：无数据库迁移或历史任务重算；最终source新SHA单独评审，旧窗口维持原实现和结果。回滚只退本scalar预构造与新增负例矩阵，恢复旧坏输入原生异常；其它有界选择和shared context seam不变。费用unknown，无新增网络/模型/测绘/付费调用。本次状态只能awaiting_review，原非作者reviewer复核后由root接线。

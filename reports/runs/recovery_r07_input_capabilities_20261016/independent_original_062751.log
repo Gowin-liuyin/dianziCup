@@ -1,0 +1,972 @@
+...................FFFF                                                  [100%]
+================================== FAILURES ===================================
+_ test_real_omitted_candidate_is_blocked_but_false_output_is_failed[false_boundary] _
+
+dimension = 'versions'
+schema = <class 'ai_intel.enrichment.model_fields.GeneratedFieldBatch[ExtractedVersionValue]'>
+client = <ai_intel.infrastructure.models.generation.GenerationClient object at 0x0000029DE83E7EF0>
+documents = (EnrichmentDocument(revision_id=UUID('00000000-0000-0000-0000-00000000000a'), document_id=UUID('00000000-0000-0000-000...rce_version=None, observed_at=datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc), json_payload=None),)
+selection = FieldEvidenceSelection(dimension='versions', texts=('{"selection": {"selection_version": "r07-field-selection-1", "dim...sion=None, canonical_uri='https://example.invalid/long'),), incomplete=True, selection_version='r07-field-selection-1')
+output_tokens = 1024, content_is_private = False, egress_granted = False
+
+    def _generate_field[T: FieldValue](
+        dimension: DimensionName,
+        schema: type[GeneratedFieldBatch[T]],
+        client: GenerationClient,
+        documents: tuple[EnrichmentDocument, ...],
+        selection: FieldEvidenceSelection,
+        output_tokens: int,
+        content_is_private: bool,
+        egress_granted: bool,
+    ) -> tuple[DimensionAttempt, tuple[AttemptMetadata, ...]]:
+        source_ids = tuple(dict.fromkeys(document.source_id for document in documents))
+        try:
+            generated = client.generate(
+                GenerationRequest(
+                    system_text=SYSTEM_TEXT,
+                    question=f"Extract {dimension} candidates from the supplied source scope only.",
+                    evidence_texts=selection.texts,
+                    prompt_version=PROMPT_VERSION,
+                    schema_version=SCHEMA_VERSION,
+                    model_version=client.approved_model,
+                    max_output_tokens=output_tokens,
+                    allow_format_repair=False,
+                ),
+                schema,
+                content_is_private=content_is_private,
+                egress_granted=egress_granted,
+            )
+        except GenerationFailure as error:
+            blocked = any(part in error.code for part in ("auth", "denied", "budget", "policy"))
+            return DimensionAttempt(
+                dimension=dimension,
+                status=DimensionStatus.BLOCKED if blocked else DimensionStatus.FAILED,
+                error_code=error.code,
+                source_ids=source_ids,
+            ), error.attempts
+        except EgressPolicyViolation:
+            return DimensionAttempt(
+                dimension=dimension,
+                status=DimensionStatus.BLOCKED,
+                error_code="model_egress_denied",
+                source_ids=source_ids,
+            ), ()
+        candidates: list[EvidenceBoundCandidate] = []
+        errors: list[str] = []
+        selection_blocks: list[bool] = []
+        for proposal in generated.value.candidates:
+            blocked_by_selection = False
+            try:
+                evidence = tuple(
+                    CandidateEvidence(**quote.model_dump(), quote_sha256=quote_digest(quote.quote_text))
+                    for quote in proposal.evidence
+                )
+                validate_evidence(evidence, documents)
+                proposed_candidate = EvidenceBoundCandidate(
+                    dimension=dimension,
+                    value=proposal.value,
+                    evidence=evidence,
+                    origin=ClaimOrigin.MODEL_HYPOTHESIS,
+                )
+                try:
+>                   candidate = validate_field_candidate(proposed_candidate, documents)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+src\ai_intel\enrichment\model_fields.py:215: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\enrichment\field_sources.py:559: in validate_field_candidate
+    value = _validate_versions(value, candidate.evidence, selected)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+value = VersionAssertionValue(kind='version_assertion', package_key='widget', ecosystem='PyPI', scheme='pep440', raw_expressio...e, branch=None),), explicit_versions=(), comparison_support='unknown', vendor_fix=None, mitigations=(), limitations=())
+evidence = (CandidateEvidence(revision_id=UUID('00000000-0000-0000-0000-00000000000a'), block_id=UUID('00000000-0000-0000-0000-00...get affected versions: >=1.0,<2.0;', quote_sha256='387a2b40406ac5430bb363cd84aeeeb682d2dfe4cbd5da83cb2a8a1e55a9f366'),)
+documents = (EnrichmentDocument(revision_id=UUID('00000000-0000-0000-0000-00000000000a'), document_id=UUID('00000000-0000-0000-000...rce_version=None, observed_at=datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc), json_payload=None),)
+
+    def _validate_versions(
+        value: VersionAssertionValue,
+        evidence: tuple[CandidateEvidence, ...],
+        documents: tuple[EnrichmentDocument, ...],
+    ) -> VersionAssertionValue:
+        value = VersionAssertionValue.model_validate(value.model_dump())
+        quotes = tuple(quote.quote_text for quote in evidence)
+        if len(documents) != 1:
+            raise FieldEvidenceError("version_cross_document_fields")
+        _require_identifier(value.package_key, (value.raw_expression,))
+        _require_identifier(value.ecosystem, quotes)
+        if value.raw_expression not in quotes:
+            raise FieldEvidenceError("version_expression_context_missing")
+        if value.intervals or value.explicit_versions:
+            if re.search(
+                r"not affected|not vulnerable|unaffected|unknown|uncertain|no evidence|"
+                r"不受影响|未受影响|未知|尚未确认",
+                value.raw_expression,
+                re.IGNORECASE,
+            ):
+                raise FieldEvidenceError("version_negative_or_unknown_range")
+            if not re.search(r"affected|vulnerable|受影响", value.raw_expression, re.IGNORECASE):
+                raise FieldEvidenceError("version_affected_scope_missing")
+            for interval in value.intervals:
+                for boundary, expression in (
+                    (interval.introduced, r">=\s*{}(?![\w.+-])|introduced\s*[:=]?\s*{}(?![\w.+-])"),
+                    (interval.fixed, r"(?<![<])<\s*{}(?![\w.+-])|fixed in\s+{}(?![\w.+-])"),
+                    (
+                        interval.last_affected,
+                        r"<=\s*{}(?![\w.+-])|last affected\s*[:=]?\s*{}(?![\w.+-])",
+                    ),
+                ):
+                    if boundary is not None and not re.search(
+                        expression.format(re.escape(boundary), re.escape(boundary)),
+                        value.raw_expression,
+                        re.IGNORECASE,
+                    ):
+>                       raise FieldEvidenceError("version_boundary_not_supported")
+E                       ai_intel.enrichment.field_sources.FieldEvidenceError: version_boundary_not_supported
+
+src\ai_intel\enrichment\field_sources.py:328: FieldEvidenceError
+
+During handling of the above exception, another exception occurred:
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000029DE83E4E60>
+mutation = 'false_boundary'
+
+    @pytest.mark.parametrize("mutation", ["legal", "false_quote", "false_boundary"])
+    def test_real_omitted_candidate_is_blocked_but_false_output_is_failed(monkeypatch, mutation):
+        line = "PyPI widget affected versions: >=1.0,<2.0;"
+        source = long_document(relevant=line)
+        blocks = tuple(block.model_copy(update={"text": line, "text_sha256": hashlib.sha256(line.encode()).hexdigest()}) for block in source.blocks)
+        source = source.model_copy(update={"blocks": blocks})
+        outputs = output_for(source, line)
+        if mutation == "false_quote":
+            outputs["versions"]["candidates"][0]["evidence"][0]["quote_text"] = "x" * len(line)
+        elif mutation == "false_boundary":
+            outputs["versions"]["candidates"][0]["value"]["intervals"] = [{"fixed": "99.0"}]
+        client, calls = prepared_transport(monkeypatch, outputs=outputs)
+>       result = extract_versions(source, client)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+D:\wt\r07-input-review1\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py:151: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\wt\r07-input-review1\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py:136: in extract_versions
+    return extract_model_dimension(context((source,)), (source,), client, dimension="versions", budget_authorized=True, content_is_private=False, egress_granted=False)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\enrichment\model_fields.py:312: in extract_model_dimension
+    return _generate_model_field_attempts(
+src\ai_intel\enrichment\model_fields.py:414: in _generate_model_field_attempts
+    result, calls = _generate_field(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+dimension = 'versions'
+schema = <class 'ai_intel.enrichment.model_fields.GeneratedFieldBatch[ExtractedVersionValue]'>
+client = <ai_intel.infrastructure.models.generation.GenerationClient object at 0x0000029DE83E7EF0>
+documents = (EnrichmentDocument(revision_id=UUID('00000000-0000-0000-0000-00000000000a'), document_id=UUID('00000000-0000-0000-000...rce_version=None, observed_at=datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc), json_payload=None),)
+selection = FieldEvidenceSelection(dimension='versions', texts=('{"selection": {"selection_version": "r07-field-selection-1", "dim...sion=None, canonical_uri='https://example.invalid/long'),), incomplete=True, selection_version='r07-field-selection-1')
+output_tokens = 1024, content_is_private = False, egress_granted = False
+
+    def _generate_field[T: FieldValue](
+        dimension: DimensionName,
+        schema: type[GeneratedFieldBatch[T]],
+        client: GenerationClient,
+        documents: tuple[EnrichmentDocument, ...],
+        selection: FieldEvidenceSelection,
+        output_tokens: int,
+        content_is_private: bool,
+        egress_granted: bool,
+    ) -> tuple[DimensionAttempt, tuple[AttemptMetadata, ...]]:
+        source_ids = tuple(dict.fromkeys(document.source_id for document in documents))
+        try:
+            generated = client.generate(
+                GenerationRequest(
+                    system_text=SYSTEM_TEXT,
+                    question=f"Extract {dimension} candidates from the supplied source scope only.",
+                    evidence_texts=selection.texts,
+                    prompt_version=PROMPT_VERSION,
+                    schema_version=SCHEMA_VERSION,
+                    model_version=client.approved_model,
+                    max_output_tokens=output_tokens,
+                    allow_format_repair=False,
+                ),
+                schema,
+                content_is_private=content_is_private,
+                egress_granted=egress_granted,
+            )
+        except GenerationFailure as error:
+            blocked = any(part in error.code for part in ("auth", "denied", "budget", "policy"))
+            return DimensionAttempt(
+                dimension=dimension,
+                status=DimensionStatus.BLOCKED if blocked else DimensionStatus.FAILED,
+                error_code=error.code,
+                source_ids=source_ids,
+            ), error.attempts
+        except EgressPolicyViolation:
+            return DimensionAttempt(
+                dimension=dimension,
+                status=DimensionStatus.BLOCKED,
+                error_code="model_egress_denied",
+                source_ids=source_ids,
+            ), ()
+        candidates: list[EvidenceBoundCandidate] = []
+        errors: list[str] = []
+        selection_blocks: list[bool] = []
+        for proposal in generated.value.candidates:
+            blocked_by_selection = False
+            try:
+                evidence = tuple(
+                    CandidateEvidence(**quote.model_dump(), quote_sha256=quote_digest(quote.quote_text))
+                    for quote in proposal.evidence
+                )
+                validate_evidence(evidence, documents)
+                proposed_candidate = EvidenceBoundCandidate(
+                    dimension=dimension,
+                    value=proposal.value,
+                    evidence=evidence,
+                    origin=ClaimOrigin.MODEL_HYPOTHESIS,
+                )
+                try:
+                    candidate = validate_field_candidate(proposed_candidate, documents)
+                except FieldEvidenceError as error:
+>                   blocked_by_selection = _omitted_required_context(
+                        error.code,
+                        proposed_candidate,
+                        documents,
+                        selection,
+                    )
+E                   TypeError: _omitted_required_context() takes 2 positional arguments but 4 were given
+
+src\ai_intel\enrichment\model_fields.py:217: TypeError
+___ test_omitted_required_context_does_not_hide_other_invalid_fields[legal] ___
+
+dimension = 'versions'
+schema = <class 'ai_intel.enrichment.model_fields.GeneratedFieldBatch[ExtractedVersionValue]'>
+client = <ai_intel.infrastructure.models.generation.GenerationClient object at 0x0000029DE91C0E30>
+documents = (EnrichmentDocument(revision_id=UUID('00000000-0000-0000-0000-000000000046'), document_id=UUID('00000000-0000-0000-000...rce_version=None, observed_at=datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc), json_payload=None),)
+selection = FieldEvidenceSelection(dimension='versions', texts=('{"selection": {"selection_version": "r07-field-selection-1", "dim...None, canonical_uri='https://example.invalid/qualifier'),), incomplete=True, selection_version='r07-field-selection-1')
+output_tokens = 1024, content_is_private = False, egress_granted = False
+
+    def _generate_field[T: FieldValue](
+        dimension: DimensionName,
+        schema: type[GeneratedFieldBatch[T]],
+        client: GenerationClient,
+        documents: tuple[EnrichmentDocument, ...],
+        selection: FieldEvidenceSelection,
+        output_tokens: int,
+        content_is_private: bool,
+        egress_granted: bool,
+    ) -> tuple[DimensionAttempt, tuple[AttemptMetadata, ...]]:
+        source_ids = tuple(dict.fromkeys(document.source_id for document in documents))
+        try:
+            generated = client.generate(
+                GenerationRequest(
+                    system_text=SYSTEM_TEXT,
+                    question=f"Extract {dimension} candidates from the supplied source scope only.",
+                    evidence_texts=selection.texts,
+                    prompt_version=PROMPT_VERSION,
+                    schema_version=SCHEMA_VERSION,
+                    model_version=client.approved_model,
+                    max_output_tokens=output_tokens,
+                    allow_format_repair=False,
+                ),
+                schema,
+                content_is_private=content_is_private,
+                egress_granted=egress_granted,
+            )
+        except GenerationFailure as error:
+            blocked = any(part in error.code for part in ("auth", "denied", "budget", "policy"))
+            return DimensionAttempt(
+                dimension=dimension,
+                status=DimensionStatus.BLOCKED if blocked else DimensionStatus.FAILED,
+                error_code=error.code,
+                source_ids=source_ids,
+            ), error.attempts
+        except EgressPolicyViolation:
+            return DimensionAttempt(
+                dimension=dimension,
+                status=DimensionStatus.BLOCKED,
+                error_code="model_egress_denied",
+                source_ids=source_ids,
+            ), ()
+        candidates: list[EvidenceBoundCandidate] = []
+        errors: list[str] = []
+        selection_blocks: list[bool] = []
+        for proposal in generated.value.candidates:
+            blocked_by_selection = False
+            try:
+                evidence = tuple(
+                    CandidateEvidence(**quote.model_dump(), quote_sha256=quote_digest(quote.quote_text))
+                    for quote in proposal.evidence
+                )
+                validate_evidence(evidence, documents)
+                proposed_candidate = EvidenceBoundCandidate(
+                    dimension=dimension,
+                    value=proposal.value,
+                    evidence=evidence,
+                    origin=ClaimOrigin.MODEL_HYPOTHESIS,
+                )
+                try:
+>                   candidate = validate_field_candidate(proposed_candidate, documents)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+src\ai_intel\enrichment\model_fields.py:215: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\enrichment\field_sources.py:569: in validate_field_candidate
+    _validate_field_context(value, candidate.evidence, selected)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+value = VersionAssertionValue(kind='version_assertion', package_key='widget', ecosystem='PyPI', scheme='pep440', raw_expressio...e, branch=None),), explicit_versions=(), comparison_support='unknown', vendor_fix=None, mitigations=(), limitations=())
+evidence = (CandidateEvidence(revision_id=UUID('00000000-0000-0000-0000-000000000046'), block_id=UUID('00000000-0000-0000-0000-00...get affected versions: >=1.0,<2.0;', quote_sha256='387a2b40406ac5430bb363cd84aeeeb682d2dfe4cbd5da83cb2a8a1e55a9f366'),)
+documents = (EnrichmentDocument(revision_id=UUID('00000000-0000-0000-0000-000000000046'), document_id=UUID('00000000-0000-0000-000...rce_version=None, observed_at=datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc), json_payload=None),)
+
+    def _validate_field_context(
+        value: AtlasMappingValue
+        | VersionAssertionValue
+        | LiteratureReferenceValue
+        | ArtifactReferenceValue,
+        evidence: tuple[CandidateEvidence, ...],
+        documents: tuple[EnrichmentDocument, ...],
+    ) -> None:
+        """Only fully checked values may report context gaps; no gap excuses another bad field."""
+        gaps: list[FieldContextGap] = []
+        if isinstance(value, AtlasMappingValue):
+            code = "atlas_prerequisite_context_missing"
+            for document in documents:
+                if is_atlas_taxonomy(document):
+                    continue
+                for block in document.blocks:
+                    if value.mechanism not in block.text:
+                        continue
+                    position = 0
+                    for raw_line in block.text.splitlines(keepends=True):
+                        line = raw_line.splitlines()[0]
+                        if re.search(
+                            r"attacker can|prerequisite|requires|前提|前置条件|"
+                            r"^(?:only when|only if|unless|仅当|只有|除非)",
+                            line,
+                            re.IGNORECASE,
+                        ) and not any(line in item for item in value.prerequisites):
+                            gaps.append(
+                                FieldContextGap(
+                                    document.revision_id,
+                                    block.block_id,
+                                    position,
+                                    position + len(line),
+                                )
+                            )
+                        position += len(raw_line)
+                gaps.extend(
+                    _statement_qualifier_gaps(
+                        value.mechanism,
+                        "\n".join((value.mechanism, *value.prerequisites)),
+                        evidence,
+                        document,
+                        False,
+                    )
+                )
+        elif isinstance(value, VersionAssertionValue):
+            code = "version_expression_context_missing"
+            gaps.extend(
+                _statement_qualifier_gaps(
+                    value.raw_expression,
+                    value.raw_expression,
+                    evidence,
+                    documents[0],
+                    True,
+                )
+            )
+        elif isinstance(value, LiteratureReferenceValue) and value.relation != "background":
+            code = "literature_relation_context_missing"
+            for document in documents:
+                gaps.extend(
+                    _statement_qualifier_gaps(
+                        value.support_summary,
+                        value.support_summary,
+                        evidence,
+                        document,
+                        False,
+                    )
+                )
+        else:
+            return
+        if gaps:
+>           raise FieldEvidenceError(code, context_gaps=tuple(gaps))
+E           ai_intel.enrichment.field_sources.FieldEvidenceError: version_expression_context_missing
+
+src\ai_intel\enrichment\field_sources.py:545: FieldEvidenceError
+
+During handling of the above exception, another exception occurred:
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000029DE91C3E30>
+mutation = 'legal'
+
+    @pytest.mark.parametrize("mutation", ["legal", "false_boundary"])
+    def test_omitted_required_context_does_not_hide_other_invalid_fields(monkeypatch, mutation):
+        line = "PyPI widget affected versions: >=1.0,<2.0;"
+        source = document(70, "Unrelated" * 1900 + "\n" + line + "\nOnly when tools enabled.", "https://example.invalid/qualifier")
+        outputs = output_for(source, line, quoted_block=source.blocks[0])
+        start = source.blocks[0].text.index(line)
+        outputs["versions"]["candidates"][0]["evidence"][0].update(start_offset=start, end_offset=start + len(line))
+        if mutation == "false_boundary":
+            outputs["versions"]["candidates"][0]["value"]["intervals"] = [{"fixed": "99.0"}]
+        client, calls = prepared_transport(monkeypatch, outputs=outputs)
+>       result = extract_versions(source, client)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+D:\wt\r07-input-review1\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py:166: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\wt\r07-input-review1\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py:136: in extract_versions
+    return extract_model_dimension(context((source,)), (source,), client, dimension="versions", budget_authorized=True, content_is_private=False, egress_granted=False)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\enrichment\model_fields.py:312: in extract_model_dimension
+    return _generate_model_field_attempts(
+src\ai_intel\enrichment\model_fields.py:414: in _generate_model_field_attempts
+    result, calls = _generate_field(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+dimension = 'versions'
+schema = <class 'ai_intel.enrichment.model_fields.GeneratedFieldBatch[ExtractedVersionValue]'>
+client = <ai_intel.infrastructure.models.generation.GenerationClient object at 0x0000029DE91C0E30>
+documents = (EnrichmentDocument(revision_id=UUID('00000000-0000-0000-0000-000000000046'), document_id=UUID('00000000-0000-0000-000...rce_version=None, observed_at=datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc), json_payload=None),)
+selection = FieldEvidenceSelection(dimension='versions', texts=('{"selection": {"selection_version": "r07-field-selection-1", "dim...None, canonical_uri='https://example.invalid/qualifier'),), incomplete=True, selection_version='r07-field-selection-1')
+output_tokens = 1024, content_is_private = False, egress_granted = False
+
+    def _generate_field[T: FieldValue](
+        dimension: DimensionName,
+        schema: type[GeneratedFieldBatch[T]],
+        client: GenerationClient,
+        documents: tuple[EnrichmentDocument, ...],
+        selection: FieldEvidenceSelection,
+        output_tokens: int,
+        content_is_private: bool,
+        egress_granted: bool,
+    ) -> tuple[DimensionAttempt, tuple[AttemptMetadata, ...]]:
+        source_ids = tuple(dict.fromkeys(document.source_id for document in documents))
+        try:
+            generated = client.generate(
+                GenerationRequest(
+                    system_text=SYSTEM_TEXT,
+                    question=f"Extract {dimension} candidates from the supplied source scope only.",
+                    evidence_texts=selection.texts,
+                    prompt_version=PROMPT_VERSION,
+                    schema_version=SCHEMA_VERSION,
+                    model_version=client.approved_model,
+                    max_output_tokens=output_tokens,
+                    allow_format_repair=False,
+                ),
+                schema,
+                content_is_private=content_is_private,
+                egress_granted=egress_granted,
+            )
+        except GenerationFailure as error:
+            blocked = any(part in error.code for part in ("auth", "denied", "budget", "policy"))
+            return DimensionAttempt(
+                dimension=dimension,
+                status=DimensionStatus.BLOCKED if blocked else DimensionStatus.FAILED,
+                error_code=error.code,
+                source_ids=source_ids,
+            ), error.attempts
+        except EgressPolicyViolation:
+            return DimensionAttempt(
+                dimension=dimension,
+                status=DimensionStatus.BLOCKED,
+                error_code="model_egress_denied",
+                source_ids=source_ids,
+            ), ()
+        candidates: list[EvidenceBoundCandidate] = []
+        errors: list[str] = []
+        selection_blocks: list[bool] = []
+        for proposal in generated.value.candidates:
+            blocked_by_selection = False
+            try:
+                evidence = tuple(
+                    CandidateEvidence(**quote.model_dump(), quote_sha256=quote_digest(quote.quote_text))
+                    for quote in proposal.evidence
+                )
+                validate_evidence(evidence, documents)
+                proposed_candidate = EvidenceBoundCandidate(
+                    dimension=dimension,
+                    value=proposal.value,
+                    evidence=evidence,
+                    origin=ClaimOrigin.MODEL_HYPOTHESIS,
+                )
+                try:
+                    candidate = validate_field_candidate(proposed_candidate, documents)
+                except FieldEvidenceError as error:
+>                   blocked_by_selection = _omitted_required_context(
+                        error.code,
+                        proposed_candidate,
+                        documents,
+                        selection,
+                    )
+E                   TypeError: _omitted_required_context() takes 2 positional arguments but 4 were given
+
+src\ai_intel\enrichment\model_fields.py:217: TypeError
+_ test_omitted_required_context_does_not_hide_other_invalid_fields[false_boundary] _
+
+dimension = 'versions'
+schema = <class 'ai_intel.enrichment.model_fields.GeneratedFieldBatch[ExtractedVersionValue]'>
+client = <ai_intel.infrastructure.models.generation.GenerationClient object at 0x0000029DE91C15E0>
+documents = (EnrichmentDocument(revision_id=UUID('00000000-0000-0000-0000-000000000046'), document_id=UUID('00000000-0000-0000-000...rce_version=None, observed_at=datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc), json_payload=None),)
+selection = FieldEvidenceSelection(dimension='versions', texts=('{"selection": {"selection_version": "r07-field-selection-1", "dim...None, canonical_uri='https://example.invalid/qualifier'),), incomplete=True, selection_version='r07-field-selection-1')
+output_tokens = 1024, content_is_private = False, egress_granted = False
+
+    def _generate_field[T: FieldValue](
+        dimension: DimensionName,
+        schema: type[GeneratedFieldBatch[T]],
+        client: GenerationClient,
+        documents: tuple[EnrichmentDocument, ...],
+        selection: FieldEvidenceSelection,
+        output_tokens: int,
+        content_is_private: bool,
+        egress_granted: bool,
+    ) -> tuple[DimensionAttempt, tuple[AttemptMetadata, ...]]:
+        source_ids = tuple(dict.fromkeys(document.source_id for document in documents))
+        try:
+            generated = client.generate(
+                GenerationRequest(
+                    system_text=SYSTEM_TEXT,
+                    question=f"Extract {dimension} candidates from the supplied source scope only.",
+                    evidence_texts=selection.texts,
+                    prompt_version=PROMPT_VERSION,
+                    schema_version=SCHEMA_VERSION,
+                    model_version=client.approved_model,
+                    max_output_tokens=output_tokens,
+                    allow_format_repair=False,
+                ),
+                schema,
+                content_is_private=content_is_private,
+                egress_granted=egress_granted,
+            )
+        except GenerationFailure as error:
+            blocked = any(part in error.code for part in ("auth", "denied", "budget", "policy"))
+            return DimensionAttempt(
+                dimension=dimension,
+                status=DimensionStatus.BLOCKED if blocked else DimensionStatus.FAILED,
+                error_code=error.code,
+                source_ids=source_ids,
+            ), error.attempts
+        except EgressPolicyViolation:
+            return DimensionAttempt(
+                dimension=dimension,
+                status=DimensionStatus.BLOCKED,
+                error_code="model_egress_denied",
+                source_ids=source_ids,
+            ), ()
+        candidates: list[EvidenceBoundCandidate] = []
+        errors: list[str] = []
+        selection_blocks: list[bool] = []
+        for proposal in generated.value.candidates:
+            blocked_by_selection = False
+            try:
+                evidence = tuple(
+                    CandidateEvidence(**quote.model_dump(), quote_sha256=quote_digest(quote.quote_text))
+                    for quote in proposal.evidence
+                )
+                validate_evidence(evidence, documents)
+                proposed_candidate = EvidenceBoundCandidate(
+                    dimension=dimension,
+                    value=proposal.value,
+                    evidence=evidence,
+                    origin=ClaimOrigin.MODEL_HYPOTHESIS,
+                )
+                try:
+>                   candidate = validate_field_candidate(proposed_candidate, documents)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+src\ai_intel\enrichment\model_fields.py:215: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\enrichment\field_sources.py:559: in validate_field_candidate
+    value = _validate_versions(value, candidate.evidence, selected)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+value = VersionAssertionValue(kind='version_assertion', package_key='widget', ecosystem='PyPI', scheme='pep440', raw_expressio...e, branch=None),), explicit_versions=(), comparison_support='unknown', vendor_fix=None, mitigations=(), limitations=())
+evidence = (CandidateEvidence(revision_id=UUID('00000000-0000-0000-0000-000000000046'), block_id=UUID('00000000-0000-0000-0000-00...get affected versions: >=1.0,<2.0;', quote_sha256='387a2b40406ac5430bb363cd84aeeeb682d2dfe4cbd5da83cb2a8a1e55a9f366'),)
+documents = (EnrichmentDocument(revision_id=UUID('00000000-0000-0000-0000-000000000046'), document_id=UUID('00000000-0000-0000-000...rce_version=None, observed_at=datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc), json_payload=None),)
+
+    def _validate_versions(
+        value: VersionAssertionValue,
+        evidence: tuple[CandidateEvidence, ...],
+        documents: tuple[EnrichmentDocument, ...],
+    ) -> VersionAssertionValue:
+        value = VersionAssertionValue.model_validate(value.model_dump())
+        quotes = tuple(quote.quote_text for quote in evidence)
+        if len(documents) != 1:
+            raise FieldEvidenceError("version_cross_document_fields")
+        _require_identifier(value.package_key, (value.raw_expression,))
+        _require_identifier(value.ecosystem, quotes)
+        if value.raw_expression not in quotes:
+            raise FieldEvidenceError("version_expression_context_missing")
+        if value.intervals or value.explicit_versions:
+            if re.search(
+                r"not affected|not vulnerable|unaffected|unknown|uncertain|no evidence|"
+                r"不受影响|未受影响|未知|尚未确认",
+                value.raw_expression,
+                re.IGNORECASE,
+            ):
+                raise FieldEvidenceError("version_negative_or_unknown_range")
+            if not re.search(r"affected|vulnerable|受影响", value.raw_expression, re.IGNORECASE):
+                raise FieldEvidenceError("version_affected_scope_missing")
+            for interval in value.intervals:
+                for boundary, expression in (
+                    (interval.introduced, r">=\s*{}(?![\w.+-])|introduced\s*[:=]?\s*{}(?![\w.+-])"),
+                    (interval.fixed, r"(?<![<])<\s*{}(?![\w.+-])|fixed in\s+{}(?![\w.+-])"),
+                    (
+                        interval.last_affected,
+                        r"<=\s*{}(?![\w.+-])|last affected\s*[:=]?\s*{}(?![\w.+-])",
+                    ),
+                ):
+                    if boundary is not None and not re.search(
+                        expression.format(re.escape(boundary), re.escape(boundary)),
+                        value.raw_expression,
+                        re.IGNORECASE,
+                    ):
+>                       raise FieldEvidenceError("version_boundary_not_supported")
+E                       ai_intel.enrichment.field_sources.FieldEvidenceError: version_boundary_not_supported
+
+src\ai_intel\enrichment\field_sources.py:328: FieldEvidenceError
+
+During handling of the above exception, another exception occurred:
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000029DE91C1E50>
+mutation = 'false_boundary'
+
+    @pytest.mark.parametrize("mutation", ["legal", "false_boundary"])
+    def test_omitted_required_context_does_not_hide_other_invalid_fields(monkeypatch, mutation):
+        line = "PyPI widget affected versions: >=1.0,<2.0;"
+        source = document(70, "Unrelated" * 1900 + "\n" + line + "\nOnly when tools enabled.", "https://example.invalid/qualifier")
+        outputs = output_for(source, line, quoted_block=source.blocks[0])
+        start = source.blocks[0].text.index(line)
+        outputs["versions"]["candidates"][0]["evidence"][0].update(start_offset=start, end_offset=start + len(line))
+        if mutation == "false_boundary":
+            outputs["versions"]["candidates"][0]["value"]["intervals"] = [{"fixed": "99.0"}]
+        client, calls = prepared_transport(monkeypatch, outputs=outputs)
+>       result = extract_versions(source, client)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+D:\wt\r07-input-review1\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py:166: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\wt\r07-input-review1\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py:136: in extract_versions
+    return extract_model_dimension(context((source,)), (source,), client, dimension="versions", budget_authorized=True, content_is_private=False, egress_granted=False)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\enrichment\model_fields.py:312: in extract_model_dimension
+    return _generate_model_field_attempts(
+src\ai_intel\enrichment\model_fields.py:414: in _generate_model_field_attempts
+    result, calls = _generate_field(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+dimension = 'versions'
+schema = <class 'ai_intel.enrichment.model_fields.GeneratedFieldBatch[ExtractedVersionValue]'>
+client = <ai_intel.infrastructure.models.generation.GenerationClient object at 0x0000029DE91C15E0>
+documents = (EnrichmentDocument(revision_id=UUID('00000000-0000-0000-0000-000000000046'), document_id=UUID('00000000-0000-0000-000...rce_version=None, observed_at=datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc), json_payload=None),)
+selection = FieldEvidenceSelection(dimension='versions', texts=('{"selection": {"selection_version": "r07-field-selection-1", "dim...None, canonical_uri='https://example.invalid/qualifier'),), incomplete=True, selection_version='r07-field-selection-1')
+output_tokens = 1024, content_is_private = False, egress_granted = False
+
+    def _generate_field[T: FieldValue](
+        dimension: DimensionName,
+        schema: type[GeneratedFieldBatch[T]],
+        client: GenerationClient,
+        documents: tuple[EnrichmentDocument, ...],
+        selection: FieldEvidenceSelection,
+        output_tokens: int,
+        content_is_private: bool,
+        egress_granted: bool,
+    ) -> tuple[DimensionAttempt, tuple[AttemptMetadata, ...]]:
+        source_ids = tuple(dict.fromkeys(document.source_id for document in documents))
+        try:
+            generated = client.generate(
+                GenerationRequest(
+                    system_text=SYSTEM_TEXT,
+                    question=f"Extract {dimension} candidates from the supplied source scope only.",
+                    evidence_texts=selection.texts,
+                    prompt_version=PROMPT_VERSION,
+                    schema_version=SCHEMA_VERSION,
+                    model_version=client.approved_model,
+                    max_output_tokens=output_tokens,
+                    allow_format_repair=False,
+                ),
+                schema,
+                content_is_private=content_is_private,
+                egress_granted=egress_granted,
+            )
+        except GenerationFailure as error:
+            blocked = any(part in error.code for part in ("auth", "denied", "budget", "policy"))
+            return DimensionAttempt(
+                dimension=dimension,
+                status=DimensionStatus.BLOCKED if blocked else DimensionStatus.FAILED,
+                error_code=error.code,
+                source_ids=source_ids,
+            ), error.attempts
+        except EgressPolicyViolation:
+            return DimensionAttempt(
+                dimension=dimension,
+                status=DimensionStatus.BLOCKED,
+                error_code="model_egress_denied",
+                source_ids=source_ids,
+            ), ()
+        candidates: list[EvidenceBoundCandidate] = []
+        errors: list[str] = []
+        selection_blocks: list[bool] = []
+        for proposal in generated.value.candidates:
+            blocked_by_selection = False
+            try:
+                evidence = tuple(
+                    CandidateEvidence(**quote.model_dump(), quote_sha256=quote_digest(quote.quote_text))
+                    for quote in proposal.evidence
+                )
+                validate_evidence(evidence, documents)
+                proposed_candidate = EvidenceBoundCandidate(
+                    dimension=dimension,
+                    value=proposal.value,
+                    evidence=evidence,
+                    origin=ClaimOrigin.MODEL_HYPOTHESIS,
+                )
+                try:
+                    candidate = validate_field_candidate(proposed_candidate, documents)
+                except FieldEvidenceError as error:
+>                   blocked_by_selection = _omitted_required_context(
+                        error.code,
+                        proposed_candidate,
+                        documents,
+                        selection,
+                    )
+E                   TypeError: _omitted_required_context() takes 2 positional arguments but 4 were given
+
+src\ai_intel\enrichment\model_fields.py:217: TypeError
+___________ test_mixed_selection_gap_and_false_candidate_is_failed ____________
+
+dimension = 'versions'
+schema = <class 'ai_intel.enrichment.model_fields.GeneratedFieldBatch[ExtractedVersionValue]'>
+client = <ai_intel.infrastructure.models.generation.GenerationClient object at 0x0000029DE7BB3710>
+documents = (EnrichmentDocument(revision_id=UUID('00000000-0000-0000-0000-00000000000a'), document_id=UUID('00000000-0000-0000-000...rce_version=None, observed_at=datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc), json_payload=None),)
+selection = FieldEvidenceSelection(dimension='versions', texts=('{"selection": {"selection_version": "r07-field-selection-1", "dim...sion=None, canonical_uri='https://example.invalid/long'),), incomplete=True, selection_version='r07-field-selection-1')
+output_tokens = 1024, content_is_private = False, egress_granted = False
+
+    def _generate_field[T: FieldValue](
+        dimension: DimensionName,
+        schema: type[GeneratedFieldBatch[T]],
+        client: GenerationClient,
+        documents: tuple[EnrichmentDocument, ...],
+        selection: FieldEvidenceSelection,
+        output_tokens: int,
+        content_is_private: bool,
+        egress_granted: bool,
+    ) -> tuple[DimensionAttempt, tuple[AttemptMetadata, ...]]:
+        source_ids = tuple(dict.fromkeys(document.source_id for document in documents))
+        try:
+            generated = client.generate(
+                GenerationRequest(
+                    system_text=SYSTEM_TEXT,
+                    question=f"Extract {dimension} candidates from the supplied source scope only.",
+                    evidence_texts=selection.texts,
+                    prompt_version=PROMPT_VERSION,
+                    schema_version=SCHEMA_VERSION,
+                    model_version=client.approved_model,
+                    max_output_tokens=output_tokens,
+                    allow_format_repair=False,
+                ),
+                schema,
+                content_is_private=content_is_private,
+                egress_granted=egress_granted,
+            )
+        except GenerationFailure as error:
+            blocked = any(part in error.code for part in ("auth", "denied", "budget", "policy"))
+            return DimensionAttempt(
+                dimension=dimension,
+                status=DimensionStatus.BLOCKED if blocked else DimensionStatus.FAILED,
+                error_code=error.code,
+                source_ids=source_ids,
+            ), error.attempts
+        except EgressPolicyViolation:
+            return DimensionAttempt(
+                dimension=dimension,
+                status=DimensionStatus.BLOCKED,
+                error_code="model_egress_denied",
+                source_ids=source_ids,
+            ), ()
+        candidates: list[EvidenceBoundCandidate] = []
+        errors: list[str] = []
+        selection_blocks: list[bool] = []
+        for proposal in generated.value.candidates:
+            blocked_by_selection = False
+            try:
+                evidence = tuple(
+                    CandidateEvidence(**quote.model_dump(), quote_sha256=quote_digest(quote.quote_text))
+                    for quote in proposal.evidence
+                )
+                validate_evidence(evidence, documents)
+                proposed_candidate = EvidenceBoundCandidate(
+                    dimension=dimension,
+                    value=proposal.value,
+                    evidence=evidence,
+                    origin=ClaimOrigin.MODEL_HYPOTHESIS,
+                )
+                try:
+>                   candidate = validate_field_candidate(proposed_candidate, documents)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+src\ai_intel\enrichment\model_fields.py:215: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\enrichment\field_sources.py:559: in validate_field_candidate
+    value = _validate_versions(value, candidate.evidence, selected)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+value = VersionAssertionValue(kind='version_assertion', package_key='widget', ecosystem='PyPI', scheme='pep440', raw_expressio...e, branch=None),), explicit_versions=(), comparison_support='unknown', vendor_fix=None, mitigations=(), limitations=())
+evidence = (CandidateEvidence(revision_id=UUID('00000000-0000-0000-0000-00000000000a'), block_id=UUID('00000000-0000-0000-0000-00...get affected versions: >=1.0,<2.0;', quote_sha256='387a2b40406ac5430bb363cd84aeeeb682d2dfe4cbd5da83cb2a8a1e55a9f366'),)
+documents = (EnrichmentDocument(revision_id=UUID('00000000-0000-0000-0000-00000000000a'), document_id=UUID('00000000-0000-0000-000...rce_version=None, observed_at=datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc), json_payload=None),)
+
+    def _validate_versions(
+        value: VersionAssertionValue,
+        evidence: tuple[CandidateEvidence, ...],
+        documents: tuple[EnrichmentDocument, ...],
+    ) -> VersionAssertionValue:
+        value = VersionAssertionValue.model_validate(value.model_dump())
+        quotes = tuple(quote.quote_text for quote in evidence)
+        if len(documents) != 1:
+            raise FieldEvidenceError("version_cross_document_fields")
+        _require_identifier(value.package_key, (value.raw_expression,))
+        _require_identifier(value.ecosystem, quotes)
+        if value.raw_expression not in quotes:
+            raise FieldEvidenceError("version_expression_context_missing")
+        if value.intervals or value.explicit_versions:
+            if re.search(
+                r"not affected|not vulnerable|unaffected|unknown|uncertain|no evidence|"
+                r"不受影响|未受影响|未知|尚未确认",
+                value.raw_expression,
+                re.IGNORECASE,
+            ):
+                raise FieldEvidenceError("version_negative_or_unknown_range")
+            if not re.search(r"affected|vulnerable|受影响", value.raw_expression, re.IGNORECASE):
+                raise FieldEvidenceError("version_affected_scope_missing")
+            for interval in value.intervals:
+                for boundary, expression in (
+                    (interval.introduced, r">=\s*{}(?![\w.+-])|introduced\s*[:=]?\s*{}(?![\w.+-])"),
+                    (interval.fixed, r"(?<![<])<\s*{}(?![\w.+-])|fixed in\s+{}(?![\w.+-])"),
+                    (
+                        interval.last_affected,
+                        r"<=\s*{}(?![\w.+-])|last affected\s*[:=]?\s*{}(?![\w.+-])",
+                    ),
+                ):
+                    if boundary is not None and not re.search(
+                        expression.format(re.escape(boundary), re.escape(boundary)),
+                        value.raw_expression,
+                        re.IGNORECASE,
+                    ):
+>                       raise FieldEvidenceError("version_boundary_not_supported")
+E                       ai_intel.enrichment.field_sources.FieldEvidenceError: version_boundary_not_supported
+
+src\ai_intel\enrichment\field_sources.py:328: FieldEvidenceError
+
+During handling of the above exception, another exception occurred:
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000029DE7BB13D0>
+
+    def test_mixed_selection_gap_and_false_candidate_is_failed(monkeypatch):
+        line = "PyPI widget affected versions: >=1.0,<2.0;"
+        source = long_document(relevant=line)
+        blocks = tuple(block.model_copy(update={"text": line, "text_sha256": hashlib.sha256(line.encode()).hexdigest()}) for block in source.blocks)
+        source = source.model_copy(update={"blocks": blocks})
+        outputs = output_for(source, line)
+        import copy
+        invalid = copy.deepcopy(outputs["versions"]["candidates"][0])
+        invalid["value"]["intervals"] = [{"fixed": "99.0"}]
+        outputs["versions"]["candidates"].append(invalid)
+        client, calls = prepared_transport(monkeypatch, outputs=outputs)
+>       result = extract_versions(source, client)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+D:\wt\r07-input-review1\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py:182: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\wt\r07-input-review1\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py:136: in extract_versions
+    return extract_model_dimension(context((source,)), (source,), client, dimension="versions", budget_authorized=True, content_is_private=False, egress_granted=False)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\enrichment\model_fields.py:312: in extract_model_dimension
+    return _generate_model_field_attempts(
+src\ai_intel\enrichment\model_fields.py:414: in _generate_model_field_attempts
+    result, calls = _generate_field(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+dimension = 'versions'
+schema = <class 'ai_intel.enrichment.model_fields.GeneratedFieldBatch[ExtractedVersionValue]'>
+client = <ai_intel.infrastructure.models.generation.GenerationClient object at 0x0000029DE7BB3710>
+documents = (EnrichmentDocument(revision_id=UUID('00000000-0000-0000-0000-00000000000a'), document_id=UUID('00000000-0000-0000-000...rce_version=None, observed_at=datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc), json_payload=None),)
+selection = FieldEvidenceSelection(dimension='versions', texts=('{"selection": {"selection_version": "r07-field-selection-1", "dim...sion=None, canonical_uri='https://example.invalid/long'),), incomplete=True, selection_version='r07-field-selection-1')
+output_tokens = 1024, content_is_private = False, egress_granted = False
+
+    def _generate_field[T: FieldValue](
+        dimension: DimensionName,
+        schema: type[GeneratedFieldBatch[T]],
+        client: GenerationClient,
+        documents: tuple[EnrichmentDocument, ...],
+        selection: FieldEvidenceSelection,
+        output_tokens: int,
+        content_is_private: bool,
+        egress_granted: bool,
+    ) -> tuple[DimensionAttempt, tuple[AttemptMetadata, ...]]:
+        source_ids = tuple(dict.fromkeys(document.source_id for document in documents))
+        try:
+            generated = client.generate(
+                GenerationRequest(
+                    system_text=SYSTEM_TEXT,
+                    question=f"Extract {dimension} candidates from the supplied source scope only.",
+                    evidence_texts=selection.texts,
+                    prompt_version=PROMPT_VERSION,
+                    schema_version=SCHEMA_VERSION,
+                    model_version=client.approved_model,
+                    max_output_tokens=output_tokens,
+                    allow_format_repair=False,
+                ),
+                schema,
+                content_is_private=content_is_private,
+                egress_granted=egress_granted,
+            )
+        except GenerationFailure as error:
+            blocked = any(part in error.code for part in ("auth", "denied", "budget", "policy"))
+            return DimensionAttempt(
+                dimension=dimension,
+                status=DimensionStatus.BLOCKED if blocked else DimensionStatus.FAILED,
+                error_code=error.code,
+                source_ids=source_ids,
+            ), error.attempts
+        except EgressPolicyViolation:
+            return DimensionAttempt(
+                dimension=dimension,
+                status=DimensionStatus.BLOCKED,
+                error_code="model_egress_denied",
+                source_ids=source_ids,
+            ), ()
+        candidates: list[EvidenceBoundCandidate] = []
+        errors: list[str] = []
+        selection_blocks: list[bool] = []
+        for proposal in generated.value.candidates:
+            blocked_by_selection = False
+            try:
+                evidence = tuple(
+                    CandidateEvidence(**quote.model_dump(), quote_sha256=quote_digest(quote.quote_text))
+                    for quote in proposal.evidence
+                )
+                validate_evidence(evidence, documents)
+                proposed_candidate = EvidenceBoundCandidate(
+                    dimension=dimension,
+                    value=proposal.value,
+                    evidence=evidence,
+                    origin=ClaimOrigin.MODEL_HYPOTHESIS,
+                )
+                try:
+                    candidate = validate_field_candidate(proposed_candidate, documents)
+                except FieldEvidenceError as error:
+>                   blocked_by_selection = _omitted_required_context(
+                        error.code,
+                        proposed_candidate,
+                        documents,
+                        selection,
+                    )
+E                   TypeError: _omitted_required_context() takes 2 positional arguments but 4 were given
+
+src\ai_intel\enrichment\model_fields.py:217: TypeError
+- generated xml file: D:\wt\r07-input-capabilities\reports\runs\recovery_r07_input_capabilities_20261016\independent_original_062751.xml -
+=========================== short test summary info ===========================
+FAILED ..\..\r07-input-review1\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py::test_real_omitted_candidate_is_blocked_but_false_output_is_failed[false_boundary]
+FAILED ..\..\r07-input-review1\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py::test_omitted_required_context_does_not_hide_other_invalid_fields[legal]
+FAILED ..\..\r07-input-review1\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py::test_omitted_required_context_does_not_hide_other_invalid_fields[false_boundary]
+FAILED ..\..\r07-input-review1\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py::test_mixed_selection_gap_and_false_candidate_is_failed
+4 failed, 19 passed in 2.12s

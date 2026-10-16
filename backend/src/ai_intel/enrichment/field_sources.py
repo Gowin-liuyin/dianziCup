@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from dataclasses import dataclass
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -29,12 +30,23 @@ MODEL_LIMITATION = (
 PARTIAL_LIMITATION = "Source coverage is incomplete; metadata or excerpts are not full text."
 
 
+@dataclass(frozen=True)
+class FieldContextGap:
+    """Coordinates identify necessary context in the original immutable block."""
+
+    revision_id: UUID
+    block_id: UUID
+    start_offset: int
+    end_offset: int
+
+
 class FieldEvidenceError(ValueError):
     """Fixed safe error codes identify failed checks without exposing source text."""
 
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str, *, context_gaps: tuple[FieldContextGap, ...] = ()) -> None:
         super().__init__(code)
         self.code = code
+        self.context_gaps = tuple(dict.fromkeys(context_gaps))
 
 
 def validate_documents(
@@ -221,51 +233,20 @@ def _validate_atlas(
     if value.mechanism not in event_quotes:
         raise FieldEvidenceError("atlas_mechanism_context_missing")
     _require_affirmative_relation(value.mechanism, "atlas")
-    event_blocks = tuple(
-        block.text
-        for document in documents
-        if document.revision_id not in taxonomy_revisions
-        for block in document.blocks
-        if value.mechanism in block.text
-    )
-    prerequisites = tuple(
-        line
-        for block_text in event_blocks
-        for line in block_text.splitlines()
-        if re.search(
-            r"attacker can|prerequisite|requires|前提|前置条件|"
-            r"^(?:only when|only if|unless|仅当|只有|除非)",
-            line,
-            re.IGNORECASE,
-        )
-    )
-    for source_prerequisite in prerequisites:
-        if not any(source_prerequisite in item for item in value.prerequisites):
-            raise FieldEvidenceError("atlas_prerequisite_context_missing")
     for prerequisite in value.prerequisites:
         _require_text(prerequisite, event_quotes)
-    for document in documents:
-        if document.revision_id not in taxonomy_revisions:
-            _require_statement_qualifiers(
-                value.mechanism,
-                "\n".join((value.mechanism, *value.prerequisites)),
-                evidence,
-                document,
-                "atlas_prerequisite_context_missing",
-                False,
-            )
     return value
 
 
-def _require_statement_qualifiers(
+def _statement_qualifier_gaps(
     statement: str,
     retained_text: str,
     evidence: tuple[CandidateEvidence, ...],
     document: EnrichmentDocument,
-    error_code: str,
     include_preceding: bool,
-) -> None:
+) -> tuple[FieldContextGap, ...]:
     """Retain explicit qualifiers and wrapped continuations in the quoted source paragraph."""
+    gaps: list[FieldContextGap] = []
     for quote in evidence:
         if quote.revision_id != document.revision_id or statement not in quote.quote_text:
             continue
@@ -295,7 +276,16 @@ def _require_statement_qualifiers(
                 last += 1
             qualifier = "".join(lines[: last + 1]).rstrip("\r\n")
             if qualifier not in retained_text:
-                raise FieldEvidenceError(error_code)
+                gap_start = start + line_start
+                gaps.append(
+                    FieldContextGap(
+                        document.revision_id,
+                        block.block_id,
+                        gap_start,
+                        gap_start + len(qualifier),
+                    )
+                )
+    return tuple(gaps)
 
 
 def _validate_versions(
@@ -311,14 +301,6 @@ def _validate_versions(
     _require_identifier(value.ecosystem, quotes)
     if value.raw_expression not in quotes:
         raise FieldEvidenceError("version_expression_context_missing")
-    _require_statement_qualifiers(
-        value.raw_expression,
-        value.raw_expression,
-        evidence,
-        documents[0],
-        "version_expression_context_missing",
-        True,
-    )
     if value.intervals or value.explicit_versions:
         if re.search(
             r"not affected|not vulnerable|unaffected|unknown|uncertain|no evidence|"
@@ -422,15 +404,6 @@ def _validate_literature(
         for quote in quotes:
             if value.support_summary.casefold() in quote.casefold():
                 _require_affirmative_relation(quote, value.relation)
-        for document in documents:
-            _require_statement_qualifiers(
-                value.support_summary,
-                value.support_summary,
-                evidence,
-                document,
-                "literature_relation_context_missing",
-                False,
-            )
     targets = tuple(document for document in all_documents if document.canonical_uri == value.uri)
     if len(targets) > 1:
         raise FieldEvidenceError("literature_target_revision_ambiguous")
@@ -498,6 +471,80 @@ def _validate_poc(value: ArtifactReferenceValue, quotes: tuple[str, ...]) -> Art
     return value
 
 
+def _validate_field_context(
+    value: AtlasMappingValue
+    | VersionAssertionValue
+    | LiteratureReferenceValue
+    | ArtifactReferenceValue,
+    evidence: tuple[CandidateEvidence, ...],
+    documents: tuple[EnrichmentDocument, ...],
+) -> None:
+    """Only fully checked values may report context gaps; no gap excuses another bad field."""
+    gaps: list[FieldContextGap] = []
+    if isinstance(value, AtlasMappingValue):
+        code = "atlas_prerequisite_context_missing"
+        for document in documents:
+            if is_atlas_taxonomy(document):
+                continue
+            for block in document.blocks:
+                if value.mechanism not in block.text:
+                    continue
+                position = 0
+                for raw_line in block.text.splitlines(keepends=True):
+                    line = raw_line.splitlines()[0]
+                    if re.search(
+                        r"attacker can|prerequisite|requires|前提|前置条件|"
+                        r"^(?:only when|only if|unless|仅当|只有|除非)",
+                        line,
+                        re.IGNORECASE,
+                    ) and not any(line in item for item in value.prerequisites):
+                        gaps.append(
+                            FieldContextGap(
+                                document.revision_id,
+                                block.block_id,
+                                position,
+                                position + len(line),
+                            )
+                        )
+                    position += len(raw_line)
+            gaps.extend(
+                _statement_qualifier_gaps(
+                    value.mechanism,
+                    "\n".join((value.mechanism, *value.prerequisites)),
+                    evidence,
+                    document,
+                    False,
+                )
+            )
+    elif isinstance(value, VersionAssertionValue):
+        code = "version_expression_context_missing"
+        gaps.extend(
+            _statement_qualifier_gaps(
+                value.raw_expression,
+                value.raw_expression,
+                evidence,
+                documents[0],
+                True,
+            )
+        )
+    elif isinstance(value, LiteratureReferenceValue) and value.relation != "background":
+        code = "literature_relation_context_missing"
+        for document in documents:
+            gaps.extend(
+                _statement_qualifier_gaps(
+                    value.support_summary,
+                    value.support_summary,
+                    evidence,
+                    document,
+                    False,
+                )
+            )
+    else:
+        return
+    if gaps:
+        raise FieldEvidenceError(code, context_gaps=tuple(gaps))
+
+
 def validate_field_candidate(
     candidate: EvidenceBoundCandidate, documents: tuple[EnrichmentDocument, ...]
 ) -> EvidenceBoundCandidate:
@@ -519,6 +566,7 @@ def validate_field_candidate(
     if isinstance(value, (VersionAssertionValue, LiteratureReferenceValue, ArtifactReferenceValue)):
         for limitation in value.limitations:
             _require_text(limitation, quotes)
+    _validate_field_context(value, candidate.evidence, selected)
     limitations = [MODEL_LIMITATION]
     if any(not item.blocks_complete or item.content_coverage != "full_text" for item in selected):
         limitations.append(PARTIAL_LIMITATION)

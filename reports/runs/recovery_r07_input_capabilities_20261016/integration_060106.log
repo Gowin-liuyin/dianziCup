@@ -1,0 +1,2287 @@
+.FFFFFFFFFF                                                              [100%]
+================================== FAILURES ===================================
+________ test_each_private_parent_is_denied_before_object_read[source] ________
+self = <sqlalchemy.engine.base.Connection object at 0x000001E0AC345A00>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x000001E0AB5C8E00>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x000001E0AC344410>
+statement = <sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x000001E0AC3477D0>
+parameters = [{'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0abf69f10>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.UniqueViolation: duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: UniqueViolation
+
+The above exception was the direct cause of the following exception:
+
+migrated_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_inputs_1016_060105_b985f)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-743/test_each_private_parent_is_de0')
+parent = 'source'
+
+    @pytest.mark.parametrize("parent", ["source", "document", "revision"])
+    def test_each_private_parent_is_denied_before_object_read(migrated_engine, tmp_path, parent):
+>       _store, revision, source, document = seed_catalogue(migrated_engine, tmp_path)
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r07_input_capabilities_pg.py:88: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_r07_input_capabilities_pg.py:32: in seed_catalogue
+    session.execute(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2473: in execute
+    return self._execute_internal(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2373: in _execute_internal
+    result = conn.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0abf69f10>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.IntegrityError: (psycopg.errors.UniqueViolation) duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+E           [SQL: INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)]
+E           [parameters: {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+E           (Background on this error at: https://sqlalche.me/e/21/gkpj)
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: IntegrityError
+_______ test_each_private_parent_is_denied_before_object_read[document] _______
+self = <sqlalchemy.engine.base.Connection object at 0x000001E0AC3476B0>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x000001E0AC384620>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x000001E0AC346210>
+statement = <sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x000001E0AC3470B0>
+parameters = [{'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0abf69190>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.UniqueViolation: duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: UniqueViolation
+
+The above exception was the direct cause of the following exception:
+
+migrated_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_inputs_1016_060105_b985f)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-743/test_each_private_parent_is_de1')
+parent = 'document'
+
+    @pytest.mark.parametrize("parent", ["source", "document", "revision"])
+    def test_each_private_parent_is_denied_before_object_read(migrated_engine, tmp_path, parent):
+>       _store, revision, source, document = seed_catalogue(migrated_engine, tmp_path)
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r07_input_capabilities_pg.py:88: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_r07_input_capabilities_pg.py:32: in seed_catalogue
+    session.execute(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2473: in execute
+    return self._execute_internal(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2373: in _execute_internal
+    result = conn.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0abf69190>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.IntegrityError: (psycopg.errors.UniqueViolation) duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+E           [SQL: INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)]
+E           [parameters: {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+E           (Background on this error at: https://sqlalche.me/e/21/gkpj)
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: IntegrityError
+_______ test_each_private_parent_is_denied_before_object_read[revision] _______
+self = <sqlalchemy.engine.base.Connection object at 0x000001E0AC3DC0E0>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x000001E0AC387980>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x000001E0AC3DF620>
+statement = <sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x000001E0AC3DEF00>
+parameters = [{'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0abf69010>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.UniqueViolation: duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: UniqueViolation
+
+The above exception was the direct cause of the following exception:
+
+migrated_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_inputs_1016_060105_b985f)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-743/test_each_private_parent_is_de2')
+parent = 'revision'
+
+    @pytest.mark.parametrize("parent", ["source", "document", "revision"])
+    def test_each_private_parent_is_denied_before_object_read(migrated_engine, tmp_path, parent):
+>       _store, revision, source, document = seed_catalogue(migrated_engine, tmp_path)
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r07_input_capabilities_pg.py:88: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_r07_input_capabilities_pg.py:32: in seed_catalogue
+    session.execute(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2473: in execute
+    return self._execute_internal(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2373: in _execute_internal
+    result = conn.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0abf69010>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.IntegrityError: (psycopg.errors.UniqueViolation) duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+E           [SQL: INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)]
+E           [parameters: {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+E           (Background on this error at: https://sqlalche.me/e/21/gkpj)
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: IntegrityError
+________ test_permissionless_context_is_rejected_before_pg_or_objects _________
+self = <sqlalchemy.engine.base.Connection object at 0x000001E0AC3DEF90>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x000001E0AC386C90>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x000001E0AC3DF7D0>
+statement = <sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x000001E0AC3DCA10>
+parameters = [{'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0abf6a210>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.UniqueViolation: duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: UniqueViolation
+
+The above exception was the direct cause of the following exception:
+
+migrated_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_inputs_1016_060105_b985f)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-743/test_permissionless_context_is0')
+
+    def test_permissionless_context_is_rejected_before_pg_or_objects(migrated_engine, tmp_path):
+>       store, revision, _, _ = seed_catalogue(migrated_engine, tmp_path)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r07_input_capabilities_pg.py:108: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_r07_input_capabilities_pg.py:32: in seed_catalogue
+    session.execute(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2473: in execute
+    return self._execute_internal(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2373: in _execute_internal
+    result = conn.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0abf6a210>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.IntegrityError: (psycopg.errors.UniqueViolation) duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+E           [SQL: INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)]
+E           [parameters: {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+E           (Background on this error at: https://sqlalche.me/e/21/gkpj)
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: IntegrityError
+__ test_saved_catalogue_state_does_not_silently_become_supported_ids[stale] ___
+self = <sqlalchemy.engine.base.Connection object at 0x000001E0AC3EE5A0>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x000001E0AC3ED490>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x000001E0AC3EF2F0>
+statement = <sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x000001E0AC3EF9B0>
+parameters = [{'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0abf6b590>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.UniqueViolation: duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: UniqueViolation
+
+The above exception was the direct cause of the following exception:
+
+migrated_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_inputs_1016_060105_b985f)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-743/test_saved_catalogue_state_doe0')
+mutation = 'stale'
+
+    @pytest.mark.parametrize("mutation", ["stale", "partial", "version", "uri"])
+    def test_saved_catalogue_state_does_not_silently_become_supported_ids(
+        migrated_engine, tmp_path, mutation
+    ):
+>       store, revision, _, _ = seed_catalogue(migrated_engine, tmp_path)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r07_input_capabilities_pg.py:118: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_r07_input_capabilities_pg.py:32: in seed_catalogue
+    session.execute(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2473: in execute
+    return self._execute_internal(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2373: in _execute_internal
+    result = conn.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0abf6b590>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.IntegrityError: (psycopg.errors.UniqueViolation) duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+E           [SQL: INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)]
+E           [parameters: {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+E           (Background on this error at: https://sqlalche.me/e/21/gkpj)
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: IntegrityError
+_ test_saved_catalogue_state_does_not_silently_become_supported_ids[partial] __
+self = <sqlalchemy.engine.base.Connection object at 0x000001E0AC3EF260>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x000001E0AC3870B0>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x000001E0AC3EC230>
+statement = <sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x000001E0AC3EC110>
+parameters = [{'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0abf6a990>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.UniqueViolation: duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: UniqueViolation
+
+The above exception was the direct cause of the following exception:
+
+migrated_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_inputs_1016_060105_b985f)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-743/test_saved_catalogue_state_doe1')
+mutation = 'partial'
+
+    @pytest.mark.parametrize("mutation", ["stale", "partial", "version", "uri"])
+    def test_saved_catalogue_state_does_not_silently_become_supported_ids(
+        migrated_engine, tmp_path, mutation
+    ):
+>       store, revision, _, _ = seed_catalogue(migrated_engine, tmp_path)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r07_input_capabilities_pg.py:118: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_r07_input_capabilities_pg.py:32: in seed_catalogue
+    session.execute(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2473: in execute
+    return self._execute_internal(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2373: in _execute_internal
+    result = conn.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0abf6a990>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.IntegrityError: (psycopg.errors.UniqueViolation) duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+E           [SQL: INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)]
+E           [parameters: {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+E           (Background on this error at: https://sqlalche.me/e/21/gkpj)
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: IntegrityError
+_ test_saved_catalogue_state_does_not_silently_become_supported_ids[version] __
+self = <sqlalchemy.engine.base.Connection object at 0x000001E0AC3DCA10>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x000001E0AC4B5160>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x000001E0AC3EFD10>
+statement = <sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x000001E0AC3DC380>
+parameters = [{'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0abf6b710>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.UniqueViolation: duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: UniqueViolation
+
+The above exception was the direct cause of the following exception:
+
+migrated_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_inputs_1016_060105_b985f)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-743/test_saved_catalogue_state_doe2')
+mutation = 'version'
+
+    @pytest.mark.parametrize("mutation", ["stale", "partial", "version", "uri"])
+    def test_saved_catalogue_state_does_not_silently_become_supported_ids(
+        migrated_engine, tmp_path, mutation
+    ):
+>       store, revision, _, _ = seed_catalogue(migrated_engine, tmp_path)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r07_input_capabilities_pg.py:118: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_r07_input_capabilities_pg.py:32: in seed_catalogue
+    session.execute(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2473: in execute
+    return self._execute_internal(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2373: in _execute_internal
+    result = conn.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0abf6b710>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.IntegrityError: (psycopg.errors.UniqueViolation) duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+E           [SQL: INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)]
+E           [parameters: {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+E           (Background on this error at: https://sqlalche.me/e/21/gkpj)
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: IntegrityError
+___ test_saved_catalogue_state_does_not_silently_become_supported_ids[uri] ____
+self = <sqlalchemy.engine.base.Connection object at 0x000001E0ADB25370>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x000001E0AC4B6F90>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x000001E0ADB25A30>
+statement = <sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x000001E0ADB24A10>
+parameters = [{'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0adab41d0>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.UniqueViolation: duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: UniqueViolation
+
+The above exception was the direct cause of the following exception:
+
+migrated_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_inputs_1016_060105_b985f)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-743/test_saved_catalogue_state_doe3')
+mutation = 'uri'
+
+    @pytest.mark.parametrize("mutation", ["stale", "partial", "version", "uri"])
+    def test_saved_catalogue_state_does_not_silently_become_supported_ids(
+        migrated_engine, tmp_path, mutation
+    ):
+>       store, revision, _, _ = seed_catalogue(migrated_engine, tmp_path)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r07_input_capabilities_pg.py:118: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_r07_input_capabilities_pg.py:32: in seed_catalogue
+    session.execute(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2473: in execute
+    return self._execute_internal(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2373: in _execute_internal
+    result = conn.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0adab41d0>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.IntegrityError: (psycopg.errors.UniqueViolation) duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+E           [SQL: INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)]
+E           [parameters: {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+E           (Background on this error at: https://sqlalche.me/e/21/gkpj)
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: IntegrityError
+_______________ test_source_acl_is_locked_during_catalogue_read _______________
+self = <sqlalchemy.engine.base.Connection object at 0x000001E0ADB26AE0>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x000001E0AC4B5B20>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x000001E0ADB25FA0>
+statement = <sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x000001E0ADB27170>
+parameters = [{'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0adab4890>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.UniqueViolation: duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: UniqueViolation
+
+The above exception was the direct cause of the following exception:
+
+migrated_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_inputs_1016_060105_b985f)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-743/test_source_acl_is_locked_duri0')
+
+    def test_source_acl_is_locked_during_catalogue_read(migrated_engine, tmp_path):
+>       store, revision, source, _ = seed_catalogue(migrated_engine, tmp_path)
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r07_input_capabilities_pg.py:138: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_r07_input_capabilities_pg.py:32: in seed_catalogue
+    session.execute(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2473: in execute
+    return self._execute_internal(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2373: in _execute_internal
+    result = conn.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0adab4890>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.IntegrityError: (psycopg.errors.UniqueViolation) duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+E           [SQL: INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)]
+E           [parameters: {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+E           (Background on this error at: https://sqlalche.me/e/21/gkpj)
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: IntegrityError
+____________ test_corrupt_stored_catalogue_is_not_an_empty_id_set _____________
+self = <sqlalchemy.engine.base.Connection object at 0x000001E0ADBA9190>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x000001E0ADB27980>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x000001E0ADBAA330>
+statement = <sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x000001E0ADBAAB70>
+parameters = [{'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0adab5010>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.UniqueViolation: duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: UniqueViolation
+
+The above exception was the direct cause of the following exception:
+
+migrated_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_inputs_1016_060105_b985f)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-743/test_corrupt_stored_catalogue_0')
+
+    def test_corrupt_stored_catalogue_is_not_an_empty_id_set(migrated_engine, tmp_path):
+>       store, revision, _, _ = seed_catalogue(migrated_engine, tmp_path)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r07_input_capabilities_pg.py:164: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_r07_input_capabilities_pg.py:32: in seed_catalogue
+    session.execute(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2473: in execute
+    return self._execute_internal(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2373: in _execute_internal
+    result = conn.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r07_inputs_1016_060105_b985f) at 0x1e0adab5010>
+query = "INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)"
+params = {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.IntegrityError: (psycopg.errors.UniqueViolation) duplicate key value violates unique constraint "sources_name_key"
+E           DETAIL:  Key (name)=(synthetic CWE fixture) already exists.
+E           [SQL: INSERT INTO sources(source_id,name,category,base_origin,visibility,tenant_id,created_at) VALUES(%(id)s,'synthetic CWE fixture','technical_standard','https://cwe.mitre.org','public',NULL,%(time)s)]
+E           [parameters: {'id': '[redacted test credential]', 'time': datetime.datetime(2026, 10, 16, 0, 0, tzinfo=datetime.timezone.utc)}]
+E           (Background on this error at: https://sqlalche.me/e/21/gkpj)
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: IntegrityError
+- generated xml file: D:\wt\r07-input-capabilities\reports\runs\recovery_r07_input_capabilities_20261016\integration_060106.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r07_input_capabilities_pg.py::test_each_private_parent_is_denied_before_object_read[source]
+FAILED tests/integration/test_r07_input_capabilities_pg.py::test_each_private_parent_is_denied_before_object_read[document]
+FAILED tests/integration/test_r07_input_capabilities_pg.py::test_each_private_parent_is_denied_before_object_read[revision]
+FAILED tests/integration/test_r07_input_capabilities_pg.py::test_permissionless_context_is_rejected_before_pg_or_objects
+FAILED tests/integration/test_r07_input_capabilities_pg.py::test_saved_catalogue_state_does_not_silently_become_supported_ids[stale]
+FAILED tests/integration/test_r07_input_capabilities_pg.py::test_saved_catalogue_state_does_not_silently_become_supported_ids[partial]
+FAILED tests/integration/test_r07_input_capabilities_pg.py::test_saved_catalogue_state_does_not_silently_become_supported_ids[version]
+FAILED tests/integration/test_r07_input_capabilities_pg.py::test_saved_catalogue_state_does_not_silently_become_supported_ids[uri]
+FAILED tests/integration/test_r07_input_capabilities_pg.py::test_source_acl_is_locked_during_catalogue_read
+FAILED tests/integration/test_r07_input_capabilities_pg.py::test_corrupt_stored_catalogue_is_not_an_empty_id_set
+10 failed, 1 passed in 3.22s
