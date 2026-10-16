@@ -1,3 +1,17 @@
+## 当前权威续接与文件所有权 · 2026-10-16T23:48:17+08:00
+
+Root codex/full-delivery-recovery@b5786deb467d3f44aad25cafef7962c343d4f885，产品基线26fa；b578只两份内部CR checkpoint，不是阶段通过。origin本轮23:26:52工具读取仍授权URL，最后已核远端G-B c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7。G-C仍in_progress/partial，无新push；所有后段独立准备不跨live验收门。
+
+Root独占主App/nav/公共合同/配置/schema/迁移/locks/progress/集成push；Root UI/SDK batch10 WIP已770前端+474SDK related通过、原收集15errors保留，用户tsbuildinfo完整hash 3c587edfd308fb5cf04efa6e2d87b7005ef28c8c656842059b2eca405738e43d不stage。Frontend XML一处credential形状暂withheld，仅原字节hash/偏移与数量入checkpoint，原件保留工作目录供独立分类。R17默认Root产品入口仍需新非作者真PG+Edge审查，不以组件Ship代签。
+
+滚动分工：R14 read新非作者审5883，已2unknown-stop实证红/三新PGfixture权限错误与原read-adapter25错名guard拒绝/两restart子进程依赖丢失，全部保留，无再重跑大批；旧read作者待冻结2probe定向修。R18原作者fix2只public_extension_reads与直属tests，原nonauthor369认为1版本声明引文不足Must未闭，健康与bytes2Must已闭；R06新非作者只a3模式与PG12/原证据，作者另WT只新activation builder/报告，不启动旧1cdb；R16作者只revalidation/newtests，R03唯一指定作者只executor optional completion guard/newtests，Root冻结四参数和兼容CR；旧Rootdefaultreview等待新host Redis诊断冻结后针对broker复验。所有独立WT，不自push/accepted；并行数量动态，不虚构恒定后台。
+
+已限定Ship待集成：ContentStore e2f/cdfe，233不同独立验证仅NTFS；Backup12f/ab048，40different含两真实PG+fresh child，最后完整outer Win6/Linux4=10。R20 indexes仍需真实重建，MinIO/native/full研判/UI/live未验。原secret loader两个guard限定Ship但完整仪器包失败；CPU1s/pipe旧两个Must、registry25/ZIP7/holdout与资产秘密门未闭。不能称只剩外部。
+
+父PG25432/Redis26379/OS29200截止2026-10-17T21:49:15+08:00不延长。A/B各单重型pytest/NullPool2；近期R14read/R06mode/R18复核/Backup都记录自有DB/schema/conn/PID/listener0并交回。新Redis诊断host26513仅setup2TCP/1PING成功，原bridge网络不存在与全局计数混入其他Agent的旧失败保留；broker/worker尚未验证。工具窗口16与业务10分别记录，不把普通CLI/default输出混成完整安全通过。
+
+下一关键动作：冻结Root默认调查UI/SDK给新非作者；合限定通过FD/Mode并Root唯一注入trusted mode后真PG/新来源与新版本activation审查，实际启动受控6h；修R14unknown/R18声明支持，接read3/R07桥与完整九职责；fanin/history/retraction/negative watch、公共tasks/ask/stack/HTTP-MCP/OAuth/CLI三插件、R19双人候选、R20indexes/CI/security、R21同条件性能、R22→R24-A→R23→R24-B。双人核验/裁决、FOFA授权资产scope、CNNVD登录XML仍未知，PPT后置，费unknown；不新增购买/用户侧chat/自动提醒。
+
 ## 当前权威续接与文件所有权 · 2026-10-16T22:27:47+08:00
 
 主控 codex/full-delivery-recovery@d8847a8026e2c38272ca9e1a67419d5d5941d763；origin本轮22:13:45实际核对为授权URL；最后已核远端仍G-B c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7。G-C仍in_progress/partial，无新阶段放行/push，后段仅独立准备；用户tsbuildinfo完整SHA 3c587edfd308fb5cf04efa6e2d87b7005ef28c8c656842059b2eca405738e43d原样，不stage。原60T与整卡各层验证不因局部Ship改绿。

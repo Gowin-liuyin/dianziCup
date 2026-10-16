@@ -27,15 +27,42 @@ from ai_intel_client.models import (
     ASK_RESULT_ADAPTER,
     AskRequest,
     AskResult,
+    PublicRecord,
+    PublicUuid,
     QAAnswer,
+    SourcePage,
     StackCheckRequest,
     StackCheckResult,
     TaskHandle,
+    TaskResultEnvelope,
+    VulnerabilityDetailPage,
+    VulnerabilityPage,
 )
 
 MAX_RESPONSE_BYTES = 1048576
 MAX_SYNCHRONOUS_REQUEST_BYTES = 1048576
 ResultType = TypeVar("ResultType")
+
+
+class SearchVulnsRequest(PublicRecord):
+    q: str | None = Field(default=None, min_length=1, max_length=4096)
+    limit: int = Field(default=20, ge=1, le=100)
+    cursor: str | None = Field(default=None, min_length=1, max_length=2048)
+
+
+class GetVulnRequest(PublicRecord):
+    event_id: PublicUuid
+    limit: int = Field(default=20, ge=1, le=100)
+    cursor: str | None = Field(default=None, min_length=1, max_length=2048)
+
+
+class GetTaskResultRequest(PublicRecord):
+    task_id: PublicUuid
+
+
+class ListSourcesRequest(PublicRecord):
+    limit: int = Field(default=20, ge=1, le=100)
+    cursor: str | None = Field(default=None, min_length=1, max_length=2048)
 
 
 class ClientConfigurationError(ValueError):
@@ -176,11 +203,14 @@ def _validate_timeout(value: float, upper_bound: float) -> None:
         raise ClientConfigurationError("client timeout is outside the allowed bounds")
 
 
-def _request_body(request: PublicRequest, model: type[PublicRequest]) -> str:
+def _request_body(request: PublicRecord, model: type[PublicRecord]) -> str:
     if not isinstance(request, model):
         raise ClientInputError("request is invalid")
     try:
-        body = model.model_validate_json(request.wire_json()).wire_json()
+        validated = model.model_validate(
+            request.model_dump(mode="python", exclude_unset=True, warnings="error")
+        )
+        body = model.model_validate_json(validated.wire_json()).wire_json()
     except (ValidationError, UnicodeError, ValueError):
         raise ClientInputError("request is invalid") from None
     if len(body.encode("utf-8")) > MAX_SYNCHRONOUS_REQUEST_BYTES:
@@ -188,7 +218,27 @@ def _request_body(request: PublicRequest, model: type[PublicRequest]) -> str:
     return body
 
 
-PublicRequest = AskRequest | StackCheckRequest
+def _query_parameters(request: PublicRecord, model: type[PublicRecord]) -> dict[str, str]:
+    body = _request_body(request, model)
+    validated = model.model_validate_json(body)
+    parameters: dict[str, str] = {}
+    for name in ("q", "limit", "cursor"):
+        if name not in model.model_fields:
+            continue
+        value: object = getattr(validated, name)
+        if value is None:
+            if name in validated.model_fields_set:
+                raise ClientInputError("query input cannot be explicitly null")
+            continue
+        if isinstance(value, str):
+            if not value.strip() or "\0" in value:
+                raise ClientInputError("query input is invalid")
+            parameters[name] = value
+        elif type(value) is int:
+            parameters[name] = str(value)
+        else:
+            raise ClientInputError("query input is invalid")
+    return parameters
 
 
 def _decode_response[ResultType](
@@ -240,6 +290,22 @@ def _ask_result(status: int, result: AskResult) -> AskResult:
 def _stack_result(status: int, result: StackCheckResult) -> StackCheckResult:
     if status != 200:
         raise ResponseContractError("synchronous stack result requires HTTP 200")
+    return result
+
+
+def _read_result[ResultType](
+    status: int, result: ResultType, parameters: dict[str, str]
+) -> ResultType:
+    if status != 200:
+        raise ResponseContractError("synchronous read result requires HTTP 200")
+    if isinstance(result, (VulnerabilityPage, SourcePage)):
+        count = len(result.items)
+    elif isinstance(result, VulnerabilityDetailPage):
+        count = len(result.advisories)
+    else:
+        return result
+    if count > int(parameters["limit"]):
+        raise ResponseContractError("read page exceeds its requested limit")
     return result
 
 
@@ -446,23 +512,32 @@ class DianziClient:
     async def __aexit__(self, *_: object) -> None:
         await self.aclose()
 
-    def _post(
+    def _request(
         self,
         path: str,
         body: str,
         operation_key: str,
         adapter: TypeAdapter[ResultType],
         timeout_seconds: float,
+        *,
+        method: str = "POST",
+        parameters: dict[str, str] | None = None,
     ) -> tuple[int, ResultType]:
         if self._http is None or self._closed:
             raise ClientConfigurationError("legacy synchronous fixture is unavailable")
-        encoded = body.encode("utf-8")
+        encoded = body.encode("utf-8") if method == "POST" else None
+        headers = (
+            {"Content-Type": "application/json", "Idempotency-Key": operation_key}
+            if method == "POST"
+            else None
+        )
         try:
             with self._http.stream(
-                "POST",
+                method,
                 path,
                 content=encoded,
-                headers={"Content-Type": "application/json", "Idempotency-Key": operation_key},
+                headers=headers,
+                params=parameters,
                 timeout=timeout_seconds,
             ) as response:
                 _check_compression(response)
@@ -471,9 +546,9 @@ class DianziClient:
                     _append_chunk(raw, chunk)
                 return _decode_response(response, bytes(raw), adapter)
         except httpx.HTTPError:
-            raise DianziTransportError(operation_key, True) from None
+            raise DianziTransportError(operation_key, method == "POST") from None
 
-    async def _post_async(
+    async def _request_async(
         self,
         path: str,
         body: str,
@@ -481,6 +556,9 @@ class DianziClient:
         adapter: TypeAdapter[ResultType],
         timeout_seconds: float,
         deadline: float,
+        *,
+        method: str = "POST",
+        parameters: dict[str, str] | None = None,
     ) -> tuple[int, ResultType]:
         loop = self._bind_loop()
         if self._closed or self._async_http is None:
@@ -490,6 +568,11 @@ class DianziClient:
             raise ClientConfigurationError("async operation requires a task")
         self._active_operations.add(operation)
         dispatched = False
+        headers = (
+            {"Content-Type": "application/json", "Idempotency-Key": operation_key}
+            if method == "POST"
+            else None
+        )
         try:
             async with asyncio.timeout_at(deadline):
                 async with self._operation_slots:
@@ -497,13 +580,11 @@ class DianziClient:
                         raise TimeoutError
                     dispatched = True
                     async with self._async_http.stream(
-                        "POST",
+                        method,
                         path,
-                        content=body.encode("utf-8"),
-                        headers={
-                            "Content-Type": "application/json",
-                            "Idempotency-Key": operation_key,
-                        },
+                        content=body.encode("utf-8") if method == "POST" else None,
+                        headers=headers,
+                        params=parameters,
                         timeout=timeout_seconds,
                     ) as response:
                         _check_compression(response)
@@ -515,11 +596,128 @@ class DianziClient:
                         raise TimeoutError
                     return result
         except TimeoutError:
-            raise DianziDeadlineError(operation_key, dispatched) from None
+            raise DianziDeadlineError(operation_key, dispatched and method == "POST") from None
         except httpx.HTTPError:
-            raise DianziTransportError(operation_key, dispatched) from None
+            raise DianziTransportError(operation_key, dispatched and method == "POST") from None
         finally:
             self._active_operations.discard(operation)
+
+    def _get[ResultType](
+        self, path: str, parameters: dict[str, str], model: type[ResultType]
+    ) -> ResultType:
+        status, result = self._request(
+            path,
+            "",
+            "",
+            TypeAdapter(model),
+            self._timeout_seconds,
+            method="GET",
+            parameters=parameters,
+        )
+        return _read_result(status, result, parameters)
+
+    async def _get_async[ResultType](
+        self, path: str, parameters: dict[str, str], model: type[ResultType], deadline: float
+    ) -> ResultType:
+        status, result = await self._request_async(
+            path,
+            "",
+            "",
+            TypeAdapter(model),
+            self._timeout_seconds,
+            deadline,
+            method="GET",
+            parameters=parameters,
+        )
+        result = _read_result(status, result, parameters)
+        if self._bind_loop().time() >= deadline:
+            raise DianziDeadlineError("", False)
+        return result
+
+    def search_vulns(self, request: SearchVulnsRequest) -> VulnerabilityPage:
+        if self.uses_async_requests:
+            return self._run_sync(self.search_vulns_async(request))
+        return self._get(
+            "/api/v1/vulns", _query_parameters(request, SearchVulnsRequest), VulnerabilityPage
+        )
+
+    async def search_vulns_async(self, request: SearchVulnsRequest) -> VulnerabilityPage:
+        deadline = self._bind_loop().time() + self.operation_deadline_seconds
+        return await self._get_async(
+            "/api/v1/vulns",
+            _query_parameters(request, SearchVulnsRequest),
+            VulnerabilityPage,
+            deadline,
+        )
+
+    def get_vuln(self, request: GetVulnRequest) -> VulnerabilityDetailPage:
+        if self.uses_async_requests:
+            return self._run_sync(self.get_vuln_async(request))
+        validated = GetVulnRequest.model_validate_json(_request_body(request, GetVulnRequest))
+        result = self._get(
+            f"/api/v1/vulns/{validated.event_id}",
+            _query_parameters(validated, GetVulnRequest),
+            VulnerabilityDetailPage,
+        )
+        if result.vulnerability.event_id != validated.event_id:
+            raise ResponseContractError("vulnerability result does not match the requested event")
+        return result
+
+    async def get_vuln_async(self, request: GetVulnRequest) -> VulnerabilityDetailPage:
+        deadline = self._bind_loop().time() + self.operation_deadline_seconds
+        validated = GetVulnRequest.model_validate_json(_request_body(request, GetVulnRequest))
+        result = await self._get_async(
+            f"/api/v1/vulns/{validated.event_id}",
+            _query_parameters(validated, GetVulnRequest),
+            VulnerabilityDetailPage,
+            deadline,
+        )
+        if result.vulnerability.event_id != validated.event_id:
+            raise ResponseContractError("vulnerability result does not match the requested event")
+        if self._bind_loop().time() >= deadline:
+            raise DianziDeadlineError("", False)
+        return result
+
+    def get_task_result(self, request: GetTaskResultRequest) -> TaskResultEnvelope:
+        if self.uses_async_requests:
+            return self._run_sync(self.get_task_result_async(request))
+        validated = GetTaskResultRequest.model_validate_json(
+            _request_body(request, GetTaskResultRequest)
+        )
+        result = self._get(f"/api/v1/tasks/{validated.task_id}", {}, TaskResultEnvelope)
+        if result.task.task_id != validated.task_id:
+            raise ResponseContractError("task result does not match the requested task")
+        return result
+
+    async def get_task_result_async(self, request: GetTaskResultRequest) -> TaskResultEnvelope:
+        deadline = self._bind_loop().time() + self.operation_deadline_seconds
+        validated = GetTaskResultRequest.model_validate_json(
+            _request_body(request, GetTaskResultRequest)
+        )
+        result = await self._get_async(
+            f"/api/v1/tasks/{validated.task_id}", {}, TaskResultEnvelope, deadline
+        )
+        if result.task.task_id != validated.task_id:
+            raise ResponseContractError("task result does not match the requested task")
+        if self._bind_loop().time() >= deadline:
+            raise DianziDeadlineError("", False)
+        return result
+
+    def list_sources(self, request: ListSourcesRequest) -> SourcePage:
+        if self.uses_async_requests:
+            return self._run_sync(self.list_sources_async(request))
+        return self._get(
+            "/api/v1/sources", _query_parameters(request, ListSourcesRequest), SourcePage
+        )
+
+    async def list_sources_async(self, request: ListSourcesRequest) -> SourcePage:
+        deadline = self._bind_loop().time() + self.operation_deadline_seconds
+        return await self._get_async(
+            "/api/v1/sources",
+            _query_parameters(request, ListSourcesRequest),
+            SourcePage,
+            deadline,
+        )
 
     def ask(self, request: AskRequest, *, idempotency_key: str | None = None) -> AskResult:
         if self.uses_async_requests:
@@ -528,7 +726,7 @@ class DianziClient:
         key = _validate_operation_key(
             secrets.token_urlsafe(32) if idempotency_key is None else idempotency_key
         )
-        status, result = self._post(
+        status, result = self._request(
             "/api/v1/ask",
             body,
             key,
@@ -546,7 +744,7 @@ class DianziClient:
         key = _validate_operation_key(
             secrets.token_urlsafe(32) if idempotency_key is None else idempotency_key
         )
-        status, result = await self._post_async(
+        status, result = await self._request_async(
             "/api/v1/ask",
             body,
             key,
@@ -568,7 +766,7 @@ class DianziClient:
         key = _validate_operation_key(
             secrets.token_urlsafe(32) if idempotency_key is None else idempotency_key
         )
-        status, result = self._post(
+        status, result = self._request(
             "/api/v1/stack/check",
             body,
             key,
@@ -586,7 +784,7 @@ class DianziClient:
         key = _validate_operation_key(
             secrets.token_urlsafe(32) if idempotency_key is None else idempotency_key
         )
-        status, result = await self._post_async(
+        status, result = await self._request_async(
             "/api/v1/stack/check",
             body,
             key,
