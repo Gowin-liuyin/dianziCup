@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+import time
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -80,7 +82,18 @@ class HybridIndexer:
                 )
             )
 
-    def refresh_scope(self, change: IndexChange) -> IndexReceipt:
+    def refresh_scope(self, change: IndexChange, *, deadline: float | None = None) -> IndexReceipt:
+        """An optional worker deadline bounds IO and prevents a late PG receipt commit."""
+        if deadline is not None and (
+            type(deadline) not in (int, float) or not math.isfinite(deadline)
+        ):
+            raise ValueError("index deadline must be a finite monotonic timestamp")
+
+        def require_deadline() -> None:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise HybridRetrievalError("corpus_projection_deadline_exceeded")
+
+        require_deadline()
         UUID(change.outbox_id)
         if change.scope_key == "public":
             tenant = None
@@ -176,14 +189,20 @@ class HybridIndexer:
                 raise HybridRetrievalError("index_scope_capacity_exceeded")
             vectors: list[tuple[float, ...]] = []
             for start in range(0, len(candidates), 8):
+                require_deadline()
                 batch = candidates[start : start + 8]
                 embedded = self.models.embed_passages(tuple(item.text for item in batch))
                 EventEvidenceRetriever._embedding(embedded, len(batch))
                 vectors.extend(embedded.vectors)
+            require_deadline()
             self.search.upsert(self.generation, candidates, epoch)
+            require_deadline()
             self.search.refresh(self.generation)
+            require_deadline()
             self.search.remove_older_scope(self.generation, change.scope_key, epoch)
+            require_deadline()
             self.search.refresh(self.generation)
+            require_deadline()
             if read_scope_epochs(session, worker_scope, lock=True) != epochs:
                 raise HybridRetrievalError("index_scope_changed_retry_required")
             session.execute(
@@ -194,6 +213,7 @@ class HybridIndexer:
             )
             now = datetime.now(UTC)
             for candidate, vector in zip(candidates, vectors, strict=True):
+                require_deadline()
                 session.execute(
                     insert(hybrid_chunks).values(
                         **candidate_values(candidate),
@@ -239,6 +259,7 @@ class HybridIndexer:
                     completed_at=now,
                 )
             )
+            require_deadline()
             return IndexReceipt(
                 self.generation.generation_id,
                 change.outbox_id,

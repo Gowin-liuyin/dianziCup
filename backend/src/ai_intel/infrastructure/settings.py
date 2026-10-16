@@ -62,6 +62,10 @@ class ApplicationSettings(BaseSettings):
     generation_model: str = Field(default="deepseek-flash", min_length=1, max_length=200)
     generation_api_key: SecretStr | None = None
     semantic_model_cache_directory: Path | None = None
+    hybrid_generation_id: str = Field(default="e5-v1", pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+    hybrid_index_name: str = Field(
+        default="dianzi_e5_v1", pattern=r"^dianzi_[a-z0-9][a-z0-9_-]{1,180}$"
+    )
     source_polling_enabled: bool = False
     enrichment_generation_enabled: bool = False
     enrichment_private_egress_granted: bool = False
