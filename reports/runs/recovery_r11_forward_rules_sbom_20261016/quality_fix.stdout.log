@@ -1,0 +1,286 @@
+E402 Module level import not at top of file
+  --> tests\integration\test_r11_forward_assessment_regression.py:14:1
+   |
+13 | sys.modules.setdefault("test_r11_pg_assessments", original)
+14 | from tests.integration import test_r11_assessment_raw_rechecks_pg as raw_original
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+15 |
+16 | pytestmark = pytest.mark.real_pg
+   |
+help: Move module level imports to top of file
+
+E501 Line too long (103 > 100)
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:152:101
+    |
+150 |                 "evidence_id", "revision_id", "document_id", "source_id", "event_id", "claim_id"
+151 |             )}, scope_key="public", visibility="public", tenant_id=None, available_at=NOW,
+152 |             start_offset=0, end_offset=1, chunk_text="S", text_sha256=hashlib.sha256(b"S").hexdigest(),
+    |                                                                                                     ^^^
+153 |             source_uri="https://example.invalid/synthetic", locator="synthetic-offset",
+154 |             model_version="explicit-synthetic-vector", embedding=[1.0] + [0.0] * 383,
+    |
+
+E501 Line too long (101 > 100)
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:175:101
+    |
+173 |         names = sorted(set(inspect(engine).get_table_names(schema=schema)) - {"alembic_version"})
+174 |         before = row_snapshot(engine, names)
+175 |         assert before["asset_snapshots"] and before["document_revisions"] and before["outbox_events"]
+    |                                                                                                     ^
+176 |         if start == "0019_aggregate_observations":
+177 |             run_migrations(url.render_as_string(hide_password=False), "0020_hybrid_retrieval")
+    |
+
+E501 Line too long (101 > 100)
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:180:101
+    |
+178 |             assert row_snapshot(engine, names) == before
+179 |             fill_0020_history(engine, identities, change)
+180 |             names = sorted(set(inspect(engine).get_table_names(schema=schema)) - {"alembic_version"})
+    |                                                                                                     ^
+181 |             before = row_snapshot(engine, names)
+182 |         for revision in ("0021_condition_assessments", HEAD):
+    |
+
+SIM117 Use a single `with` statement with multiple contexts instead of nested `with` statements
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:216:9
+    |
+214 |           config.set_main_option("script_location", str(MIGRATIONS_DIR))
+215 |           scripts = ScriptDirectory.from_config(config)
+216 | /         with pytest.raises(RuntimeError, match="synthetic deployment failure"), engine.connect() as connection:
+217 | |             with connection.begin():
+    | |____________________________________^
+218 |                   context = MigrationContext.configure(connection)
+219 |                   with Operations.context(context):
+    |
+help: Combine `with` statements
+
+E501 Line too long (111 > 100)
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:216:101
+    |
+214 |         config.set_main_option("script_location", str(MIGRATIONS_DIR))
+215 |         scripts = ScriptDirectory.from_config(config)
+216 |         with pytest.raises(RuntimeError, match="synthetic deployment failure"), engine.connect() as connection:
+    |                                                                                                     ^^^^^^^^^^^
+217 |             with connection.begin():
+218 |                 context = MigrationContext.configure(connection)
+    |
+
+E501 Line too long (112 > 100)
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:226:101
+    |
+224 |                 raise RuntimeError("synthetic deployment failure")
+225 |         with engine.connect() as connection:
+226 |             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0020_hybrid_retrieval"
+    |                                                                                                     ^^^^^^^^^^^^
+227 |             assert connection.scalar(text("SELECT to_regclass('condition_rule_versions')")) is None
+228 |             assert connection.scalar(text("SELECT to_regclass('asset_snapshot_sbom_sidecars')")) is None
+    |
+
+E501 Line too long (104 > 100)
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:228:101
+    |
+226 |             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0020_hybrid_retrieval"
+227 |             assert connection.scalar(text("SELECT to_regclass('condition_rule_versions')")) is None
+228 |             assert connection.scalar(text("SELECT to_regclass('asset_snapshot_sbom_sidecars')")) is None
+    |                                                                                                     ^^^^
+229 |             assert connection.scalar(text(
+230 |                 "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace "
+    |
+
+E501 Line too long (101 > 100)
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:236:101
+    |
+234 |         assert row_snapshot(engine, names) == before
+235 |         run_migrations(url.render_as_string(hide_password=False))
+236 |         retain_history_evidence("rollback_then_forward", before, row_snapshot(engine, names), schema)
+    |                                                                                                     ^
+
+E501 Line too long (107 > 100)
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:271:101
+    |
+269 |     assert dict(row) == values
+270 |     expected_digest = hashlib.sha256(json.dumps(values["canonical_payload"], ensure_ascii=True,
+271 |                                                sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    |                                                                                                     ^^^^^^^
+272 |     assert row["sidecar_sha256"] == expected_digest
+273 |     assert row_snapshot(engine, ["asset_snapshots"]) == before
+    |
+
+E501 Line too long (106 > 100)
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:298:101
+    |
+296 |     statement = ("UPDATE asset_snapshot_sbom_sidecars SET canonical_payload=canonical_payload"
+297 |                  if operation == "UPDATE" else "DELETE FROM asset_snapshot_sbom_sidecars")
+298 |     with pytest.raises(IntegrityError, match="SBOM sidecars are immutable"), engine.begin() as connection:
+    |                                                                                                     ^^^^^^
+299 |         connection.execute(text(statement + " WHERE snapshot_id=:snapshot"),
+300 |                            {"snapshot": values["snapshot_id"]})
+    |
+
+E501 Line too long (102 > 100)
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:327:101
+    |
+325 |     engine, values = sidecar_case
+326 |     before = row_snapshot(engine, ["asset_snapshot_sbom_sidecars", "asset_snapshots"])
+327 |     with pytest.raises(RuntimeError, match="synthetic sidecar failure"), engine.begin() as connection:
+    |                                                                                                     ^^
+328 |         connection.execute(insert(asset_snapshot_sbom_sidecars).values(**values))
+329 |         raise RuntimeError("synthetic sidecar failure")
+    |
+
+E501 Line too long (170 > 100)
+  --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\cbm_audit.py:16:101
+   |
+14 | …
+15 | …
+16 | …r11-forward-rules-sbom/backend/src", "--name", PROJECT, "--mode", "fast", "--persistence", "false"]),
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+17 | …wt/r11-forward-rules-sbom/backend/src/ai_intel/assets", "--name", PROJECT + "-assets", "--mode", "fast", "--persistence", "false"]),
+18 | …
+   |
+
+E501 Line too long (201 > 100)
+  --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\cbm_audit.py:17:101
+   |
+15 | …
+16 | …es-sbom/backend/src", "--name", PROJECT, "--mode", "fast", "--persistence", "false"]),
+17 | …rules-sbom/backend/src/ai_intel/assets", "--name", PROJECT + "-assets", "--mode", "fast", "--persistence", "false"]),
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+18 | …
+19 | …l"]),
+   |
+
+E501 Line too long (224 > 100)
+  --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\cbm_audit.py:20:101
+   |
+18 | …
+19 | …
+20 | …".ai_intel.assessment.assessment_service.AssessmentService.commit", "--direction", "outbound", "--depth", "2", "--limit", "60"]),
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+21 | …ntel.assessment.rule_service.RuleService.publish", "--direction", "outbound", "--depth", "2", "--limit", "60"]),
+22 | …OJECT + "-assets.inventory.InventoryService.import_manifest", "--direction", "outbound", "--depth", "2", "--limit", "60"]),
+   |
+
+E501 Line too long (207 > 100)
+  --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\cbm_audit.py:21:101
+   |
+19 | …),
+20 | …OJECT + ".ai_intel.assessment.assessment_service.AssessmentService.commit", "--direction", "outbound", "--depth", "2", "--limit", "60…
+21 | …+ ".ai_intel.assessment.rule_service.RuleService.publish", "--direction", "outbound", "--depth", "2", "--limit", "60"]),
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+22 | …ame", PROJECT + "-assets.inventory.InventoryService.import_manifest", "--direction", "outbound", "--depth", "2", "--limit", "60"]),
+23 | …sions|rule_support_bindings|rule_leaf_reviews|rule_validation_receipts|assessment_results|assessment_scope_watches|load_rule_inputs",…
+   |
+
+E501 Line too long (218 > 100)
+  --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\cbm_audit.py:22:101
+   |
+20 | …+ ".ai_intel.assessment.assessment_service.AssessmentService.commit", "--direction", "outbound", "--depth", "2", "--limit", "60"]),
+21 | …_intel.assessment.rule_service.RuleService.publish", "--direction", "outbound", "--depth", "2", "--limit", "60"]),
+22 | …PROJECT + "-assets.inventory.InventoryService.import_manifest", "--direction", "outbound", "--depth", "2", "--limit", "60"]),
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+23 | …rule_support_bindings|rule_leaf_reviews|rule_validation_receipts|assessment_results|assessment_scope_watches|load_rule_inputs", "back…
+24 | …
+   |
+
+E501 Line too long (237 > 100)
+  --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\cbm_audit.py:23:101
+   |
+21 | …ntel.assessment.rule_service.RuleService.publish", "--direction", "outbound", "--depth", "2", "--limit", "60"]),
+22 | …OJECT + "-assets.inventory.InventoryService.import_manifest", "--direction", "outbound", "--depth", "2", "--limit", "60"]),
+23 | …le_support_bindings|rule_leaf_reviews|rule_validation_receipts|assessment_results|assessment_scope_watches|load_rule_inputs", "backend/src"]),
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+24 | …
+25 | …
+   |
+
+E501 Line too long (142 > 100)
+  --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\cbm_audit.py:26:101
+   |
+24 | …
+25 | …
+26 | … else ["wsl", "-e", "env", "XDG_CACHE_HOME=" + CACHE, CLI, "cli", "--json", *arguments]
+   |                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+27 | …
+28 | …ure_output=True, timeout=45, check=False)
+   |
+
+E501 Line too long (217 > 100)
+  --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\cbm_audit.py:33:101
+   |
+31 | …
+32 | …
+33 | …": started_at, "finished_at": now(), "elapsed_seconds": round(time.monotonic() - started, 3), "exit_code": result.returncode}
+   |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+34 | …
+35 | …
+   |
+
+E501 Line too long (102 > 100)
+  --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\generate_ddl_snapshot.py:54:101
+   |
+52 |     source += (
+53 |         "\n\ndef downgrade() -> None:\n"
+54 |         + '    """Preserve evidence history; disable writers and use an approved forward repair."""\n'
+   |                                                                                                     ^^
+55 |         + '    raise RuntimeError("R11 immutable history cannot be downgraded; use forward repair")\n'
+56 |     )
+   |
+
+E501 Line too long (102 > 100)
+  --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\generate_ddl_snapshot.py:55:101
+   |
+53 |         "\n\ndef downgrade() -> None:\n"
+54 |         + '    """Preserve evidence history; disable writers and use an approved forward repair."""\n'
+55 |         + '    raise RuntimeError("R11 immutable history cannot be downgraded; use forward repair")\n'
+   |                                                                                                     ^^
+56 |     )
+57 |     path.write_text(source, encoding="utf-8", newline="\n")
+   |
+
+E501 Line too long (107 > 100)
+  --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\run_checks.py:37:101
+   |
+35 |         [
+36 |             str(PWSH), "-NoProfile", "-NonInteractive", "-Command",
+37 |             "(Get-Content -LiteralPath 'D:/dianzi-private/test-runtime-resource-reference-20261016.dpapi' "
+   |                                                                                                     ^^^^^^^
+38 |             "-Raw).Trim() | ConvertTo-SecureString | ConvertFrom-SecureString -AsPlainText",
+39 |         ],
+   |
+
+E501 Line too long (102 > 100)
+  --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\run_checks.py:82:101
+   |
+80 |     result["R11_FORWARD_EVIDENCE_DIR"] = str(RUN)
+81 |     result["R05_SEMANTIC_CACHE"] = "C:/Users/yinha/.codex/cache/dianzi/r05-semantic-runtime"
+82 |     search_value = configuration.get("R12_OPENSEARCH_URL") or configuration.get("TEST_OPENSEARCH_URL")
+   |                                                                                                     ^^
+83 |     if isinstance(search_value, str):
+84 |         result["R12_OPENSEARCH_URL"] = search_value
+   |
+
+E501 Line too long (103 > 100)
+   --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\run_checks.py:146:101
+    |
+144 |     files = sorted(path for path in RUN.rglob("*") if path.is_file()
+145 |                    and "__pycache__" not in path.parts and path.name != "artifact_manifest.json")
+146 |     matches = [str(path.relative_to(ROOT)) for path in files if secret and secret in path.read_bytes()]
+    |                                                                                                     ^^^
+147 |     (RUN / "credential_scan.json").write_text(json.dumps({
+148 |         "actual_password_match_count": len(matches), "matched_paths": matches,
+    |
+
+E501 Line too long (103 > 100)
+   --> D:\wt\r11-forward-rules-sbom\reports\runs\recovery_r11_forward_rules_sbom_20261016\run_checks.py:166:101
+    |
+164 |         label_index = 2 if not use_resources else 1
+165 |         try:
+166 |             raise SystemExit(execute(sys.argv[label_index], [str(PYTHON), *sys.argv[label_index + 1:]],
+    |                                                                                                     ^^^
+167 |                                      resources=use_resources))
+168 |         except Exception as error:
+    |
+
+Found 32 errors (6 fixed, 26 remaining).

@@ -1,0 +1,100 @@
+E501 Line too long (105 > 100)
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:494:101
+    |
+492 | @pytest.mark.parametrize("table", (*RULE_TABLES, *ASSESSMENT_TABLES), ids=lambda table: table.name)
+493 | @pytest.mark.parametrize("operation", ["UPDATE", "DELETE"])
+494 | def test_security_every_history_table_rejects_content_update_and_delete(assessed_case, table, operation):
+    |                                                                                                     ^^^^^
+495 |     engine, seeded, receipt = assessed_case
+496 |     key = "assessment_id" if table.name.startswith("assessment_") else "rule_id"
+    |
+
+E501 Line too long (105 > 100)
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:501:101
+    |
+499 |         statement = f'DELETE FROM "{table.name}" WHERE "{key}"=:identity'
+500 |     elif table.name == "condition_rule_versions":
+501 |         statement = "UPDATE condition_rule_versions SET condition_sha256=:digest WHERE rule_id=:identity"
+    |                                                                                                     ^^^^^
+502 |     else:
+503 |         statement = f'UPDATE "{table.name}" SET "{key}"="{key}" WHERE "{key}"=:identity'
+    |
+
+E501 Line too long (109 > 100)
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:519:101
+    |
+517 | ], ids=["binding-evidence", "review-binding", "validation-version", "assessment-tenant",
+518 |         "watch-assessment"])
+519 | def test_security_new_foreign_keys_reject_missing_or_cross_tenant_parent(assessed_case, table, field, value):
+    |                                                                                                     ^^^^^^^^^
+520 |     engine, seeded, receipt = assessed_case
+521 |     key = "assessment_id" if table.name.startswith("assessment_") else "rule_id"
+    |
+
+E501 Line too long (107 > 100)
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:524:101
+    |
+522 |     identity = receipt.assessment_id if key == "assessment_id" else seeded["rule"].rule_id
+523 |     with engine.connect() as connection:
+524 |         values = dict(connection.execute(select(table).where(table.c[key] == identity)).mappings().first())
+    |                                                                                                     ^^^^^^^
+525 |     if table.name == "rule_leaf_reviews":
+526 |         values["review_id"] = uuid4().hex
+    |
+
+F821 Undefined name `uuid4`
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:526:31
+    |
+524 |         values = dict(connection.execute(select(table).where(table.c[key] == identity)).mappings().first())
+525 |     if table.name == "rule_leaf_reviews":
+526 |         values["review_id"] = uuid4().hex
+    |                               ^^^^^
+527 |     elif table.name == "rule_validation_receipts":
+528 |         values["receipt_id"] = uuid4().hex
+    |
+
+F821 Undefined name `uuid4`
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:528:32
+    |
+526 |         values["review_id"] = uuid4().hex
+527 |     elif table.name == "rule_validation_receipts":
+528 |         values["receipt_id"] = uuid4().hex
+    |                                ^^^^^
+529 |     elif table.name == "assessment_results":
+530 |         values["assessment_id"] = uuid4().hex
+    |
+
+F821 Undefined name `uuid4`
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:530:35
+    |
+528 |         values["receipt_id"] = uuid4().hex
+529 |     elif table.name == "assessment_results":
+530 |         values["assessment_id"] = uuid4().hex
+    |                                   ^^^^^
+531 |         values["input_digest"] = hashlib.sha256(uuid4().bytes).hexdigest()
+532 |     values[field] = value
+    |
+
+F821 Undefined name `uuid4`
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:531:49
+    |
+529 |     elif table.name == "assessment_results":
+530 |         values["assessment_id"] = uuid4().hex
+531 |         values["input_digest"] = hashlib.sha256(uuid4().bytes).hexdigest()
+    |                                                 ^^^^^
+532 |     values[field] = value
+533 |     before = row_snapshot(engine, [table.name])
+    |
+
+F821 Undefined name `uuid4`
+   --> tests\integration\test_r11_forward_rules_sbom_schema.py:557:25
+    |
+555 |             RULE_TABLES[0].c.rule_id == seeded["rule"].rule_id
+556 |         )).mappings().one())
+557 |     values["rule_id"] = uuid4().hex
+    |                         ^^^^^
+558 |     values[field] = value
+559 |     with pytest.raises(IntegrityError) as failure, engine.begin() as connection:
+    |
+
+Found 10 errors (1 fixed, 9 remaining).
