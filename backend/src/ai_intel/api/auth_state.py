@@ -7,6 +7,7 @@ import binascii
 import hashlib
 import uuid
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Column,
@@ -36,6 +37,9 @@ from ai_intel.api.authentication import (
 )
 from ai_intel.domain.access import READ_AUDIT, AccessScope, PermissionDeniedError, Role
 from ai_intel.knowledge.models import metadata, users
+
+if TYPE_CHECKING:
+    from ai_intel.api.actor_references import ActorReference
 
 auth_sessions = Table(
     "auth_sessions",
@@ -74,27 +78,20 @@ auth_audit_events = Table(
 
 
 def lock_authenticated_scope(
-    connection: Connection, session_token: str, now: datetime
+    connection: Connection, session_token: str | ActorReference, now: datetime
 ) -> AccessScope:
-    """在调用者事务内锁住会话与用户；撤销、角色和租户变更与提交顺序明确。"""
-    session_hash = hashlib.sha256(session_token.encode("utf-8")).hexdigest()
-    row = (
-        connection.execute(
-            select(auth_sessions.c.user_id, users.c.tenant_id, users.c.role)
-            .select_from(auth_sessions.join(users))
-            .where(
-                auth_sessions.c.session_hash == session_hash,
-                auth_sessions.c.revoked_at.is_(None),
-                auth_sessions.c.expires_at > now,
-            )
-            .with_for_update(read=True, of=(auth_sessions, users))
-        )
-        .mappings()
-        .first()
+    """同事务重验cookie或内部server引用；原字符串始终只表示cookie会话。"""
+    from ai_intel.api.actor_references import (
+        ActorReference,
+        lock_actor_reference_scope,
+        lock_session_scope,
     )
-    if row is None:
-        raise SessionExpiredError("session is not valid")
-    return AccessScope.for_authenticated_user(row["user_id"], row["tenant_id"], Role(row["role"]))
+
+    if isinstance(session_token, ActorReference):
+        return lock_actor_reference_scope(connection, session_token, now)
+    if isinstance(session_token, str):
+        return lock_session_scope(connection, session_token, now)
+    raise TypeError("cookie session or internal actor reference is required")
 
 
 class PgAuthenticationStateStore:
