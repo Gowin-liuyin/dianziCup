@@ -125,6 +125,29 @@ def _safe_reference(value: str) -> bool:
     return _safe_http_uri(value)
 
 
+def _source_locator_fields(value: str) -> list[str]:
+    """只接受JSON Pointer规范转义，避免不同拼写绕过精确服务器标记。"""
+    if not value.startswith("/") or re.search(r"~(?![01])", value):
+        raise SbomProjectionValidationError("invalid stored SBOM source locator")
+    return value.split("/")[1:]
+
+
+def _safe_source_field(value: str) -> bool:
+    decoded = _decoded_uri_text(value)
+    if decoded is None or any(ord(char) <= 31 or 127 <= ord(char) <= 159 for char in decoded):
+        return False
+    if decoded.startswith("pkg:"):
+        return _safe_purl_reference(decoded) and not any(
+            segment in {".", ".."} for segment in decoded.split("/")
+        )
+    return (
+        decoded.strip() not in {".", ".."}
+        and not any(char in "/\\" for char in decoded)
+        and not re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", decoded.lstrip())
+        and not re.search(r"[^\s:]+:[^\s]*@", decoded)
+    )
+
+
 def safe_sbom_snapshot(snapshot: AssetSnapshotResponse) -> AssetSnapshotResponse:
     """仅隐藏SBOM中不可安全展示的PURL；组件身份、来源事实hash和旧JSON/CSV不变。"""
     if snapshot.source_kind not in {"cyclonedx_json", "spdx_json"}:
@@ -151,6 +174,40 @@ def safe_sbom_sidecar(
         result.schema_version == "r11-sbom-sidecar-1" and old_redactions
     ):
         raise SbomProjectionValidationError("invalid stored SBOM display markers")
+    unmapped_locators = set(result.unmapped_field_locators)
+    source_locators = [
+        *(item.source_field_locator for item in result.component_sources),
+        *(
+            field.source_field_locator
+            for item in result.component_sources
+            for field in item.field_sources
+        ),
+        *(
+            checksum.source_field_locator
+            for item in result.component_sources
+            for checksum in item.checksums
+        ),
+        *(item.source_field_locator for item in result.dependency_edges),
+        *(item.source_field_locator for item in result.completeness_declarations),
+        *(item.source_field_locator for item in result.external_documents),
+        *(item.checksum.source_field_locator for item in result.external_documents),
+    ]
+    for source_locator in source_locators:
+        if any(
+            not _safe_source_field(pointer_segment.replace("~1", "/").replace("~0", "~"))
+            for pointer_segment in _source_locator_fields(source_locator)
+        ):
+            raise SbomProjectionValidationError("invalid stored SBOM source locator")
+    for display_marker in result.redactions:
+        for pointer_segment in _source_locator_fields(display_marker.source_field_locator):
+            if (
+                display_marker.replacement_ref is None
+                and display_marker.source_field_locator in unmapped_locators
+                and re.fullmatch(r"redacted-field:[0-9a-f]{64}", pointer_segment)
+            ):
+                continue
+            if not _safe_source_field(pointer_segment.replace("~1", "/").replace("~0", "~")):
+                raise SbomProjectionValidationError("invalid stored SBOM display marker locator")
     redactions = dict(old_redactions)
     used_redactions: set[str] = set()
     referenced_values: dict[str, str] = {}
@@ -186,27 +243,22 @@ def safe_sbom_sidecar(
         return alias
 
     def locator(value: str) -> str:
-        if not value.startswith("/"):
-            raise SbomProjectionValidationError("invalid stored SBOM source locator")
-        if result.schema_version == "r11-sbom-sidecar-2" and value in old_redactions:
-            marker = old_redactions[value]
-            if marker.replacement_ref is None and any(
-                re.fullmatch(r"redacted-field:[0-9a-f]{64}", field) for field in value.split("/")
-            ):
-                used_redactions.add(value)
-                return value
-        fields = value.split("/")
-        protected = []
+        marker = old_redactions.get(value)
+        protected = [""]
         changed = False
-        for field in fields:
-            original = field.replace("~1", "/").replace("~0", "~")
-            decoded = _decoded_uri_text(original)
+        marked = False
+        for field in _source_locator_fields(value):
             if (
-                decoded is None
-                or any(ord(char) <= 31 or ord(char) == 127 for char in decoded)
-                or decoded.startswith(("/", "\\", "~/"))
-                or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", decoded)
+                result.schema_version == "r11-sbom-sidecar-2"
+                and marker is not None
+                and marker.replacement_ref is None
+                and re.fullmatch(r"redacted-field:[0-9a-f]{64}", field)
             ):
+                marked = True
+                protected.append(field)
+                continue
+            original = field.replace("~1", "/").replace("~0", "~")
+            if not _safe_source_field(original):
                 if result.schema_version == "r11-sbom-sidecar-2":
                     raise SbomProjectionValidationError("unbound stored SBOM source locator")
                 field = "redacted-field:" + hashlib.sha256(original.encode()).hexdigest()
@@ -215,6 +267,8 @@ def safe_sbom_sidecar(
         safe = "/".join(protected)
         if changed:
             mark(safe)
+        elif marked:
+            used_redactions.add(value)
         return safe
 
     components = tuple(
