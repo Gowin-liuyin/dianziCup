@@ -6,6 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Literal
 from urllib.parse import parse_qsl, urlsplit
 from uuid import NAMESPACE_URL, uuid5
 
@@ -20,6 +21,7 @@ from ai_intel.infrastructure.content_store import ContentStorage
 from ai_intel.infrastructure.network import SENSITIVE_QUERY_KEYS
 from ai_intel.ingestion.parsing.text_blocks import ParseOutcome
 from ai_intel.ingestion.source_catalog import CATALOG_SOURCES, SourceCatalogError, SourceKind
+from ai_intel.ingestion.source_documents import source_data_mode_metadata
 from ai_intel.knowledge.models import document_revisions, documents, scope_epochs
 from ai_intel.knowledge.persistence_models import claims
 from ai_intel.knowledge.revisions import (
@@ -60,7 +62,12 @@ def _utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
-def _validate_document(source_kind: SourceKind, member: NormalizedSourceDocument) -> None:
+def _validate_document(
+    source_kind: SourceKind,
+    member: NormalizedSourceDocument,
+    *,
+    data_mode: Literal["live", "fixture"] | None = None,
+) -> None:
     source_document_kinds = {
         "nvd_ollama": DocumentKind.ADVISORY,
         "vllm_vendor": DocumentKind.ADVISORY,
@@ -128,9 +135,9 @@ def _validate_document(source_kind: SourceKind, member: NormalizedSourceDocument
         offset = block.end_offset
     if member.parsed.normalized_text != "".join(block.text for block in member.parsed.blocks):
         raise SourceCatalogError("source normalized text differs from its blocks")
-    metadata = json.dumps(_revision_metadata(member), ensure_ascii=False, allow_nan=False).encode(
-        "utf-8"
-    )
+    metadata = json.dumps(
+        _revision_metadata(member, data_mode=data_mode), ensure_ascii=False, allow_nan=False
+    ).encode("utf-8")
     if len(metadata) > 65536 or b"\\u0000" in metadata:
         raise SourceCatalogError("source metadata exceeds safe limit")
     for timestamp in (member.published_at, member.modified_at):
@@ -138,9 +145,15 @@ def _validate_document(source_kind: SourceKind, member: NormalizedSourceDocument
             _utc(timestamp)
 
 
-def _revision_metadata(member: NormalizedSourceDocument) -> dict[str, JsonValue]:
+def _revision_metadata(
+    member: NormalizedSourceDocument, *, data_mode: Literal["live", "fixture"] | None = None
+) -> dict[str, JsonValue]:
+    metadata = dict(member.metadata)
+    metadata.pop("data_mode", None)
+    metadata.pop("data_mode_policy_version", None)
+    metadata.update(source_data_mode_metadata(data_mode))
     return dict(
-        member.metadata,
+        metadata,
         title=member.title,
         canonical_uri=member.canonical_uri,
         published_at=_utc(member.published_at).isoformat() if member.published_at else None,
@@ -162,19 +175,21 @@ def persist_catalog_documents(
     response_hash: str,
     observed_at: datetime,
     ingested_at: datetime,
+    data_mode: Literal["live", "fixture"] | None = None,
 ) -> SavedCatalogDocuments:
     """仅写同一公开源；整页savepoint与cursor/outbox由调用方事务共同提交。"""
     scope.requires(MANAGE_PUBLIC_SOURCES)
     scope.requires(READ_PUBLIC)
     if scope.role != Role.SYSTEM_ADMIN or scope.tenant_id is not None:
         raise SourceCatalogError("public source administrator required")
+    source_data_mode_metadata(data_mode)
     observed_at, ingested_at = _utc(observed_at), _utc(ingested_at)
     if observed_at > ingested_at or source_kind not in CATALOG_SOURCES:
         raise SourceCatalogError("invalid source observation")
     if len(members) > 100 or len({member.source_record_id for member in members}) != len(members):
         raise SourceCatalogError("source page contains duplicate or too many documents")
     for member in members:
-        _validate_document(source_kind, member)
+        _validate_document(source_kind, member, data_mode=data_mode)
     with session.begin_nested():
         source_id = CATALOG_SOURCES[source_kind].source_id
         revisions: list[str] = []
@@ -227,7 +242,7 @@ def persist_catalog_documents(
                 "public",
                 None,
                 ingested_at,
-                revision_metadata=_revision_metadata(member),
+                revision_metadata=_revision_metadata(member, data_mode=data_mode),
             )
             revisions.append(saved.revision_id)
             if saved.reused:
@@ -256,7 +271,6 @@ def persist_catalog_documents(
                     parse_status=member.parsed.status,
                     source_response_hash=response_hash,
                     source_json_pointer=member.source_locator,
-                    source_metadata=_revision_metadata(member),
                 )
             )
             register_source_revision_blocks(

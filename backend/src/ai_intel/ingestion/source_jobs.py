@@ -52,6 +52,7 @@ from ai_intel.ingestion.source_documents import (
     SourceResponse,
     ensure_source_registration,
     persist_source_response,
+    source_data_mode_metadata,
     validate_vendor_after,
 )
 from ai_intel.ingestion.source_failure_receipts import SourceResponseRecorder
@@ -408,8 +409,10 @@ def build_source_page_handler(
     fetcher: SourceFetcher | None = None,
     poster: SourcePoster | None = None,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    data_mode: Literal["live", "fixture"] | None = None,
 ) -> JobHandler:
     """worker 使用部署配置；测试显式注入 fetcher/poster，不提供自动 fixture 后备。"""
+    source_data_mode_metadata(data_mode)
     gateway = create_network_gateway(
         NetworkPolicy(
             allowed_domains=("services.nvd.nist.gov", "api.github.com"),
@@ -492,7 +495,9 @@ def build_source_page_handler(
                     session,
                     store,
                     scope,
-                    SourceResponse(request.source_kind, result.body, url, observed_at),
+                    SourceResponse(
+                        request.source_kind, result.body, url, observed_at, data_mode=data_mode
+                    ),
                     ingested_at=clock(),
                 )
                 revision_ids = saved.revision_ids
@@ -534,6 +539,7 @@ def build_source_page_handler(
                     response_hash=response_hash,
                     observed_at=observed_at,
                     ingested_at=clock(),
+                    data_mode=data_mode,
                 )
                 revision_ids = catalog_saved.revision_ids
                 following = page.next_cursor

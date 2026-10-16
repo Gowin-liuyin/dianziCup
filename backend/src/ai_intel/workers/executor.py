@@ -83,9 +83,13 @@ class DetachedJobHandler:
 
     没有worker Session传入，外部IO前释放服务自己的锁；效果已提交而
     完成租约丢失时不会回滚效果，重放必须沿服务台账，不能重复付费。
+    completion_guard仅在最终事务做有界校验，不执行外部IO或接管Session生命周期。
     """
 
     handler: Callable[[JobExecutionContext, bytes], JobExecutionResult]
+    completion_guard: (
+        Callable[[Session, JobExecutionContext, bytes, JobExecutionResult], None] | None
+    ) = None
 
 
 def execute_job(
@@ -132,6 +136,9 @@ def execute_job(
                 return result.outcome
         result = handler.handler(context, payload)
         with Session(engine) as session, session.begin():
+            require_job_lease(session, job_id, worker_id, clock(), expected_attempt=attempt_count)
+            if handler.completion_guard is not None:
+                handler.completion_guard(session, context, payload, result)
             complete_job(
                 session,
                 job_id,

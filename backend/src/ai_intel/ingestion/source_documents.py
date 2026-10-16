@@ -10,6 +10,7 @@ from typing import Literal
 from urllib.parse import parse_qsl, urlsplit
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from pydantic import JsonValue
 from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -55,6 +56,7 @@ from ai_intel.knowledge.revisions import (
 )
 
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
+SOURCE_DATA_MODE_POLICY_VERSION = "trusted-source-runtime-v1"
 PUBLIC_SCOPE = VisibilityScope(visibility="public")
 SOURCE_DEFINITIONS = {
     key: (source.source_id, source.name, source.category.value, source.base_origin)
@@ -68,12 +70,27 @@ class SourceDocumentError(ValueError):
 
 @dataclass(frozen=True)
 class SourceResponse:
-    """A fixed-endpoint response; observed_at is the gateway receipt time."""
+    """Mode comes only from trusted runtime configuration, never upstream content."""
 
     source_kind: Literal["nvd_ollama", "vllm_vendor"]
     body: bytes
     request_url: str
     observed_at: datetime
+    data_mode: Literal["live", "fixture"] | None = None
+
+
+def source_data_mode_metadata(
+    data_mode: Literal["live", "fixture"] | None,
+) -> dict[str, JsonValue]:
+    """Unknown mode stays absent and participates in immutable revision comparison."""
+    if data_mode is None:
+        return {}
+    if not isinstance(data_mode, str) or data_mode not in {"live", "fixture"}:
+        raise SourceDocumentError("invalid source data mode")
+    return {
+        "data_mode": data_mode,
+        "data_mode_policy_version": SOURCE_DATA_MODE_POLICY_VERSION,
+    }
 
 
 @dataclass(frozen=True)
@@ -406,6 +423,7 @@ def persist_source_response(
 ) -> SavedSourceResponse:
     """Persist a whole page in a savepoint; the caller alone commits the outer transaction."""
     _require_public_administrator(access_scope)
+    revision_metadata = source_data_mode_metadata(response.data_mode)
     observed_at, ingested_at = _aware_time(response.observed_at), _aware_time(ingested_at)
     if observed_at > ingested_at:
         raise SourceDocumentError("source observation time follows ingestion time")
@@ -430,6 +448,7 @@ def persist_source_response(
                 response_hash,
                 observed_at,
                 ingested_at,
+                revision_metadata,
             )
             revision_ids.append(revision_id)
             event_ids.append(event_id)
@@ -458,6 +477,7 @@ def _persist_member(
     response_hash: str,
     observed_at: datetime,
     ingested_at: datetime,
+    revision_metadata: dict[str, JsonValue],
 ) -> tuple[str, str, bool]:
     document_id = str(uuid5(NAMESPACE_URL, f"dianzi:document:{source_id}:{member.record_id}"))
     candidate_event_id = str(uuid5(NAMESPACE_URL, f"dianzi:event:{source_id}:{member.record_id}"))
@@ -494,7 +514,14 @@ def _persist_member(
     ):
         raise SourceDocumentError("document identity or scope conflicts with source")
     saved = save_document_revision(
-        session, store, document_id, member.payload, "public", None, ingested_at
+        session,
+        store,
+        document_id,
+        member.payload,
+        "public",
+        None,
+        ingested_at,
+        revision_metadata=revision_metadata,
     )
     if not saved.reused:
         prior_revisions = select(document_revisions.c.revision_id).where(

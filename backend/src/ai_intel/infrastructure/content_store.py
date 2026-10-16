@@ -1,4 +1,4 @@
-"""原文内容寻址存储: 临时写入原子替换、hash 校验、路径不取自用户输入。"""
+"""原文内容寻址存储: 临时写入排他发布、hash 校验、路径不取自用户输入。"""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ class ContentStore:
         return self._root / content_hash[:2] / content_hash
 
     def store_bytes(self, payload: bytes) -> StoredObject:
-        """写入原文: 先临时文件落盘再原子替换, 避免半写对象; 重复写入幂等。"""
+        """同目录临时落盘后排他发布；已有完整相同对象才复用，不覆盖旧对象。"""
         content_hash = hashlib.sha256(payload).hexdigest()
         object_path = self.object_path_for_hash(content_hash)
         object_path.parent.mkdir(parents=True, exist_ok=True)
@@ -70,16 +70,56 @@ class ContentStore:
                 object_path=object_path,
             )
         file_descriptor, temporary_name = tempfile.mkstemp(dir=object_path.parent, prefix=".tmp-")
+        temporary_identity: tuple[int, int] | None = None
+        operation_error: BaseException | None = None
         try:
-            with os.fdopen(file_descriptor, "wb") as temporary_file:
-                temporary_file.write(payload)
-                temporary_file.flush()
-                os.fsync(temporary_file.fileno())
-            os.replace(temporary_name, object_path)
-        except Exception:
-            if os.path.exists(temporary_name):
-                os.unlink(temporary_name)
+            try:
+                temporary_stat = os.fstat(file_descriptor)
+                temporary_identity = (temporary_stat.st_dev, temporary_stat.st_ino)
+                with os.fdopen(file_descriptor, "wb", closefd=False) as temporary_file:
+                    temporary_file.write(payload)
+                    temporary_file.flush()
+                    os.fsync(temporary_file.fileno())
+            except BaseException as error:
+                operation_error = error
+                raise
+            finally:
+                try:
+                    os.close(file_descriptor)
+                except OSError as close_error:
+                    if operation_error is None:
+                        raise
+                    operation_error.add_note(
+                        "temporary content descriptor close failed: " + type(close_error).__name__
+                    )
+            try:
+                os.link(temporary_name, object_path)
+            except FileExistsError as publication_error:
+                try:
+                    existing_payload = self.read_verified(content_hash)
+                except (OSError, ValueError):
+                    raise publication_error from None
+                if existing_payload != payload:
+                    raise
+        except BaseException as error:
+            operation_error = error
             raise
+        finally:
+            try:
+                if temporary_identity is not None:
+                    try:
+                        remaining_stat = os.lstat(temporary_name)
+                    except FileNotFoundError:
+                        pass
+                    else:
+                        if (remaining_stat.st_dev, remaining_stat.st_ino) == temporary_identity:
+                            os.unlink(temporary_name)
+            except OSError as cleanup_error:
+                if operation_error is None:
+                    raise
+                operation_error.add_note(
+                    "temporary content cleanup failed: " + type(cleanup_error).__name__
+                )
         return StoredObject(
             content_hash=content_hash, size_bytes=len(payload), object_path=object_path
         )

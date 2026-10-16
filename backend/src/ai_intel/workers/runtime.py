@@ -108,7 +108,9 @@ source_settings = load_application_settings()
 EXECUTION_HANDLERS: dict[str, JobHandler | DetachedJobHandler] = {
     "record_source_fetch_failure": record_source_fetch_failure,
     SOURCE_JOB_TYPE: build_source_page_handler(
-        build_content_storage(source_settings), dns_resolver=source_settings.dns_resolver
+        build_content_storage(source_settings),
+        dns_resolver=source_settings.dns_resolver,
+        data_mode=source_settings.data_mode,
     ),
 }
 
