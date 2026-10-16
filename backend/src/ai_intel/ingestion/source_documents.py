@@ -106,6 +106,7 @@ class _PreparedDocument:
     source_json_pointer: str
     parsed: ParseOutcome
     facts: tuple[_SourceFact, ...]
+    identifier_fields: tuple[tuple[str, str], ...]
 
 
 def _aware_time(value: datetime) -> datetime:
@@ -314,6 +315,7 @@ def _prepare_member(
             f"/vulnerabilities/{index}",
             parsed,
             tuple(facts),
+            (("/cve/id", nvd.cve_id),),
         )
     vendor = normalize_vendor_advisory(member, repository="vllm-project/vllm")
     excerpt = vendor.description if vendor.description is not None else vendor.title
@@ -347,6 +349,8 @@ def _prepare_member(
         f"/{index}",
         parsed,
         tuple(facts),
+        (("/ghsa_id", vendor.ghsa_id),)
+        + ((("/cve_id", vendor.cve_id),) if vendor.cve_id is not None else ()),
     )
 
 
@@ -588,6 +592,7 @@ def _persist_member(
             blocks,
             observed_at,
             ingested_at,
+            member.identifier_fields,
         )
         if submissions:
             KnowledgeRepository(session, scope).publish(
@@ -618,6 +623,7 @@ def _fact_submissions(
     blocks: dict[str, tuple[str, TextBlock]],
     observed_at: datetime,
     ingested_at: datetime,
+    identifier_fields: tuple[tuple[str, str], ...],
 ) -> tuple[ClaimSubmission, ...]:
     submissions: list[ClaimSubmission] = []
     for ordinal, fact in enumerate(facts):
@@ -628,6 +634,7 @@ def _fact_submissions(
         if not block.text.startswith(prefix):
             raise SourceDocumentError("source field text differs from JSON pointer")
         source_value = block.text[len(prefix) :]
+        qualifiers: tuple[tuple[str, str | None], ...] = identifier_fields
         if isinstance(fact.value, ScoreValue):
             if json.loads(source_value) != fact.value.score:
                 raise SourceDocumentError("source CVSS score differs from evidence")
@@ -666,37 +673,37 @@ def _fact_submissions(
                 (metric_path + "/source", fact.value.authority),
                 (metric_path + "/cvssData/vectorString", fact.value.vector),
             )
-            for pointer, expected in qualifiers:
-                if expected is None:
-                    continue
-                if pointer not in blocks:
-                    raise SourceDocumentError("CVSS qualifier lacks its source evidence")
-                qualifier_id, qualifier = blocks[pointer]
-                prefix = pointer + ": "
-                if qualifier.text != prefix + expected:
-                    raise SourceDocumentError("CVSS qualifier differs from source evidence")
-                position = qualifier.start_offset + len(prefix)
-                qualifier_evidence = attach_evidence_span(
-                    session,
-                    revision_id,
-                    position,
-                    position + len(expected),
-                    pointer,
-                    expected,
-                    True,
-                    "public",
-                    None,
-                    ingested_at,
-                    block_id=qualifier_id,
-                    verified_at=ingested_at,
+        for pointer, expected in qualifiers:
+            if expected is None:
+                continue
+            if pointer not in blocks:
+                raise SourceDocumentError("source qualifier lacks its source evidence")
+            qualifier_id, qualifier = blocks[pointer]
+            prefix = pointer + ": "
+            if qualifier.text != prefix + expected:
+                raise SourceDocumentError("source qualifier differs from source evidence")
+            position = qualifier.start_offset + len(prefix)
+            qualifier_evidence = attach_evidence_span(
+                session,
+                revision_id,
+                position,
+                position + len(expected),
+                pointer,
+                expected,
+                True,
+                "public",
+                None,
+                ingested_at,
+                block_id=qualifier_id,
+                verified_at=ingested_at,
+            )
+            links.append(
+                EvidenceLink(
+                    evidence_id=Identifier(value=qualifier_evidence),
+                    support_kind="supports",
+                    validation_status="validated",
                 )
-                links.append(
-                    EvidenceLink(
-                        evidence_id=Identifier(value=qualifier_evidence),
-                        support_kind="supports",
-                        validation_status="validated",
-                    )
-                )
+            )
         claim_id = str(
             uuid5(NAMESPACE_URL, f"source-fact:{revision_id}:{ordinal}:{fact.json_pointer}")
         )
