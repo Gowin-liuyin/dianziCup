@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from threading import RLock, get_ident
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 from uuid import UUID, uuid4
 
 from pydantic import Field, ValidationError
@@ -55,6 +55,9 @@ from ai_intel.investigation.tool_contracts import (
 from ai_intel.knowledge.evidence_graph import EvidenceGraphReadService, GraphSnapshotChangedError
 from ai_intel.knowledge.models import document_revisions, documents
 from ai_intel.knowledge.models import evidence as evidence_table
+
+if TYPE_CHECKING:
+    from ai_intel.api.actor_references import ActorReference
 
 
 class BudgetLimits(ToolInput):
@@ -102,7 +105,9 @@ class PostgresEvidenceReader:
     PostgreSQL READ ONLY cannot be used because the existing fences require FOR SHARE locks.
     """
 
-    def __init__(self, connection: Connection, session_token: str, data_mode: DataMode) -> None:
+    def __init__(
+        self, connection: Connection, session_token: str | ActorReference, data_mode: DataMode
+    ) -> None:
         if connection.dialect.name != "postgresql" or not session_token:
             raise ValueError("authenticated connected PostgreSQL executor required")
         if data_mode not in {"live", "fixture"}:
@@ -115,6 +120,15 @@ class PostgresEvidenceReader:
     @property
     def data_mode(self) -> DataMode:
         return self._data_mode
+
+    @staticmethod
+    def _same_actor_identity(left: AccessScope, right: AccessScope) -> bool:
+        return (left.user_id, left.tenant_id, left.role, left.permission_version) == (
+            right.user_id,
+            right.tenant_id,
+            right.role,
+            right.permission_version,
+        )
 
     @staticmethod
     def _evidence_parent_ids(
@@ -193,8 +207,16 @@ class PostgresEvidenceReader:
                 authenticated = lock_authenticated_scope(
                     connection, self._session_token, datetime.now(UTC)
                 )
-                if authenticated != expected:
+                if (
+                    not self._same_actor_identity(authenticated, expected)
+                    or scope.tenant_id not in {None, expected.tenant_id}
+                    or not self._same_actor_identity(
+                        scope, replace(expected, tenant_id=scope.tenant_id)
+                    )
+                ):
                     raise PermissionDeniedError("authenticated scope changed")
+                scope = replace(scope, permissions=scope.permissions & authenticated.permissions)
+                scope.requires(READ_PUBLIC)
                 graph_reader = EvidenceGraphReadService(session, scope)
                 epochs = graph_reader.read_scope_epochs()
                 candidate = graph_reader.event_graph(arguments.event_id)
@@ -238,7 +260,7 @@ class PostgresEvidenceReader:
                 )
                 if (
                     lock_authenticated_scope(connection, self._session_token, datetime.now(UTC))
-                    != expected
+                    != authenticated
                 ):
                     raise PermissionDeniedError("authenticated scope changed")
                 if time.monotonic() >= deadline_monotonic:
