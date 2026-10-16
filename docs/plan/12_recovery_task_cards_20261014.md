@@ -314,3 +314,10 @@ R24-A先产出供审查的报告、演示和候选提交包；R23独立复现并
 ### R00生效登记 · 2026-10-14T22:19:34+08:00
 
 冻结15d0272bd2a9e25d19397d8147e9c3cbe6016f9b经[独立定向复核](../../reports/reviews/recovery/G-A-R00-review-1-recheck.md)确认R00与三个输出切片accepted，CR-R01–09准确落实生效；前述awaiting_review为其所标日期的历史状态。后续按manifest.recovery能力DAG推进；原T最终前置/全部切片/六验收、人工金标与阶段门保持。G-A仍in_progress，R01–03尚未验收。
+
+
+### 内部读取与引用合同补充 · 2026-10-16T19:43:27+08:00
+
+- R14：docs/decisions/CR-R14_shared_read_adapters.md；该切片不等于整卡完成。
+- R14：docs/decisions/CR-R14_qa_citation_instruction.md；该切片不等于整卡完成。
+- R07：docs/decisions/CR-R07_structured_fact_proof_bridge.md；该切片不等于整卡完成。

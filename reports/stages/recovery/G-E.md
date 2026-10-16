@@ -1,11 +1,11 @@
 # G-E · 完整工作台与协议的独立准备
 
 文档首次创建时间：2026-10-16T06:39:55+08:00
-本次写作开始时间：2026-10-16T18:21:19+08:00
-本次写作结束时间：2026-10-16T18:21:20+08:00
-最后更新时间：2026-10-16T18:21:19+08:00
+本次写作开始时间：2026-10-16T19:43:27+08:00
+本次写作结束时间：2026-10-16T19:43:27+08:00
+最后更新时间：2026-10-16T19:43:27+08:00
 阶段实际开始/结束时间：正式阶段门尚未放行；独立准备历史起点未统一记录 / 尚未结束
-本报告证据截止时间：2026-10-16T18:21:19+08:00
+本报告证据截止时间：2026-10-16T19:43:27+08:00
 主控/实现Agent：/root及下列唯一所有者
 独立审查Agent与报告：下文列小批审查；整阶段新review尚未运行
 阶段状态：in_progress（仅批准的独立准备，不代表G-C门通过）
@@ -102,3 +102,33 @@ PG25432/Redis26379/OS29200父截止2026-10-17T21:49:15+08不扩；Neo4j2026-10-1
 修订人/root；问题与原红如上，阶段新reviewer未放行，无本阶段push。
 
 文档修订记录：2026-10-16T18:21:20+08:00，同步冻结切片和所有权，首次创建时间保持；整体阶段未验收。
+
+## 当前权威续接与所有权 · 2026-10-16T19:43:27+08:00
+
+主控 codex/full-delivery-recovery@ea15232a627e5c4871f1676bc5358cf67ca67b69；origin=https://github.com/Gowin-liuyin/dianziCup.git，最后已核远端G-B c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7。G-C in_progress/partial，无新阶段pass/push；G-D/E独立切片准备。用户frontend/tsconfig.tsbuildinfo SHA 3c587edfd308fb5cf04efa6e2d87b7005ef28c8c656842059b2eca405738e43d原样，不stage/build/restore；原60T/历史/整卡layer状态不改绿。
+
+本地ea暂存检查failed却Root错误继续commit，已告知用户；stageZIP7命中只保存元数据，不输出值，未经新精确provenance审查绝不push。Root根门25新untracked/13路径failed，旧136registry并不覆盖它们；新诊断/proposal等待freshreview，不放宽scanner或目录/压缩包规则。完整扫描原109.703s材料保留，CPU硬界新独审needs_changes，不能把仅171/144unit通过叫安全门通过。
+
+实际工作并行（报告时间采样，勿当长期background）：新readtools独审/QA prompt独审/R07 bridge独审；原R14作者latest7920真实broker复验；Core作者限定runtime_limits类型边界补齐；CPU原作者near+pipe限定离线修复；secret原作者ZIP7与13未登记provenance诊断。Root唯一App/config/公共合同/schema/迁移/锁/progress/主合/push；各author/reviewer只owncodexWT、rawreports。共有16槽允许6–10+按必要性分配；PG最多A/B两个heavy，A broker一次480s、B readreview一次480s，R07先离线待明确换槽。各≤2conn/NullPool/单pytest/自有marked DB/schema，禁止硬编码生产DSN/downgrade/全局改上限/kill他人。
+
+真实父PG25432/Redis26379/OS29200截止2026-10-17T21:49:15+08不扩。Neo4j原deadline19:35:43.312788已真实guardian截止，stop19:35:45.626509–58.116515 exit0，termination显示Runningfalse/Pid0/ExitCode0/OOMfalse；graceful日志尚待核，不仅Docker0称优雅。R06新OID/marker空/七flagfalse，尚未启动6h；原单版本段不得拼。真实R14旧chain2modelcalls2426tokens22.390s却引用重复失败，costunknown，无新增paid请求。生成密钥仅隔离DPAPI到childenv，无秘密出报告。
+
+下一关键路径：Core final类型→唯一OPS对齐11corehash→原非作者joint20复核→Root实际资源identity/privatefinal/新DB/6h；broker实际ACK补偿→原独审fix→默认LangGraph fullclosure；新read/QA/bridge首次review→分别defaultconsumer接线，R16完整runtime+持久cursorsecret及fan-in/history/watch；协议六tools/安装/三plugins、R11defaultAssessment和正式性能/恢复/CI/cleanrepro/材料仍内部可执行。双人核验/裁决、FOFA授权资产范围未知，CNNVD IAB login未确认，ZoomEye401；PPT后置未取消。不能目标complete/blocked或说只剩外部。R24-A→R23→R24-B顺序不变。
+
+
+本轮切片证据（原全卡gate未变）：
+
+- R06：SourceProof8355/5f8独审469限定Ship后cb868主集成，root final444green，先7missing archive红保留。9OPS55a+11CORE440联合首审4Must；CORE7be/9a3e修5文件并131+14offline/native3<=22.5s，自有进程0；原严格type旧3注解须限定补齐，OPS未对齐新core/freshjoint复核未做。OID/marker空、activation七false，final安装/6h未开始；原ledger42不重置，old1670.457817s不拼。
+- R07：Structured bridge dd296/4a2f新模块+3test frozen，207offline25security10legacy通过。旧b141模块PG30green但final LIMIT9只2offline/final PG not_run；fresh独审r07_structured_fact_bridge_first_independent_review已派先离线、待槽B。CVSS/EPSS/KEV only reported非适用安全，CWE缺同claimowner/另五维unsupported显式partial；默认消费者未接，Graph/UNKNOWN不放宽。
+- R12：Full projection822已主集成451646；旧完整worker20s/ACK/WAL仍未整证明。批5CBM真实CBM_CACHE_DIR独立缓存2592nodes14818edges/schema+callers0，源码交叉定位不以图单边证明能力。
+- R14：三个read adapters427/b30 frozen138offline25PGgreen，fresh独审已派槽B；默认factory/其余四工具未接。真实链5885 actual22.390s/Planner430tokens+QA1996tokens共2426费用unknown，6同evidence重复引用正确拒绝，Critic/Reporter未跑。QA prompt c6b9/6e27只instruction+promptversion395offlinegreen，fresh独审0paid。preclaim sharedff7/58469offline50PG；broker原业务3红+准备2红均保留，新诊断证明URLschema被connect_args覆盖；仅test builder append strictschema/NullPool，7920harness/doc6e latest一次A480s已授权，19:39真实57014+ACK待60sec补投，不提前判green。
+- R15：主9b default实际API/browser独审限定Ship，243backend648frontend39PG+7TCP组10Edge组，服务17:56:58.594521前停/audit0；模型质量/wholeR15/live/PGserver重启尚未验证。
+- R16：ca47/ec54游标M1ACL无epoch、M2rule新小ID已原非作者fix复核limitedShip，75offline38PGgreen/audit0，原两红保留。Root尚未整合full f56 runtime+ca47 closure，默认factory/persistentHEX64secret/parentfan-in/recommendation和negativewatch/双时间未完成，wholepartial。
+- R17：主9b默认UI/API限定Ship见R15，用户buildinfo保护。R14/R16新业务尚未默认接通，工作台整卡/e2e全部场景未完成，不把此前648组件断言算live。
+- R18：02ce/3db正规入口SDK16tests与完整source cb868已主集成；Root372=349SDK+23publicextensions，非独审canonical358=349+9publicv2。Default readonlyBearer六tool/SDK安装打包/三plugin/cleanLinuxCI仍未闭环。
+- R20：registry136独审限定Ship，完整5输入ea已本地；root144green，原combined120s timeout因helper缺start/raw记录事实保留；原rootgate109.703s exit1/25未登记命中13 untracked路径未解除。ea本地提交前stageguard拒绝ZIP7database_userinfo但Root错误继续commit，未push；metadata4f508ZIP/6同bdc5+1同0f13，values不打印。新provenance唯一作者只diagnosis/proposal，6为脱敏Engine显示、1负例仍核，不能按synthetic目录一概豁免。CPU746/947新独审3daa证实合法near最终0.953125<1却0.9提前杀，12native10pass2fail，earlyfaultpipe8sec缺readiness/EOF ownerunknown；唯一作者限定离线修复，native旧12不重置，wholeR20/securitygate仍failed。
+- R24：提前准备eb95726files与fresh独审17988限定Ship，13官方/U14/T60/110slice对照完整，36/36静态、46paths、官方PDF4page亲看；仅骨架。R24-A候选未ready、R23未执行、整R24partial。PPT后置不取消，人工双人gold/授权资产范围未知，正式指标unknown。
+
+本轮合同补充：CR-R14_shared_read_adapters.md、CR-R14_qa_citation_instruction.md、CR-R07_structured_fact_proof_bridge.md；awaiting新独审，阶段不放行。
+
+文档修订记录：2026-10-16T19:43:27+08:00，/root同步新review与CPU/安全门证据、更正本地commit过门失误及受控Neo4j截止；首次创建时间保持，原红不覆写，原T状态不变。

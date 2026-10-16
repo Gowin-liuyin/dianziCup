@@ -1,3 +1,15 @@
+## 当前权威续接与所有权 · 2026-10-16T19:43:27+08:00
+
+主控 codex/full-delivery-recovery@ea15232a627e5c4871f1676bc5358cf67ca67b69；origin=https://github.com/Gowin-liuyin/dianziCup.git，最后已核远端G-B c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7。G-C in_progress/partial，无新阶段pass/push；G-D/E独立切片准备。用户frontend/tsconfig.tsbuildinfo SHA 3c587edfd308fb5cf04efa6e2d87b7005ef28c8c656842059b2eca405738e43d原样，不stage/build/restore；原60T/历史/整卡layer状态不改绿。
+
+本地ea暂存检查failed却Root错误继续commit，已告知用户；stageZIP7命中只保存元数据，不输出值，未经新精确provenance审查绝不push。Root根门25新untracked/13路径failed，旧136registry并不覆盖它们；新诊断/proposal等待freshreview，不放宽scanner或目录/压缩包规则。完整扫描原109.703s材料保留，CPU硬界新独审needs_changes，不能把仅171/144unit通过叫安全门通过。
+
+实际工作并行（报告时间采样，勿当长期background）：新readtools独审/QA prompt独审/R07 bridge独审；原R14作者latest7920真实broker复验；Core作者限定runtime_limits类型边界补齐；CPU原作者near+pipe限定离线修复；secret原作者ZIP7与13未登记provenance诊断。Root唯一App/config/公共合同/schema/迁移/锁/progress/主合/push；各author/reviewer只owncodexWT、rawreports。共有16槽允许6–10+按必要性分配；PG最多A/B两个heavy，A broker一次480s、B readreview一次480s，R07先离线待明确换槽。各≤2conn/NullPool/单pytest/自有marked DB/schema，禁止硬编码生产DSN/downgrade/全局改上限/kill他人。
+
+真实父PG25432/Redis26379/OS29200截止2026-10-17T21:49:15+08不扩。Neo4j原deadline19:35:43.312788已真实guardian截止，stop19:35:45.626509–58.116515 exit0，termination显示Runningfalse/Pid0/ExitCode0/OOMfalse；graceful日志尚待核，不仅Docker0称优雅。R06新OID/marker空/七flagfalse，尚未启动6h；原单版本段不得拼。真实R14旧chain2modelcalls2426tokens22.390s却引用重复失败，costunknown，无新增paid请求。生成密钥仅隔离DPAPI到childenv，无秘密出报告。
+
+下一关键路径：Core final类型→唯一OPS对齐11corehash→原非作者joint20复核→Root实际资源identity/privatefinal/新DB/6h；broker实际ACK补偿→原独审fix→默认LangGraph fullclosure；新read/QA/bridge首次review→分别defaultconsumer接线，R16完整runtime+持久cursorsecret及fan-in/history/watch；协议六tools/安装/三plugins、R11defaultAssessment和正式性能/恢复/CI/cleanrepro/材料仍内部可执行。双人核验/裁决、FOFA授权资产范围未知，CNNVD IAB login未确认，ZoomEye401；PPT后置未取消。不能目标complete/blocked或说只剩外部。R24-A→R23→R24-B顺序不变。
+
 ## 当前权威续接与所有权 · 2026-10-16T18:21:19+08:00
 
 主控 codex/full-delivery-recovery@9b632296d8c2ca08fc4150bf1d7a7d799bdf326a，origin核对仍授权URL，最后已核远端G-B c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7；G-C in_progress/partial，无新阶段放行/push，G-D/G-E独立准备。原60T/历史/整卡验证不改绿，user frontend/tsconfig.tsbuildinfo SHA 3c587edfd308fb5cf04efa6e2d87b7005ef28c8c656842059b2eca405738e43d保持、不stage/build/restore。
