@@ -6,6 +6,7 @@ export const workspacePages = {
   graph: { label: "知识图谱", title: "关联研究", code: "KNOWLEDGE / RELATIONS", description: "查看关系理由、证据与历史状态。", group: "研究", symbol: "◇" },
   questions: { label: "引用问答", title: "证据问答", code: "RESEARCH / QUESTIONS", description: "跨文档研究，让每条关键结论都有依据。", group: "研究", symbol: ">_" },
   assets: { label: "资产自查", title: "版本与资产", code: "ASSESSMENT / ASSETS", description: "在固定资产快照上核查版本、条件与影响。", group: "研究", symbol: "⬡" },
+  assessments: { label: "影响研判", title: "资产影响研判", code: "ASSESSMENT / EVIDENCE", description: "固定授权资产快照与规则，核查四态结果、时效和证据。", group: "研究", symbol: "⊞" },
   tasks: { label: "任务轨迹", title: "调查与任务", code: "OPERATIONS / RUNS", description: "核对实际工具调用、停止原因与结果。", group: "协作", symbol: "⌘" },
   changes: { label: "变化与推荐", title: "变化与关注", code: "UPDATES / WATCH", description: "追踪结论修订、新增命中与订阅变化。", group: "协作", symbol: "↗" },
   reports: { label: "证据报告", title: "报告与交付", code: "EVIDENCE / REPORTS", description: "查看有版本与范围说明的可核查报告。", group: "协作", symbol: "▤" },

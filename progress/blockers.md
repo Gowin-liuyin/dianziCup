@@ -454,3 +454,18 @@ R07core74d新独立初审909e4d60...needs_changes3Must：两个新结构跨字�
 R06compat全新 /root/r06_live_compat_independent_review在固定837/e900：328unit+13contract/security+33reviewer边界、12真实handler PG/REST与串行92旧PG过；初并行两release retry_wait原红保留，实证同DB不同schema的pg_advisory_xact_lock命名仍共享导致争用（1probe），非本3源compat新产品缺陷；仅待封存报告，不自行改原业务期待。新测试资源隔离fixture参数化由root另批严格处理，不能默默重跑抹红。
 
 4槽当前root(core修复/publication/集成)+R13FOFA封存+R06compat独立审查封存+全新 /root/r20_cpu_boundary_diagnosis。后者只读独立WT/最多20受控worker240wall60CPU/0网络PG，诊断A严格1s=1.03125s与另两启动/CPU超时现象，原阈值不变，不预猜环境根因。core原reviewer已完成释放，fix冻结后再显式followup其定向复核。CNNVD用户选择内置浏览器登录，未确认完成；当前用户操作时不抢导航。G-C整体/剩余R08–R24与原T未完成均继续。
+
+
+## 当前权威续接与文件所有权 · 2026-10-16T21:14:23+08:00
+
+主控codex/full-delivery-recovery@1315194a8ee421b7f1131a901221f31f4cacb536；origin授权URL最后实际核对19:37，最后已核远端G-B c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7；G-C仍in_progress/partial，无阶段通过或push，后段仅获授权独立准备。原60T/历史/整卡层级不升绿，用户tsbuildinfo SHA3c587e不改不stage。
+
+当前9类工作责任：Root默认App/config/公共合同/schema/迁移/locks/progress/Git/push；R06原reviewer固定b110+d1a jointfix2；R14原reviewerff7+e56修复封包；R07原reviewerbb04两Must已独立39PG关闭；R17原reviewer307 Unicode已独立17Edge关闭；R20新loader reviewer只读脱敏材料/合成；R19新annotation恢复作者独占prepare.py+新tests；R18新四工具作者独占client.py/mcp_adapter.py+新tests；R18唯一typed集成人独占models.py/__init__.py+新tests。全部独立WT，不扩所有权/自push/accepted；每新批新非作者，原非作者只同批定向复核。Root15 read/R16+11 assessment/package+12front含sample已精确合入，尚Root冻结新审查。
+
+实际新Root离线read138/R16 75、默认Assessment126（包括14配置与23旧推荐）和前端713。原shared主仓全量3492红历史未重新跑，局部绿不能whole背书。两Must source桥246/39PG、投递恢复70/68PG、UI712/17fixture各独立scope，计数不简单相加作产品质量。真实模型trial3calls4141tokens/12.578workflow、partial/adapter_gaps、费用unknown；不是fresh-source/default HTTP P3。
+
+PG最多A/B两个heavy，每槽NullPool≤2conn/一个pytest/marked自有测试DB，不改全局PG/kill外人。R07槽B21:02:17.521912释放0conn，39schemas保留；R14槽A21:07:58.532427释放0schema/conn、Redis26493关闭且21:09:49worker0。父PG/Redis/OS deadline2026-10-17T21:49:15+08不扩；旧Neo4j19:35截止已停，新R066h未启动。known-bug旧Product1cdb需先升级与合同审查，不能拼旧版本观察窗。
+
+ea失败却commit秘密边界历史仍未push；registry精确25+ZIP7锁hash例外待Root实现，不扫目录放宽。loader9c043真实6refs仅固定13paths/15members0matches仍不等于ZIP私有资产/holdout上下文安全，freshreview优化assert风险正在复现。CPU硬界原两个Must仍未闭合。独立功能代码尚多，不能称只剩人工或目标blocked/complete。
+
+下一：Root已审模块精确源归档与默认API/工作台冻结→新非作者真实PG/API/Edge；R14完整driver/preclaim/outbox/QA/read工具默认接线，R16持久key默认worker+fan-in/历史/旧新空撤回；R06新Product资源身份门后真实单版本6h；R18六producer/tools/三插件；标注/性能/恢复CI/正式评测/材料/干净复现。人工双核/裁决、FOFA授权资产范围、CNNVD登录下载仍未知；PPT后置不取消。R24-A→R23→R24-B保持。

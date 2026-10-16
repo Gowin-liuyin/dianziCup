@@ -22,10 +22,12 @@ from sqlalchemy.orm import Session
 
 from ai_intel.api.auth_state import lock_authenticated_scope
 from ai_intel.api.authentication import Principal, SessionExpiredError
-from ai_intel.api.knowledge_contracts import DataMode, EvidenceResponse
+from ai_intel.api.knowledge_contracts import DataMode, EventDetailResponse, EvidenceResponse
 from ai_intel.api.knowledge_read_service import KnowledgeProjectionError, KnowledgeReadService
 from ai_intel.assessment.version_ranges import VersionComparison, compare_versions
+from ai_intel.assets.inventory_contracts import AssetSnapshotResponse
 from ai_intel.domain.access import (
+    READ_ASSET,
     READ_PUBLIC,
     AccessScope,
     CrossTenantAccessError,
@@ -35,12 +37,24 @@ from ai_intel.domain.access import (
 from ai_intel.domain.enums import ToolStatus
 from ai_intel.investigation.capabilities import (
     POLICY_VERSION,
+    READ_TOOL_SPECS,
     ROLE_CAPABILITIES,
     TOOL_SPECS,
     AgentRole,
 )
+from ai_intel.investigation.read_adapters import (
+    ReadAdapterUnavailableError,
+    ReadCandidateLimitError,
+    ReadSnapshotChangedError,
+    ReadToolAdapter,
+    ReadToolOutcome,
+)
 from ai_intel.investigation.tool_contracts import (
+    ChangesPage,
     CompareVersionsCall,
+    FindChangesCall,
+    GetAdvisoryCall,
+    GetInventoryCall,
     ReadEvidenceArguments,
     ReadEvidenceCall,
     SearchedScope,
@@ -49,6 +63,7 @@ from ai_intel.investigation.tool_contracts import (
     ToolName,
     ToolResult,
     ToolUsage,
+    UnconfiguredArguments,
     UnconfiguredCall,
     parse_tool_call,
 )
@@ -285,6 +300,7 @@ class ToolGateway:
         limits: BudgetLimits,
         *,
         evidence_reader: EvidenceReader | None = None,
+        read_adapter: ReadToolAdapter | None = None,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         if not isinstance(principal, Principal) or not isinstance(principal.role, Role):
@@ -295,6 +311,7 @@ class ToolGateway:
         self._investigation_id = investigation_id
         self._limits = limits
         self._reader = evidence_reader
+        self._read_adapter = read_adapter
         self._clock = monotonic
         self._lock = RLock()
         self._calls = 0
@@ -317,6 +334,11 @@ class ToolGateway:
         return frozenset(
             {ToolName.COMPARE_VERSIONS}
             | ({ToolName.READ_EVIDENCE} if self._reader is not None else set())
+            | (
+                self._read_adapter.configured_tools & frozenset(READ_TOOL_SPECS)
+                if self._read_adapter is not None
+                else frozenset()
+            )
         )
 
     def _scope(self, role: AgentRole) -> AccessScope:
@@ -413,7 +435,7 @@ class ToolGateway:
             self._principal.user_id,
             self._principal.tenant_id,
             self._principal.role.value,
-            scope.tenant_id if isinstance(call, ReadEvidenceCall) else None,
+            scope.tenant_id if isinstance(call, (ReadEvidenceCall, GetInventoryCall)) else None,
             scope.permission_version,
             POLICY_VERSION,
             call.model_dump(mode="json"),
@@ -436,7 +458,8 @@ class ToolGateway:
                     goal_id=call.goal_id,
                     scope_kind=scope_kind,
                     event_id=call.arguments.event_id
-                    if isinstance(call, ReadEvidenceCall)
+                    if isinstance(call, (ReadEvidenceCall, GetAdvisoryCall, FindChangesCall))
+                    and not isinstance(call.arguments, UnconfiguredArguments)
                     else None,
                     revision_id=call.arguments.revision_id
                     if isinstance(call, ReadEvidenceCall)
@@ -447,7 +470,7 @@ class ToolGateway:
         if result.tool_name not in ROLE_CAPABILITIES[agent_role].allowed_tools:
             return self._emit(result.model_copy(update={"error_code": "role_tool_denied"}))
         try:
-            scope.requires(READ_PUBLIC)
+            scope.requires(READ_ASSET if isinstance(call, GetInventoryCall) else READ_PUBLIC)
         except PermissionDeniedError:
             return self._emit(result.model_copy(update={"error_code": "permission_denied"}))
         if isinstance(call, UnconfiguredCall) or result.tool_name not in self.configured_tools:
@@ -459,6 +482,8 @@ class ToolGateway:
                     }
                 )
             )
+        if isinstance(call.arguments, UnconfiguredArguments):
+            return self._emit(result.model_copy(update={"error_code": "invalid_arguments"}))
         with self._lock:
             if self._clock() >= self._limits.deadline_monotonic:
                 return self._emit(
@@ -470,9 +495,13 @@ class ToolGateway:
                     )
                 )
             previous = self._outcomes.get(call_key)
-            if previous is not None and (
-                isinstance(call, CompareVersionsCall)
-                or (previous.data is None and not previous.evidence_ids)
+            if (
+                previous is not None
+                and not isinstance(call, (GetAdvisoryCall, GetInventoryCall, FindChangesCall))
+                and (
+                    isinstance(call, CompareVersionsCall)
+                    or (previous.data is None and not previous.evidence_ids)
+                )
             ):
                 return self._emit(
                     previous.model_copy(
@@ -518,9 +547,16 @@ class ToolGateway:
             result = result.model_copy(
                 update={
                     "usage": result.usage.model_copy(update={"service_calls": 1}),
-                    "is_synthetic": isinstance(call, ReadEvidenceCall)
-                    and self._reader is not None
-                    and self._reader.data_mode == "fixture",
+                    "is_synthetic": (
+                        isinstance(call, ReadEvidenceCall)
+                        and self._reader is not None
+                        and self._reader.data_mode == "fixture"
+                    )
+                    or (
+                        isinstance(call, (GetAdvisoryCall, GetInventoryCall, FindChangesCall))
+                        and self._read_adapter is not None
+                        and self._read_adapter.data_mode == "fixture"
+                    ),
                 }
             )
             call_deadline = min(
@@ -543,7 +579,7 @@ class ToolGateway:
                 result = result.model_copy(
                     update={"status": ToolStatus.DENIED, "error_code": "resource_unavailable"}
                 )
-            except ToolNotConfiguredError:
+            except (ToolNotConfiguredError, ReadAdapterUnavailableError):
                 result = result.model_copy(
                     update={
                         "status": ToolStatus.NOT_CONFIGURED,
@@ -556,6 +592,14 @@ class ToolGateway:
                         "status": ToolStatus.BUDGET_EXHAUSTED,
                         "error_code": "deadline_exhausted",
                     }
+                )
+            except ReadSnapshotChangedError:
+                result = result.model_copy(
+                    update={"status": ToolStatus.PARTIAL, "error_code": "read_snapshot_changed"}
+                )
+            except ReadCandidateLimitError:
+                result = result.model_copy(
+                    update={"status": ToolStatus.PARTIAL, "error_code": "read_candidate_limit"}
                 )
             except GraphSnapshotChangedError:
                 result = result.model_copy(
@@ -614,6 +658,60 @@ class ToolGateway:
                     "data": comparison,
                     "error_code": None if comparison.status == "comparable" else comparison.reason,
                     "limitations": ("版本排序只比较输入版本，不是资产适用性或修复结论。",),
+                }
+            )
+        if isinstance(call, (GetAdvisoryCall, GetInventoryCall, FindChangesCall)):
+            if self._read_adapter is None:
+                raise ToolNotConfiguredError("read adapter missing")
+            outcome = self._read_adapter.read_tool(self._principal, scope, call, call_deadline)
+            if not isinstance(outcome, ReadToolOutcome) or outcome.status not in {
+                ToolStatus.SUCCEEDED,
+                ToolStatus.PARTIAL,
+                ToolStatus.NO_RESULT,
+            }:
+                raise ValueError("invalid typed read outcome")
+            data = outcome.data
+            if data is not None:
+                if isinstance(call, GetAdvisoryCall):
+                    if (
+                        not isinstance(data, EventDetailResponse)
+                        or isinstance(call.arguments, UnconfiguredArguments)
+                        or data.event.event_id != call.arguments.event_id
+                    ):
+                        raise ValueError("advisory identity mismatch")
+                    data = EventDetailResponse.model_validate(data.model_dump())
+                elif isinstance(call, GetInventoryCall):
+                    if (
+                        not isinstance(data, AssetSnapshotResponse)
+                        or isinstance(call.arguments, UnconfiguredArguments)
+                        or (data.asset_id, data.snapshot_id, data.tenant_id)
+                        != (
+                            str(call.arguments.asset_id),
+                            str(call.arguments.snapshot_id),
+                            scope.tenant_id,
+                        )
+                    ):
+                        raise ValueError("inventory identity mismatch")
+                    data = AssetSnapshotResponse.model_validate(data.model_dump())
+                else:
+                    if (
+                        not isinstance(data, ChangesPage)
+                        or isinstance(call.arguments, UnconfiguredArguments)
+                        or data.event_id != call.arguments.event_id
+                        or len(data.items) > call.arguments.limit
+                    ):
+                        raise ValueError("change page identity mismatch")
+                    data = ChangesPage.model_validate(data.model_dump())
+            elif outcome.status in {ToolStatus.SUCCEEDED, ToolStatus.NO_RESULT}:
+                raise ValueError("successful read is missing its DTO")
+            return ToolResult.model_validate(
+                {
+                    **result.model_dump(),
+                    "data": data,
+                    "status": outcome.status,
+                    "observed_at": outcome.observed_at,
+                    "error_code": outcome.error_code,
+                    "limitations": outcome.limitations,
                 }
             )
         if not isinstance(call, ReadEvidenceCall) or self._reader is None:

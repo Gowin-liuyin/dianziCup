@@ -61,6 +61,7 @@ class ApplicationSettings(BaseSettings):
     )
     generation_model: str = Field(default="deepseek-flash", min_length=1, max_length=200)
     generation_api_key: SecretStr | None = None
+    revalidation_cursor_signing_key: SecretStr | None = None
     semantic_model_cache_directory: Path | None = None
     hybrid_generation_id: str = Field(default="e5-v1", pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
     hybrid_index_name: str = Field(
@@ -70,6 +71,22 @@ class ApplicationSettings(BaseSettings):
     enrichment_generation_enabled: bool = False
     enrichment_private_egress_granted: bool = False
     enrichment_aggregate_enabled: bool = False
+
+    @model_validator(mode="after")
+    def validate_revalidation_cursor_signing_key(self) -> ApplicationSettings:
+        """Workers share a persisted 32-byte key; missing configuration grants no cursor service."""
+        if self.revalidation_cursor_signing_key is None:
+            return self
+        value = self.revalidation_cursor_signing_key.get_secret_value()
+        if re.fullmatch(r"[0-9a-f]{64}", value) is None:
+            raise ConfigurationError("REVALIDATION_CURSOR_SIGNING_KEY must encode 32 bytes")
+        if self.app_env in {"staging", "production"} and value in {
+            bytes(32).hex(),
+            bytes([1] * 32).hex(),
+            bytes(range(32)).hex(),
+        }:
+            raise ConfigurationError("REVALIDATION_CURSOR_SIGNING_KEY cannot use a fixture key")
+        return self
 
     @model_validator(mode="after")
     def validate_enrichment_execution_authority(self) -> ApplicationSettings:

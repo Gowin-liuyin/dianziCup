@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from pydantic import Field, model_validator
 
 from ai_intel.assessment.conditions import ConditionContract, Label
+from ai_intel.domain.values import UtcTimestamp
 
 CandidateReason = Literal[
     "old_dependency",
@@ -35,6 +36,7 @@ class CandidateContinuation(ConditionContract):
     actor_role: Label
     permission_version: int = Field(ge=1, strict=True)
     requested_epoch: int = Field(ge=0, strict=True)
+    assessment_created_before: UtcTimestamp | None = None
     scope_epoch_map: dict[str, int | None]
     query_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     partition_fingerprint: str = Field(pattern=r"^[0-9a-f]{32}$")
@@ -51,6 +53,7 @@ class CandidatePage(ConditionContract):
     requested_epoch: int = Field(ge=0, strict=True)
     target_epoch: int = Field(ge=0, strict=True)
     scope_epoch_map: dict[str, int | None]
+    rule_scope_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     candidates: tuple[AssessmentChangeCandidate, ...] = Field(max_length=100)
     status: Literal["complete", "partial"]
     continuation: str | None = Field(default=None, max_length=4096)

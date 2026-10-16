@@ -9,8 +9,9 @@ from uuid import UUID
 
 from pydantic import ConfigDict, Field, TypeAdapter
 
-from ai_intel.api.knowledge_contracts import EvidenceResponse
+from ai_intel.api.knowledge_contracts import DataMode, EventDetailResponse, EvidenceResponse
 from ai_intel.assessment.version_ranges import VersionComparison
+from ai_intel.assets.inventory_contracts import AssetSnapshotResponse
 from ai_intel.domain.enums import ToolStatus
 from ai_intel.domain.records import StrictRecord
 from ai_intel.domain.values import UtcTimestamp
@@ -62,21 +63,53 @@ class UnconfiguredArguments(ToolInput):
     """Unavailable tools accept no speculative URL, query or authority contract."""
 
 
+class GetAdvisoryArguments(ToolInput):
+    event_id: UUID
+
+
+class GetInventoryArguments(ToolInput):
+    asset_id: UUID
+    snapshot_id: UUID
+
+
+class FindChangesArguments(ToolInput):
+    event_id: UUID
+    limit: int = Field(default=25, strict=True, ge=1, le=25)
+    cursor: str | None = Field(default=None, min_length=1, max_length=2048)
+
+
+class GetAdvisoryCall(ToolInput):
+    tool_name: Literal["get_advisory"]
+    arguments: GetAdvisoryArguments | UnconfiguredArguments
+    goal_id: UUID
+
+
+class GetInventoryCall(ToolInput):
+    tool_name: Literal["get_inventory"]
+    arguments: GetInventoryArguments | UnconfiguredArguments
+    goal_id: UUID
+
+
+class FindChangesCall(ToolInput):
+    tool_name: Literal["find_changes"]
+    arguments: FindChangesArguments | UnconfiguredArguments
+    goal_id: UUID
+
+
 class UnconfiguredCall(ToolInput):
     tool_name: Literal[
         "search_intelligence",
-        "get_advisory",
-        "get_inventory",
         "get_public_observations",
         "evaluate_rule",
         "search_papers",
-        "find_changes",
     ]
     arguments: UnconfiguredArguments
     goal_id: UUID
 
 
-ToolCall = ReadEvidenceCall | CompareVersionsCall | UnconfiguredCall
+SharedReadCall = GetAdvisoryCall | GetInventoryCall | FindChangesCall
+ToolCall = ReadEvidenceCall | CompareVersionsCall | SharedReadCall | UnconfiguredCall
+
 TOOL_CALL_ADAPTER: TypeAdapter[ToolCall] = TypeAdapter(
     Annotated[ToolCall, Field(discriminator="tool_name")]
 )
@@ -104,12 +137,40 @@ class SearchedScope(StrictRecord):
     revision_id: UUID | None = None
 
 
+class ChangeSummary(StrictRecord):
+    """A persisted change summary carries no payload, source identifiers or support claim."""
+
+    change_id: UUID
+    change_type: Literal[
+        "events_published",
+        "events_merged",
+        "event_merge_undone",
+        "knowledge_published",
+        "dimension_result_published",
+        "enrichment_attempts_published",
+        "condition_rule_published",
+        "condition_rule_retired",
+    ]
+    knowledge_epoch: int = Field(strict=True, ge=1)
+    recorded_at: UtcTimestamp
+
+
+class ChangesPage(StrictRecord):
+    event_id: UUID
+    items: tuple[ChangeSummary, ...] = Field(max_length=25)
+    next_cursor: str | None = Field(default=None, min_length=1, max_length=2048)
+    data_mode: DataMode
+
+
+SharedReadData = EventDetailResponse | AssetSnapshotResponse | ChangesPage
+
+
 class ToolResult(StrictRecord):
     tool_run_id: UUID
     call_key: str = Field(pattern=r"^[0-9a-f]{64}$")
     tool_name: ToolName | None
     status: ToolStatus
-    data: EvidenceResponse | VersionComparison | None
+    data: EvidenceResponse | VersionComparison | SharedReadData | None
     evidence_ids: tuple[UUID, ...] = Field(max_length=1)
     searched_scope: SearchedScope
     observed_at: UtcTimestamp | None

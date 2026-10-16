@@ -1,6 +1,6 @@
 """W10 responsibilities share one frozen tool catalog across B2, B2b and B3."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from types import MappingProxyType
 
@@ -122,6 +122,24 @@ TOOL_SPECS = MappingProxyType(
 )
 
 
+READ_TOOL_SPECS = MappingProxyType(
+    {
+        name: replace(
+            TOOL_SPECS[name],
+            configured=True,
+            input_schema=input_schema,
+            output_schema=output_schema,
+            cache_policy="revalidate_every_read",
+        )
+        for name, input_schema, output_schema in (
+            (ToolName.GET_ADVISORY, "GetAdvisoryArguments", "EventDetailResponse"),
+            (ToolName.GET_INVENTORY, "GetInventoryArguments", "AssetSnapshotResponse"),
+            (ToolName.FIND_CHANGES, "FindChangesArguments", "ChangesPage"),
+        )
+    }
+)
+
+
 def _tools(*names: ToolName) -> frozenset[ToolName]:
     return frozenset(names)
 
@@ -206,8 +224,13 @@ B2_ROLE_MAP = MappingProxyType(
 )
 
 
-def available_tools(strategy: str) -> frozenset[ToolName]:
+def available_tools(
+    strategy: str, configured_tools: frozenset[ToolName] | None = None
+) -> frozenset[ToolName]:
     """Strategies change scheduling only; none can add a configured tool or permission."""
     if strategy not in {"B2", "B2b", "B3"}:
         raise ValueError("unknown investigation strategy")
-    return frozenset(name for name, spec in TOOL_SPECS.items() if spec.configured)
+    defaults = frozenset(name for name, spec in TOOL_SPECS.items() if spec.configured)
+    if configured_tools is None:
+        return defaults
+    return configured_tools & (defaults | frozenset(READ_TOOL_SPECS))

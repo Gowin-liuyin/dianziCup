@@ -34,6 +34,7 @@ from ai_intel.api.problems import problem_response
 from ai_intel.api.question_routes import build_question_router
 from ai_intel.api.recommendation_routes import build_recommendation_router
 from ai_intel.api.source_routes import build_source_router
+from ai_intel.assessment.http_routes import build_assessment_router
 from ai_intel.assets.inventory_routes import build_inventory_router
 from ai_intel.enrichment.runtime_policy import build_enrichment_job_service
 from ai_intel.infrastructure.content_storage_factory import build_content_storage
@@ -133,10 +134,12 @@ def create_application(
     graph_router = build_graph_router(lambda: service, engine)
     inventory_router = build_inventory_router(lambda: service, engine)
     question_router = build_question_router(lambda: service, engine, configuration)
+    content_store = build_content_storage(configuration) if engine is not None else None
+    assessment_router = build_assessment_router(lambda: service, engine, content_store)
     recommendation_router = build_recommendation_router(
         lambda: service,
         engine,
-        build_content_storage(configuration) if engine is not None else None,
+        content_store,
         data_mode=configuration.data_mode,
     )
     application.include_router(auth_router, prefix="/v1")
@@ -149,6 +152,7 @@ def create_application(
     application.include_router(job_router, prefix="/v1")
     application.include_router(graph_router, prefix="/v1")
     application.include_router(inventory_router, prefix="/v1")
+    application.include_router(assessment_router, prefix="/v1")
     application.include_router(recommendation_router, prefix="/v1")
     application.include_router(auth_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(health_router, prefix="/api/v1", include_in_schema=False)
@@ -160,6 +164,7 @@ def create_application(
     application.include_router(job_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(graph_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(inventory_router, prefix="/api/v1", include_in_schema=False)
+    application.include_router(assessment_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(recommendation_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(auth_router, include_in_schema=False)
     application.include_router(health_router, include_in_schema=False)

@@ -13,6 +13,7 @@ import { QuestionWorkspace } from "./features/questions/question-workspace";
 import { DocumentWorkspace } from "./features/documents/document-workspace";
 import { GraphExplorerView } from "./features/graph/graph-explorer-view";
 import { AssetWorkspace } from "./features/assets/asset-workspace";
+import { AssessmentWorkspace } from "./features/assessments/AssessmentWorkspace";
 import { RecommendationWorkspace, ReportWorkspace } from "./features/recommendations/recommendation-workspace";
 import { readQuestionRoute } from "./api/question-contracts";
 import "./styles.css";
@@ -120,7 +121,7 @@ function DependencyDetails({ health }: { health: HealthState }) {
 }
 
 function Workbench() {
-  const { state, sessionGeneration } = useAuthSession();
+  const { state, sessionGeneration, expireSession, isSessionCurrent } = useAuthSession();
   const [hash, setHash] = useState(() => window.location.hash);
   const questionRoute = readQuestionRoute(hash);
   const graphRoute = readGraphSelection(hash);
@@ -156,6 +157,10 @@ function Workbench() {
   const dataMode = modeLabel(state.kind === "authenticated" ? state.user : undefined);
   const currentPage = page === "missing" ? null : workspacePages[page];
   const sessionScopeKey = state.kind === "authenticated" ? JSON.stringify([state.user.user_id, state.user.tenant_id, state.user.permission_version, state.user.data_mode, sessionGeneration]) : state.kind;
+  const isAssessmentSessionCurrent = useCallback(() => isSessionCurrent(sessionGeneration), [isSessionCurrent, sessionGeneration]);
+  const handleAssessmentFailure = useCallback((error: ApiProblem) => {
+    if (error.status === 401) expireSession(sessionGeneration);
+  }, [expireSession, sessionGeneration]);
   let processLabel = "无法确认";
   if (health.kind === "loading") processLabel = "检查中";
   if (health.kind === "checked" && health.live) processLabel = "可响应";
@@ -201,10 +206,11 @@ function Workbench() {
           {page === "documents" && <DocumentWorkspace key={sessionScopeKey} />}
           {page === "questions" && <QuestionWorkspace key={`${sessionScopeKey}:${hash}`} eventId={questionRoute?.eventId} />}
           {page === "assets" && <AssetWorkspace key={sessionScopeKey} assetId={assetRoute?.assetId} />}
+          {page === "assessments" && (state.kind === "authenticated" ? <AssessmentWorkspace key={sessionScopeKey} user={state.user} authScope={sessionScopeKey} isCurrent={isAssessmentSessionCurrent} onFailure={handleAssessmentFailure} onOpenEvent={(eventId, evidenceId) => { window.location.hash = evidenceId === undefined ? `#events/${eventId}` : `#events/${eventId}/evidence/${evidenceId}`; }} /> : <section className="panel"><EmptyState title={state.kind === "loading" ? "正在确认研判会话" : "登录后进行资产研判"} description="固定资产快照与规则的判断从当前授权范围读取。" /><a className="button secondary" href="#session">核对会话与权限</a></section>)}
           {page === "changes" && <RecommendationWorkspace key={sessionScopeKey} />}
           {page === "reports" && <ReportWorkspace key={sessionScopeKey} />}
           {page === "graph" && (graphRoute === null ? <section className="panel"><EmptyState title="先选择一个事件" description="从情报详情进入证据关系图，核查该事件的关联理由与原文。" /><a className="button secondary" href="#events">进入情报列表</a></section> : <GraphExplorerView key={`${sessionScopeKey}:${graphRoute.eventId}`} eventId={graphRoute.eventId} dataMode={state.kind === "authenticated" ? state.user.data_mode : "unknown"} />)}
-          {page !== "runtime" && page !== "session" && page !== "events" && page !== "sources" && page !== "documents" && page !== "questions" && page !== "assets" && page !== "graph" && page !== "changes" && page !== "reports" && page !== "missing" && <CapabilityWorkspace page={page} authenticated={state.kind === "authenticated"} />}
+          {page !== "runtime" && page !== "session" && page !== "events" && page !== "sources" && page !== "documents" && page !== "questions" && page !== "assets" && page !== "assessments" && page !== "graph" && page !== "changes" && page !== "reports" && page !== "missing" && <CapabilityWorkspace page={page} authenticated={state.kind === "authenticated"} />}
           {page === "missing" && <section className="panel missing-page"><EmptyState title="工作区不存在" description="请通过导航选择已登记页面。该地址没有触发业务请求。" /><a className="button secondary" href="#runtime">返回运行状态</a></section>}
           {state.kind === "authenticated" && <footer className="workspace-footer"><span>{state.user.app_env ? `环境 ${state.user.app_env}` : "环境未由服务端标明"}</span><span>{state.user.platform_version ? `版本 ${state.user.platform_version}` : "版本未由服务端标明"}</span></footer>}
         </main>

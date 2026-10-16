@@ -13,6 +13,7 @@ from sqlalchemy import select, text
 from sqlalchemy.engine import Engine, RowMapping
 from sqlalchemy.orm import Session
 
+from ai_intel.api.actor_references import ActorReference
 from ai_intel.api.auth_state import lock_authenticated_scope
 from ai_intel.assessment.conditions import (
     ComponentMatches,
@@ -239,6 +240,47 @@ def _rule_guard(rule_alias: str, event_alias: str) -> str:
     )
 
 
+LATEST_RULE_FROM = (
+    "(SELECT DISTINCT ON (rule_id) * FROM condition_rule_versions "
+    "ORDER BY rule_id,(status='published') DESC,version DESC) v "
+    "JOIN events e USING(event_id) "
+    f"WHERE {_rule_guard('v', 'e')} "
+)
+LATEST_RULE_QUERY = "SELECT v.* FROM " + LATEST_RULE_FROM
+CURRENT_RULE_SCOPE_QUERY = (
+    "SELECT coalesce(jsonb_agg(jsonb_build_object("
+    "'rule',jsonb_build_array(v.rule_id,v.version,v.status,v.visibility,v.tenant_id,v.rule_payload),"
+    "'event',jsonb_build_array(e.event_id,e.status,e.visibility,e.tenant_id,e.business_version),"
+    "'sources',(SELECT coalesce(jsonb_agg(jsonb_build_array("
+    "r.revision_id,r.visibility,r.tenant_id,r.is_current,r.parse_status,"
+    "d.document_id,d.visibility,d.tenant_id,s.source_id,s.visibility,s.tenant_id) "
+    "ORDER BY r.revision_id),'[]'::jsonb) FROM " + SOURCE_JOIN + " WHERE r.revision_id IN ("
+    "SELECT ed.revision_id FROM event_documents ed WHERE ed.event_id=e.event_id "
+    "UNION SELECT f.revision_id FROM evidence f WHERE f.evidence_id IN "
+    "(SELECT jsonb_array_elements_text(v.rule_payload->'source_span_ids')) "
+    "UNION SELECT ca.revision_id FROM claim_assertions ca WHERE ca.claim_id IN "
+    "(SELECT jsonb_array_elements_text(v.rule_payload->'supporting_claim_ids')))),"
+    "'spans',(SELECT coalesce(jsonb_agg(jsonb_build_array(f.evidence_id,f.revision_id,"
+    "f.visibility,f.tenant_id) ORDER BY f.evidence_id),'[]'::jsonb) FROM evidence f "
+    "WHERE f.evidence_id IN (SELECT jsonb_array_elements_text(v.rule_payload->'source_span_ids'))),"
+    "'claims',(SELECT coalesce(jsonb_agg(jsonb_build_array(c.claim_id,c.visibility,c.tenant_id,"
+    "c.claim_status) ORDER BY c.claim_id),'[]'::jsonb) FROM claims c WHERE c.claim_id IN "
+    "(SELECT jsonb_array_elements_text(v.rule_payload->'supporting_claim_ids')))) "
+    "ORDER BY v.rule_id),'[]'::jsonb) FROM " + LATEST_RULE_FROM
+)
+
+
+def read_current_rule_scope_fingerprint(session: Session, scope: AccessScope) -> str:
+    """Hash the planner's current rule/source ACL closure, excluding unrelated sources."""
+    scope.requires(READ_ASSET)
+    if scope.tenant_id is None:
+        raise CrossTenantAccessError("resource not found")
+    roster: object = session.execute(
+        text(CURRENT_RULE_SCOPE_QUERY), {"tenant": scope.tenant_id}
+    ).scalar_one()
+    return publication_payload_digest(roster)
+
+
 ASSESSMENT_SOURCE_GUARD = (
     "NOT EXISTS (SELECT 1 FROM "
     "jsonb_array_elements(a.result_payload->'prepared'->'inputs'->'sources') p "
@@ -287,7 +329,9 @@ PARTITION_QUERY = (
     "JOIN events e ON e.event_id=a.event_id "
     "LEFT JOIN assessment_scope_watches w ON w.assessment_id=a.assessment_id "
     "AND w.tenant_id=a.tenant_id "
-    f"WHERE a.tenant_id=:tenant AND {_rule_guard('v', 'e')} "
+    "WHERE a.tenant_id=:tenant AND (CAST(:history_cutoff AS TIMESTAMPTZ) IS NULL "
+    "OR a.created_at<=CAST(:history_cutoff AS TIMESTAMPTZ)) "
+    f"AND {_rule_guard('v', 'e')} "
     f"AND {ASSESSMENT_SOURCE_GUARD} "
     "AND NOT EXISTS (SELECT 1 FROM claims c WHERE c.claim_id IN (SELECT p->'binding'->>'claim_id' "
     "FROM jsonb_array_elements(a.result_payload->'prepared'->'inputs'->'supports') p) "
@@ -303,13 +347,17 @@ class CandidateDiscoveryService:
     """Authenticated bounded discovery; mutations and worker dispatch belong to later slices."""
 
     def __init__(
-        self, engine: Engine, session_token: str, cursor_signing_key: SecretStr | None = None
+        self,
+        engine: Engine,
+        session_token: str | ActorReference,
+        cursor_signing_key: SecretStr | None = None,
     ) -> None:
         self.engine = engine
         self._session_token = session_token
         self._cursor_key = _signing_bytes(cursor_signing_key)
 
-    def _authorize_change(self, session: Session, scope: AccessScope, row: RowMapping) -> None:
+    @staticmethod
+    def _authorize_change(session: Session, scope: AccessScope, row: RowMapping) -> None:
         tenant = None if row["scope_key"] == "public" else scope.tenant_id
         parameters = {"tenant": tenant}
         references = _references(row["payload"])
@@ -432,7 +480,13 @@ class CandidateDiscoveryService:
         )
 
     def discover(
-        self, change_id: str, target_epoch: int, *, limit: int = 20, continuation: str | None = None
+        self,
+        change_id: str,
+        target_epoch: int,
+        *,
+        limit: int = 20,
+        continuation: str | None = None,
+        assessment_created_before: datetime | None = None,
     ) -> CandidatePage:
         """Return current snapshot refs plus readable history; complete means discovery only."""
         if (
@@ -444,6 +498,13 @@ class CandidateDiscoveryService:
             raise CandidateDiscoveryError("candidate_request_invalid")
         if not isinstance(change_id, str) or not 1 <= len(change_id) <= 200:
             raise CandidateDiscoveryError("candidate_request_invalid")
+        if assessment_created_before is not None and (
+            not isinstance(assessment_created_before, datetime)
+            or assessment_created_before.tzinfo is None
+            or assessment_created_before.utcoffset() is None
+            or assessment_created_before > datetime.now(UTC)
+        ):
+            raise CandidateDiscoveryError("candidate_history_cutoff_invalid")
         with (
             self.engine.connect().execution_options(
                 isolation_level="REPEATABLE READ"
@@ -479,21 +540,28 @@ class CandidateDiscoveryService:
             if current is None or not row["epoch"] <= target_epoch <= current:
                 raise CandidateDiscoveryError("candidate_target_epoch_invalid")
             affected = self._affected_scope(session, row, current)
-            query_digest = publication_payload_digest(
-                {
-                    "version": QUERY_VERSION,
-                    "change": row["payload"],
-                    "changed_ids": row["entity_ids"],
-                    "fallback": affected.fallback_reason,
-                    "packages": sorted(affected.package_keys),
-                }
-            )
+            query_inputs: dict[str, object] = {
+                "version": QUERY_VERSION,
+                "change": row["payload"],
+                "changed_ids": row["entity_ids"],
+                "fallback": affected.fallback_reason,
+                "packages": sorted(affected.package_keys),
+            }
+            if assessment_created_before is not None:
+                query_inputs["history_cutoff"] = assessment_created_before.astimezone(
+                    UTC
+                ).isoformat()
+                rule_scope_fingerprint = read_current_rule_scope_fingerprint(session, scope)
+                query_inputs["rule_scope_fingerprint"] = rule_scope_fingerprint
+            else:
+                rule_scope_fingerprint = None
+            query_digest = publication_payload_digest(query_inputs)
             partition = session.execute(
                 text(
                     "SELECT md5(coalesce(string_agg(md5(row_to_json(p)::text),'' "
                     "ORDER BY asset_id,kind,reference_id),'')) FROM (" + PARTITION_QUERY + ") p"
                 ),
-                {"tenant": scope.tenant_id},
+                {"tenant": scope.tenant_id, "history_cutoff": assessment_created_before},
             ).scalar_one()
             binding = dict(
                 change_id=change_id,
@@ -503,6 +571,7 @@ class CandidateDiscoveryService:
                 actor_role=scope.role.value,
                 permission_version=scope.permission_version,
                 requested_epoch=target_epoch,
+                assessment_created_before=assessment_created_before,
                 scope_epoch_map=epochs,
                 query_fingerprint=query_digest,
                 partition_fingerprint=partition,
@@ -511,6 +580,7 @@ class CandidateDiscoveryService:
             parameters: dict[str, object] = {
                 "tenant": scope.tenant_id,
                 "scan_limit": MAX_SCANNED_ROWS + 1,
+                "history_cutoff": assessment_created_before,
             }
             position_clause = ""
             if continuation is not None:
@@ -608,6 +678,7 @@ class CandidateDiscoveryService:
                 requested_epoch=target_epoch,
                 target_epoch=current,
                 scope_epoch_map=epochs,
+                rule_scope_fingerprint=rule_scope_fingerprint,
                 candidates=tuple(candidates),
                 status="partial" if next_cursor else "complete",
                 continuation=next_cursor,
