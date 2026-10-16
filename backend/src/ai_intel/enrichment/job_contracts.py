@@ -20,6 +20,16 @@ ALL_ENRICHMENT_DIMENSIONS: tuple[DimensionName, ...] = (
 )
 
 
+class EnrichmentModelInputVersions(BaseModel):
+    """Server code versions identify the prompt, selector and output schema actually used."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True, hide_input_in_errors=True)
+
+    prompt_version: str = Field(min_length=1, max_length=200)
+    selection_version: str = Field(min_length=1, max_length=200)
+    schema_version: str = Field(min_length=1, max_length=200)
+
+
 class EnrichmentExecutionPolicy(BaseModel):
     """Only server configuration creates this policy; no HTTP request grants model egress."""
 
@@ -31,6 +41,7 @@ class EnrichmentExecutionPolicy(BaseModel):
     private_egress_granted: bool = False
     aggregate_enabled: bool = False
     data_mode: Literal["live", "fixture"] = "live"
+    model_input_versions: EnrichmentModelInputVersions | None = None
 
     @model_validator(mode="after")
     def validate_model_authority(self) -> "EnrichmentExecutionPolicy":

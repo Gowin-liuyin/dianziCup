@@ -10,9 +10,11 @@ from datetime import datetime
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import TypeAdapter, ValidationError
-from sqlalchemy import insert, select, update
+from sqlalchemy import Text, cast, func, insert, literal, null, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine, RowMapping
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from ai_intel.api.auth_state import auth_sessions
 from ai_intel.api.document_read_service import sources
@@ -29,33 +31,45 @@ from ai_intel.domain.access import (
 )
 from ai_intel.domain.enums import DimensionStatus
 from ai_intel.domain.values import VisibilityScope
+from ai_intel.enrichment import evidence_selection, model_fields
 from ai_intel.enrichment.contracts import DimensionAttempt
-from ai_intel.enrichment.field_sources import FieldEvidenceError
+from ai_intel.enrichment.field_sources import FieldEvidenceError, is_atlas_taxonomy
 from ai_intel.enrichment.inputs import (
     EnrichmentInputError,
     LoadedEnrichmentInputs,
     _require_input_scopes,
     load_event_enrichment_inputs,
 )
-from ai_intel.enrichment.job_contracts import EnrichmentExecutionPolicy, EventEnrichmentRequest
+from ai_intel.enrichment.job_contracts import (
+    EnrichmentExecutionPolicy,
+    EnrichmentModelInputVersions,
+    EventEnrichmentRequest,
+)
 from ai_intel.enrichment.job_models import enrichment_job_steps, enrichment_workflows
 from ai_intel.enrichment.job_types import (
+    MAX_INPUT_AUDIT_BYTES,
     MODEL_DIMENSIONS,
     TERMINAL_STATUSES,
     DocumentSnapshot,
     EnrichmentDimensionView,
     EnrichmentEnqueueReceipt,
+    EnrichmentInputAuditView,
     EnrichmentJobPayload,
+    EnrichmentModelInputAudit,
     EnrichmentStepView,
     EnrichmentWorkflowView,
     ExposureStepClient,
+    FieldEvidenceSelectionAudit,
     FrozenEnrichmentInputs,
+    InputAuditState,
     ModelCallState,
     ParentScopeSnapshot,
     combine_exposure_attempts,
     json_payload,
     logical_job_status,
     physical_steps,
+    validate_input_selection,
+    validate_model_input_audit,
 )
 from ai_intel.enrichment.model_fields import extract_model_dimension
 from ai_intel.enrichment.publication import (
@@ -101,6 +115,29 @@ class EnrichmentWorkflowError(ValueError):
 def _digest(value: object) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _versioned_execution_policy(policy: EnrichmentExecutionPolicy) -> EnrichmentExecutionPolicy:
+    current = EnrichmentExecutionPolicy.model_validate_json(policy.model_dump_json())
+    return current.model_copy(
+        update={
+            "model_input_versions": EnrichmentModelInputVersions(
+                prompt_version=model_fields.PROMPT_VERSION,
+                selection_version=evidence_selection.SELECTION_VERSION,
+                schema_version=model_fields.SCHEMA_VERSION,
+            )
+        }
+    )
+
+
+def _base_execution_policy(policy: EnrichmentExecutionPolicy) -> dict[str, object]:
+    return policy.model_dump(mode="json", exclude={"model_input_versions"})
+
+
+def _audit_sql_digest(payload: object) -> ColumnElement[str]:
+    return func.encode(
+        func.sha256(func.convert_to(cast(literal(payload, type_=JSONB), Text), "UTF8")), "hex"
+    )
 
 
 def _enrichment_idempotency_key(
@@ -182,9 +219,21 @@ def _existing_parent_receipt(
     parent: RowMapping,
     expected_workflow_id: UUID,
     binding: dict[str, object],
+    policy: EnrichmentExecutionPolicy,
 ) -> EnrichmentEnqueueReceipt:
     workflow = _validated_parent_workflow(session, parent)
-    if workflow["workflow_id"] != str(expected_workflow_id) or _binding(workflow) != binding:
+    frozen_policy = EnrichmentExecutionPolicy.model_validate_json(
+        json.dumps(workflow["execution_policy"])
+    )
+    expected_binding = binding.copy()
+    if frozen_policy.model_input_versions is None and _base_execution_policy(
+        frozen_policy
+    ) == _base_execution_policy(policy):
+        expected_binding["execution_policy_sha256"] = workflow["execution_policy_sha256"]
+    if (
+        workflow["workflow_id"] != str(expected_workflow_id)
+        or _binding(workflow) != expected_binding
+    ):
         raise IdempotencyConflictError("idempotency key reused with different enrichment binding")
     return EnrichmentEnqueueReceipt(expected_workflow_id, UUID(parent["job_id"]), True)
 
@@ -194,6 +243,7 @@ def _legacy_parent_receipt(
     tenant_id: str | None,
     raw_key: str,
     binding: dict[str, object],
+    policy: EnrichmentExecutionPolicy,
 ) -> EnrichmentEnqueueReceipt | None:
     parent = _parent_job_for_key(session, tenant_id, raw_key)
     if parent is None:
@@ -213,7 +263,7 @@ def _legacy_parent_receipt(
         or workflow["event_id"] != binding["event_id"]
     ):
         return None
-    return _existing_parent_receipt(session, parent, legacy_id, binding)
+    return _existing_parent_receipt(session, parent, legacy_id, binding, policy)
 
 
 def _authenticated_scope(
@@ -364,9 +414,7 @@ class EnrichmentJobService:
             VisibilityScope(visibility=event["visibility"], tenant_id=event["tenant_id"]),
             revision_ids,
         )
-        policy = EnrichmentExecutionPolicy.model_validate_json(
-            self.execution_policy().model_dump_json()
-        )
+        policy = _versioned_execution_policy(self.execution_policy())
         parent_key = _enrichment_idempotency_key(
             current.tenant_id, event_id, current.user_id, idempotency_key
         )
@@ -384,8 +432,10 @@ class EnrichmentJobService:
         }
         existing_parent = _parent_job_for_key(session, event["tenant_id"], parent_key)
         if existing_parent is not None:
-            return _existing_parent_receipt(session, existing_parent, workflow_id, binding)
-        legacy = _legacy_parent_receipt(session, event["tenant_id"], idempotency_key, binding)
+            return _existing_parent_receipt(session, existing_parent, workflow_id, binding, policy)
+        legacy = _legacy_parent_receipt(
+            session, event["tenant_id"], idempotency_key, binding, policy
+        )
         if legacy is not None:
             return legacy
         parent_id = enqueue_job(
@@ -408,7 +458,7 @@ class EnrichmentJobService:
             parent = _parent_job_for_key(session, event["tenant_id"], parent_key)
             if parent is None:
                 raise IdempotencyConflictError("enrichment parent identity cannot be validated")
-            return _existing_parent_receipt(session, parent, workflow_id, binding)
+            return _existing_parent_receipt(session, parent, workflow_id, binding, policy)
         if (
             event["status"] != "active"
             or event["business_version"] != request.expected_event_version
@@ -473,11 +523,16 @@ class EnrichmentJobService:
             scope.requires(_write_permission(row["visibility"]))
         except PermissionError:
             raise JobExecutionError("enrichment_authorization_changed", blocked=True) from None
-        policy = self.execution_policy()
-        if (
-            _digest(policy.model_dump(mode="json")) != row["execution_policy_sha256"]
-            or _digest(row["execution_policy"]) != row["execution_policy_sha256"]
-        ):
+        policy = _versioned_execution_policy(self.execution_policy())
+        frozen_policy = EnrichmentExecutionPolicy.model_validate_json(
+            json.dumps(row["execution_policy"])
+        )
+        policy_matches = (
+            _base_execution_policy(policy) == _base_execution_policy(frozen_policy)
+            if frozen_policy.model_input_versions is None
+            else _digest(policy.model_dump(mode="json")) == row["execution_policy_sha256"]
+        )
+        if not policy_matches or _digest(row["execution_policy"]) != row["execution_policy_sha256"]:
             raise JobExecutionError("enrichment_execution_policy_changed", blocked=True)
         return scope
 
@@ -601,10 +656,47 @@ class EnrichmentJobService:
             return reserved is not None
 
     def _record_model_receipt(
-        self, job_id: str, attempts: tuple[AttemptMetadata, ...], at: datetime
+        self,
+        job_id: str,
+        attempts: tuple[AttemptMetadata, ...],
+        at: datetime,
+        *,
+        input_audit: EnrichmentModelInputAudit | None = None,
     ) -> None:
+        require_aware_time(at)
+        encoded_audit = input_audit.model_dump(mode="json") if input_audit else None
         with Session(self.engine) as receipt, receipt.begin():
-            receipt.execute(
+            if input_audit:
+                workflow = (
+                    receipt.execute(
+                        select(enrichment_workflows)
+                        .join(
+                            enrichment_job_steps,
+                            enrichment_job_steps.c.workflow_id
+                            == enrichment_workflows.c.workflow_id,
+                        )
+                        .where(enrichment_job_steps.c.job_id == job_id)
+                    )
+                    .mappings()
+                    .one()
+                )
+                saved = FrozenEnrichmentInputs.model_validate_json(
+                    json.dumps(workflow["input_context"])
+                )
+                policy = EnrichmentExecutionPolicy.model_validate_json(
+                    json.dumps(workflow["execution_policy"])
+                )
+                if (
+                    str(input_audit.job_id) != job_id
+                    or str(input_audit.workflow_id) != workflow["workflow_id"]
+                    or input_audit.input_fingerprint != workflow["input_fingerprint"]
+                    or _digest(saved.model_dump(mode="json")) != workflow["input_fingerprint"]
+                    or input_audit.execution_policy_sha256 != workflow["execution_policy_sha256"]
+                    or _digest(workflow["execution_policy"]) != workflow["execution_policy_sha256"]
+                ):
+                    raise JobExecutionError("enrichment_input_audit_invalid", blocked=True)
+                validate_model_input_audit(input_audit, saved, policy, attempts)
+            recorded = receipt.execute(
                 update(enrichment_job_steps)
                 .where(
                     enrichment_job_steps.c.job_id == job_id,
@@ -614,8 +706,107 @@ class EnrichmentJobService:
                 .values(
                     model_call_completed_at=at,
                     model_trace=MODEL_TRACE_ADAPTER.dump_python(attempts, mode="json"),
+                    input_audit_payload=encoded_audit if input_audit else null(),
+                    input_audit_sha256=_audit_sql_digest(encoded_audit) if input_audit else None,
+                )
+                .returning(enrichment_job_steps.c.job_id)
+            ).scalar_one_or_none()
+            if recorded is None:
+                existing = (
+                    receipt.execute(
+                        select(enrichment_job_steps).where(enrichment_job_steps.c.job_id == job_id)
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if (
+                    existing is None
+                    or existing["model_call_completed_at"] is None
+                    or existing["model_trace"]
+                    != MODEL_TRACE_ADAPTER.dump_python(attempts, mode="json")
+                    or existing["input_audit_payload"] != encoded_audit
+                ):
+                    raise JobExecutionError("enrichment_model_receipt_conflict", blocked=True)
+
+    def _build_input_audit(
+        self,
+        row: RowMapping,
+        step: RowMapping,
+        selections: tuple[evidence_selection.FieldEvidenceSelection, ...],
+    ) -> EnrichmentModelInputAudit:
+        policy = EnrichmentExecutionPolicy.model_validate_json(json.dumps(row["execution_policy"]))
+        if (
+            policy.model_input_versions is None
+            or policy.generation_provider is None
+            or policy.approved_model is None
+        ):
+            raise ValueError("input_audit_versions_unavailable")
+        return EnrichmentModelInputAudit(
+            workflow_id=UUID(row["workflow_id"]),
+            job_id=UUID(step["job_id"]),
+            dimension=step["dimension"],
+            input_fingerprint=row["input_fingerprint"],
+            execution_policy_sha256=row["execution_policy_sha256"],
+            model_input_versions=policy.model_input_versions,
+            provider=policy.generation_provider,
+            model_version=policy.approved_model,
+            input_selections=tuple(
+                FieldEvidenceSelectionAudit.from_selection(selection) for selection in selections
+            ),
+        )
+
+    def _input_audit_bytes(self, audit: EnrichmentModelInputAudit) -> int:
+        with Session(self.engine) as session:
+            count = session.scalar(
+                select(
+                    func.octet_length(
+                        cast(literal(audit.model_dump(mode="json"), type_=JSONB), Text)
+                    )
                 )
             )
+        if type(count) is not int:
+            raise ValueError("input_audit_size_unavailable")
+        return count
+
+    def _read_input_audit_record(
+        self,
+        session: Session,
+        workflow: RowMapping,
+        step: RowMapping,
+    ) -> EnrichmentModelInputAudit | None:
+        if step["input_audit_payload"] is None:
+            if step["input_audit_sha256"] is not None:
+                raise ValueError("input_audit_digest_invalid")
+            return None
+        if (
+            session.scalar(select(_audit_sql_digest(step["input_audit_payload"])))
+            != step["input_audit_sha256"]
+        ):
+            raise ValueError("input_audit_digest_invalid")
+        audit = EnrichmentModelInputAudit.model_validate_json(
+            json.dumps(step["input_audit_payload"])
+        )
+        frozen = FrozenEnrichmentInputs.model_validate_json(json.dumps(workflow["input_context"]))
+        policy = EnrichmentExecutionPolicy.model_validate_json(
+            json.dumps(workflow["execution_policy"])
+        )
+        if (
+            str(audit.workflow_id) != workflow["workflow_id"]
+            or str(audit.job_id) != step["job_id"]
+            or audit.dimension != step["dimension"]
+            or audit.input_fingerprint != workflow["input_fingerprint"]
+            or _digest(frozen.model_dump(mode="json")) != workflow["input_fingerprint"]
+            or audit.execution_policy_sha256 != workflow["execution_policy_sha256"]
+            or _digest(workflow["execution_policy"]) != workflow["execution_policy_sha256"]
+        ):
+            raise ValueError("input_audit_identity_invalid")
+        validate_model_input_audit(
+            audit,
+            frozen,
+            policy,
+            MODEL_TRACE_ADAPTER.validate_json(json.dumps(step["model_trace"])),
+        )
+        return audit
 
     def execute_step(
         self, session: Session, context: JobExecutionContext, payload: bytes
@@ -637,6 +828,19 @@ class EnrichmentJobService:
         frozen = self._current_inputs(session, row, scope)
         dimension = step["dimension"]
         if step["result_payload"] is not None:
+            try:
+                audit = self._read_input_audit_record(session, row, step)
+                policy = EnrichmentExecutionPolicy.model_validate_json(
+                    json.dumps(row["execution_policy"])
+                )
+                if (
+                    step["model_trace"]
+                    and policy.model_input_versions is not None
+                    and audit is None
+                ):
+                    raise ValueError("input_audit_unavailable")
+            except ValueError:
+                raise JobExecutionError("enrichment_input_audit_invalid", blocked=True) from None
             if _digest(step["result_payload"]) != step["result_sha256"]:
                 raise JobExecutionError("enrichment_step_result_digest_invalid", blocked=True)
             attempt = DimensionAttempt.model_validate_json(json.dumps(step["result_payload"]))
@@ -675,6 +879,18 @@ class EnrichmentJobService:
         job_id: str,
     ) -> DimensionAttempt:
         policy = EnrichmentExecutionPolicy.model_validate_json(json.dumps(row["execution_policy"]))
+        if step["model_call_reserved_at"] is not None:
+            return DimensionAttempt(
+                dimension=step["dimension"],
+                status=DimensionStatus.FAILED,
+                error_code="incomplete_interrupted",
+            )
+        if policy.model_input_versions is None:
+            return DimensionAttempt(
+                dimension=step["dimension"],
+                status=DimensionStatus.BLOCKED,
+                error_code="legacy_model_input_audit_unavailable",
+            )
         code: str | None = None
         client = None
         if not policy.generation_enabled:
@@ -699,6 +915,36 @@ class EnrichmentJobService:
             return DimensionAttempt(
                 dimension=step["dimension"], status=DimensionStatus.BLOCKED, error_code=code
             )
+        try:
+            if step["dimension"] != "atlas" or any(
+                is_atlas_taxonomy(document) for document in frozen.documents
+            ):
+                preview = self._build_input_audit(
+                    row,
+                    step,
+                    (
+                        evidence_selection.select_field_evidence(
+                            frozen.loaded().documents, step["dimension"]
+                        ),
+                    ),
+                )
+                validate_input_selection(preview.input_selections[0], frozen)
+                if self._input_audit_bytes(preview) > MAX_INPUT_AUDIT_BYTES:
+                    return DimensionAttempt(
+                        dimension=step["dimension"],
+                        status=DimensionStatus.BLOCKED,
+                        error_code="input_audit_budget_exhausted",
+                    )
+        except FieldEvidenceError as error:
+            return DimensionAttempt(
+                dimension=step["dimension"], status=DimensionStatus.FAILED, error_code=error.code
+            )
+        except ValueError:
+            return DimensionAttempt(
+                dimension=step["dimension"],
+                status=DimensionStatus.BLOCKED,
+                error_code="enrichment_input_audit_invalid",
+            )
         if not self._reserve_model_call(job_id, self.clock()):
             return DimensionAttempt(
                 dimension=step["dimension"],
@@ -721,7 +967,25 @@ class EnrichmentJobService:
             return DimensionAttempt(
                 dimension=step["dimension"], status=DimensionStatus.FAILED, error_code=error.code
             )
-        self._record_model_receipt(job_id, generated.model_attempts, self.clock())
+        audit = None
+        try:
+            if generated.model_attempts:
+                audit = self._build_input_audit(row, step, generated.input_selections)
+                validate_model_input_audit(audit, frozen, policy, generated.model_attempts)
+                if self._input_audit_bytes(audit) > MAX_INPUT_AUDIT_BYTES:
+                    raise ValueError("input_audit_budget_exhausted")
+            if len(generated.attempts) != 1 or generated.attempts[0].dimension != step["dimension"]:
+                raise ValueError("input_audit_result_dimension_invalid")
+        except ValueError:
+            self._record_model_receipt(job_id, generated.model_attempts, self.clock())
+            return DimensionAttempt(
+                dimension=step["dimension"],
+                status=DimensionStatus.FAILED,
+                error_code="enrichment_input_audit_invalid",
+            )
+        self._record_model_receipt(
+            job_id, generated.model_attempts, self.clock(), input_audit=audit
+        )
         return generated.attempts[0]
 
     def _exposure_attempt(self, row: RowMapping, step: RowMapping) -> DimensionAttempt:
@@ -784,6 +1048,21 @@ class EnrichmentJobService:
             raise JobExecutionError("enrichment_children_pending", retry_after_seconds=20.0)
         scope = self._execution_scope(session, row, lock=True)
         frozen = self._current_inputs(session, row, scope)
+        for child in children:
+            try:
+                audit = self._read_input_audit_record(session, row, child)
+                child_policy = EnrichmentExecutionPolicy.model_validate_json(
+                    json.dumps(row["execution_policy"])
+                )
+                if (
+                    child["model_trace"]
+                    and child_policy.model_input_versions is not None
+                    and child["result_payload"] is not None
+                    and audit is None
+                ):
+                    raise ValueError("input_audit_unavailable")
+            except ValueError:
+                raise JobExecutionError("enrichment_input_audit_invalid", blocked=True) from None
         body = EventEnrichmentRequest.model_validate_json(json.dumps(row["request_payload"]))
         structured = {
             attempt.dimension: attempt
@@ -969,6 +1248,136 @@ class EnrichmentJobService:
             created_at=row["created_at"],
             initialized_at=row["initialized_at"],
         )
+
+    def read_input_audit(
+        self,
+        session: Session,
+        scope: AccessScope,
+        job_id: UUID,
+        *,
+        actor_session_hash: str,
+        at: datetime,
+    ) -> EnrichmentInputAuditView:
+        """Hold historical parent ACL locks until the caller's read transaction ends."""
+        current = _authenticated_scope(session, actor_session_hash, at, lock=True)
+        if current != scope:
+            raise CrossTenantAccessError("resource not found")
+        step = (
+            session.execute(
+                select(enrichment_job_steps).where(enrichment_job_steps.c.job_id == str(job_id))
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if step is None:
+            raise CrossTenantAccessError("resource not found")
+        workflow = (
+            session.execute(
+                select(enrichment_workflows).where(
+                    enrichment_workflows.c.workflow_id == step["workflow_id"]
+                )
+            )
+            .mappings()
+            .one()
+        )
+        workflow = self._lock_input_audit_parents(session, workflow)
+        self.read_workflow(
+            session,
+            current,
+            UUID(step["workflow_id"]),
+            actor_session_hash=actor_session_hash,
+            at=at,
+        )
+        try:
+            record = self._read_input_audit_record(session, workflow, step)
+            policy = EnrichmentExecutionPolicy.model_validate_json(
+                json.dumps(workflow["execution_policy"])
+            )
+            attempts = MODEL_TRACE_ADAPTER.validate_json(json.dumps(step["model_trace"]))
+        except ValueError:
+            raise EnrichmentWorkflowError("enrichment_input_audit_invalid") from None
+        audit_state: InputAuditState = "not_recorded"
+        if record is not None:
+            audit_state = "recorded"
+        elif policy.model_input_versions is None:
+            audit_state = "legacy_unavailable"
+        return EnrichmentInputAuditView(
+            workflow_id=UUID(step["workflow_id"]),
+            job_id=job_id,
+            audit_state=audit_state,
+            record=record,
+            model_attempts=attempts,
+        )
+
+    def _lock_input_audit_parents(self, session: Session, workflow: RowMapping) -> RowMapping:
+        """Follow source writers' parent order without requiring a current revision or roster."""
+        try:
+            frozen = FrozenEnrichmentInputs.model_validate_json(
+                json.dumps(workflow["input_context"])
+            )
+            if (
+                _digest(frozen.model_dump(mode="json")) != workflow["input_fingerprint"]
+                or str(frozen.context.event_id) != workflow["event_id"]
+                or {str(item.revision_id) for item in frozen.documents}
+                != set(map(str, frozen.context.revision_ids))
+            ):
+                raise ValueError("input_audit_frozen_identity_invalid")
+        except ValueError:
+            raise EnrichmentWorkflowError("enrichment_input_audit_invalid") from None
+        source_ids = {str(item.source_id) for item in frozen.documents}
+        document_sources = {str(item.document_id): str(item.source_id) for item in frozen.documents}
+        revision_documents = {
+            str(item.revision_id): str(item.document_id) for item in frozen.documents
+        }
+        locked_sources: set[str] = set(
+            session.scalars(
+                select(sources.c.source_id)
+                .where(sources.c.source_id.in_(source_ids))
+                .order_by(sources.c.source_id)
+                .with_for_update(read=True)
+            )
+        )
+        locked_documents: dict[str, str] = dict(
+            session.execute(
+                select(documents.c.document_id, documents.c.source_id)
+                .where(documents.c.document_id.in_(document_sources))
+                .order_by(documents.c.document_id)
+                .with_for_update(read=True)
+            ).all()
+        )
+        locked_revisions: dict[str, str] = dict(
+            session.execute(
+                select(document_revisions.c.revision_id, document_revisions.c.document_id)
+                .where(document_revisions.c.revision_id.in_(revision_documents))
+                .order_by(document_revisions.c.document_id, document_revisions.c.revision_id)
+                .with_for_update(read=True)
+            ).all()
+        )
+        if (
+            locked_sources != source_ids
+            or locked_documents != document_sources
+            or locked_revisions != revision_documents
+        ):
+            raise EnrichmentWorkflowError("enrichment_input_audit_invalid")
+        event_id = session.scalar(
+            select(events.c.event_id)
+            .where(events.c.event_id == workflow["event_id"])
+            .with_for_update(read=True)
+        )
+        if event_id is None:
+            raise CrossTenantAccessError("resource not found")
+        locked_workflow = (
+            session.execute(
+                select(enrichment_workflows)
+                .where(enrichment_workflows.c.workflow_id == workflow["workflow_id"])
+                .with_for_update(read=True)
+            )
+            .mappings()
+            .one()
+        )
+        if locked_workflow != workflow:
+            raise EnrichmentWorkflowError("enrichment_input_audit_invalid")
+        return locked_workflow
 
     def _step_view(self, row: RowMapping) -> EnrichmentStepView:
         call_state: ModelCallState = "not_reserved"
