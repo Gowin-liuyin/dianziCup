@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import os
 import re
 import secrets
-from collections.abc import Mapping
+from collections.abc import Coroutine, Mapping
 from typing import TypeVar
 from urllib.parse import urlsplit
 
@@ -88,6 +89,10 @@ class DianziTransportError(RuntimeError):
         self.may_have_executed = may_have_executed
 
 
+class DianziDeadlineError(DianziTransportError):
+    """The complete operation exceeded its wallclock budget; no automatic retry."""
+
+
 def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     result: dict[str, object] = {}
     for key, value in pairs:
@@ -162,6 +167,82 @@ def _remove_cookie_authentication(request: httpx.Request) -> None:
     request.headers.pop("cookie", None)
 
 
+async def _remove_async_cookie_authentication(request: httpx.Request) -> None:
+    _remove_cookie_authentication(request)
+
+
+def _validate_timeout(value: float, upper_bound: float) -> None:
+    if type(value) not in {int, float} or not 0 < value <= upper_bound:
+        raise ClientConfigurationError("client timeout is outside the allowed bounds")
+
+
+def _request_body(request: PublicRequest, model: type[PublicRequest]) -> str:
+    if not isinstance(request, model):
+        raise ClientInputError("request is invalid")
+    try:
+        body = model.model_validate_json(request.wire_json()).wire_json()
+    except (ValidationError, UnicodeError, ValueError):
+        raise ClientInputError("request is invalid") from None
+    if len(body.encode("utf-8")) > MAX_SYNCHRONOUS_REQUEST_BYTES:
+        raise ClientInputError("synchronous request exceeds the client size boundary")
+    return body
+
+
+PublicRequest = AskRequest | StackCheckRequest
+
+
+def _decode_response[ResultType](
+    response: httpx.Response, content: bytes, adapter: TypeAdapter[ResultType]
+) -> tuple[int, ResultType]:
+    content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
+    if response.status_code not in {200, 202}:
+        problem = None
+        if content_type == "application/problem+json":
+            try:
+                validate_json_bytes(content)
+                problem = ApiProblem.model_validate_json(content)
+            except (ResponseContractError, ValidationError):
+                problem = None
+        if problem is None or problem.status != response.status_code:
+            raise DianziApiError(response.status_code, "http_error", None, False)
+        raise DianziApiError(
+            problem.status, problem.error.code, problem.trace_id, problem.error.retryable
+        )
+    if content_type != "application/json":
+        raise ResponseContractError("response content type is invalid")
+    validate_json_bytes(content)
+    try:
+        result = adapter.validate_json(content)
+    except ValidationError:
+        raise ResponseContractError("response does not match the public contract") from None
+    return response.status_code, result
+
+
+def _check_compression(response: httpx.Response) -> None:
+    if response.headers.get("content-encoding", "identity").lower() != "identity":
+        raise ResponseContractError("compressed response is outside the client boundary")
+
+
+def _append_chunk(raw: bytearray, chunk: bytes) -> None:
+    if len(raw) + len(chunk) > MAX_RESPONSE_BYTES:
+        raise ResponseContractError("response exceeds the allowed size")
+    raw.extend(chunk)
+
+
+def _ask_result(status: int, result: AskResult) -> AskResult:
+    if (isinstance(result, QAAnswer) and status != 200) or (
+        isinstance(result, TaskHandle) and status != 202
+    ):
+        raise ResponseContractError("answer kind does not match HTTP status")
+    return result
+
+
+def _stack_result(status: int, result: StackCheckResult) -> StackCheckResult:
+    if status != 200:
+        raise ResponseContractError("synchronous stack result requires HTTP 200")
+    return result
+
+
 class DianziClient:
     """No retries, arbitrary URLs, database credentials or duplicated business decisions."""
 
@@ -172,7 +253,10 @@ class DianziClient:
         *,
         timeout_seconds: float = 10,
         question_timeout_seconds: float = 100,
+        operation_deadline_seconds: float = 10,
+        question_deadline_seconds: float = 100,
         transport: httpx.BaseTransport | None = None,
+        async_transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         origin = _validate_base_url(base_url)
         if not isinstance(api_key, SecretStr):
@@ -183,28 +267,74 @@ class DianziClient:
             or re.fullmatch(r"[A-Za-z0-9._~+/-]+=*", credential) is None
         ):
             raise ClientConfigurationError("API key is invalid")
-        if (
-            type(timeout_seconds) not in {int, float}
-            or type(question_timeout_seconds) not in {int, float}
-            or not 0 < timeout_seconds <= 60
-            or not 0 < question_timeout_seconds <= 120
+        for value, upper_bound in (
+            (timeout_seconds, 60),
+            (question_timeout_seconds, 120),
+            (operation_deadline_seconds, 60),
+            (question_deadline_seconds, 120),
         ):
-            raise ClientConfigurationError("client timeout is outside the allowed bounds")
+            _validate_timeout(value, upper_bound)
+        if transport is not None and async_transport is not None:
+            raise ClientConfigurationError("choose one isolated transport injection")
         self._question_timeout_seconds = question_timeout_seconds
         self._timeout_seconds = timeout_seconds
-        self._http = httpx.Client(
-            base_url=origin,
-            headers={
-                "Authorization": "Bearer " + credential,
-                "Accept": "application/json",
-                "Accept-Encoding": "identity",
-            },
-            timeout=timeout_seconds,
-            follow_redirects=False,
-            trust_env=False,
-            transport=transport,
-            event_hooks={"request": [_remove_cookie_authentication]},
+        self._operation_deadline_seconds = operation_deadline_seconds
+        self._question_deadline_seconds = question_deadline_seconds
+        self._runner: asyncio.Runner | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._active_operations: set[asyncio.Task[object]] = set()
+        self._operation_slots = asyncio.Semaphore(4)
+        self._closed = False
+        self._close_task: asyncio.Task[None] | None = None
+        headers = {
+            "Authorization": "Bearer " + credential,
+            "Accept": "application/json",
+            "Accept-Encoding": "identity",
+        }
+        self._http = (
+            None
+            if transport is None
+            else httpx.Client(
+                base_url=origin,
+                headers=headers,
+                timeout=timeout_seconds,
+                follow_redirects=False,
+                trust_env=False,
+                transport=transport,
+                event_hooks={"request": [_remove_cookie_authentication]},
+            )
         )
+        self._async_http = (
+            None
+            if transport is not None
+            else httpx.AsyncClient(
+                base_url=origin,
+                headers=headers,
+                timeout=timeout_seconds,
+                follow_redirects=False,
+                trust_env=False,
+                transport=async_transport,
+                limits=httpx.Limits(max_connections=4, max_keepalive_connections=4),
+                event_hooks={"request": [_remove_async_cookie_authentication]},
+            )
+        )
+
+    @property
+    def uses_async_requests(self) -> bool:
+        """False only for explicitly injected legacy synchronous contract fixtures.
+
+        A synchronous fixture handler cannot be forcefully interrupted. Its old
+        compatibility path does not demonstrate product cancellation or deadline.
+        """
+        return self._async_http is not None
+
+    @property
+    def operation_deadline_seconds(self) -> float:
+        return self._operation_deadline_seconds
+
+    @property
+    def question_deadline_seconds(self) -> float:
+        return self._question_deadline_seconds
 
     @classmethod
     def from_environment(cls, environment: Mapping[str, str] | None = None) -> DianziClient:
@@ -216,13 +346,105 @@ class DianziClient:
         return cls(base_url, SecretStr(key))
 
     def close(self) -> None:
-        self._http.close()
+        if self._closed and self._http is not None:
+            return
+        if self._close_task is not None and self._close_task.done():
+            self._close_task.result()
+            return
+        if self._http is not None:
+            self._closed = True
+            self._http.close()
+            return
+        self._check_sync_context()
+        runner = self._get_runner()
+        try:
+            runner.run(self.aclose())
+        finally:
+            runner.close()
+            self._runner = None
+
+    async def aclose(self) -> None:
+        """Reject new work immediately; caller cancellation does not cancel owned cleanup.
+
+        A later close awaits the same finite task, including idle pool connections.
+        Cleanup still belongs to this client's event loop and must be awaited before
+        the owning loop is shut down; it is not an out-of-process cleanup service.
+        """
+        if self._close_task is not None and self._close_task.done():
+            self._close_task.result()
+            return
+        if self._http is not None:
+            if self._closed:
+                return
+            raise ClientConfigurationError("legacy fixture requires synchronous close")
+        self._bind_loop()
+        if self._close_task is None:
+            self._closed = True
+            self._close_task = asyncio.create_task(
+                self._close_async_resources(asyncio.current_task()), name="dianzi-client-close"
+            )
+        await asyncio.shield(self._close_task)
+
+    async def _close_async_resources(self, initiator: asyncio.Task[object] | None) -> None:
+        operations = [task for task in self._active_operations if task is not initiator]
+        for task in operations:
+            task.cancel()
+        if operations:
+            await asyncio.gather(*operations, return_exceptions=True)
+        if self._async_http is not None:
+            await self._async_http.aclose()
+
+    def _bind_loop(self) -> asyncio.AbstractEventLoop:
+        loop = asyncio.get_running_loop()
+        if self._loop is not None and self._loop is not loop:
+            raise ClientConfigurationError("client cannot be reused across event loops")
+        self._loop = loop
+        return loop
+
+    def _check_sync_context(self) -> None:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        raise ClientConfigurationError("running event loop requires async client methods")
+
+    def _get_runner(self) -> asyncio.Runner:
+        if self._closed:
+            raise ClientConfigurationError("client is closed")
+        if self._runner is None:
+            if self._loop is not None:
+                raise ClientConfigurationError("async client requires aclose on its owning loop")
+            self._runner = asyncio.Runner()
+        return self._runner
+
+    def _run_sync(self, operation: Coroutine[object, object, ResultType]) -> ResultType:
+        try:
+            self._check_sync_context()
+            runner = self._get_runner()
+        except Exception:
+            operation.close()
+            raise
+        return runner.run(operation)
 
     def __enter__(self) -> DianziClient:
+        if self._closed:
+            raise ClientConfigurationError("client is closed")
+        if self.uses_async_requests:
+            self._check_sync_context()
+            self._get_runner()
         return self
 
     def __exit__(self, *_: object) -> None:
         self.close()
+
+    async def __aenter__(self) -> DianziClient:
+        if self._closed or not self.uses_async_requests:
+            raise ClientConfigurationError("native async client is required")
+        self._bind_loop()
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        await self.aclose()
 
     def _post(
         self,
@@ -232,9 +454,9 @@ class DianziClient:
         adapter: TypeAdapter[ResultType],
         timeout_seconds: float,
     ) -> tuple[int, ResultType]:
+        if self._http is None or self._closed:
+            raise ClientConfigurationError("legacy synchronous fixture is unavailable")
         encoded = body.encode("utf-8")
-        if len(encoded) > MAX_SYNCHRONOUS_REQUEST_BYTES:
-            raise ClientInputError("synchronous request exceeds the client size boundary")
         try:
             with self._http.stream(
                 "POST",
@@ -243,93 +465,136 @@ class DianziClient:
                 headers={"Content-Type": "application/json", "Idempotency-Key": operation_key},
                 timeout=timeout_seconds,
             ) as response:
-                if response.headers.get("content-encoding", "identity").lower() != "identity":
-                    raise ResponseContractError(
-                        "compressed response is outside the client boundary"
-                    )
+                _check_compression(response)
                 raw = bytearray()
                 for chunk in response.iter_bytes():
-                    if len(raw) + len(chunk) > MAX_RESPONSE_BYTES:
-                        raise ResponseContractError("response exceeds the allowed size")
-                    raw.extend(chunk)
-                content = bytes(raw)
-                if response.status_code not in {200, 202}:
-                    problem = None
-                    if (
-                        response.headers.get("content-type", "").split(";", 1)[0].lower()
-                        == "application/problem+json"
-                    ):
-                        try:
-                            validate_json_bytes(content)
-                            problem = ApiProblem.model_validate_json(content)
-                        except (ResponseContractError, ValidationError):
-                            problem = None
-                    if problem is None or problem.status != response.status_code:
-                        raise DianziApiError(response.status_code, "http_error", None, False)
-                    raise DianziApiError(
-                        problem.status,
-                        problem.error.code,
-                        problem.trace_id,
-                        problem.error.retryable,
-                    )
-                if (
-                    response.headers.get("content-type", "").split(";", 1)[0].lower()
-                    != "application/json"
-                ):
-                    raise ResponseContractError("response content type is invalid")
-                validate_json_bytes(content)
-                try:
-                    result = adapter.validate_json(content)
-                except ValidationError:
-                    raise ResponseContractError(
-                        "response does not match the public contract"
-                    ) from None
-                return response.status_code, result
+                    _append_chunk(raw, chunk)
+                return _decode_response(response, bytes(raw), adapter)
         except httpx.HTTPError:
             raise DianziTransportError(operation_key, True) from None
 
-    def ask(self, request: AskRequest, *, idempotency_key: str | None = None) -> AskResult:
-        if not isinstance(request, AskRequest):
-            raise ClientInputError("question request is invalid")
+    async def _post_async(
+        self,
+        path: str,
+        body: str,
+        operation_key: str,
+        adapter: TypeAdapter[ResultType],
+        timeout_seconds: float,
+        deadline: float,
+    ) -> tuple[int, ResultType]:
+        loop = self._bind_loop()
+        if self._closed or self._async_http is None:
+            raise ClientConfigurationError("native async client is unavailable")
+        operation = asyncio.current_task()
+        if operation is None:
+            raise ClientConfigurationError("async operation requires a task")
+        self._active_operations.add(operation)
+        dispatched = False
         try:
-            validated = AskRequest.model_validate_json(request.wire_json())
-        except (ValidationError, UnicodeError, ValueError):
-            raise ClientInputError("question request is invalid") from None
+            async with asyncio.timeout_at(deadline):
+                async with self._operation_slots:
+                    if loop.time() >= deadline:
+                        raise TimeoutError
+                    dispatched = True
+                    async with self._async_http.stream(
+                        "POST",
+                        path,
+                        content=body.encode("utf-8"),
+                        headers={
+                            "Content-Type": "application/json",
+                            "Idempotency-Key": operation_key,
+                        },
+                        timeout=timeout_seconds,
+                    ) as response:
+                        _check_compression(response)
+                        raw = bytearray()
+                        async for chunk in response.aiter_bytes():
+                            _append_chunk(raw, chunk)
+                        result = _decode_response(response, bytes(raw), adapter)
+                    if loop.time() >= deadline:
+                        raise TimeoutError
+                    return result
+        except TimeoutError:
+            raise DianziDeadlineError(operation_key, dispatched) from None
+        except httpx.HTTPError:
+            raise DianziTransportError(operation_key, dispatched) from None
+        finally:
+            self._active_operations.discard(operation)
+
+    def ask(self, request: AskRequest, *, idempotency_key: str | None = None) -> AskResult:
+        if self.uses_async_requests:
+            return self._run_sync(self.ask_async(request, idempotency_key=idempotency_key))
+        body = _request_body(request, AskRequest)
         key = _validate_operation_key(
             secrets.token_urlsafe(32) if idempotency_key is None else idempotency_key
         )
         status, result = self._post(
             "/api/v1/ask",
-            validated.wire_json(),
+            body,
             key,
             ASK_RESULT_ADAPTER,
             self._question_timeout_seconds,
         )
-        if (isinstance(result, QAAnswer) and status != 200) or (
-            isinstance(result, TaskHandle) and status != 202
-        ):
-            raise ResponseContractError("answer kind does not match HTTP status")
+        return _ask_result(status, result)
+
+    async def ask_async(
+        self, request: AskRequest, *, idempotency_key: str | None = None
+    ) -> AskResult:
+        loop = self._bind_loop()
+        deadline = loop.time() + self.question_deadline_seconds
+        body = _request_body(request, AskRequest)
+        key = _validate_operation_key(
+            secrets.token_urlsafe(32) if idempotency_key is None else idempotency_key
+        )
+        status, result = await self._post_async(
+            "/api/v1/ask",
+            body,
+            key,
+            ASK_RESULT_ADAPTER,
+            self._question_timeout_seconds,
+            deadline,
+        )
+        result = _ask_result(status, result)
+        if loop.time() >= deadline:
+            raise DianziDeadlineError(key, True)
         return result
 
     def check_stack(
         self, request: StackCheckRequest, *, idempotency_key: str | None = None
     ) -> StackCheckResult:
-        if not isinstance(request, StackCheckRequest):
-            raise ClientInputError("stack request is invalid")
-        try:
-            validated = StackCheckRequest.model_validate_json(request.wire_json())
-        except (ValidationError, UnicodeError, ValueError):
-            raise ClientInputError("stack request is invalid") from None
+        if self.uses_async_requests:
+            return self._run_sync(self.check_stack_async(request, idempotency_key=idempotency_key))
+        body = _request_body(request, StackCheckRequest)
         key = _validate_operation_key(
             secrets.token_urlsafe(32) if idempotency_key is None else idempotency_key
         )
         status, result = self._post(
             "/api/v1/stack/check",
-            validated.wire_json(),
+            body,
             key,
             TypeAdapter(StackCheckResult),
             self._timeout_seconds,
         )
-        if status != 200:
-            raise ResponseContractError("synchronous stack result requires HTTP 200")
+        return _stack_result(status, result)
+
+    async def check_stack_async(
+        self, request: StackCheckRequest, *, idempotency_key: str | None = None
+    ) -> StackCheckResult:
+        loop = self._bind_loop()
+        deadline = loop.time() + self.operation_deadline_seconds
+        body = _request_body(request, StackCheckRequest)
+        key = _validate_operation_key(
+            secrets.token_urlsafe(32) if idempotency_key is None else idempotency_key
+        )
+        status, result = await self._post_async(
+            "/api/v1/stack/check",
+            body,
+            key,
+            TypeAdapter(StackCheckResult),
+            self._timeout_seconds,
+            deadline,
+        )
+        result = _stack_result(status, result)
+        if loop.time() >= deadline:
+            raise DianziDeadlineError(key, True)
         return result

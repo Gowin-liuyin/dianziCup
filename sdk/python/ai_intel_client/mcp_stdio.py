@@ -11,7 +11,10 @@ from mcp.server.stdio import stdio_server
 
 from ai_intel_client.client import ClientConfigurationError, DianziClient
 from ai_intel_client.mcp_adapter import create_current_read_tool_server
-from ai_intel_client.output_budget import McpOutputBudget, OutputBudgetConfigurationError
+from ai_intel_client.output_budget import (
+    McpOutputBudget,
+    OutputBudgetConfigurationError,
+)
 
 
 async def serve_stdio() -> None:
@@ -19,7 +22,7 @@ async def serve_stdio() -> None:
     if not cache_file:
         raise OutputBudgetConfigurationError("not_configured")
     budget = McpOutputBudget(Path(cache_file))
-    with DianziClient.from_environment() as backend:
+    async with DianziClient.from_environment() as backend:
         server = create_current_read_tool_server(backend, budget)
         async with stdio_server() as (read_stream, write_stream):
             await server.run(read_stream, write_stream, server.create_initialization_options())
@@ -30,6 +33,9 @@ def main() -> int:
         asyncio.run(serve_stdio())
     except (ClientConfigurationError, OutputBudgetConfigurationError):
         sys.stderr.write('{"error":{"code":"not_configured"}}\n')
+        return 3
+    except Exception:
+        sys.stderr.write('{"error":{"code":"backend_internal_error"}}\n')
         return 3
     return 0
 

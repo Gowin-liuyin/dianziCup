@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from collections.abc import AsyncIterator, Mapping
@@ -30,6 +31,7 @@ from ai_intel_client.client import (
     ClientInputError,
     DianziApiError,
     DianziClient,
+    DianziDeadlineError,
     DianziTransportError,
     ResponseContractError,
 )
@@ -158,6 +160,12 @@ def create_current_read_tool_server(
             return _tool_error("not_configured")
         if params.name not in request_models:
             return _tool_error("unknown_tool")
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + (
+            client.question_deadline_seconds
+            if params.name == "ask"
+            else client.operation_deadline_seconds
+        )
         try:
             raw = json.dumps(params.arguments or {}, allow_nan=False).encode("utf-8")
             validated_request = request_models[params.name].model_validate_json(raw)
@@ -165,6 +173,19 @@ def create_current_read_tool_server(
             return _tool_error("invalid_arguments")
         record: PublicRecord
         try:
+            if client.uses_async_requests:
+                async with asyncio.timeout_at(deadline):
+                    async with worker_slots:
+                        if isinstance(validated_request, AskRequest):
+                            record = await client.ask_async(validated_request)
+                        elif isinstance(validated_request, StackCheckRequest):
+                            record = await client.check_stack_async(validated_request)
+                        else:
+                            return _tool_error("invalid_arguments")
+                        result = _complete_result(record, output_budget)
+                    if loop.time() >= deadline:
+                        raise TimeoutError
+                    return result
             if params.name == "ask":
                 if not isinstance(validated_request, AskRequest):
                     return _tool_error("invalid_arguments")
@@ -182,6 +203,8 @@ def create_current_read_tool_server(
             return _tool_error("backend_request_error")
         except DianziApiError as error:
             return _tool_error(error.code)
+        except (DianziDeadlineError, TimeoutError):
+            return _tool_error("backend_deadline_exceeded")
         except DianziTransportError:
             return _tool_error("backend_transport_error")
         except ResponseContractError:
