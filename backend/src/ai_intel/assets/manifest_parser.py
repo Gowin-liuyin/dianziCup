@@ -6,6 +6,7 @@ import csv
 import hashlib
 import io
 import json
+import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -14,13 +15,11 @@ from typing import Literal
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from ai_intel.domain.access import READ_ASSET, AccessScope, PermissionDeniedError
-from ai_intel.infrastructure.models.json_output import strict_json_object
 
 PARSER_VERSION = "r11-manifest-parser-1"
 MAX_MANIFEST_BYTES = 10485760
 MAX_COMPONENTS = 10000
 MAX_JSON_DEPTH = 16
-MAX_JSON_NODES = 50000
 MAX_STRING_LENGTH = 4096
 COMPONENT_FIELDS = frozenset(
     {
@@ -54,6 +53,13 @@ CONFIGURATION_TYPES: dict[str, type[str] | type[bool]] = {
 }
 INPUT_CHANNELS = frozenset({"public_api", "uploaded_documents", "retrieved_web_content"})
 NETWORK_FIELDS = frozenset({"public_endpoint", "outbound_network_allowed"})
+MAX_JSON_NODES = (
+    1
+    + 2 * len(MANIFEST_FIELDS)
+    + MAX_COMPONENTS * (1 + 2 * len(COMPONENT_FIELDS) + 64)
+    + 2 * 64
+    + 2 * (len(CONFIGURATION_TYPES) + len(INPUT_CHANNELS) + len(NETWORK_FIELDS))
+)
 InventoryCompleteness = Literal["complete_for_declared_scope", "partial", "unknown"]
 
 
@@ -247,20 +253,51 @@ def _declared_fields(
 
 
 def _json_rows(raw: bytes) -> tuple[dict[str, object], list[tuple[dict[str, object], str]]]:
+    """库存结构预算覆盖所有合法字段；模型JSON的50000节点门保持独立。"""
+
+    def pairs(entries: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in entries:
+            if key in result:
+                raise ValueError("duplicate JSON key")
+            result[key] = value
+        return result
+
+    def constant(value: str) -> object:
+        raise ValueError("non-finite JSON number")
+
     try:
-        manifest = strict_json_object(raw, MAX_MANIFEST_BYTES, maximum_nodes=MAX_JSON_NODES)
+        decoded: object = json.loads(
+            raw.decode("utf-8"), object_pairs_hook=pairs, parse_constant=constant
+        )
     except UnicodeDecodeError:
         raise ManifestValidationError("invalid_encoding") from None
     except (ValueError, UnicodeError, RecursionError):
         raise ManifestValidationError("invalid_json") from None
+    if not isinstance(decoded, dict):
+        raise ManifestValidationError("invalid_json")
+    manifest: dict[str, object] = decoded
     pending: list[tuple[object, int]] = [(manifest, 0)]
+    count = 0
     while pending:
         value, depth = pending.pop()
+        count += 1
+        if count > MAX_JSON_NODES:
+            raise ManifestValidationError("invalid_json")
         if depth > MAX_JSON_DEPTH:
             raise ManifestValidationError("json_depth_limit")
         if isinstance(value, str):
+            try:
+                value.encode("utf-8")
+            except UnicodeError:
+                raise ManifestValidationError("invalid_json") from None
+            if "\0" in value:
+                raise ManifestValidationError("invalid_json")
             _text(value, "/")
+        elif isinstance(value, float) and not math.isfinite(value):
+            raise ManifestValidationError("invalid_json")
         elif isinstance(value, dict):
+            pending.extend((key, depth + 1) for key in value)
             pending.extend((child, depth + 1) for child in value.values())
         elif isinstance(value, list):
             pending.extend((child, depth + 1) for child in value)

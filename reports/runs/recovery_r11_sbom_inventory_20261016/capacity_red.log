@@ -1,0 +1,204 @@
+FFF                                                                      [100%]
+================================== FAILURES ===================================
+_________ test_cdx_10000_keeps_every_version_and_identity[two_fields] _________
+
+profile = 'two_fields'
+
+    @pytest.mark.parametrize("profile", ["two_fields", "dense"])
+    def test_cdx_10000_keeps_every_version_and_identity(profile):
+        components = [{"type": "library", "name": f"p{i}", "version": "1"} for i in range(10000)]
+        if profile == "dense":
+            for component in components:
+                component["purl"] = "pkg:pypi/" + component["name"] + "@1"
+        raw = json.dumps(
+            {"bomFormat": "CycloneDX", "specVersion": "1.7", "version": 1, "components": components},
+            separators=(",", ":"),
+        ).encode()
+        assert len(raw) < 1048576
+>       parsed = parse_sbom(
+            raw, sbom_format="cyclonedx_json", scope=SCOPE,
+            authorized_asset_tenant_id="capacity-tenant",
+            asset_id="b7e76085-9ebe-4f8d-bd1c-356ee8e6d5d1", snapshot_number=1,
+            source_version="synthetic-capacity", observed_at=NOW, recorded_at=NOW,
+        )
+
+tests\unit\test_r11_sbom_inventory_capacity.py:29: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+raw_bytes = b'{"bomFormat":"CycloneDX","specVersion":"1.7","version":1,"components":[{"type":"library","name":"p0","version":"1"},...9997","version":"1"},{"type":"library","name":"p9998","version":"1"},{"type":"library","name":"p9999","version":"1"}]}'
+
+    def parse_sbom(
+        raw_bytes: bytes,
+        *,
+        sbom_format: str,
+        scope: AccessScope,
+        authorized_asset_tenant_id: str,
+        asset_id: str,
+        snapshot_number: int,
+        source_version: str,
+        observed_at: datetime,
+        recorded_at: datetime,
+    ) -> SbomParseResult:
+        """仅授权bytes→现有库存候选及声明sidecar；原完整性保持unknown，不读取引用或写PG。"""
+        if not isinstance(scope, AccessScope):
+            raise PermissionDeniedError("authenticated asset scope required")
+        scope.requires(READ_ASSET)
+        if not scope.tenant_id or not authorized_asset_tenant_id:
+            raise PermissionDeniedError("tenant asset scope required")
+        scope.enforce_visible("tenant", authorized_asset_tenant_id)
+        if type(raw_bytes) is not bytes or not 1 <= len(raw_bytes) <= MAX_SBOM_BYTES:
+            raise SbomValidationError("sbom_size_or_type_limit")
+        if sbom_format not in {"cyclonedx_json", "spdx_json"}:
+            raise SbomValidationError("unsupported_sbom_format")
+        document = _json(raw_bytes)
+        projected, edges, declarations, external_documents, unmapped = (
+            _cdx(document) if sbom_format == "cyclonedx_json" else _spdx(document)
+        )
+        component_section = "/components" if sbom_format == "cyclonedx_json" else "/packages"
+        manifest_value = {
+            "format_version": 1,
+            "components": [item.manifest_fields for item in projected],
+        }
+        normalized = json.dumps(manifest_value, ensure_ascii=True, separators=(",", ":")).encode()
+        node_count = 5 + sum(1 + 2 * len(item.manifest_fields) for item in projected)
+        if node_count > MAX_JSON_NODES:
+>           raise SbomValidationError(
+                "projection_node_limit",
+                component_section,
+            )
+E           ai_intel.assets.sbom_parser.SbomValidationError: projection_node_limit at /components
+
+src\ai_intel\assets\sbom_parser.py:796: SbomValidationError
+___________ test_cdx_10000_keeps_every_version_and_identity[dense] ____________
+
+profile = 'dense'
+
+    @pytest.mark.parametrize("profile", ["two_fields", "dense"])
+    def test_cdx_10000_keeps_every_version_and_identity(profile):
+        components = [{"type": "library", "name": f"p{i}", "version": "1"} for i in range(10000)]
+        if profile == "dense":
+            for component in components:
+                component["purl"] = "pkg:pypi/" + component["name"] + "@1"
+        raw = json.dumps(
+            {"bomFormat": "CycloneDX", "specVersion": "1.7", "version": 1, "components": components},
+            separators=(",", ":"),
+        ).encode()
+        assert len(raw) < 1048576
+>       parsed = parse_sbom(
+            raw, sbom_format="cyclonedx_json", scope=SCOPE,
+            authorized_asset_tenant_id="capacity-tenant",
+            asset_id="b7e76085-9ebe-4f8d-bd1c-356ee8e6d5d1", snapshot_number=1,
+            source_version="synthetic-capacity", observed_at=NOW, recorded_at=NOW,
+        )
+
+tests\unit\test_r11_sbom_inventory_capacity.py:29: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+raw_bytes = b'{"bomFormat":"CycloneDX","specVersion":"1.7","version":1,"components":[{"type":"library","name":"p0","version":"1","...","version":"1","purl":"pkg:pypi/p9998@1"},{"type":"library","name":"p9999","version":"1","purl":"pkg:pypi/p9999@1"}]}'
+
+    def parse_sbom(
+        raw_bytes: bytes,
+        *,
+        sbom_format: str,
+        scope: AccessScope,
+        authorized_asset_tenant_id: str,
+        asset_id: str,
+        snapshot_number: int,
+        source_version: str,
+        observed_at: datetime,
+        recorded_at: datetime,
+    ) -> SbomParseResult:
+        """仅授权bytes→现有库存候选及声明sidecar；原完整性保持unknown，不读取引用或写PG。"""
+        if not isinstance(scope, AccessScope):
+            raise PermissionDeniedError("authenticated asset scope required")
+        scope.requires(READ_ASSET)
+        if not scope.tenant_id or not authorized_asset_tenant_id:
+            raise PermissionDeniedError("tenant asset scope required")
+        scope.enforce_visible("tenant", authorized_asset_tenant_id)
+        if type(raw_bytes) is not bytes or not 1 <= len(raw_bytes) <= MAX_SBOM_BYTES:
+            raise SbomValidationError("sbom_size_or_type_limit")
+        if sbom_format not in {"cyclonedx_json", "spdx_json"}:
+            raise SbomValidationError("unsupported_sbom_format")
+        document = _json(raw_bytes)
+        projected, edges, declarations, external_documents, unmapped = (
+            _cdx(document) if sbom_format == "cyclonedx_json" else _spdx(document)
+        )
+        component_section = "/components" if sbom_format == "cyclonedx_json" else "/packages"
+        manifest_value = {
+            "format_version": 1,
+            "components": [item.manifest_fields for item in projected],
+        }
+        normalized = json.dumps(manifest_value, ensure_ascii=True, separators=(",", ":")).encode()
+        node_count = 5 + sum(1 + 2 * len(item.manifest_fields) for item in projected)
+        if node_count > MAX_JSON_NODES:
+>           raise SbomValidationError(
+                "projection_node_limit",
+                component_section,
+            )
+E           ai_intel.assets.sbom_parser.SbomValidationError: projection_node_limit at /components
+
+src\ai_intel\assets\sbom_parser.py:796: SbomValidationError
+_____________ test_original_reviewed_dense_10000_bytes_now_parse ______________
+
+    def test_original_reviewed_dense_10000_bytes_now_parse():
+        raw = gzip.decompress((ROOT / "reports/runs/recovery_r11_sbom_adapters_20261016/synthetic-dense-10000.json.gz").read_bytes())
+>       parsed = parse_sbom(
+            raw, sbom_format="cyclonedx_json", scope=SCOPE,
+            authorized_asset_tenant_id="capacity-tenant",
+            asset_id="b7e76085-9ebe-4f8d-bd1c-356ee8e6d5d1", snapshot_number=1,
+            source_version="reviewed-synthetic-capacity", observed_at=NOW, recorded_at=NOW,
+        )
+
+tests\unit\test_r11_sbom_inventory_capacity.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+raw_bytes = b'{"bomFormat": "CycloneDX", "specVersion": "1.7", "version": 1, "components": [{"type": "library", "name": "p0", "pur...": "pkg:pypi/p9998", "version": "1"}, {"type": "library", "name": "p9999", "purl": "pkg:pypi/p9999", "version": "1"}]}'
+
+    def parse_sbom(
+        raw_bytes: bytes,
+        *,
+        sbom_format: str,
+        scope: AccessScope,
+        authorized_asset_tenant_id: str,
+        asset_id: str,
+        snapshot_number: int,
+        source_version: str,
+        observed_at: datetime,
+        recorded_at: datetime,
+    ) -> SbomParseResult:
+        """仅授权bytes→现有库存候选及声明sidecar；原完整性保持unknown，不读取引用或写PG。"""
+        if not isinstance(scope, AccessScope):
+            raise PermissionDeniedError("authenticated asset scope required")
+        scope.requires(READ_ASSET)
+        if not scope.tenant_id or not authorized_asset_tenant_id:
+            raise PermissionDeniedError("tenant asset scope required")
+        scope.enforce_visible("tenant", authorized_asset_tenant_id)
+        if type(raw_bytes) is not bytes or not 1 <= len(raw_bytes) <= MAX_SBOM_BYTES:
+            raise SbomValidationError("sbom_size_or_type_limit")
+        if sbom_format not in {"cyclonedx_json", "spdx_json"}:
+            raise SbomValidationError("unsupported_sbom_format")
+        document = _json(raw_bytes)
+        projected, edges, declarations, external_documents, unmapped = (
+            _cdx(document) if sbom_format == "cyclonedx_json" else _spdx(document)
+        )
+        component_section = "/components" if sbom_format == "cyclonedx_json" else "/packages"
+        manifest_value = {
+            "format_version": 1,
+            "components": [item.manifest_fields for item in projected],
+        }
+        normalized = json.dumps(manifest_value, ensure_ascii=True, separators=(",", ":")).encode()
+        node_count = 5 + sum(1 + 2 * len(item.manifest_fields) for item in projected)
+        if node_count > MAX_JSON_NODES:
+>           raise SbomValidationError(
+                "projection_node_limit",
+                component_section,
+            )
+E           ai_intel.assets.sbom_parser.SbomValidationError: projection_node_limit at /components
+
+src\ai_intel\assets\sbom_parser.py:796: SbomValidationError
+- generated xml file: D:\wt\r11-sbom-inventory\reports\runs\recovery_r11_sbom_inventory_20261016\capacity_red.xml -
+=========================== short test summary info ===========================
+FAILED tests/unit/test_r11_sbom_inventory_capacity.py::test_cdx_10000_keeps_every_version_and_identity[two_fields]
+FAILED tests/unit/test_r11_sbom_inventory_capacity.py::test_cdx_10000_keeps_every_version_and_identity[dense]
+FAILED tests/unit/test_r11_sbom_inventory_capacity.py::test_original_reviewed_dense_10000_bytes_now_parse
+3 failed in 1.67s

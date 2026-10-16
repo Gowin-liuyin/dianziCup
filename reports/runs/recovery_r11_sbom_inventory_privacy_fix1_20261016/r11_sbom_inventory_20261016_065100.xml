@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="22" time="107.513" timestamp="2026-10-16T06:51:02.910820+08:00" hostname="yin"><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_uri_redacted_for_new_and_immutable_history[connection-fresh2]" time="0.439" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_uri_redacted_for_new_and_immutable_history[connection-historic1]" time="0.308" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_uri_redacted_for_new_and_immutable_history[file-fresh2]" time="0.307" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_uri_redacted_for_new_and_immutable_history[file-historic1]" time="0.333" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_uri_redacted_for_new_and_immutable_history[userinfo-fresh2]" time="94.598"><failure message="assert 503 == 200&#10; +  where 503 = &lt;Response [503 Service Unavailable]&gt;.status_code">sbom_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_sbom_inventory_20261016_065100)
+sbom_api = (&lt;function sbom_api.&lt;locals&gt;.login at 0x000001EBB5D636A0&gt;, &lt;ai_intel.api.authentication.AuthenticationSessionService object at 0x000001EBB5D433E0&gt;)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001EBB5D6FBF0&gt;
+caplog = &lt;_pytest.logging.LogCaptureFixture object at 0x000001EBB5D6F2C0&gt;
+legacy = False
+uri = 'https://synthetic_user:synthetic_password@example.test/sbom'
+
+    @pytest.mark.parametrize("legacy", [False, True], ids=["fresh2", "historic1"])
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "postgresql://synthetic_user:synthetic_password@db.internal:5432/private",
+            "file:///C:/private/synthetic-parent",
+            "https://synthetic_user:synthetic_password@example.test/sbom",
+            "https://example.test/sbom?token=synthetic_password",
+            "http://127.0.0.1/sbom",
+            "https://db.internal/sbom",
+        ],
+        ids=["connection", "file", "userinfo", "query", "private_ip", "internal_host"],
+    )
+    def test_uri_redacted_for_new_and_immutable_history(
+        sbom_engine, sbom_api, monkeypatch, caplog, legacy, uri
+    ):
+        if legacy:
+            monkeypatch.setattr("ai_intel.assets.inventory.freeze_sbom_sidecar", legacy_freeze)
+        login, _ = sbom_api
+&gt;       client, headers, account = login()
+                                   ^^^^^^^
+
+tests\integration\test_r11_sbom_inventory_uri_privacy.py:52: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+role = &lt;Role.TENANT_ADMIN: 'tenant_admin'&gt;, tenant = None
+
+    def login(role=Role.TENANT_ADMIN, tenant=None):
+        username, password = "sbom-api-" + uuid4().hex, secrets.token_urlsafe(24)
+        register_sensitive_failure_value(SecretStr(password))
+        account = authentication.create_precreated_user(
+            username, password, tenant or "sbom-api-" + uuid4().hex, role
+        )
+        client = TestClient(app)
+        clients.append(client)
+        response = client.post(
+            "/api/auth/login",
+            headers={"Origin": ORIGIN},
+            json={"username": username, "password": password},
+        )
+&gt;       assert response.status_code == 200
+E       assert 503 == 200
+E        +  where 503 = &lt;Response [503 Service Unavailable]&gt;.status_code
+
+tests\integration\test_r11_sbom_inventory_postgres.py:469: AssertionError</failure></testcase><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_uri_redacted_for_new_and_immutable_history[userinfo-historic1]" time="2.726" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_uri_redacted_for_new_and_immutable_history[query-fresh2]" time="0.515" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_uri_redacted_for_new_and_immutable_history[query-historic1]" time="0.531" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_uri_redacted_for_new_and_immutable_history[private_ip-fresh2]" time="0.798" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_uri_redacted_for_new_and_immutable_history[private_ip-historic1]" time="0.419" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_uri_redacted_for_new_and_immutable_history[internal_host-fresh2]" time="0.389" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_uri_redacted_for_new_and_immutable_history[internal_host-historic1]" time="0.416" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_encoded_purl_is_private_on_all_snapshot_routes[False]" time="0.395" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_encoded_purl_is_private_on_all_snapshot_routes[True]" time="0.300" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_uri_in_unmapped_key_has_safe_pointer_and_private_raw[False]" time="0.206" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_uri_in_unmapped_key_has_safe_pointer_and_private_raw[True]" time="0.207" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_http_reference_topology_keeps_aliases_distinct_and_history_replay[False]" time="0.235" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_http_reference_topology_keeps_aliases_distinct_and_history_replay[True]" time="0.302" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_purl_download_uri_qualifier_remains_explicitly_rejected" time="0.182" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_forged_stored_projection_metadata_is_not_trusted[wrong_alias]" time="0.220" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_forged_stored_projection_metadata_is_not_trusted[wrong_locator]" time="0.191" /><testcase classname="tests.integration.test_r11_sbom_inventory_uri_privacy" name="test_forged_stored_projection_metadata_is_not_trusted[legacy_metadata]" time="0.205" /></testsuite></testsuites>

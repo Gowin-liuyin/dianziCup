@@ -1,0 +1,58 @@
+FFF                                                                      [100%]
+================================== FAILURES ===================================
+_________ test_review_deep_encoding_is_not_a_public_source_locator[5] _________
+
+layers = 5
+
+    @pytest.mark.parametrize("layers", [5, 8])
+    def test_review_deep_encoding_is_not_a_public_source_locator(layers):
+        key = encoded_key(layers)
+        parsed = parsed_document(**{key: "synthetic opaque"})
+        public = freeze_sbom_sidecar(parsed.sbom)
+>       assert key not in public.model_dump_json()
+E       assert 'https%25252...2525252Fsbom' not in '{"schema_ve...07f1d41c"}]}'
+E         
+E         'https%252525253A%2...test%252525252Fsbom' is contained here:
+E           ators":["/https%252525253A%252525252F%252525252Fsynthetic_user%252525253Asynthetic_password%2525252540example.test%252525252Fsbom"],"redactions":[{"source_field_locator":"/components/0/bom-ref","reason":"unsafe_uri_or_path","replacement_ref":"redacted-ref:2621f8708b99e11f6a2ea6ddd9d20980d1427235e9169e3f8f9d119807f1d41c"},{"source_field_locator":"/dependencies/0/ref","reason":"unsafe_uri_or_path","replacement_ref":"redacted-ref:2621f8708b99e11f6a2ea6ddd9d20980d1427235e9169e3f8f9d119807f1d41c"}]}
+E         ?           ++...
+E         
+E         ...Full output truncated (1 line hidden), use '-vv' to show
+
+tests\unit\test_r11_sbom_inventory_uri_privacy_followup.py:65: AssertionError
+_________ test_review_deep_encoding_is_not_a_public_source_locator[8] _________
+
+layers = 8
+
+    @pytest.mark.parametrize("layers", [5, 8])
+    def test_review_deep_encoding_is_not_a_public_source_locator(layers):
+        key = encoded_key(layers)
+        parsed = parsed_document(**{key: "synthetic opaque"})
+        public = freeze_sbom_sidecar(parsed.sbom)
+>       assert key not in public.model_dump_json()
+E       assert 'https%25252...2525252Fsbom' not in '{"schema_ve...07f1d41c"}]}'
+E         
+E         'https%252525252525...52525252525252Fsbom' is contained here:
+E           ators":["/https%252525252525253A%252525252525252F%252525252525252Fsynthetic_user%252525252525253Asynthetic_password%2525252525252540example.test%252525252525252Fsbom"],"redactions":[{"source_field_locator":"/components/0/bom-ref","reason":"unsafe_uri_or_path","replacement_ref":"redacted-ref:2621f8708b99e11f6a2ea6ddd9d20980d1427235e9169e3f8f9d119807f1d41c"},{"source_field_locator":"/dependencies/0/ref","reason":"unsafe_uri_or_path","replacement_ref":"redacted-ref:2621f8708b99e11f6a2ea6ddd9d20980d1427235e9169e...
+E         
+E         ...Full output truncated (2 lines hidden), use '-vv' to show
+
+tests\unit\test_r11_sbom_inventory_uri_privacy_followup.py:65: AssertionError
+____ test_review_every_repeated_locator_occurrence_must_match_bound_alias _____
+
+    def test_review_every_repeated_locator_occurrence_must_match_bound_alias():
+        payload = freeze_sbom_sidecar(parsed_document().sbom).model_dump(mode="json")
+        assert payload["dependency_edges"][0]["source_ref"] == payload["dependency_edges"][1][
+            "source_ref"
+        ]
+        payload["dependency_edges"][1]["source_ref"] = "safe-public-ref"
+>       with pytest.raises(SbomProjectionValidationError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'ai_intel.assets.sbom_inventory.SbomProjectionValidationError'>
+
+tests\unit\test_r11_sbom_inventory_uri_privacy_followup.py:79: Failed
+- generated xml file: D:\wt\r11-sbom-inventory\reports\runs\recovery_r11_sbom_inventory_privacy_fix1_20261016\privacy_followup_minimal_red.xml -
+=========================== short test summary info ===========================
+FAILED tests/unit/test_r11_sbom_inventory_uri_privacy_followup.py::test_review_deep_encoding_is_not_a_public_source_locator[5]
+FAILED tests/unit/test_r11_sbom_inventory_uri_privacy_followup.py::test_review_deep_encoding_is_not_a_public_source_locator[8]
+FAILED tests/unit/test_r11_sbom_inventory_uri_privacy_followup.py::test_review_every_repeated_locator_occurrence_must_match_bound_alias
+3 failed, 23 deselected in 0.27s

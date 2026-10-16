@@ -1,0 +1,66 @@
+....F.................                                                   [100%]
+================================== FAILURES ===================================
+______ test_uri_redacted_for_new_and_immutable_history[userinfo-fresh2] _______
+
+sbom_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_sbom_inventory_20261016_065100)
+sbom_api = (<function sbom_api.<locals>.login at 0x000001EBB5D636A0>, <ai_intel.api.authentication.AuthenticationSessionService object at 0x000001EBB5D433E0>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001EBB5D6FBF0>
+caplog = <_pytest.logging.LogCaptureFixture object at 0x000001EBB5D6F2C0>
+legacy = False
+uri = 'https://synthetic_user:synthetic_password@example.test/sbom'
+
+    @pytest.mark.parametrize("legacy", [False, True], ids=["fresh2", "historic1"])
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "postgresql://synthetic_user:synthetic_password@db.internal:5432/private",
+            "file:///C:/private/synthetic-parent",
+            "https://synthetic_user:synthetic_password@example.test/sbom",
+            "https://example.test/sbom?token=synthetic_password",
+            "http://127.0.0.1/sbom",
+            "https://db.internal/sbom",
+        ],
+        ids=["connection", "file", "userinfo", "query", "private_ip", "internal_host"],
+    )
+    def test_uri_redacted_for_new_and_immutable_history(
+        sbom_engine, sbom_api, monkeypatch, caplog, legacy, uri
+    ):
+        if legacy:
+            monkeypatch.setattr("ai_intel.assets.inventory.freeze_sbom_sidecar", legacy_freeze)
+        login, _ = sbom_api
+>       client, headers, account = login()
+                                   ^^^^^^^
+
+tests\integration\test_r11_sbom_inventory_uri_privacy.py:52: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+role = <Role.TENANT_ADMIN: 'tenant_admin'>, tenant = None
+
+    def login(role=Role.TENANT_ADMIN, tenant=None):
+        username, password = "sbom-api-" + uuid4().hex, secrets.token_urlsafe(24)
+        register_sensitive_failure_value(SecretStr(password))
+        account = authentication.create_precreated_user(
+            username, password, tenant or "sbom-api-" + uuid4().hex, role
+        )
+        client = TestClient(app)
+        clients.append(client)
+        response = client.post(
+            "/api/auth/login",
+            headers={"Origin": ORIGIN},
+            json={"username": username, "password": password},
+        )
+>       assert response.status_code == 200
+E       assert 503 == 200
+E        +  where 503 = <Response [503 Service Unavailable]>.status_code
+
+tests\integration\test_r11_sbom_inventory_postgres.py:469: AssertionError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\wt\r11-sbom-inventory\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\r11-sbom-inventory\reports\runs\recovery_r11_sbom_inventory_privacy_fix1_20261016\r11_sbom_inventory_20261016_065100.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r11_sbom_inventory_uri_privacy.py::test_uri_redacted_for_new_and_immutable_history[userinfo-fresh2]
+1 failed, 21 passed, 1 warning in 107.52s (0:01:47)

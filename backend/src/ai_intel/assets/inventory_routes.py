@@ -26,6 +26,7 @@ from ai_intel.assets.inventory import (
     AssetNameConflictError,
     InvalidAssetCursor,
     InventoryService,
+    SbomStoredEvidenceError,
 )
 from ai_intel.assets.inventory_contracts import AssetSnapshotRequest
 from ai_intel.assets.manifest_parser import ManifestValidationError
@@ -141,6 +142,7 @@ def build_inventory_router(
         ValueError,
         SQLAlchemyError,
         InventoryUnavailableError,
+        SbomStoredEvidenceError,
     )
 
     async def read_body(request: Request) -> bytes:
@@ -303,6 +305,24 @@ def build_inventory_router(
                 initial,
                 lambda service: JSONResponse(
                     content=service.get_snapshot(identity, snapshot).model_dump(mode="json"),
+                ),
+                write=False,
+            )
+        except handled as error:
+            return failure(request, error)
+
+    @router.get("/assets/{asset_id}/snapshots/{snapshot_id}/sbom")
+    def get_snapshot_sbom(request: Request, asset_id: str, snapshot_id: str) -> Response:
+        try:
+            initial = authenticate(request, write=False)
+            identity, snapshot = str(UUID(asset_id)), str(UUID(snapshot_id))
+            if request.query_params:
+                raise ValueError("unsupported SBOM query")
+            return serve(
+                request,
+                initial,
+                lambda service: JSONResponse(
+                    content=service.get_snapshot_sbom(identity, snapshot).model_dump(mode="json"),
                 ),
                 write=False,
             )

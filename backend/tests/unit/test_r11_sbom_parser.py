@@ -255,7 +255,7 @@ def test_10001_components_are_rejected_without_partial_result():
     assert rejected.value.code == "component_limit"
 
 
-def test_legal_dense_10000_projection_limit_is_visible_not_lowered_or_truncated():
+def test_legal_dense_10000_projection_keeps_all_components_versions_and_sources():
     document = cdx_document(
         components=[
             {
@@ -267,9 +267,12 @@ def test_legal_dense_10000_projection_limit_is_visible_not_lowered_or_truncated(
             for index in range(10000)
         ]
     )
-    with pytest.raises(SbomValidationError) as rejected:
-        parse(document)
-    assert rejected.value.code == "projection_node_limit"
+    result = parse(document)
+    assert len(result.manifest.snapshot.components) == 10000
+    assert len(result.component_sources) == 10000
+    assert result.manifest.snapshot.components[-1].package_name == "p9999"
+    assert {component.version for component in result.manifest.snapshot.components} == {"1"}
+    assert result.component_sources[-1].source_field_locator == "/components/9999"
 
 
 def test_unknown_json_field_pointer_escapes_unicode_slashes_and_tildes():
