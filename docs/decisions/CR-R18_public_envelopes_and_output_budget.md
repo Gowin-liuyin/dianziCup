@@ -7,7 +7,7 @@
 
 ## 变更与兼容性
 
-新增 `contracts/schemas/public_api_extensions_v1.json`，ID `urn:dianzi:public-api:extensions:v1`。其中14个旧定义从冻结 v2 完整复制，结构逐个相等；原文件、八对象及其 additionalProperties=false 不变。新增10个 common 定义：RiskFinding、RiskSummary、StackCheckEnvelope、VulnerabilityPage、VulnerabilityDetailPage、SourceDescriptor、SourcePage、TaskDescriptor、PublicProblem、TaskResultEnvelope。当前 schema SHA256 `af28d516ddfb894eece4c88a8520f71b4ff0ecf37281296adfd30d4a98ed4611`；原 v2 canonical SHA256 `1c12e4dee3682a531f35f776760da4a97e47eab65564e28e93f9b026382a17f3`。
+新增 `contracts/schemas/public_api_extensions_v1.json`，ID `urn:dianzi:public-api:extensions:v1`。其中14个旧定义从冻结 v2 完整复制，结构逐个相等；原文件、八对象及其 additionalProperties=false 不变。新增10个 common 定义：RiskFinding、RiskSummary、StackCheckEnvelope、VulnerabilityPage、VulnerabilityDetailPage、SourceDescriptor、SourcePage、TaskDescriptor、PublicProblem、TaskResultEnvelope。当前 schema SHA256 `4ccc4337586137a407359a1c4a59dc5d92081a2f4b50ee32cc53fac16095d50b`；原 v2 canonical SHA256 `1c12e4dee3682a531f35f776760da4a97e47eab65564e28e93f9b026382a17f3`。
 
 `/api/v1/stack/check` 默认保持原 StackCheckResult。新版客户端显式请求媒体类型 `application/vnd.dianzi.public-envelopes.v1+json` 才取得 StackCheckEnvelope；旧客户端缺风险摘要仍 CLI=2。其它已有 ask/四态输入不扩大字段。新 sources/vulns/tasks 使用新增封装。当前 TaskDescriptor 仅描述 ask/stack_check；10MiB/10000组件上传、报告任务和订阅的完整合同须在对应 R15/后续 R18 切片冻结并扩展版本，范围没有取消，不能用本片签整 R18。
 
@@ -36,7 +36,9 @@ TaskDescriptor取PG九种真实job状态（含blocked），terminal不伪用原q
 R18/T04/T32/T35/T51、R11/R12/R14/R15/R16/R20；原验收、金标、分母、60%全仓覆盖门不改。本片23个隔离schema合同case passed；最初把纯JSON合同套全仓coverage导致23passed但coverage2%/exit1，原日志保留。后续明确--no-cov只作JSON合同检查，完整全仓套件尚未运行；本子集触发原覆盖门exit1，门槛未撤销或调低。初style4长行、runner缺check=False各exit1修正后style/format0。API/PG/MCP新版/八千词完整输出/浏览器/客户端/live/manual均待实际接线与独审。
 
 本次写作结束时间：2026-10-16T09:12:52+08:00
-最后更新时间：2026-10-16T09:26:01+08:00
+最后更新时间：2026-10-16T10:23:55+08:00
 证据截止时间：2026-10-16T09:12:52+08:00
 
 修订记录：2026-10-16T09:26:01+08:00；明确应用归一化等级与原CVSS版本等级不同，原分数/claim不改；澄清初子集覆盖门真实exit1。
+
+修订记录：2026-10-16T10:23:55+08:00；831c61f收紧新TaskDescriptor.poll_uri UUID分组；原14defs不变，独立28+97通过。旧23/root初始schema和原红保留。新source/contract摘要已同步，不放行整R18或生产接线。

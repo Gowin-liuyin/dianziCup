@@ -1,3 +1,282 @@
+## 当前权威续接与所有权 · 2026-10-16T10:56:44+08:00
+
+主控codex/full-delivery-recovery@8d62b54d83a3e6b56aeeb23102faa777496328db，origin=https://github.com/Gowin-liuyin/dianziCup.git本轮真实复核。最后已核远端G-B/c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7，未G-C阶段放行/push；G-C仍in_progress/partial，G-D/G-E明确独立准备。原60T和历史不变；保护用户frontend/tsconfig.tsbuildinfo SHA3c587e，不stage/build/restore。
+
+实际源集成：05684 SBOM privacy、8d50 frontend16、e514 N4 projection11、17ab SDK10；通过显式source-only Git blob diff，不覆盖原raw/report。8d62 root R12完整IO deadline和SQL分区过滤修两真实Must，新WT非作者复核；不是旧eeb通过。source-only曾遗漏8 frontend serializer所需原报告JSON，freshGit ENOENT红保留，root此轮补提交原冻结fixture，不改tests。
+
+并行文件所有权：root公共合同/API/worker/DB迁移/锁/状态/Git/push；R06作者D:/wt/r06-observed-restart-fix1仅minio helper及直属验证；R12独立review新D:/wt/r12-default-projection-review1-fix1仅读8d62；R17实际UI验收D:/wt/r17-integrated-sbom-browser-workbench（实际路径以作者材料为准），仅自有browser tests/run；R18 key作者D:/wt/r18-api-key-expiry-fix2仅credentials与直接tests；R18 SDK deadline新WT从260仅sdk/client/MCP调度；R14 D:/wt/r14-tool-gateway仅investigation/tool_contracts/tool_gateway/capabilities；R15 D:/wt/r15-recommendation-policy仅recommendations/contracts/policy/report_builder；R16 D:/wt/r16-assessment-candidates仅revalidation/candidates/contracts。全部禁止自行扩大范围、push/accepted/progress、读秘密holdout、递归spawn。每新批初审均新非作者，修复可原reviewer新WT复核。
+
+资源：最多2heavy PG batches、每Agent一个pytest串行/NullPool/own markedDB/schema；现在R12复核占1，UI/key已释放0ownconn。任何后续先申请slot，不提PG上限、不杀其他session。WSL PG25432/Redis26379/OS29200截止2026-10-17T21:49:15+08；Neo4j2cb自有deadline2026-10-16T19:35:43.312788+08。受控来源未新启动；kernel PREP两Must要闭环并fresh sourceDB identity/marker/resource gate后才允许新6h。旧11h授权记录未知不伪造，新21600s当前任务授权已明确。
+
+已审待源集成：R07 audit0c57、R12 context1e、生产0023–26 16484、MCPc691。key8e048作者已真实锁等待修复绿但须原独立复核。新review报告/manifest/raw必须归档，源SHA/文档SHA/remoteSHA分开，有限Ship不当整卡accepted。
+
+外部人工仍双人独立label/裁决未知、FOFA授权资产scope未知、CNNVD内置浏览器登录未确认（不取cookies）、ZoomEye401；PPT后置未取消。R14–24完整平台/正式盲测/性能/cleanrepro/最终文档演示未闭环；用户最新扩并行不替代验收，持续实现。下一关键路径：修复审查→真实采集新段；root合已审内部模块/production迁移→API/worker接线；R14工具+LangGraph、R15持久推荐、R16变化处理与UI/client流水线。R24-A→R23→R24-B顺序不变。
+
+## 当前权威续接 · 2026-10-16T09:19:33+08:00
+
+主控 `codex/full-delivery-recovery@6aeeeec5489b92bb49613fe5daa4eec379182348`；origin实际授权URL未改变，最后远端核对仍G-B c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7。G-C in_progress/partial，无阶段放行或push；G-D/G-E为独立准备。原60T状态和历史原样保护；用户frontend/tsconfig.tsbuildinfo SHA3c587e未stage。
+
+主控唯一public合同/默认API/worker/迁移0023–26/locks/progress/Git/push；package指定集成人只sdk/python metadata/license，credentials实现只两个新api内部文件，不改cookie管理路由。当前新公开schema/CR/report/test为rootWIP未freeze，不能给消费者拿尚未审的contract签完整能力。
+
+已集成：R07默认durable90e/taxonomyb5、0020生产检索5b2、SBOM51ed、assessment/SBOM0021/22 sixa。新6a独审b8bb314/report与200manifest9a2d needs_changes：相对locator2输入与placeholder后危险段1输入3真红。作者新 dcbc/54f1已修并串行25/18/105/119绿，等待原reviewer复核。旧migrationhead0019和NVD全67→0wire oracle仍红，root正式合同演进待处理，不改gold/阈值/分母。
+
+R07新审计136/014独审新3 private parentACL races阻断；fix1只ownedreader按source/document/revision历史refs SHARE +freshACL，原source/raw/历史不变。R12内部6259/f557等新review，0024/最终scopeeventtime/grounding/真实generation未接。R10projection707/e8已有限独审132+5绿、待归档/合/0025/defaulthandler。Neo4j2cb cap0xeb/core261968优雅关闭5.650104s与same-volume真实恢复；19:35:43.312788+08 deadline不变，未来截止/故障不算已测。
+
+R17SBOM5587/18d已有限独审557unit66Edge，root待合；真实PG/浏览器尚待backendfix。R18SDK6d业务230绿但material归档发生两次failed还commit，诊断8d8d/toy16场景已核；精确57renormalize一次后110/raw/source169保护绿，c5 checkpoint，后续repair报告/新material仍未验收。Key3c14/8ae和package677/595等新review；MCPf17/54e仅两个工具/114fixture，不算六工具或真实HTTPauth。输出词表o200k officialhash446a...3613922B在工作区外，offline3/0network，初仪器错原红保留。
+
+R19init0b/641捕获异常恢复109绿等原独审，SIGKILL/掉电恢复未实现；1真实dev候选、0human/0gold，正式冻结不成立。来源原段06:19:43.758521→06:47:34.216338共1670.457817s，42job/331doc/346rev/96459evidence/343knowledge_change blocked缺handler，新65test观测独审只允许root有限准备，不是新采集已经开始。
+
+资源：PG25432被多pytest峰值打满FATAL too many clients，原红均保留；root当前重PG admission最多2，每Agent单pytest串行、ownfixture NullPool/显式dispose，不改生产pool/PG上限、不kill他人。R11fix已release0ownconn，N4review已release0schema/59ownnamespace清理，R07review已release0session，R07fix获1slot，其余新review先offline准备再申请slot。root实际查defaultApp已有lifespan engine.dispose，尚无已证产品泄漏，不能把峰值环境错误当它根因。
+
+外部：双人独立标注裁决未提供、FOFA授权资产范围未提供、CNNVD内置浏览器登录未确认/不读cookies、ZoomEye401；PPT后置未取消。完整R13–24、真实九角色/报告推荐/全旧新empty重判/公开工具插件/正式评测复现/最终材料仍持续推进，不能因子片Ship结束目标。下一动作：新review/修复与production迁移、defaultknowledge_change/hybrid/model链、真实UI/API；R24-A→R23→R24-B顺序不变。
+
+## 当前权威续接 · 2026-10-16T07:48:36+08:00
+
+主控 codex/full-delivery-recovery@3baeb8809d3950a091e8db114be7a28049b74b36，origin已重核为授权URL；最后已核远端G-B c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7。G-C仍in_progress/partial，无阶段放行/push。G-D/G-E独立准备非跨门。原60T/history/分母/金标不改，用户frontend/tsconfig.tsbuildinfo不stage。root当前仅pyproject/uv.lock有neo4j6.4.0新增待checkpoint，不是用户改动。
+
+来源段已停止：06:19:43.758521→06:47:34.216338+08，1670.457817秒，guard_snapshot_stale，失败signed age/profile未知。现新r06_guard_snapshot_stop_root_cause_diagnosis@D:/wt/r06-guard-diag从tool44仅读、独立最小复现；固定源码用PG transaction_timestamp与host UTC差值，不是后台monotonic发布机制。禁止重启、扩大阈值或拼六小时。42 sourcejobs/34成功4blocked4partial，343 knowledge_change blocked缺handler，331doc/346revision/96459evidence是这段delta，不算时效达标。MinIO遗留子07:17:33已内核确认关闭；旧段日志/红保留。
+
+当前9路职责（本次实际spawn后快照计数，完成后滚动调整）：root合同/生产0020–25/锁/默认接线/Git/状态；r06独立guard诊断；r11_forward_migrations_first_independent_review新冻569仅读与fresh PG负例；r12_hybrid_corpus_retrieval_implementation@D:/wt/r12-conversation-context独占4新会话/bundle文件；r10_neo4j_projection_design@D:/wt/r10-neo4j-projection独占3新投影/driver协议文件；r10_owned_neo4j_runtime_integration仅自有ops/报告；r17_sbom_workbench_frontend_integration从3ba独占资产前端指定文件，不改App/全局CSS；r18_protocol_sdk_contract_preparation只提案/索引/合同核对；recovery_frozen_evidence_archive第12批canonical复制，不改业务/Git/progress，根attrs eda4733a只读锁持有直到总收据done。禁止其他writer扩范围/递归spawn/push/accepted。
+
+已主合：R17资产UI99c与R11规则评估3ba，均有独立限定Ship。待主合reviewed候选：R07default998(baa280)、taxonomy670(review6d640，fresh394+146复用)、R12生产8c(89579)、SBOM隐私5be(00451)。0021/22 source2fe/material569已作者冻，独立review新启动。Neo4j官方固定manifest57ec.../同CIDc0d49.../volume/data namespace自有，127.0.0.1:27687/27474，内存1536MiB/CPU1/pids128/heap512/cache512、deadline19:35:43.312788+08不延长；driver与server telemetry关闭。缺KILL令tini TERM转发失败，不把Docker停止当graceful通过，生产0025与默认注册仍未实施。WSL资源最晚2026-10-17T21:49:15+08，凭据DPAPI只内存，无日志/argv。
+
+R07官方taxonomy完整schema126红、R20严格CPU红与历史环境失败保留；默认九维/来源6h/正式模型多跳/完整Agent/推荐重判/MCP插件/性能评测仍不冒称通过。人工双人label/裁决、FOFA授权资产scope缺失，CNNVD IAB登录未确认不读cookie，ZoomEye401。真实模型凭据已有授权；PPT后置非删除；holdout不入索引/产品/一般Agent上下文。
+
+下一步：归档12释放attrs→root显式主合reviewed998/670/8c/5be并新索引集成回归；0021/22新审通过后再合；root完成0023富化审计指纹/知识分类与默认hybrid/graph handler，0024会话及0025派生投影；R17 SBOM和R18协议设计实现并行。新切片初审必须新非作者，整阶段另新reviewer；没有G-C通过或push。R14–24持续推进，R24-A→R23→R24-B保持。
+
+## 当前权威续接 · 2026-10-16T06:47:20+08:00
+
+主控 codex/full-delivery-recovery@acfe244e93662119b9d4b86033f8903bd4b43ec6；origin原授权URL。主合已审纯SBOM f6/条件386，依赖48/forward0017–19/PGgraph/default图此前已合。G-C仍in_progress/partial，无阶段push；最后已核远端G-B c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7。保护用户frontend/tsconfig.tsbuildinfo。原60T/history/金标/阈值不改。G-D/G-E首次文档06:39:55+08，只独立准备不意味着跨门。
+
+来源服务真正运行：D:/wt/r06-live-e310-20261016产品e310，D:/dianzi-runtime-cache/r06-live-e310-run-20261016工具44。实际窗口06:19:43.758521–12:19:43.758521+08，450total/prestop410/35100HTTPS保守上界/21600s/0model-provider；CPU1200sec与每process512MiB/总2GiB等原上限不变。06:46状态42jobs(34成功4blocked4partial)，8源normalized，arxiv仅failed且generation未进；未知发布时间与初采过6h实数保留，费用/wireunknown，不能称P1达标。控制入口D:/dianzi-runtime-cache/r06-live-e310-operations-20261016/startup_handoff.json；status用pwsh7 -NoProfile -File .../launch.ps1 -Mode status，Windows PowerShell5的AsPlainText不支持故失败，不改服务。private env只内存。PID supervisor47464/launcher36008/worker6412/beat48352/API10532/observer47076以kernel创建时间复核，不按旧PID误杀。WSL截止2026-10-17T21:49:15+08。
+
+本轮分派10路职责（并非声明持续同时running）：root公共合同/0020–23/Git/集成/状态；R07scopefix D:/wt/r07-idempotency-scope 唯一job_service writer；R07taxonomy原独立reviewer D:/wt/r07-input-review1 仅复核4c；R11PG作者D:/wt/r11-pg-assessments 唯一rule/assessment内部5文件；R11SBOM作者D:/wt/r11-sbom-inventory 唯一assets库存/DTO安全投影writer与原独立reviewer新冻复核；R17原reviewer D:/wt/r17-assets-review1-fix1 仅读f9；archive第十批canonical原bytes，不碰attrs/业务；R12作者D:/wt/r12-conversation-design仅读旧问答+提设计；新r10_neo4j_projection_design D:/wt/r10-neo4j-design仅读图+提设计。root0030公共schema等不授权其他writer；新实现首审必须新非作者，后修原reviewer可复核；无子Agentpush/accepted/progress/递归spawn。
+
+阻断与根因：R07default e61初审47e两个真实幂等409红，scope-v2作者修仍awaitingreview；taxonomy7a/4c官方schema126红保留、review独立资源重跑；PGd56/ad初审f92两原文损坏仍current红，共同loader修；SBOM089/c036同根因unsafeURI/ref/encodedpurl泄漏，需要只读安全投影及alias/历史反例，原raw/hash不变；资产UI1acf/6db初审f5 DOM残留M01，a25/f9原reviewer复核；R12ba/d3/fdd限定Ship后root0020/defaultworker/API接线仍缺。旧CPU严格<1s红、全unit2208/6red不删，不因来源守卫准备Ship称R20通过。
+
+第九归档493new/0drift已封；第十归档先R12fix72(fdd/a66)、后R07default90、R17assets80、R11PG80原红报告，未封WIP不copy。主控本轮不修改attrs直到archive释放。来源正在写的private日志不混入冻结包，actual扫描与原hash/脱敏hash分别保留，GitLF和rawbytes分开，unknown expected null。
+
+外部仍双人独立label/裁决未知、FOFA授权资产scope未知、CNNVD IAB登录未确认不取cookie、ZoomEye401；Hunter/Quake服务聚合非受影响资产数。PPT按用户后置非删范围。正式label/live/gold/盲测/3→5产品/性能/cleanrepro/WordPDF演示仍未完成。holdout不入索引/产品/一般Agent上下文。
+
+下一动作：archive优先R12fix完成→root守卫主合d3→独立WT 0020生产前向迁移/真实indexerworker装配；四Must修复冻结→原reviewer逐负例复验→才可主合；root冻结多轮/Neo4j设计后分工真实实现；source有限status与终段记录并行，不sleep等待。R14–R24未闭合继续按能力前置推进，R24-A→R23→R24-B不变。
+
+## 当前权威续接 · 2026-10-16T06:22:10+08:00
+
+主控 codex/full-delivery-recovery@0532c4f58611e068fc7d5b03da984bc57dbad9f2，origin原授权URL。当前main已有R10 graph1.2/source字段共享极性、R17 default图App、forward0017–19（最终合5f32b90）与root48依赖。0532只SBOM sidecar metadata/CR seam，无生产0022/独立验收。未pushG-C，最后远端仍G-B c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7；保护用户frontend/tsconfig.tsbuildinfo，不stage它。原60T及金标/门槛/history不改。
+
+root D:/wt/r07-enrichment-jobs code1f0522e3f3fb9547ea55136efa64fc589466c992 /材料1b894daaa4523f37600c8ff8f9990c5df534a3fa（144raw manifest7d710ba8...，全blob0diff）。2810017、内部595、b183默认API/worker及1f默认图/资产factory整体新初审r07_default_durable_entry_first_independent_review@D:/wt/r07-default-entry-review1。35真实PG/133选定pure、metadata20通过，之前194targeted和root初红全保留。真实Celery进程/e2e/live/manual未跑，R08 available未连接，prompt/selection指纹/持久coverage还须后续0017扩展前向切片。不要主合未审1b。
+
+活跃10路（本次list_agents实际snapshot含root，宿主16上限）：root共享合同/migrations0020–23/锁/Git/progress/API集成；r06_owned_six_hour_live_runtime_integration在仓外D:/dianzi-runtime-cache/r06-live-e310-run-20261016 detached tool44准备新受控来源；r07_taxonomy_and_bounded_evidence_inputs_implementation@D:/wt/r07-input-capabilities修typedURI/YAMLkey/context混坏值Must，r07_taxonomy_selection_first_independent_review@D:/wt/r07-input-review1只审冻版本；r11_pg_rules_assessment_implementation@D:/wt/r11-pg-assessments独占5内部PG文件/6表提案，root统一0021；r11_sbom_inventory_capacity_integration@D:/wt/r11-sbom-inventory唯一backend assets parser/inventory/routes/contracts/sbom_inventory writer，root表0532已cherry，新capacity自检等新review；r12_hybrid_retrieval_first_independent_review新Fix1 WT审d3/ba，原作者已完成；r17_assets_workbench_first_independent_review@D:/wt/r17-assets-review1审6db/1acf，原UI作者完成；r07_default_durable_entry_first_independent_review审root1b；recovery_frozen_evidence_archive只canonical原bytes，第九批rootattrs实际4e4dd89b锁直到done。所有实现只awaiting_review，独立reviewer不写业务，无subAgent自行push/progress/accepted。
+
+原作者完成和独立Ship分开：T27 pure ddfbf/3865经new f1e reviewer136+25probe+288reg独立Ship，全2208/6CPU红不删；pureSBOM658/f6经newreviewer308+43probe限定Ship、旧10k缺口后续0892修；graph1.2/forwardDDL/default图已reviewed main合，无整阶段通过。第九优先归档304raw（SBOM211sealedgz+5元文件、条件ZIP原bytes88）；R12初Must83及R06新103继续，旧4189保护无漂移，不读cache/secret/holdout。材料SHA/bodyhash/raw-GitLF与sourceSHA区分。
+
+真实持续采集：root已具名批准source450total含旧11、prestop410/solo最大418、5page/max3attempt/35100conservativeHTTPS/21600s，不扩20%/1200CPU/512MiB每process2GiB总、8MiB组件log16MiBobserver。0model/付费provider/RESTsubmit；费用与actualwire unknown，fetch receipt不冒wire。tool44两个停止Must原独立31/6neg/kernelACK/wholeJob复核闭，root依据e310组合有限Ship批准启动前实际PID/端口/PGRedisOS/磁盘/旧owned队列归属，当前实际start尚未报告。旧11067/1187/131秒不能拼6h；WSLdeadline2026-10-17T21:49:15+08。新livegate部署副本不改原44或旧manifest，实际源/MinIO/API等有日志/PID/stop/deadline才称运行。
+
+独立重要Must：R12 finalepoch/finalcandidate合法publish4红，作者ba修窄父行→fresh→scopeepoch锁→事务内构建，原reviewer复验中；R07 taxonomy malformedURI原生异常、SafeLoader true/True typedduplicate、omittedcontext掩fixed99坏值仍开放，原作者修；所有原红保留，不能旧green给新SHA背书。
+
+外部人工：双人label裁决未知/awaiting_human_label、FOFA授权资产范围未知、CNNVD IAB用户登录未确认不读cookies，ZoomEye401。PPT后置不取消；Hunter/Quake只是服务聚合非受影响资产数、费用unknown。完整R13–24、R10Neo4j、R11实体评估/OpenVEX默认API、R12多轮多跳、R14真实九角色、R15/16推荐重判、R18MCP插件、formal eval/repro/doc仍须持续实施，不能用447tests/24旧accepted当百分比。
+
+下一动作：新live实际ready回报并连续观测；第九归档done后显式main合已审pureSBOM/T27→source/PG调用链回归；root1b与6db、9c后修、新0892/PG评估各新审流水线；R12Fix1独立过后root0020迁移/搜索工厂及多轮服务分工。后续独立工作继续，不等6h无界sleep，不改主远端或发布可见性。R24-A→R23→R24-B顺序保持。
+
+## 当前权威续接与所有权 · 2026-10-16T05:58:44+08:00
+
+主控 codex/full-delivery-recovery@48b56033cf5daf3ce8cfaa710c0acbda7cc2356e；origin授权URL已复核。e310为五个已审服务组合，独立回归限定可作下次来源基线。48b只依赖checkpoint，无阶段通过或push；最后核对远端仍G-B c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7。G-C in_progress/partial，保护用户frontend/tsconfig.tsbuildinfo，原60T/历史/金标/门槛不变。
+
+主控唯一负责共享合同、API/default factory、job路由/worker、schema/0017–0021迁移、锁文件、progress、集成Git和push。root D:/wt/r07-enrichment-jobs@0c3a4816d5c94b76d3f5aa11d30f277334b05970 有API/worker WIP，6真实PG与133unit过，新增注册consume_job PG运行中；需自行检查冻结后新非作者review，尚未main接通。
+
+并行所有权：r07_taxonomy_and_bounded_evidence_inputs_implementation@D:/wt/r07-input-capabilities只新selection/taxonomy+model_fields输入构造；r17_asset_inventory_workbench_implementation@D:/wt/r17-assets-workbench唯一App/hash/新assets UI；r11_pg_rules_assessment_implementation@D:/wt/r11-pg-assessments新增PG规则/研判内部模块与0021提案，不改pure AST；r11_condition_rules_first_independent_review@D:/wt/r11-condition-review1新初审pure final ddfbf等待材料；r11_sbom_first_independent_review@D:/wt/r11-sbom-review1新初审f6a+root48依赖；r12_hybrid_retrieval_first_independent_review@D:/wt/r12-hybrid-review1审a43d/合法writer4窗口Must，r12_hybrid_corpus_retrieval_implementation@D:/wt/r12-hybrid-retrieval只原模块修复；r06_six_hour_restart_guard_first_independent_review@D:/wt/r06-live-restart-review1审新停止器，r06_owned_six_hour_live_runtime_integration@D:/wt/r06-live-restart-prep-20261016修OpenProcess错误Must/封存，productWT D:/wt/r06-live-e310-20261016固定e310；recovery_frozen_evidence_archive只canonical报告/manifest限定原bytes，第八批处理中，不改attrs。所有一级Agent不递归spawn/no push/no progress/accepted；每个新初审为未参与实现的新Agent。
+
+新增Must：检索hybrid.final epoch/candidate读取后合法KnowledgeRepository.publish推进epoch，新claim或withdraw仍返回旧epoch且partial=false；停止器OpenProcess(error5)跳过已验证活后代导致3进程残留。原作者最小修复、原独立reviewer复核后再集成/启动，不把单元绿涂成live。
+
+已完成审查待集成：R10 ff5服务1.2；R17默认图App164；R11/R08生产0018/19 99fec及review b8fe。第八批归档先三组（graphApp/migrations/e310）再R20，6已列工具缓存policy_excluded而不改原858 manifest；review报告的raw/GitLF区分。root在archive完成前不修改main attrs。
+
+PG25432、Redis26379、OpenSearch29200受控WSL预算至2026-10-17T21:49:15+08，实际E5/rerank+PG/OS22只tiny合成索引真实组件证明，不是P3/金标。API/worker/frontend/MinIO/collector未运行。6h新守卫总450含旧11、预停410/solo最大发418、conservative35100 HTTPS需最终具名预算及新独立guard Ship才启动；当前新Must阻断。旧3段分别保存不拼接。
+
+外部/人工保留：双人独立标注裁决awaiting_human_label；FOFA授权资产范围未知；CNNVD用户IAB登录未确认，不读取session/cookies；ZoomEye401；Hunter/Quake真实聚合只是产品服务总量，费用/观测时间unknown。PPT后置不取消，holdout不进入编码上下文/索引/产品。后续R13–24仍需继续，不以切片Ship/局部覆盖/时间点声明整门通过。
+
+下一步：归档完成后主合已审图/App/0018/19；root完成API/worker自检→新review；T27/28与资产UI并行；R12/停止器修复复核；真正启动新固定版本连续采集，再实际模型九维/默认浏览器业务联测。R24-A→R23→R24-B顺序不变。
+
+## 当前权威续接与文件所有权 · 2026-10-16T04:58:31+08:00
+
+主控分支codex/full-delivery-recovery@136fbaef337036d95229aa4976c1ba49b2e6b04c，origin已核授权URL。已合R09b5、R11parser37、R07single b05；最后远端核对仍G-B/c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7，G-C in_progress/partial，无阶段push。原60张T/history/阈值/金标不改；用户frontend/tsconfig.tsbuildinfo修改保护。
+
+当前8路（含root），宿主16上限、用户期望6–10：root独占合同/schema/0017–0019迁移、API/统一job路由/worker运行注册、集成Git/progress；r07_durable_enrichment_job_execution_implementation独占D:/wt/r07-enrichment-execution@281的内部job_service/handlers与直属新测试；r17_graph_default_workbench_integration独占D:/wt/r17-graph-app的App/hash/图元数据/详情导航及直属前端测试；r10_pg_evidence_graph_read_implementation仅D:/wt/r10-graph-fix2作者测试与封存；r10_pg_evidence_graph_independent_review在新D:/wt/r10-graph-recheck2只复核08b；r08_aggregate_persistence_first_independent_review在新D:/wt/r08-persistence-recheck1只复核a763；r20_early_cpu_bootstrap_first_independent_review在新D:/wt/r20-early-review1只审4eb、≤12primary；recovery_frozen_evidence_archive只canonical manifest列出的报告/原bytes，不碰业务或attrs。一级Agent不得递归spawn、push、改progress或accepted。
+
+root工作流WT D:/wt/r07-enrichment-jobs@281371b072a696d972aa3c38519b8646393c98e2，0017与请求/server policy模型已冻结，40contract/20真实PG及静态通过。该WT已合经审pub9e/single，原生执行服务由Agent接，root并行API与运行装配；root代码必须交其它新reviewer。发布dc04/9e原reviewer已限定Ship，批量证据a89/bde新独立原caps两次1.330/1.514秒限定Ship，等待第六批归档结束后root合入，不能先假定main已具备。
+
+R08 TTL边界4a/a763已修待复核；R10新1.2共享field_sources极性/新可见claim围栏11d、08b仅补8PG测试，旧1.1四red/原33分母保存；图UI指针654已限定Ship但默认App及真实后端联测另批。R11资产bc已独立206+8PG限定Ship，0018生产迁移由root。R20早启动4eb仍严格CPU红，新独立审查不降低阈值、不以局部coverage红冒充全绿。
+
+当前API/worker/frontend/collector/MinIO自有服务全部关闭；PG25432/Redis26379/OpenSearch29200上次有真实存活记录，需下次实测；WSL截止2026-10-17T21:49:15+08。真实131秒段、11067秒旧段、1187秒旧段不能拼成同版本六小时。受控新段必须产品批量修复已审合入、watchdog与DoH有限预算重新独立核对后另run启动。事实/任务PG权威，缓存/图只投影。
+
+资源缺口仍双人独立标注/裁决awaiting_human_label、FOFA授权资产范围未知、CNNVD用户IAB登录未确认、ZoomEye401；Hunter/Quake四次真实聚合仅服务总量，observed/fee unknown。不读取秘密/holdout到报告或代码索引；PPT按用户后置。原G-A/B限定历史结论不升级，后续R12–R24仍须继续。
+
+下一步：第六批归档完成→主控合pub9e/bulkbde→共享调用方回归/新索引→新有界真实持续采集；并行九维持久执行/API、R08/R10复核、图默认App、0018/0019生产迁移与R20独立安全审查。每个新实现批次冻SHA后新初审，阶段跨越按新阶段reviewer门槛，不因切片Ship或时间点自行通过。
+
+## 当前权威续接与并行文件所有权 · 2026-10-16T03:54:19+08:00
+
+主控 codex/full-delivery-recovery@8a1b04d48346d8550f0326a77f003246a0ebbab5；origin核实仍为授权URL；最后已核远端G-B/c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7。8a已新合共享Generation预派发typed超时df0及成熟版本范围8f5/f624。G-C in_progress/partial，没有阶段放行或本阶段push。原T60及分母/金标未改，用户tsconfig.tsbuildinfo修改保护。
+
+当前调度8路含root，宿主16硬上限/目标6–10：root（公共schema/0017–0019迁移/接口/锁/集成Git/progress）；R06自有runtime WT D:/wt/r06-live-8a-20261016及固定observer WT D:/wt/r06-live-observer-20261016（只自有进程/报告，产品8a不改）；R10作者D:/wt/r10-pg-graph（graph读服务/独立router）；R17新reviewerD:/wt/r17-graph-review1@370f（只review证据）；R20新作者D:/wt/r20-early-bootstrap（固定worker启动/限额模块与直属tests）；R11新作者D:/wt/r11-asset-inventory（assets inventory内部/router）；R08新作者D:/wt/r08-aggregate-persistence（assets aggregate内部）；第五批归档Agent（只canonical reports原bytes）。禁止一级Agent自行spawn、改状态、push或签accepted；非作者新初审冻结版本，作者继续独立下一切片。
+
+root发布组合D:/wt/r07-pub-combined@20fb98541f9cc9035a2a2dad31e676b2a122e161，加未提交schema2 readable context/rule provenance/1PG测试及CR；provenance红exit1、绿exit0原bytes均保留，尚未冻审。ACL/锁a804与CVSS2ba来自两限定修复作者，原独立review三Must仍需组合复核。job WT D:/wt/r07-enrichment-jobs@b3cc1a2ae231a4d1872f14d8a911d221c5272302（旧发布71+单维d8），仅request27绿；尚无新DDL/handler/worker/API，不可live。R09b5ca、R11parser37e、singleb05已独立限定Ship待root合入，完整R卡不accepted。
+
+真实采集新8a段03:47:57–03:50:08共131秒被35秒running watchdog停止，九beat根任务/8来源响应收据，第一启动验收失败。MinIO 03:46:10起最迟11:46:10，WSL runtime deadline2026-10-17T21:49:15+08。重启另run/固定版本/实际起止，不能拼成连续六小时；HTTP wire预算不能用fetch_attempts或receipts代替。旧1927段11067秒与1156段1187秒原日志不变。
+
+8a独立完整pure2489通过/11失败；七环境项定向复核通过并保留原red，四R20 CPU产品red未闭；真实PG136、前端352、fixtureEdge3通过，后两不是新graph已接或live。R20诊断20/20primary后停，已有四页PDF真实成功，真实semantic重库未跑。R17新graph作者394+10fixture过但App原53modules未注册，新review进行中。
+
+资源缺口：双人标注/裁决仍awaiting_human_label，FOFA授权资产范围缺失，ZoomEye401，CNNVD用户IAB登录未确认；不读holdout/秘密到索引。Hunter/Quake四实际聚合记录retrieval时间/observed unknown/fee unknown，没有owned资产查询。PPT按用户后置，独立可行开发持续，不越G-C live门。
+
+下一步：root发布组合冻结→原reviewer复核，同步九维PG child任务接线；R06新段根因修复及同版本重新受控采集；R10修复冻批→原reviewer，R17新审→root默认App/router真接；R08/R11自有表协议先冻结由root生产迁移；R20新安全实现→新审；R09/parser/single已审材料合入及适用回归，之后剩余R12–R24继续。第五批归档只按manifest原bytes，R10源WT不存在review文件仅canonical自身核验，限制明确。
+
+## 当前权威续接与文件所有权 · 2026-10-16T02:44:45+08:00
+
+主控 codex/full-delivery-recovery HEAD cc1b1d302e22048f567475b7084bcd5490761ed2，origin 仍为授权地址。最后已核远端为 G-B/c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7；G-C in_progress/partial，未阶段放行或 push。本段新增 reviewed merge 包括公开字段 facf、R20 startup 535、R17 detail 647、失败收据 b781、模型字段 ef247；只有 .gitattributes 两侧精确材料规则冲突由主控合并，最终 cc1。集成receipt在 recovery_r06_integration_20261015，当前 cc1 组合回归尚未运行。
+
+当前活跃6：root；r06_incremental_observation_collector_fix；r11_manifest_snapshot_parsing_implementation；recovery_frozen_evidence_archive；r09_shared_timeout_combination_preparation；r07_single_model_dimension_implementation。宿主16含root，实际目标6–10；禁止一级Agent再spawn。root独占公共schema/迁移/锁/runtime/集成Git/progress。观察器仅自有reports run/测试；清单parser仅assets内部候选与直接测试；归档者仅新增canonical reports、不改Git/业务/progress；R09组合D:/wt/r09-combo-fix固定ed+47；单维模型D:/wt/r07-single-field@cc1+47仅model_fields与专属tests。所有初审用新独立Agent和冻结版本；不会让作者自签。
+
+root D:/wt/r07-publication@23f5186 有未提交来源roster保护/3新增PG测试。实际漏洞：2个current PG来源只交1个文档时仍可保存FAILED模型维度；已红色复现，修后定向绿，待新代码冻结、77PG/202unit/static/CBM及全新初审。共享GenerationClient predispatch修复47c47bc/材料df0fa、独立review gen-tmo-r1 限定Ship，未合main；R09原Must不能被旧SHA绿色背书。版本范围71e724/材料8f5/原reviewer复核限定Ship，未合main。parser tool_permissions语义换序和UTC校验两Must修中；observer超行delta/opaque token落盘/metadata连续性三Must修中。原红日志保留、CSV方言未判Must，不能为了涂绿修改原探针。
+
+受控新runtime 00:32:57启动PG25432/Redis26379/OpenSearch29200，deadline2026-10-17T21:49:15+08；当前API/worker/frontend/MinIO/collector未宣称运行。旧1927段19:45:24–22:49:51共11067秒已结束，不得拼成6h；旧1156真实集成1187秒、199doc/216rev/2146evidence/234MinIO对象保留。新连续段须observer修复复核且root重启自有MinIO/默认beat后才能记录。
+
+Hunter/Quake实际4次搜索00:58:59–00:59:12：Ollama266463/819574，vLLM0/2；provider统计retrieved时间已记、源观察时间unknown，费用unknown；0扫描/资产正文/PG暴露发布。FOFA为用户第三方relay，不是官方订阅，资产授权范围缺失；ZoomEye401。真实模型已授权，新的R07/R09live尚未执行；人工双人核验/裁决与金标未提供，PPT用户后置，CNNVD内置登录未确认。holdout不进产品/索引，秘密只DPAPI→进程env。
+
+下一步：root发布冻批→新review并同时接job；归档共享Gen/版本复核→安全合入；R09组合→原reviewer定向复核；parser/observer修复→原reviewer复核；实际全链与G-C R06–R10仍必须完成，随后R11–R24持续推进。原T60项历史/验收分母未改。
+
+## 并发扩展与文件所有权 · 2026-10-16T00:29:53+08:00
+
+宿主声明上限已由4更新16；工具list_agents核实运行root+7一级=8后追加A初审和临时唯一runtime恢复，当前目标总并发10，不计interrupted/completed。用户接受6–10，root已中断递归只读分叉，所有一级实现者禁止再spawn，避免无限递归/文件重复。模型继承当前主模型，无降级。
+
+| 工作包 | 负责人 | 基线与WT | 允许修改；禁止公共文件 | 完成与审查 |
+|---|---|---|---|---|
+| R07发布/多来源事实/作业 | /root | cb34097+7142 cherry422201a，D:/wt/r07-publication | enrichment inputs/publication；knowledge persistence/read；公共schema/migration主控独占 | 新冻批→新reviewer，当前尚未接worker |
+| R07core修复复核v2 | r07_core_fix_independent_recheck_v2 | cb34097，D:/wt/r07-core-fix-recheck-v2 | 仅独立reports/run；业务只读 | 87/27定向过，PG服务真实中断blocked |
+| R07四维模型提取 | r07_model_fields_implementation | cb34097，D:/wt/r07-model-fields | enrichment model_fields/field_sources与直接tests；禁公共契约/PG/worker | 真实GenerationClient最多4次/预算，先fixture验收，live not_run |
+| R08聚合connector | r08_aggregate_connector_implementation | cb34097，D:/wt/r08-aggregate-connectors | assets hunter/quake/aggregate_observations+tests；禁FOFA/公共settings | 官方docs总≤8，业务search字段核实但产品词项unknown，0live |
+| R13 FOFA隔离修复 | r13_fofa_relay_fixture_fix | bde7497，D:/wt/r13-fofa-relay-config | 原relay及1直接contract/newreports；禁sharedruntime/密钥读取 | fixed2e1f502 64+138pass，待新review |
+| R17事件详情UI | r17_event_detail_frontend_implementation | c3a2abc，D:/wt/r17-event-detail-ui | frontend/features/events/**；禁App/globalCSS/API DTO | 先已有研究→设计→实际API页面/tests，根worker未提供能力不伪造 |
+| R20进程启动限额 | r20_process_startup_boundary_fix | c3a2abc，D:/wt/r20-process-startup-fix | process_limits/PDF/semantic必要接缝+tests；禁阈值/globalruntime | 4原负例红→绿，≤20worker样本/240wall60CPU，严格总CPU缺口保留 |
+| R06失败原文收据 | r06_failed_response_persistence_implementation | c3a2abc，D:/wt/r06-failed-response-persistence | source_jobs/source_failure_receipts+tests；root给唯一0016/models | parse前独立PG事务留原hash/失败，游标不推进，PG待恢复 |
+| R07公开四维新初审 | r07_public_signals_independent_review | 7f8cdc8/code7142，D:/wt/r07-public-signals-review-1 | 自有中文review/run，业务只读 | 独立101+负例/真实录制回放，原CPU失败/10>8docs不抹除 |
+| 临时R01受控runtime恢复 | r01_owned_runtime_recovery_20261016 | mainc3 | 只本任务runtime新启动/报告，保护原卷，禁全局WSL/其他进程/清理数据 | 真实PG/Redis/OS health→通知所有PG者；旧窗口不拼 |
+
+## 当前调度与账户实测 · 2026-10-16T00:14:00+08:00
+
+main codex/full-delivery-recovery@c3a2abc9a5246993eabb351d26cfeb51d0270b31；origin仍授权地址，远端最后核对G-B/c229a7f，G-C尚未过门/未push。R06compat独立Ship后合入c3，R19工具限定Ship已集成；各整卡仍partial。旧六小时collector实际中断按23:59:49更正，不再活跃。
+
+Hunter按官方/home/helpCenter?r=5-1-4的GET /openApi/userInfo只读1次实测HTTP200/code200；6000权益、今日免费500/500、单次导出10000，0资产查询。Quake2949月度/长效0，ZoomEye401。FOFA第三方relay day200/validtrue，2次鉴权预算用尽、新parser未第3次live；不能说官方FOFA或业务查询都已接线。凭据只DPAPI→进程env，不进日志/报告/前端。账户证据仅quota/hash，无rawbody/identity。
+
+R07core修复固定ce1，87定向+41独立test库PG通过；初审3Must未由reviewer复核前不放行。封存遇Git CRLF证据字节问题，两次修复未进展已派新只读诊断者，不改原logs或业务测试。R13作者完整bde7497已交新独立/root/r13_fofa_relay_independent_review。CPU新诊断/root/r20_cpu_boundary_diagnosis完成18样本后停采，原CPU/启动问题尚未关闭。主控继续publication loader/发布/作业接线；R07A7142作者材料待封存+新初审，旧报告/失败保留。
+
+## 事实更正与当前调度 · 2026-10-15T23:59:49+08:00
+
+旧1927观测并非仍在运行：19:45:24→22:49:51，实际11067秒(3h04m27s)，collector日志16803098bytes超过原16777216 guard后AssertionError，supervisor reason child_exit受控关闭四子进程。root此前沿用22:49:32旧心跳的续记已明确更正，原快照保留但不能续称六小时/继续活跃。window_interruption_receipt.json与原runtime_end/collection_failure/最后JSONL绑定。下一受控段须修增量/轮转日志、明确新版本/窗口及MinIO截止资源，不能拼前后时长。
+
+用户新增FOFA周卡仅秘密存储到本机新 foFa relay DPAPI文件，masked stdin录入、只做长度回读，未在代码/报告/前端/argv写key。明确派新 /root/r13_fofa_relay_configuration，WT D:/wt/r13-fofa-relay-config@1a；原R07A在代码7142/作者报告与manifest已存在后被root中断滚动释放槽，源码/证据保留，材料尚未统一commit不能假称完成交付。FOFA候选35a91e2644075238825724c2f3d7bbab83f30cde：38unit/13contract/12security=63新检查+network138/defaultunit1446/69.56%原60过，0资产搜索/扫描/模型。8文档读取用尽、2鉴权上限用尽；第二HTTP200/JSON/valid=true/todayRemaining200，totalRemaining str值未留，保留unknown，新增类型兼容尚未再次live；原第一invalid_response为严格int合同不匹配，不是key失效。未接runtime/PG/API/search，需独立review/公共配置root接线，不能说FOFA全功能接通。授权资产范围仍缺。
+
+用户询问Hunter/Quake/ZoomEye：已只检查三provider在既有DPAPI存非空；root按官方文档两次账户只读请求23:47:02→06（0search/扫描/模型），Quake HTTP200/code0/monthly credit2949/persistent0；ZoomEye HTTP401空body，余额unknown。原探测仪器先parse401导致ValueError分类不够准确，account_classification_erratum.json仅依据原status更正，不增加请求或伪称再跑。仅配额字段/hash进报告，无账户身份/rawbody/key。run recovery_r08_account_preflight_20261015。
+
+R19原独立de199f2095b6a676735f4f30f6d4c7a62ed775d3112b6481a2df027f07e4a27a限定Ship，原3Must闭；40行为/47plan/原36CLI+新28CLI过，Windowssymlink仍权限blocked、WSL3函数过；0人工/0gold/未freeze。review manifest33fec232...36正式证据48仓外synthetic，等待root核复制/集成，整R19partial。
+
+R07core74d新独立初审909e4d60...needs_changes3Must：两个新结构跨字段约束未导出JSON Schema、literature目标doc/rev未校验ACL导致公共claim泄露私有UUID（未证私有正文泄漏）。77+34PG过不消除缺陷；root在原core WT另批修复domain schema约束+knowledge target真实配对/权限/派生scope，新增10contract与7PG，原10contract4红已留。新PG专库test_dianzi_r06_catalog_r07_core_fix1_20261015，避免跨WT advisorylock争用，结果/冻结SHA待填写。新rootpublication WT仍bf，inputs.py+9真实PG初版（vendor无CVE错误测试假设已更正，未知保留），未接worker且未冻结，需修复后core版本接入；不以此宣称R07完。
+
+R06compat全新 /root/r06_live_compat_independent_review在固定837/e900：328unit+13contract/security+33reviewer边界、12真实handler PG/REST与串行92旧PG过；初并行两release retry_wait原红保留，实证同DB不同schema的pg_advisory_xact_lock命名仍共享导致争用（1probe），非本3源compat新产品缺陷；仅待封存报告，不自行改原业务期待。新测试资源隔离fixture参数化由root另批严格处理，不能默默重跑抹红。
+
+4槽当前root(core修复/publication/集成)+R13FOFA封存+R06compat独立审查封存+全新 /root/r20_cpu_boundary_diagnosis。后者只读独立WT/最多20受控worker240wall60CPU/0网络PG，诊断A严格1s=1.03125s与另两启动/CPU超时现象，原阈值不变，不预猜环境根因。core原reviewer已完成释放，fix冻结后再显式followup其定向复核。CNNVD用户选择内置浏览器登录，未确认完成；当前用户操作时不抢导航。G-C整体/剩余R08–R24与原T未完成均继续。
+
+## 当前续接快照 · 2026-10-15T23:34:25+08:00
+
+main仍codex/full-delivery-recovery@1a52e17ffe327fb8a0c1d4f97372948a699910e3，远端最后核对G-B/c229a7f，无G-C阶段push。源调用失败与CPU原门槛失败均未包装通过。
+
+R06实际集成段固定产品1156，22:46:31–23:06:18共1187秒；199文档/216修订/2146证据/234MinIO对象，所有对象读回hash/size与证据坐标hash验证正确；30sourcejobs34job attempts24保存HTTP成功，18beat roots+1CAC浏览器手动root。6/8类别真实落库，release/arxiv仍0、AVID首条后失败、NVD第二桶3次后failed。原Edge4fail1pass属已保留仪器输入问题，副本v2实跑5pass/20.5s；1366与390和正常/减弱动态背景均真实验证，模型/测绘0。48缺精确发布时间/168超过6h的分母是216revisions，不是假装本段已经正式时效通过。作者报告R06-integrated-live.md首次23:20:06，最终manifest127项待主控统一hash核验；secret scan118文件实际runtime/MinIO/login值0命中，不覆盖未读provider vault。组合CPU理论20%+20%不称全体20%，combined内存峰1,909,276,672B<2GiB，服务已停止。
+
+只读R06诊断50产物/3仓外原件逐hash已由root核复制，diagnosis_archive_receipt.json。release合法616207B/24817节点被两处10000默认拒；AVID固定offset1的screenshot相对路径被HTTP规则拒。唯一作者原诊断Agent已新WT D:/wt/r06-live-compat-fix@1a实施三实际业务文件（sources/github_releases.py/catalog_pages.py/sources/avid_records.py），冻结e900cd6b95dde7c6fe8d11d8c15122eb48a4acdc，328unit+5contract+8security通过，原bytes2例正常，integration54仅collected/not_run，0新网络/PG/模型；新独立review未开始，不能因作者通过合main。arxiv原失败bytes不存在，后续GET为NetworkRequestError无body；独立确认解析先于原文保存的审计缺口，另做typed failure跨rollback持久化批次，不能夹带进小parser修复。
+
+R07 root冻结候选098及v3账本74d8e9ba8b49360ca90ade390f7b6c00cd40b815，材料bf660e8a20f606225b1dd881faaeaf9bfc3550b3在D:/wt/r07-core。77定向unit/contract/34真实UUID隔离PG通过，Ruff/format/mypy95=0；完整JSONB保留、v3过长显示明确截断、v1/v2不改、HTTP2/旧维度DTO schema逐字相同；尚无自动富化作业/真实新发布。初图顺序偏差与JSON Schema初稿15红、Ruff初红均保留；最终74d src-onlyCBM刷新、简写publish查询失败后按完整限定名成功。作者报告R07-core.md已冻结，新的独立初审待slot。root下一实现WT D:/wt/r07-publication codex/r07-publication从bf660e8，自有离线92包venv，先独立CBM再业务修改；独占loader/最终发布/作业/公共合同和集成，不和A争文件。
+
+R07 A /root/r07_public_signal_implementation，D:/wt/r07-public-signals代码7142c38620150d5f2b7d81963389bdf8b725c316，四文件；101针对通过。其全纯原60门保留：先误包含real_pg环境error原日志、后非冻结CPU启动8秒失败、最后冻结完整1944pass1fail10deselected/75.75%，CPU guardian hardexit原1秒实测1.03125s，不能猜环境或降低门槛，停止重复全套等待新诊断。A实际10文档请求=5成功5失败超原8预算已停IO，未追认；真实CWE目录仍缺。A只候选接口无PG/业务事实，待新独立review。
+
+4实际槽此刻root(publication)+R06compat作者+R07A封存+R19原独立reviewer复核。原R19 reviewer已由root明确followup新turn，冻结22d/10c新独立WT，复跑原36探针+40行为/47plan，不能把作者消息当已审。下一空slot优先新CPU边界诊断与新core/sourcecompat reviewer，再滚动A/B实现；宿主硬4，用户允许6–10并不改变实际容量。
+
+CNNVD用户表示已网页登录但不知传凭据。root用当前内置browser tab1实际刷新官方dataDownLoad，列表当天78.56KB，点击当天仍提示请先登录；未读/导出Cookie。已打开右侧官方页并只问用户同内置浏览器登录或本机XML路径，用户选择在内置浏览器登录（尚未明确完成）；后续用户确认测绘平台时已解释CNNVD为漏洞源、Hunter/Quake聚合、FOFA授权观察、ZoomEye补充未接通，CNNVD不阻塞其他。不要自动问用户KEY/Cookie或把普通登录当AppID/AppSecret授权。浏览器用户操作中，不抢导航。
+
+旧固定1927六小时collector独立继续，最后可读22:49:32有92sourcejobs95attempts4childalive；root本轮一次读错不存在collection_observation.json未改服务，应按rg真实文件读。不得迁移schema0014旧库/把新1156段拼成同版6h。G-C其余来源通道/健康持久API、R07全链、R08–R10与后续全部任务仍继续；人工双核验/裁决与FOFA授权资产范围缺口不变，PPT后置。公开HTML原件脱敏保全是token形态预防；新增public_html_match_shape表明该regex组可能抓URL结束引号后的JS语法，尚未独立确认，不能宣称已证实密钥泄漏或重写历史。
+
+## 当前权威续接快照 · 2026-10-15T22:58:31+08:00
+
+main codex/full-delivery-recovery HEAD1a52e17ffe327fb8a0c1d4f97372948a699910e3；G-A/G-B限定accepted，远端最后核对仍c229a7f/G-B，G-C未验收/未push。主控已从0a逐步合入CPU guardian852（code-only三cherry，blob完全一致）、source worker+边界1456/材料ea61、sourceUI4f/6f、poller93/69、source原始材料384；唯一冲突.gitattributes按两侧限定规则并存解决，worker四原失败log/xml行尾保留为精确-diff，源码检查未放宽。最终集成产品代码1156b2ed6616e3a4297215c2893d2cbe633f5215；后续415ee+1a仅三fixture精确分类/独立审查材料/原log字节保全，产品src与1156相同。
+
+1156组合：1824 pure passed/1 failed/10 deselected、74.36%原60；唯一失败原T06秘密扫描发现两前端fixture常量3匹配与一份官网HTML脚本crToken。新独立live-validation Agent未参与UI/分类，d3e175f报告限定确认两文件3匹配与真实runtime/MinIO/login秘密碰撞0，34前端unit独跑。root只加3精确rawhash/pattern/offset/value来源记录，scanner/根/门槛不动；官网HTML原件sha708ca8仓外保留，仓内emptyliteral脱敏衍生，原reviewer manifest不改，原安全42pass复跑。没有假称全纯同次1825全绿。148真实PG/339前端unit+type/lint/build/Ruff/format/mypy通过，日志recovery_r06_integration_20261015；PG只专库worker/UUID schema，GB旧库不动。
+
+CPU852原Must1独立复核72da5d4...限定Ship已复制76产物且主控hash核验。Source6dc复核54d3...关闭M2但发现正文可被章节名填充；1456按章标题截断，独立c53a38b...117相关unit/97PG/19新probe全部通过，原19旧策略4红保留，不修改原probe；整R06未因此accepted。44/38两包hash均校验复制，含公开token形态的原HTML分别仓外保留、仓内明确redacted derivative+transfer receipt；manifest原字节保留并明示这些成员不入Git，不能说全部raw都在仓内。
+
+真实集成Agent /root/r06_integrated_live_validation：WT D:/wt/r06-integrated-live-1156固定1156；新test_dianzi_r06_integrated_live_20261015/schema0015、实际MinIO强制启用/29400、Redis15独有queue+globalprefix（14非空已拒、未flush）、API28012/UI25175，22:46:29+08启动，最多1200wall/80sourcejobs/160总attempt/0模型，默认beat60s。localstore/空envSecretStr/Redis14前检红保留，没有动旧GB。首16页17attempt：12succeeded/1partial/3blocked（release根/arxiv根/AVID第二页source_response_invalid）；AVID首/OSV/RSS/NIST48页/CAC/NVD/vendor真实已落。成功部分Edge继续；另批准最多4固定官方GET供诊断，必须单列并计同160，原bytes仓外，未把9key/8类/9通道涂绿。
+
+新 /root/r06_live_source_failure_diagnosis 独立WT D:/wt/r06-live-diagnosis-1156固定1156，src-only CBM/自有92包venv，等live Agent给精确bytes/hash后纯normalize复现这3个错误、共同根因/最小修复建议；未授权其改业务/网络/PG/秘密，后续由root决定唯一作者。本次4槽实际root+live验证+此诊断+R07 A，不是6–10。
+
+R07 root WT D:/wt/r07-core branchcodex/r07-core：基线1a（1156产品相同+分类材料），冻结typed candidate seam098502991f617a5fa9fdfb9c3da91e54aee7ff06，6文件553+/7-，值/候选/attempt与统一领域DimensionName；旧两个DTO schema与1156逐字相同sha475fe3...。71定向unit/contract、Ruff/format/mypy95通过，无ClaimRecord/schema/PG迁移/运行调用，core新独立review尚需slot，不能背书已接九维。root最早两个新类型文件写后才补本WT初索引，报告须真实记录此顺序偏差与之后完整刷新，不倒填；初index含这两untracked seam，不叫纯1156图。主控下一步根PG发布/作业接线、版本化typed Claim JSONB不能藏metadata；相关新batch须独立review。
+
+R07 /root/r07_public_signal_implementation WT D:/wt/r07-public-signals从098，独占signals.py/signal_sources.py及直接tests/自有report/run，禁止公共schema/PG/runtime/锁/progress。消费冻结EnrichmentContext/Document/Block→typed four dimensions CVSS/EPSS/KEV/CWE attempts，仅候选不写PG。官方CWE目录传入compact明确selection+版本/ID/name证据，root后接Source/MinIO/loader；缺目录blocked不伪available。A文档web项目实际4+4+2共10超本包上限8（初误报11已更正），主控已停新增IO，必须报告资源控制偏差，不追认成8；无直连下载/模型/测绘。CWE ZIP正文尚缺，其他三维继续，不能把网页4.20当验证目录。网络工作结束，纯实现继续。
+
+R19原81b/a0独立b998290e...三Must：alias跨字段绕split、别注册WT标签落点、单标签孤儿/重复裁决被接受并导出。原作者fix22d809f7803d539a2b551eb878ceae5333182d83/材料10c16a5cda132269be7d906bb902d222a41c690b在D:/dianzi-r19-annotation-preparation已冻clean；原7放行exit0→exit2、40行为+47plan/静态通过，Windows junction实测拒绝。四类精确标识保守共域仅防split，不合产品实体/不掉候选；许可unknown/实际1dev字段候选/0真人金标不变。原独立reviewer /root/r19_preparation_independent_review已completed，作者消息不触发其新turn，root下一空slot必须followup定向复核22d，别把作者已通知当已复核。两个R19独立报告/修复报告还在各WT，后续归档hash。整R19/R20仅早准备partial。
+
+原固定1927六小时collector仍19:45:24→次日01:45:24、28010/Redis12/旧test_dianzi_r04_pipeline_20261015(schema0014)，不得迁移/拼新版时长；MinIO本段19:45:17→次日02:15:17；Docker总deadline17日21:49:15。累计8模型/fee unknown，本段0新模型。CNNVD真实XML要求登录/AppID/AppSecret的异步最小输入仍待，双真人核验与FOFA授权资产范围仍缺，PPT用户后置。下一步R06实际3源根因修复/新review/同新SHA补live，R07 A实现+root核心/后续B/新core reviewer，R19 fix原reviewer定向复核，G-C整阶段R06–R10门不降；R24-A→R23→R24-B保持。
+
+## 当前权威快照 · 2026-10-15T22:12:38+08:00
+
+主控codex/full-delivery-recovery HEAD0a45185ae3ffb73a6d186b98421e26a52f78bfc6；远端最后核对G-B c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7，19:28:36+08。G-A/G-B限定accepted，G-C/R06 in_progress/partial未阶段push；原T全映射与整卡验收保持。主分支已合资料公共库/API/资料UI，合并1687pure74.74%/41真实PG与30真实资料143证据/实际Edge3pass已取得，报告R06-document-live.md。短段21:01:51–21:16:10 owned_stop_request已结束且端口28011/25174无监听，主动terminate子进程exit1不冒称自然0；不是6小时。
+
+九来源管理UI代码4f00999c2834a14752f4d53a78ccac66abed5cab、材料6f38d4284e62820415d829c9f113193e9bfce1b0，全新r06_source_admin_ui_independent_review限定Ship；339unit/type/lint/build/独立Edge20(原8+新12)通过，报告291703a3...与51产物已核复制主库。尚未合入，以免main后台仍2key而UI暴露9key；待worker组合通过一并集成。
+
+新增7source worker代码52433474f66a900c56ee6d5478337b0ec83d6eda、材料b2bd53fd2320fc46f600ff0475298ec1b64b0172在D:/wt/r06-worker-wiring；全新r06_source_worker_combined_independent_review已审root normalizer+worker全部组合，独立1760pure74.42%/91PG通过，但新19probes8红11绿，M1 CAC末条无正文仍full_text/succeeded、M2 OSV非法/未知/超精度时间提升UTC需修，报告815e5bcc...与56产物已核复制主库。代码未合main/新7live未运行。
+
+root独占修复WT D:/wt/r06-source-boundaries-fix，基线b2bd，代码冻结6dcce8b115ee3cb68bce814cf3f3ae91be9fcbf1，4产品+2永久测试+CR-R06_source_timestamp_precision。CAC每条非空/最后生效句只在末条内校验；共享日期语法严格，非法+00:99 blocked；合法-00:00或>6小数保留raw、PGinstant NULL、precision unknown，不静默截断。首轮全拒高精度使实际OSV modified9位合法样本失败，原16红/43+1红保留；新兼容小合同需原reviewer定向核对，原NVD/vendor严格策略不变。1788pure74.52%和96PG自检通过；冻结后同两套复跑已exit0，准确数量/时刻见recovery_r06_source_boundaries_20261015；尚未独立复核/合并，不能据此过门。
+
+自动轮询root WT D:/wt/r06-source-polling冻结93c458a0f97b65198d1fb690d42634b77342bb3c，8文件494+，source_polling/module+runtime/settings/compose开关+直接测试+合同/手册；真实部署flag显式开启才beat60s建固定9源PG/outbox，vLLM30min其余60min，每轮5页，复用原job/cursor，无迁移/新依赖。1777pure74.15%/10PG作者通过。全新r06_periodic_collection_independent_review在D:/wt/r06-source-polling-review-1审93，已17unit/10PG/24新边界/4runtime检查与实际默认60s beat→RedisDB15 prefix→PG→fixture worker通过，停用重启65s保留9root并完成手动任务。其共享mainvenv首次coverage52.19红确认双路径污染，own离线冻结venv1777/74.15%原60门通过；未降低门槛。阈值500为入场阈值，500单源active可本tick添8到508，下一tick拒绝，不能称硬cap500。独立报告G-C-R06-source-polling-review-1.md已限定Ship，sha1f1b31d2af6898bf41101f69e31f5094dd9c6a4ee52767922b0077a9cfdfe07e；82项产物待核复制，source live未运行。作者报告R06-source-polling.md/35run在其WT，meta尚未提交；root需修报告初版遗留静态working_tree标签说明再保全hash。
+
+Windows native CPU guard原994c独立Must1: guardian ready后硬退出worker仍成功/CPU2.25s。作者修复代码852472810b20b113606a0275ae6861326d39ebe8、材料3c99f37ef1993ab677e0d21b9d080975524d44b4在D:/wt/native-cpu-guard，默认1054/67.19054%与原预算不变。原独立native_cpu_guard_independent_review已实际2次hardexit CPU0.484375/无WORK_COMPLETED，原20probe0timeout、父PDF/semantic故障/成功对照4项、32针对+1054pure通过，独立限定Ship，Must1关闭；复核报告G-C-native-cpu-guard-review-1-recheck.md sha72da5d4d9700a742c37db92b0aaf46f3cd82a87d440ba61420019ad1ca13ad6d及76产物已由reviewer复制主库待主控核验。kill-on-close可exit0，完整结果协议是成功边界；未合main，整R20仅early partial不签验收。
+
+4槽：root控制合同/schema/锁/集成/状态/Git及source修复；r06_source_worker_combined_independent_review独立复核6dc；CPU及poller reviewer已完成释放槽位；r19_annotation_preparation独占D:/dianzi-r19-annotation-preparation（branch同名、基线0a）的新benchmarks候选schema/manifest、scripts/annotation、直接测试/单卡报告/手册。R19原合同允许R04后早工具/候选，当前仅公开vLLM短包、0人工金标，不读holdout答案/DPAPI或改指标；需后续全新review。R19/R20登记in_progress/partial仅真实早准备，八层整卡验证not_run；G-F没通过。当前宿主4硬槽，不能实际6–10。
+
+实际网络补探4个固定官方入口21:22:30起：CNNVD200仅985B壳、CNVD521空、EPSS200/203B/1记录、CISA KEV200/1787354B/1745条，仅probe无产品富化/0模型。run recovery_r06_auxiliary_source_probe_20261015，原body仓外cache。随后正常浏览器CNNVD官网下载19页649246B官方XML接口PDF，sha805577874f0ea63e137b147b7728eb232f12a003a105db12b54bc5764b24377c；参数物理页10已render/view核查，PDF/提取原文仓外，不使用公开示例AppSecret。公开当天XML点下载明确要求先登录，API要求授权AppID/AppSecret；CNVD未绕过验证。异步最小问题已问CNNVD授权变量名/秘密管理注入，等待非阻断；没有请求或打印真实用户密钥。
+
+原1927受控6小时服务保持独立19:45:24–次日01:45:24，API28010/Redis12/12轮30min；最后心跳与实际版本看recovery_gb_controlled_collection_20261015，不能拼不同版本。MinIO19:45:17–次日02:15:17/29400/WSL8440-8461；Docker总deadline2026-10-17T21:49:15。模型累计8次/fee unknown，本次0新增；双人独立金标/裁决与FOFA授权资产范围仍缺，PPT用户后置。下一步source6dc原reviewer定向复核、两新review报告封存→normalizer/worker/UI/poller/CPU修复审查闭合→main安全合入/组合回归→九源同SHA真实beat/API/UI→R06剩余通道/观测与G-C R07–R10；R24-A→R23→R24-B不变。
+
+## 当前权威快照 · 2026-10-15T21:17:13+08:00
+
+主控codex/full-delivery-recovery，HEAD 0a45185ae3ffb73a6d186b98421e26a52f78bfc6；远端最后核对G-B c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7（19:28:36+08）。G-A/G-B限定accepted，G-C/R06 in_progress/partial，原T整卡与全部映射条件未改变；G-C未push。
+
+公共库8430197、A10c81/B84faff9、资料API49ee33/72eb1c及资料UI2f5/0a8已分别独立限定Ship并合入main。资料UI第三Must权限竞态已独立关闭，最终review4081154b...；305unit/8永久Edge与独立44unit/6原Edge/6修正Edge通过。主控正在0a45185运行合并后pure和41PG回归，session55322/13665，run recovery_r06_integration_20261015；未完成不能先登记通过。
+
+同0a45185固定WT D:/wt/r06-document-live-0a45185，专库test_dianzi_r06_documents_live_20261015/0015、Redis13、API28011、UI25174。21:01:51启动，硬截止21:21:51；21:02:31至46实际认证/CSRF采集NVD20+vendor10，30events/docs/revisions、143evidence、2真实HTTP；两任务因max_pages1均partial/source_page_limit_reached。21:05:16至25实际Edge3pass8.8s，桌面1366/390、列表20+10、详情/固定历史/证据hash/退出权限、原文popup均无拦截/0模型调用。覆盖unknown诚实显示。截图document-visible-1366.png/390.png在run recovery_r06_document_live_20261015。首次可视截图仪器未在检索清选后重新选资料，TimeoutError保留initial脚本/log；只修capture脚本重选后13:14:57Z已标UTC的capture成功，产品未改、原3test分母不变。主控已写stop.request请求结束此短段，runtime_end待确认，不能拼成6小时。
+
+4槽滚动：root独占合同/schema/迁移/锁/状态/集成/Git；r06_legacy_migration_fixture_repair独占D:/wt/r06-worker-wiring source_jobs/source_routes与新测试，基线86e1fd5，新7worker1760pure/74.42%及33PG+25API PG已报过，仍待冻结和全新review；r06_document_workspace独占D:/wt/r06-source-admin-ui的source-contracts/来源UI及直接tests，基线0a45185，新339unit/8Edge已报过待冻结/新review；全新native_cpu_guard_independent_review只审D:/wt/native-cpu-guard冻结代码36884c7/材料994c381，无业务修改。宿主硬4槽，不能实际启6–10。
+
+root来源包装代码f0924a0、包含精确fixture86e1fd5、报告最终38496017e63fa5bd98352cc6065a1817c6d02cb0在D:/wt/r06-source-wiring，awaiting_review未合入。真实AVID tree/NIST48页/CAC完整24条仅probe，不计worker成功；1703pure/74.41%/Ruff/mypy92。后续必须与新worker整体冻结给全新reviewer，审所有共享strict_json_object调用者。CR-R06_source_collection_catalog已在main0a45185冻结9keys/同POST合同，独立核对尚待。
+
+原1927固定6小时服务仍独立：19:45:24至次日01:45:24，API28010/Redis12；21:15:12四服务alive/36source jobs38attempts/93.65625CPU/peak457506816B。既有148事件149修订520证据为历史回补，不声称及时/无漏采。MinIO19:45:17至次日02:15:17，WSL8440/8461，29400；Docker总deadline2026-10-17T21:49:15。旧G-B库不迁移，新工作均独立专库。
+
+真实模型累计8次/fee unknown，本轮0新增；缺双人独立标注/裁决与FOFA授权资产范围，PPT用户后置。R07–R10、资产/多跳/Agent/推荐/协议/正式评测/最终材料继续，当前不得称完整系统。下一步新normalizer+worker与9源UI分别新review→合入→九源实际API/worker/UI有界live→G-C其余卡；CPU独立review后集成原门槛修复。R24-A→R23→R24-B保持。
+
+## 当前权威快照 · 2026-10-15T20:16:26+08:00
+
+主控分支codex/full-delivery-recovery，HEAD/已核对远端 c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7；G-A、G-B限定阶段已独立通过，G-B push客户端180秒超时但19:28:36+08远端核对成功，未虚写push exit0，收据在recovery_push_log。当前G-C in_progress/partial，原T整卡与R06整卡未新签accepted。
+
+R06公共持久化45ee的21PG/1450pure通过；旧0013迁移夹具7a92649已并入独立WT D:/wt/r06-integration冻结84301979920bbae7ff0074ebc5a0633f9b31747a。全新r06_catalog_combined_final_review正在固定WT复验，原35与21已独立通过，纯门的review临时目录/coverage路径仪器错误正在纠正，失败日志保留，不提前过门。作者报告仍历史45ee，后续需补组合与审查结果。
+
+A来源解析10c81f0、B仓库/社区84faff9已分别独立限定Ship，已并入D:/wt/r06-product-wiring冻结71e852ce4be147d30aa1bc824bf18afda99fb332；当前root在该WT编写document_read_service/document_routes并挂双API前缀，已有9游标回归通过，新增PG/API真实隔离测试运行中。7新来源worker尚未接线、整R06/live未通过。
+
+前端资料workspace修复冻结ef3a0583179a27ccdaca05b771afccc90429dc35，新299unit、原4Edge与独立原36unit/6Edge复核通过；原reviewer发现直接deep-link列表403但晚到详情200仍展示的相邻竞态，正在浏览器复现。两旧Must已修，但本批尚不Ship，真实API浏览器未跑。黑客暗色/低亮动态背景既有，不等于完整工作台完成。
+
+四活动槽：root独占公共合同/schema/迁移/锁/集成/进度/Git与document API；r06_catalog_combined_final_review只审843（自有WT/run）；r06_document_workspace_review只审ef3（自有WT/run）；native_cpu_limit_diagnosis在D:/wt/native-cpu-guard实现共享Windows独立CPU监护，接口不变，后续新reviewer。没有6–10宿主槽，滚动轮换，不用新聊天代替subagent。
+
+固定1927真实持续采集服务19:45:24+08启动、硬截止次日01:45:24；API28010、RedisDB12/queue gb_collection_1927、12轮/30分钟上限及Job资源受控。19:48快照8成功HTTP200、148事件/149修订/520证据，历史回补与缺UTC发布时间另列，未称6小时稳定或时效通过。run reports/runs/recovery_gb_controlled_collection_20261015；stop.request仅停止本run。MinIO新段19:45:17至次日02:15:17，WSL supervisor8440/child8461，29400；旧段4实际19:45:06请求结束，分段不可拼。Docker总deadline2026-10-17T21:49:15+08。
+
+模型真实供应商累计8次、费用unknown；未新增付费。缺双人独立人工金标/裁决与FOFA授权资产范围；PPT用户后置。容器semantic/容量/出网、九维/图谱/资产/Agent/推荐/协议/正式评测与最终材料仍需后续完成。下一步资料API自检冻结→新独立review、前端新Must修复复核、7来源worker真实采集→资料浏览器闭环，再推进G-C其余R07–R10。
+
+## G-B远端核对 · 2026-10-15T19:29:29+08:00
+
+G-B限定阶段accepted已推送并核对远端codex/full-delivery-recovery = c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7，2026-10-15T19:28:36+08:00。原push客户端180s超时/退出码未知，随后ls-remote exit0确认远端已更新；未重复push，不把超时写exit0。原not_pushed未核实记录保留，recovered收据和push台账追加更正。已审代码1927、已审登记文档1ca；最终归档c229无产品变化。下一G-C继续，当前组件与人工/容器/性能缺口不变。
+
 ## 当前权威快照 · 2026-10-15T19:06:14+08:00
 
 集成codex/full-delivery-recovery，已测/已审代码1927eeb00a7e0c1335f76340b0382f46102f08f2；G-A accepted已push，远端最后核对fa5deb0d0b519869ca92d34d9ffe7d8e39b06fb4；G-B依据新/root/g_b_checkpoint_review 19:01:00+08最终限定Ship登记accepted，仅R04/R05切片，文档差异待同reviewer复核，G-B尚未push。当前G-C，原T整卡状态/全部映射验收不变。最后独立1419/73.71%原60门、56计划、254前端/17浏览器及各真实PG套件通过；真实问答dc014完整10212.6966ms不达5秒，累计供应商8次fee unknown，无金标/正式评测。
@@ -440,3 +719,6 @@ CBM portable v0.11.0存在；主控cache=/tmp/dianzi-cbm-recovery-root-20261014/
 ## 登记修订 · 2026-10-15T19:08:27+08:00
 
 主控首次登记漏同步R04/R05输出切片，原计划检查49pass/7fail，日志gb_registration_plan保留；根因是只改R聚合状态未改原T内slice_acceptance，与R00合同不一致。现依据相同独立Ship登记11输出切片及历史，原T整卡status/implementation/verification均未改变；没有改manifest或检查器。复验见gb_registration_plan_recheck。此为登记错误，不是降低验收门。
+
+
+2026-10-15T21:24:28+08:00 /root补充真实结论：0a45185合并后1687pure/74.74%与41真实PG均exit0；资料短段21:01:51至21:16:10 owned_stop_request结束，4子进程被主动terminate exit1，无运行失败文件，端口无监听。新增报告R06-document-live.md保存完整命令/红例/3真实Edge与30文档143证据；整卡/阶段状态不变。
