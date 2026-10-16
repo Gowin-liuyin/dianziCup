@@ -22,6 +22,17 @@ from ai_intel.retrieval.hybrid_contracts import (
     IndexGeneration,
 )
 
+MAX_RESPONSE_BYTES = 2 * 1024**2
+
+
+class IndexCreationError(BaseModel):
+    model_config = ConfigDict(strict=True)
+    type: str
+
+
+class IndexCreationErrorResponse(BaseModel):
+    error: IndexCreationError
+
 
 class Shards(BaseModel):
     model_config = ConfigDict(strict=True)
@@ -197,10 +208,13 @@ class OpenSearchCorpusClient:
         *,
         body: dict[str, object] | None = None,
         content: bytes | None = None,
+        allow_existing_index: bool = False,
     ) -> httpx.Response:
         try:
             if self.deadline is not None:
-                return asyncio.run(self._request_before_deadline(method, path, body, content))
+                return asyncio.run(
+                    self._request_before_deadline(method, path, body, content, allow_existing_index)
+                )
             response = self.client.request(
                 method,
                 path,
@@ -210,8 +224,8 @@ class OpenSearchCorpusClient:
                 timeout=self.request_timeout,
                 follow_redirects=False,
             )
-            response.raise_for_status()
-            if len(response.content) > 2 * 1024**2:
+            self._raise_for_status(response, allow_existing_index)
+            if len(response.content) > MAX_RESPONSE_BYTES:
                 raise HybridRetrievalError("opensearch_response_limit")
             return response
         except httpx.HTTPStatusError as error:
@@ -225,7 +239,12 @@ class OpenSearchCorpusClient:
             raise HybridRetrievalError("opensearch_unavailable") from None
 
     async def _request_before_deadline(
-        self, method: str, path: str, body: dict[str, object] | None, content: bytes | None
+        self,
+        method: str,
+        path: str,
+        body: dict[str, object] | None,
+        content: bytes | None,
+        allow_existing_index: bool = False,
     ) -> httpx.Response:
         """Native async cancellation covers connect, headers, the whole body and client close."""
         if self.deadline is None or self.async_client_factory is None:
@@ -247,18 +266,35 @@ class OpenSearchCorpusClient:
                     else None,
                     follow_redirects=False,
                 ) as response:
-                    response.raise_for_status()
+                    if not (allow_existing_index and response.status_code in {400, 409}):
+                        response.raise_for_status()
                     collected = bytearray()
                     async for chunk in response.aiter_bytes():
-                        if len(collected) + len(chunk) > 2 * 1024**2:
+                        if len(collected) + len(chunk) > MAX_RESPONSE_BYTES:
                             raise HybridRetrievalError("opensearch_response_limit")
                         collected.extend(chunk)
-                    return httpx.Response(
+                    bounded_response = httpx.Response(
                         response.status_code,
                         content=bytes(collected),
                         headers={"Content-Type": response.headers.get("content-type", "")},
                         request=response.request,
                     )
+                    self._raise_for_status(bounded_response, allow_existing_index)
+                    return bounded_response
+
+    @staticmethod
+    def _raise_for_status(response: httpx.Response, allow_existing_index: bool) -> None:
+        if allow_existing_index and response.status_code in {400, 409}:
+            if len(response.content) > MAX_RESPONSE_BYTES:
+                raise HybridRetrievalError("opensearch_response_limit")
+            try:
+                failure = IndexCreationErrorResponse.model_validate_json(response.content)
+            except ValidationError:
+                response.raise_for_status()
+            else:
+                if failure.error.type == "resource_already_exists_exception":
+                    return
+        response.raise_for_status()
 
     def create_index(self, generation: IndexGeneration) -> None:
         keyword_fields = (
@@ -296,9 +332,10 @@ class OpenSearchCorpusClient:
                 "properties": properties,
             },
         }
-        try:
-            self._request("PUT", "/" + self._index(generation), body=body)
-        except HybridRetrievalError:
+        response = self._request(
+            "PUT", "/" + self._index(generation), body=body, allow_existing_index=True
+        )
+        if response.is_error:
             self.verify_index(generation)
 
     def verify_index(self, generation: IndexGeneration) -> None:

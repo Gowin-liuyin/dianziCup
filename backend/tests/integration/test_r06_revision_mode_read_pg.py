@@ -208,6 +208,7 @@ def test_internal_pg_evidence_reader_denies_fixture_under_live_before_citation_c
 
 @pytest.mark.parametrize("mode", ("fixture", "live"))
 def test_event_detail_keeps_same_pg_source_mode(revision_mode_engine, tmp_path, mode):
+    body, _content_type = source_response("nvd_ollama")
     with Session(revision_mode_engine) as session, session.begin():
         saved = persist_source_response(
             session,
@@ -215,7 +216,7 @@ def test_event_detail_keeps_same_pg_source_mode(revision_mode_engine, tmp_path, 
             ADMIN,
             SourceResponse(
                 "nvd_ollama",
-                source_response("nvd_ollama"),
+                body,
                 "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=ollama&resultsPerPage=100&startIndex=0",
                 NOW,
                 data_mode=mode,

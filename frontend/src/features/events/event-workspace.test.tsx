@@ -16,7 +16,7 @@ const evidenceFixture = { schema_version: 2, span_id: evidenceId, revision_id: r
 function response(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } }); }
 function navigate(hash: string) { window.history.replaceState(null, "", `/${hash}`); fireEvent(window, new HashChangeEvent("hashchange")); }
 
-function fixtureApi(options: { listStatus?: number; rawError?: boolean; empty?: boolean; unsupported?: boolean; pagination?: boolean; mismatchedRevision?: boolean } = {}) {
+function fixtureApi(options: { listStatus?: number; rawError?: boolean; empty?: boolean; unsupported?: boolean; pagination?: boolean; mismatchedRevision?: boolean; sourceUri?: string } = {}) {
   const requests: string[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const path = String(input);
@@ -31,7 +31,7 @@ function fixtureApi(options: { listStatus?: number; rawError?: boolean; empty?: 
       return response({ schema_version: 2, items: options.empty ? [] : secondPage ? [{ ...eventFixture, event_id: secondEventId, title: "隔离测试：下一页事件" }] : [eventFixture], next_cursor: options.pagination && !secondPage ? "opaque-fixture" : null, data_mode: "fixture" });
     }
     if (path === `/v1/events/${eventId}`) return response(detailFixture);
-    if (path === `/v1/evidence/${evidenceId}`) return response({ ...evidenceFixture, revision_id: options.mismatchedRevision ? secondEventId : revisionId });
+    if (path === `/v1/evidence/${evidenceId}`) return response({ ...evidenceFixture, source_uri: options.sourceUri ?? null, revision_id: options.mismatchedRevision ? secondEventId : revisionId });
     throw new Error(`Unexpected isolated fixture route: ${path}`);
   }));
   window.history.replaceState(null, "", "/#events");
@@ -60,6 +60,10 @@ describe("R04 event/detail/evidence — isolated fixture mode only", () => {
     await screen.findByRole("link", { name: "隔离测试：下一页事件" });
     expect(screen.queryByRole("link", { name: eventFixture.title })).toBeNull();
     expect(requests.some((path) => path === "/v1/events?cursor=opaque-fixture&limit=20")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "回到第一页" }));
+    await screen.findByRole("link", { name: eventFixture.title });
+    expect(screen.queryByRole("link", { name: "隔离测试：下一页事件" })).toBeNull();
+    expect(screen.getByRole("button", { name: "回到第一页" }).hasAttribute("disabled")).toBe(true);
   });
   it("shows an actual empty response as query-scoped emptiness", async () => {
     fixtureApi({ empty: true });
@@ -118,6 +122,18 @@ describe("R04 event/detail/evidence — isolated fixture mode only", () => {
     expect(screen.getByText("历史定位未核验")).toBeTruthy();
     expect(screen.getAllByText(revisionId).length).toBeGreaterThan(0);
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("complementary", { name: "证据检视" })));
+  });
+  it("keeps the saved historical evidence distinct from the linked external page", async () => {
+    fixtureApi({ sourceUri: "https://example.test/isolated-revision" });
+    render(<App />);
+    await screen.findByRole("link", { name: eventFixture.title });
+    navigate(`#events/${eventId}/evidence/${evidenceId}/revision/${revisionId}`);
+    const inspector = await screen.findByRole("complementary", { name: "证据检视" });
+    const sourceLink = await within(inspector).findByRole("link", { name: "打开留存来源地址 ↗" });
+    expect(sourceLink.getAttribute("href")).toBe("https://example.test/isolated-revision");
+    expect(sourceLink.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(within(inspector).getByText("外部地址可能已修订；历史引用以上方保存片段为准。")).toBeTruthy();
+    expect(within(inspector).getByText("历史原文片段", { selector: "blockquote" })).toBeTruthy();
   });
   it("does not display a citation when the response revision differs", async () => {
     fixtureApi({ mismatchedRevision: true });

@@ -47,6 +47,7 @@ describe("workbench shell", () => {
     fireEvent(window, new HashChangeEvent("hashchange"));
     expect(screen.getByRole("heading", { name: "调查与任务" })).toBeTruthy();
     expect(screen.getByText(/页面不会通过动画递增进度/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "打开调查工作台" }).getAttribute("href")).toBe("#investigations");
   });
 
   it("routes sources to the permission-gated scheduler without admin requests for guests", async () => {

@@ -140,7 +140,7 @@ def test_entire_roster_acl_precedes_the_first_object_read(catalog_engine, tmp_pa
     revoke(catalog_engine, loaded, level)
 
     class ForbiddenStore:
-        def read_verified(self, digest):
+        def read_verified(self, digest, *, deadline_monotonic=None):
             pytest.fail("No bytes may be read before every input ACL has passed")
 
     with (

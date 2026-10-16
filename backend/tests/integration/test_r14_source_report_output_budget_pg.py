@@ -191,7 +191,7 @@ def test_source_io_revalidates_current_acl_epoch_and_job_lease_before_node_recei
     changed = False
 
     class MutatingStore:
-        def read_verified(self, content_hash):
+        def read_verified(self, content_hash, *, deadline_monotonic=None):
             nonlocal changed
             value = facts.store.read_verified(content_hash)
             if not changed:

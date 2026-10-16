@@ -135,7 +135,7 @@ def _start_windows_cpu_guard(cpu_seconds: int, lifetime_handle: int) -> subproce
             stderr=subprocess.DEVNULL,
             close_fds=True,
             startupinfo=startup,
-            creationflags=0x08000000,
+            creationflags=0x8,
             env=environment,
         )
         if kernel.WaitForSingleObject(ready_handle, 3000) != 0 or guard.poll() is not None:

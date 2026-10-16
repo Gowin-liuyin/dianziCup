@@ -53,7 +53,7 @@ def test_scope_denied_before_object_store_is_read(catalog_engine, tmp_path):
     outsider = AccessScope.for_authenticated_user("other", "fixture-other", Role.TENANT_ADMIN)
 
     class UnreadableStore:
-        def read_verified(self, digest):
+        def read_verified(self, digest, *, deadline_monotonic=None):
             pytest.fail("out-of-scope object IO must not happen")
 
     with Session(catalog_engine) as session, pytest.raises(CrossTenantAccessError):
@@ -108,7 +108,7 @@ def test_content_budget_is_checked_before_object_io(catalog_engine, tmp_path):
         connection.execute(update(content_objects).values(size_bytes=2 * 1024 * 1024 + 1))
 
     class UnreadableStore:
-        def read_verified(self, digest):
+        def read_verified(self, digest, *, deadline_monotonic=None):
             pytest.fail("over-budget object IO must not happen")
 
     with Session(catalog_engine) as session, pytest.raises(EnrichmentInputError):
@@ -128,7 +128,7 @@ def test_lying_store_is_rechecked_against_pg_content_identity(catalog_engine, tm
     _store, event_id = seeded_event(catalog_engine, tmp_path)
 
     class LyingStore:
-        def read_verified(self, digest):
+        def read_verified(self, digest, *, deadline_monotonic=None):
             return b"not the saved synthetic content"
 
     with Session(catalog_engine) as session, pytest.raises(EnrichmentInputError):

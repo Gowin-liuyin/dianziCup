@@ -33,7 +33,8 @@ from ai_intel.enrichment.contracts import CandidateEvidence, EnrichmentContext, 
 from ai_intel.enrichment.inputs import (
     MAX_DOCUMENT_BYTES,
     MAX_INPUT_BYTES,
-    _load_document,
+    _bounded_revision_blocks,
+    _document_from_verified_content,
     _require_input_scopes,
 )
 from ai_intel.enrichment.persistence_models import enrichment_results
@@ -868,12 +869,21 @@ class StructuredFactProofReader:
                         continue
                     check_deadline()
                     try:
-                        with connection.begin(), Session(bind=connection) as session:
-                            loaded[parent["revision_id"]] = _load_document(
-                                session, self.content_store, event_scope, parent
-                            )
+                        blocks, complete = _bounded_revision_blocks(
+                            row
+                            for row in candidate.blocks
+                            if row["revision_id"] == parent["revision_id"]
+                        )
+                        payload = self.content_store.read_verified(
+                            parent["content_hash"], deadline_monotonic=deadline_monotonic
+                        )
+                        loaded[parent["revision_id"]] = _document_from_verified_content(
+                            event_scope, parent, parent["category"], blocks, complete, payload
+                        )
                     except FileNotFoundError:
                         errors[parent["revision_id"]] = "source_object_missing"
+                    except TimeoutError:
+                        raise TimeoutError("fact_proof_deadline_exhausted") from None
                     except OSError:
                         errors[parent["revision_id"]] = "source_object_read_failed"
                     except ObjectStoreUnavailableError:

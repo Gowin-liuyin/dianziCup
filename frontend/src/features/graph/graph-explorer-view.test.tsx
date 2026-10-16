@@ -23,6 +23,31 @@ function installApi(snapshot: GraphSnapshot = graphFixture()) {
 }
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe("R17 independent graph view — explicit synthetic only", () => {
+  it("reads the requested event only after a delayed session is confirmed", async () => {
+    let restoreSession: (value: Response) => void = () => { throw new Error("fixture session not initialized"); };
+    const session = new Promise<Response>((resolve) => { restoreSession = resolve; });
+    const fetchFixture = vi.fn(async (input: RequestInfo | URL) => String(input) === "/v1/auth/me" ? session : response(graphFixture()));
+    vi.stubGlobal("fetch", fetchFixture);
+    render(<AuthProvider><Harness mode="fixture" /></AuthProvider>);
+    expect(fetchFixture.mock.calls).toHaveLength(1);
+    restoreSession(response(fixtureAuth()));
+    await screen.findByText("6 节点 / 6 支持关系");
+    expect(fetchFixture.mock.calls.map(([path]) => String(path))).toEqual(["/v1/auth/me", `/v1/events/${graphFixtureEventId}/graph?max_nodes=200&max_edges=400`]);
+  });
+  it("waits for a delayed session before reading a graph and retains a login path for guests", async () => {
+    let restoreSession: (value: Response) => void = () => { throw new Error("fixture session not initialized"); };
+    const session = new Promise<Response>((resolve) => { restoreSession = resolve; });
+    const fetchFixture = vi.fn(async (input: RequestInfo | URL) => String(input) === "/v1/auth/me" ? session : response(graphFixture()));
+    vi.stubGlobal("fetch", fetchFixture);
+    render(<AuthProvider><Harness mode="fixture" /></AuthProvider>);
+    expect(screen.getByRole("status").textContent).toContain("正在确认图谱访问会话");
+    expect(screen.queryByRole("heading", { name: "登录后查看证据图" })).toBeNull();
+    expect(fetchFixture.mock.calls).toHaveLength(1);
+    restoreSession(response({ error: { code: "unauthenticated", retryable: false } }, 401));
+    await screen.findByRole("heading", { name: "登录后查看证据图" });
+    expect(screen.getByRole("link", { name: "核对会话与权限" }).getAttribute("href")).toBe("#session");
+    expect(fetchFixture.mock.calls).toHaveLength(1);
+  });
   it("renders six types, chooses a relationship with keyboard and links every evidence", async () => {
     installApi(); render(<AuthProvider><Harness mode="fixture" /></AuthProvider>);
     await screen.findByText("6 节点 / 6 支持关系");

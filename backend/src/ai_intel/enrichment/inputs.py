@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterable
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -86,6 +87,13 @@ def _revision_blocks(
         .order_by(text_blocks.c.ordinal)
         .limit(201)
     ).mappings()
+    return _bounded_revision_blocks(rows)
+
+
+def _bounded_revision_blocks(
+    rows: Iterable[RowMapping],
+) -> tuple[tuple[EnrichmentBlock, ...], bool]:
+    """Apply the same block bounds to PG rows and a frozen proof-reader snapshot."""
     selected: list[EnrichmentBlock] = []
     complete = True
     characters = 0
@@ -113,21 +121,36 @@ def _revision_blocks(
 
 
 def _load_document(
-    session: Session, store: ContentStorage, scope: VisibilityScope, row: RowMapping
+    session: Session,
+    store: ContentStorage,
+    scope: VisibilityScope,
+    row: RowMapping,
+    *,
+    deadline_monotonic: float | None = None,
 ) -> EnrichmentDocument:
-    if row["visibility"] == "tenant" and (
-        scope.visibility != "tenant" or scope.tenant_id != row["tenant_id"]
-    ):
-        raise EnrichmentInputError("source_scope_exceeds_event")
-    if not row["is_current"] or row["parse_status"] not in {"parsed", "partial"}:
-        raise EnrichmentInputError("source_revision_not_current_parsed")
-    if not row["canonical_uri"]:
-        raise EnrichmentInputError("source_uri_unavailable")
+    _require_document_row(scope, row)
     category = session.scalar(
         text("SELECT category FROM sources WHERE source_id=:id"), {"id": row["source_id"]}
     )
     blocks, complete = _revision_blocks(session, row["revision_id"])
-    payload = store.read_verified(row["content_hash"])
+    payload = (
+        store.read_verified(row["content_hash"])
+        if deadline_monotonic is None
+        else store.read_verified(row["content_hash"], deadline_monotonic=deadline_monotonic)
+    )
+    return _document_from_verified_content(scope, row, category, blocks, complete, payload)
+
+
+def _document_from_verified_content(
+    scope: VisibilityScope,
+    row: RowMapping,
+    category: str,
+    blocks: tuple[EnrichmentBlock, ...],
+    blocks_complete: bool,
+    payload: bytes,
+) -> EnrichmentDocument:
+    """Build an input from frozen PG metadata and verified bytes without database IO."""
+    _require_document_row(scope, row)
     if (
         len(payload) != row["size_bytes"]
         or hashlib.sha256(payload).hexdigest() != row["content_hash"]
@@ -149,12 +172,23 @@ def _load_document(
         source_record_id=str(row["canonical_uri"]).rsplit("/", 1)[-1],
         content_sha256=row["content_hash"],
         blocks=blocks,
-        blocks_complete=complete and row["parse_status"] == "parsed",
+        blocks_complete=blocks_complete and row["parse_status"] == "parsed",
         content_coverage=coverage,
         source_version=version,
         observed_at=row["first_observed_at"],
         json_payload=payload if any(block.json_pointer is not None for block in blocks) else None,
     )
+
+
+def _require_document_row(scope: VisibilityScope, row: RowMapping) -> None:
+    if row["visibility"] == "tenant" and (
+        scope.visibility != "tenant" or scope.tenant_id != row["tenant_id"]
+    ):
+        raise EnrichmentInputError("source_scope_exceeds_event")
+    if not row["is_current"] or row["parse_status"] not in {"parsed", "partial"}:
+        raise EnrichmentInputError("source_revision_not_current_parsed")
+    if not row["canonical_uri"]:
+        raise EnrichmentInputError("source_uri_unavailable")
 
 
 def _explicit_cve_ids(

@@ -86,7 +86,7 @@ def create_application(
         allow_origins=list(configuration.allowed_origins),
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
-        allow_headers=["Content-Type", "X-CSRF-Token", "Idempotency-Key"],
+        allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "Idempotency-Key"],
         expose_headers=["X-Request-ID"],
     )
 

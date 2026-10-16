@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from functools import partial
 
@@ -28,6 +28,7 @@ from pydantic import ValidationError
 from starlette.requests import Request
 
 from ai_intel_client.client import (
+    ClientConfigurationError,
     ClientInputError,
     DianziApiError,
     DianziClient,
@@ -166,16 +167,18 @@ async def _server_lifespan(_: Server[None]) -> AsyncIterator[None]:
 
 
 def create_current_read_tool_server(
-    client: DianziClient,
+    client: DianziClient | None,
     output_budget: McpOutputBudget,
     *,
     include_extended_tools: bool = False,
+    request_client_factory: Callable[[Request], DianziClient] | None = None,
 ) -> Server[None]:
     """Keep the old discovery profile and opt into the six frozen read contracts.
 
     The owning runtime must verify its tokenizer/cache and authenticate transport
-    requests before exposing this server. HTTP clients must have a request-bound
-    credential; the fixed client supplied here is intended for one stdio identity.
+    requests before exposing this server. The HTTP factory resolves a client that
+    its owning transport has authenticated and will close after this request.
+    The fixed client supplied here is used only for one stdio identity.
     """
     request_models: dict[str, type[PublicRecord]] = {
         "ask": AskRequest,
@@ -237,14 +240,25 @@ def create_current_read_tool_server(
         context: ServerRequestContext[None, Request], params: CallToolRequestParams
     ) -> CallToolResult:
         if context.request is not None:
+            if request_client_factory is None:
+                return _tool_error("not_configured")
+            try:
+                active_client = request_client_factory(context.request)
+            except ClientConfigurationError:
+                return _tool_error("not_configured")
+            except Exception:
+                return _tool_error("backend_internal_error")
+        elif client is not None:
+            active_client = client
+        else:
             return _tool_error("not_configured")
         if params.name not in request_models:
             return _tool_error("unknown_tool")
         loop = asyncio.get_running_loop()
         deadline = loop.time() + (
-            client.question_deadline_seconds
+            active_client.question_deadline_seconds
             if params.name == "ask"
-            else client.operation_deadline_seconds
+            else active_client.operation_deadline_seconds
         )
         try:
             raw = json.dumps(params.arguments or {}, allow_nan=False).encode("utf-8")
@@ -253,21 +267,21 @@ def create_current_read_tool_server(
             return _tool_error("invalid_arguments")
         record: PublicRecord
         try:
-            if client.uses_async_requests:
+            if active_client.uses_async_requests:
                 async with asyncio.timeout_at(deadline):
                     async with worker_slots:
                         if isinstance(validated_request, AskRequest):
-                            record = await client.ask_async(validated_request)
+                            record = await active_client.ask_async(validated_request)
                         elif isinstance(validated_request, StackCheckRequest):
-                            record = await client.check_stack_async(validated_request)
+                            record = await active_client.check_stack_async(validated_request)
                         elif isinstance(validated_request, SearchVulnsRequest):
-                            record = await client.search_vulns_async(validated_request)
+                            record = await active_client.search_vulns_async(validated_request)
                         elif isinstance(validated_request, GetVulnRequest):
-                            record = await client.get_vuln_async(validated_request)
+                            record = await active_client.get_vuln_async(validated_request)
                         elif isinstance(validated_request, GetTaskResultRequest):
-                            record = await client.get_task_result_async(validated_request)
+                            record = await active_client.get_task_result_async(validated_request)
                         elif isinstance(validated_request, ListSourcesRequest):
-                            record = await client.list_sources_async(validated_request)
+                            record = await active_client.list_sources_async(validated_request)
                         else:
                             return _tool_error("invalid_arguments")
                         result = _complete_result(record, output_budget)
@@ -276,27 +290,27 @@ def create_current_read_tool_server(
                     return result
             if isinstance(validated_request, AskRequest):
                 record = await anyio.to_thread.run_sync(
-                    partial(client.ask, validated_request), limiter=worker_slots
+                    partial(active_client.ask, validated_request), limiter=worker_slots
                 )
             elif isinstance(validated_request, StackCheckRequest):
                 record = await anyio.to_thread.run_sync(
-                    partial(client.check_stack, validated_request), limiter=worker_slots
+                    partial(active_client.check_stack, validated_request), limiter=worker_slots
                 )
             elif isinstance(validated_request, SearchVulnsRequest):
                 record = await anyio.to_thread.run_sync(
-                    partial(client.search_vulns, validated_request), limiter=worker_slots
+                    partial(active_client.search_vulns, validated_request), limiter=worker_slots
                 )
             elif isinstance(validated_request, GetVulnRequest):
                 record = await anyio.to_thread.run_sync(
-                    partial(client.get_vuln, validated_request), limiter=worker_slots
+                    partial(active_client.get_vuln, validated_request), limiter=worker_slots
                 )
             elif isinstance(validated_request, GetTaskResultRequest):
                 record = await anyio.to_thread.run_sync(
-                    partial(client.get_task_result, validated_request), limiter=worker_slots
+                    partial(active_client.get_task_result, validated_request), limiter=worker_slots
                 )
             elif isinstance(validated_request, ListSourcesRequest):
                 record = await anyio.to_thread.run_sync(
-                    partial(client.list_sources, validated_request), limiter=worker_slots
+                    partial(active_client.list_sources, validated_request), limiter=worker_slots
                 )
             else:
                 return _tool_error("invalid_arguments")

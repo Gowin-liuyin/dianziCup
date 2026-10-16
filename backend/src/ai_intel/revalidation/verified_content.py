@@ -9,7 +9,12 @@ from types import MappingProxyType
 from typing import Literal
 
 from ai_intel.api.actor_references import ActorReference
-from ai_intel.infrastructure.content_store import SHA256_PATTERN, ContentStorage, StoredContent
+from ai_intel.infrastructure.content_store import (
+    SHA256_PATTERN,
+    ContentStorage,
+    StoredContent,
+    remaining_content_time,
+)
 from ai_intel.infrastructure.minio_store import ObjectStoreUnavailableError
 from ai_intel.workers.executor import JobExecutionResult
 
@@ -49,7 +54,9 @@ class VerifiedContentRecorder:
         self._total_bytes = 0
         self._reads = 0
 
-    def read_verified(self, content_hash: str) -> bytes:
+    def read_verified(self, content_hash: str, *, deadline_monotonic: float | None = None) -> bytes:
+        if deadline_monotonic is not None:
+            remaining_content_time(deadline_monotonic)
         size = self._declared_sizes.get(content_hash)
         if (
             size is None
@@ -67,7 +74,13 @@ class VerifiedContentRecorder:
             raise VerificationBudgetExceeded("revalidation_verification_budget_exhausted")
         self._reads += 1
         try:
-            source_bytes = self._store.read_verified(content_hash)
+            source_bytes = (
+                self._store.read_verified(content_hash)
+                if deadline_monotonic is None
+                else self._store.read_verified(content_hash, deadline_monotonic=deadline_monotonic)
+            )
+        except TimeoutError:
+            raise
         except ValueError as error:
             raise VerifiedContentInvalid("revalidation_verified_source_invalid") from error
         except (OSError, ObjectStoreUnavailableError) as error:
@@ -75,6 +88,8 @@ class VerifiedContentRecorder:
         content = checked_source_bytes(content_hash, source_bytes)
         if len(content) != size:
             raise VerifiedContentInvalid("revalidation_verified_source_size_changed")
+        if deadline_monotonic is not None:
+            remaining_content_time(deadline_monotonic)
         if content_hash not in self._content:
             self._content[content_hash] = content
             self._total_bytes += len(content)
@@ -127,11 +142,16 @@ class FrozenVerifiedContent:
     def __init__(self, proof: VerifiedSourceProof) -> None:
         self._content = proof.content_by_hash
 
-    def read_verified(self, content_hash: str) -> bytes:
+    def read_verified(self, content_hash: str, *, deadline_monotonic: float | None = None) -> bytes:
+        if deadline_monotonic is not None:
+            remaining_content_time(deadline_monotonic)
         source_bytes = self._content.get(content_hash)
         if source_bytes is None:
             raise VerifiedContentInvalid("revalidation_verified_source_unavailable")
-        return checked_source_bytes(content_hash, source_bytes)
+        content = checked_source_bytes(content_hash, source_bytes)
+        if deadline_monotonic is not None:
+            remaining_content_time(deadline_monotonic)
+        return content
 
     def store_bytes(self, payload: bytes) -> StoredContent:
         raise PermissionError("verified source proof is read only")

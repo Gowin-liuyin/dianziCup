@@ -330,20 +330,33 @@ class AssessmentService:
             scope = lock_authenticated_scope(
                 session.connection(), self._session_token, datetime.now(UTC)
             )
-            scope.requires(READ_ASSET)
-            row = (
-                session.execute(
-                    select(assessment_results).where(
-                        assessment_results.c.assessment_id == assessment_id,
-                        assessment_results.c.tenant_id == scope.tenant_id,
-                    )
+            return self.read_in_session(session, scope, assessment_id)
+
+    def read_in_session(
+        self, session: Session, scope: AccessScope, assessment_id: str
+    ) -> AssessmentReceipt:
+        """Recheck current authority and result on the caller's already-open PG transaction."""
+        if not session.in_transaction() or session.connection().engine is not self.engine:
+            raise ValueError("assessment read requires its caller-owned transaction")
+        current = lock_authenticated_scope(
+            session.connection(), self._session_token, datetime.now(UTC)
+        )
+        if current != scope:
+            raise PermissionDeniedError("assessment authentication context changed")
+        current.requires(READ_ASSET)
+        row = (
+            session.execute(
+                select(assessment_results).where(
+                    assessment_results.c.assessment_id == assessment_id,
+                    assessment_results.c.tenant_id == current.tenant_id,
                 )
-                .mappings()
-                .first()
             )
-            if row is None:
-                raise CrossTenantAccessError("resource not found")
-            return self._read_result(session, scope, row)
+            .mappings()
+            .first()
+        )
+        if row is None:
+            raise CrossTenantAccessError("resource not found")
+        return self._read_result(session, current, row)
 
     def _read_result(
         self, session: Session, scope: AccessScope, row: RowMapping

@@ -8,13 +8,13 @@ import { syntheticGeneration, syntheticIds, syntheticRecommendation, syntheticRe
 function json(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } }); }
 function deferred() { let resolve: (response: Response) => void = () => { throw new Error("synthetic deferred not initialized"); }; const promise = new Promise<Response>((complete) => { resolve = complete; }); return { promise, resolve }; }
 function installFixture() {
-  const state = { subscription: syntheticSubscription(), recommendation: syntheticRecommendation(), report: syntheticReport(), permissions: ["read:public", "read:asset"], authenticated: true, tenant: syntheticScope.tenantId as string | null, catalogStatus: 200, createStatus: 201, recommendationStatus: 200, partial: false, casConflict: false, paths: [] as string[], writes: [] as { path: string; method: string; body: unknown; key: string | null }[], csrfHold: null as ReturnType<typeof deferred> | null, recommendationHold: null as ReturnType<typeof deferred> | null, readHold: null as ReturnType<typeof deferred> | null, exportHold: null as ReturnType<typeof deferred> | null, exportStatus: 200 };
+  const state = { subscription: syntheticSubscription(), recommendation: syntheticRecommendation(), report: syntheticReport(), permissions: ["read:public", "read:asset"], authenticated: true, tenant: syntheticScope.tenantId as string | null, catalogStatus: 200, subscriptionMissing: false, createStatus: 201, recommendationStatus: 200, partial: false, casConflict: false, paths: [] as string[], writes: [] as { path: string; method: string; body: unknown; key: string | null }[], csrfHold: null as ReturnType<typeof deferred> | null, recommendationHold: null as ReturnType<typeof deferred> | null, readHold: null as ReturnType<typeof deferred> | null, exportHold: null as ReturnType<typeof deferred> | null, exportStatus: 200 };
   vi.stubGlobal("fetch", vi.fn(async (path: string, init?: RequestInit) => {
     const url = new URL(path, "http://127.0.0.1"); const method = init?.method ?? "GET"; state.paths.push(`${method} ${url.pathname}`);
     if (url.pathname === "/v1/auth/me") return state.authenticated ? json({ user_id: syntheticScope.userId, tenant_id: state.tenant, role: "viewer", permission_version: 1, permissions: state.permissions, data_mode: "fixture", csrf_token: "synthetic-memory-csrf" }) : json({ error: { code: "session_expired", retryable: false } }, 401);
     if (url.pathname === "/v1/auth/csrf") return state.csrfHold?.promise ?? json({ csrf_token: "synthetic-memory-csrf", header_name: "X-CSRF-Token" });
     if (method === "POST" || method === "PATCH") state.writes.push({ path: url.pathname, method, body: JSON.parse(String(init?.body)), key: new Headers(init?.headers).get("Idempotency-Key") });
-    if (url.pathname === "/api/v1/subscriptions" && method === "GET") return state.catalogStatus === 200 ? json({ items: [state.subscription], next_cursor: null }) : json({ error: { code: "recommendations_not_configured", retryable: true } }, state.catalogStatus);
+    if (url.pathname === "/api/v1/subscriptions" && method === "GET") return state.catalogStatus === 200 ? json({ items: state.subscriptionMissing ? [] : [state.subscription], next_cursor: null }) : json({ error: { code: "recommendations_not_configured", retryable: true } }, state.catalogStatus);
     if (url.pathname === "/api/v1/subscriptions" && method === "POST") return state.createStatus === 201 ? json(state.subscription, 201) : json({ error: { code: "dependency_unavailable", retryable: true } }, state.createStatus);
     if (url.pathname === `/api/v1/subscriptions/${syntheticIds.subscription}`) {
       if (method === "PATCH") {
@@ -24,7 +24,7 @@ function installFixture() {
         if ("enabled" in body && typeof body.enabled === "boolean") state.subscription = { ...state.subscription, version: state.subscription.version + 1, spec: { ...state.subscription.spec, enabled: body.enabled } };
         else state.subscription = { ...state.subscription, version: state.subscription.version + 1 };
       }
-      return json(state.subscription);
+      return state.subscriptionMissing ? json({ error: { code: "not_found", retryable: false } }, 404) : json(state.subscription);
     }
     if (url.pathname.endsWith("/generate")) return json({ ...syntheticGeneration(), partial: state.partial, gaps: state.partial ? [{ code: "input_scope_partial", event_id: null, asset_id: null }] : [] });
     if (url.pathname.endsWith("/recommendations")) return state.recommendationHold?.promise ?? (state.recommendationStatus === 200 ? json({ items: [state.recommendation], next_cursor: null }) : json({ error: { code: state.recommendationStatus === 401 ? "session_expired" : "forbidden", retryable: false } }, state.recommendationStatus));
@@ -46,6 +46,31 @@ function SessionProbe() { const { refreshSession } = useAuthSession(); return <b
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("R15 workspaces · explicit isolated fixture transport, not live", () => {
+  it("clears a remotely removed selected subscription rather than leaving generation available", async () => {
+    const state = installFixture();
+    renderRecommendations();
+    await screen.findByRole("button", { name: "生成当前推荐" });
+    state.subscriptionMissing = true;
+    fireEvent.click(screen.getByRole("button", { name: "刷新本人记录" }));
+    await screen.findByText("记录不存在，或当前会话不能访问该记录。");
+    expect(screen.queryByRole("button", { name: "生成当前推荐" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "选择或创建本人订阅" })).toBeTruthy();
+    expect(state.writes).toHaveLength(0);
+  });
+  it("refreshes a remotely disabled subscription without discarding its unsaved editing draft", async () => {
+    const state = installFixture();
+    renderRecommendations();
+    fireEvent.click(await screen.findByRole("button", { name: "编辑当前订阅" }));
+    fireEvent.change(screen.getByLabelText("风险主题（每行一个）"), { target: { value: "synthetic-preserved-draft" } });
+    state.subscription = { ...state.subscription, version: 2, spec: { ...state.subscription.spec, enabled: false } };
+    fireEvent.click(screen.getByRole("button", { name: "刷新本人记录" }));
+    await screen.findByText("订阅版本 2 · 已退订，历史保留 · 优先级 P0 至 P3");
+    expect(screen.getByRole("button", { name: "生成当前推荐" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByDisplayValue("synthetic-preserved-draft")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "保留输入，采用版本 2" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "保存订阅修改" }).hasAttribute("disabled")).toBe(true);
+    expect(state.writes).toHaveLength(0);
+  });
   it("loads only the current owner and retains stale history with exact original citation", async () => { installFixture(); renderRecommendations(); await screen.findByText(/Explicit synthetic quote/); expect(screen.getByText("已过期，待重新核对")).toBeTruthy(); expect(screen.getByRole("link", { name: /核查保存的原文版本/ }).getAttribute("href")).toContain(`/revision/${syntheticIds.revision}`); expect(screen.getByText("合成 Fixture · 非真实情报")).toBeTruthy(); expect(document.querySelector("script")).toBeNull(); });
   it.each(["permission", "tenant"])("makes no private request when current %s is missing", async (kind) => { const state = installFixture(); if (kind === "permission") state.permissions = []; else state.tenant = null; renderRecommendations(); await screen.findByRole("heading", { name: /需要 read:public/ }); expect(state.paths.some((path) => path.includes("/api/v1/"))).toBe(false); });
   it("distinguishes not-configured 503 from a successful empty subscription list", async () => { const state = installFixture(); state.catalogStatus = 503; renderRecommendations(); await screen.findByText(/服务尚未配置/); expect(screen.queryByRole("heading", { name: "本页未返回本人订阅" })).toBeNull(); });

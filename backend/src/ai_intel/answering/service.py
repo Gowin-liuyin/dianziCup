@@ -18,9 +18,17 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from ai_intel.answering.contracts import GroundedAnswerFailure
-from ai_intel.answering.grounding import generate_grounded_answer
+from ai_intel.answering.grounding import GroundedAnswerGuardFailure, generate_grounded_answer
+from ai_intel.api.actor_references import ActorReference, create_actor_reference
 from ai_intel.api.auth_state import lock_authenticated_scope
 from ai_intel.api.authentication import InvalidCredentialsError, SessionExpiredError
+from ai_intel.api.credentials import (
+    ApiKeyCredential,
+    ApiKeyRateLimitedError,
+    AuthenticatedCredential,
+    InvalidApiKeyError,
+    consume_api_key_rate_limit,
+)
 from ai_intel.api.knowledge_contracts import DataMode
 from ai_intel.api.knowledge_read_service import KnowledgeReadService
 from ai_intel.api.question_contracts import (
@@ -66,8 +74,44 @@ class QuestionFailure(RuntimeError):
 ANSWER_RESERVATION_SECONDS = 420
 
 
-def _lock_answer_scope(session: Session, scope: AccessScope, session_token: str) -> AccessScope:
-    current = lock_authenticated_scope(session.connection(), session_token, datetime.now(UTC))
+def _database_now(session: Session) -> datetime:
+    """Read fresh PG wall time; transaction timestamps and host clocks cannot enforce leases."""
+    current = session.scalar(select(func.clock_timestamp()))
+    if not isinstance(current, datetime) or current.tzinfo is None:
+        raise QuestionFailure("question_database_clock_unavailable")
+    return current
+
+
+def _lock_answer_scope(
+    session: Session,
+    scope: AccessScope,
+    session_token: str | ActorReference,
+    *,
+    credential: AuthenticatedCredential | None = None,
+) -> AccessScope:
+    if credential is not None:
+        authenticated = create_actor_reference(
+            session.connection(), credential, _database_now(session)
+        )
+        if isinstance(session_token, ActorReference):
+            expected = (
+                session_token.credential_kind,
+                session_token.session_hash,
+                session_token.key_id,
+                session_token.credential_version,
+            )
+        else:
+            expected = ("session", hashlib.sha256(session_token.encode()).hexdigest(), None, None)
+        if expected != (
+            authenticated.credential_kind,
+            authenticated.session_hash,
+            authenticated.key_id,
+            authenticated.credential_version,
+        ):
+            if isinstance(credential, ApiKeyCredential):
+                raise InvalidApiKeyError("API key is not valid")
+            raise InvalidCredentialsError("session is not valid")
+    current = lock_authenticated_scope(session.connection(), session_token, _database_now(session))
     if current.user_id != scope.user_id or current.tenant_id != scope.tenant_id:
         raise CrossTenantAccessError("resource not found")
     current.requires(READ_PUBLIC)
@@ -75,18 +119,20 @@ def _lock_answer_scope(session: Session, scope: AccessScope, session_token: str)
 
 
 def _expire_pending_answer(
-    engine: Engine, scope: AccessScope, answer_id: UUID, session_token: str
+    engine: Engine, scope: AccessScope, answer_id: UUID, session_token: str | ActorReference
 ) -> None:
     """到期仅终止原预约，不重新发送付费请求；CAS不覆盖已完成或另一预约。"""
     with Session(engine) as session, session.begin():
         _lock_answer_scope(session, scope, session_token)
         row = (
             session.execute(
-                select(grounded_answers).where(
+                select(grounded_answers)
+                .where(
                     grounded_answers.c.answer_id == str(answer_id),
                     grounded_answers.c.user_id == scope.user_id,
                     grounded_answers.c.tenant_id == scope.tenant_id,
                 )
+                .with_for_update()
             )
             .mappings()
             .first()
@@ -101,7 +147,11 @@ def _expire_pending_answer(
             deadline = datetime.fromisoformat(expires)
         except ValueError:
             return
-        if deadline.tzinfo is None or deadline > datetime.now(UTC):
+        if deadline.tzinfo is None:
+            return
+        _lock_answer_scope(session, scope, session_token)
+        current = _database_now(session)
+        if deadline > current:
             return
         session.execute(
             update(grounded_answers)
@@ -110,6 +160,11 @@ def _expire_pending_answer(
                 grounded_answers.c.response["kind"].astext == "pending",
                 grounded_answers.c.model_trace["reservation_id"].astext == owner,
                 grounded_answers.c.model_trace["reservation_expires_at"].astext == expires,
+                cast(
+                    grounded_answers.c.model_trace["reservation_expires_at"].astext,
+                    DateTime(timezone=True),
+                )
+                <= func.clock_timestamp(),
             )
             .values(
                 response={"kind": "failed", "error_code": "answer_interrupted"},
@@ -117,7 +172,7 @@ def _expire_pending_answer(
                     **row["model_trace"],
                     "reservation_state": "expired",
                     "usage_status": "incomplete_interrupted",
-                    "interruption_recorded_at": datetime.now(UTC).isoformat(),
+                    "interruption_recorded_at": current.isoformat(),
                 },
             )
         )
@@ -134,13 +189,17 @@ def _attempt_records(attempts: tuple[AttemptMetadata, ...]) -> list[dict[str, ob
 
 
 def read_grounded_answer(
-    engine: Engine, scope: AccessScope, answer_id: UUID, *, session_token: str
+    engine: Engine,
+    scope: AccessScope,
+    answer_id: UUID,
+    *,
+    session_token: str | ActorReference,
 ) -> QuestionAnswerResponse:
     scope.requires(READ_PUBLIC)
     _expire_pending_answer(engine, scope, answer_id, session_token)
     with Session(engine) as session:
         session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
-        _lock_answer_scope(session, scope, session_token)
+        scope = _lock_answer_scope(session, scope, session_token)
         row = (
             session.execute(
                 select(grounded_answers).where(
@@ -172,7 +231,60 @@ def read_grounded_answer(
                 raise QuestionFailure("answer_evidence_integrity_unavailable")
         if row["scope_epochs"].get("public") != current_public_epoch(session):
             answer = answer.model_copy(update={"freshness": FreshnessStatus.STALE})
+        _lock_answer_scope(session, scope, session_token)
         return answer
+
+
+def _lock_pending_answer_deadline(
+    session: Session,
+    scope: AccessScope,
+    answer_id: UUID,
+    reservation_id: str,
+) -> datetime:
+    """After authentication locks, hold the owned pending row and enforce PG time after waiting."""
+    deadline = session.scalar(
+        select(
+            cast(
+                grounded_answers.c.model_trace["reservation_expires_at"].astext,
+                DateTime(timezone=True),
+            )
+        )
+        .where(
+            grounded_answers.c.answer_id == str(answer_id),
+            grounded_answers.c.user_id == scope.user_id,
+            grounded_answers.c.tenant_id == scope.tenant_id,
+            grounded_answers.c.response["kind"].astext == "pending",
+            grounded_answers.c.model_trace["reservation_id"].astext == reservation_id,
+            cast(
+                grounded_answers.c.model_trace["reservation_expires_at"].astext,
+                DateTime(timezone=True),
+            )
+            > func.clock_timestamp(),
+        )
+        .with_for_update(read=True)
+    )
+    if not isinstance(deadline, datetime) or deadline.tzinfo is None:
+        raise QuestionFailure("answer_lease_expired", 409)
+    if _database_now(session) >= deadline:
+        raise QuestionFailure("answer_lease_expired", 409)
+    return deadline
+
+
+def _require_pending_answer(
+    session: Session,
+    scope: AccessScope,
+    answer_id: UUID,
+    reservation_id: str,
+    session_token: str | ActorReference,
+    credential: AuthenticatedCredential | None,
+) -> AccessScope:
+    """Validate PG lease time after both answer-row waiting and final authentication."""
+    scope = _lock_answer_scope(session, scope, session_token, credential=credential)
+    deadline = _lock_pending_answer_deadline(session, scope, answer_id, reservation_id)
+    scope = _lock_answer_scope(session, scope, session_token, credential=credential)
+    if _database_now(session) >= deadline:
+        raise QuestionFailure("answer_lease_expired", 409)
+    return scope
 
 
 class GroundedQuestionService:
@@ -200,12 +312,19 @@ class GroundedQuestionService:
         scope_provider: Callable[[], AccessScope],
         idempotency_key: str | None = None,
         *,
-        session_token: str,
+        session_token: str | ActorReference,
+        credential: AuthenticatedCredential | None = None,
     ) -> QuestionAnswerResponse:
         started = datetime.now(UTC)
         timer = time.perf_counter()
         scope = scope_provider()
         scope.requires(READ_PUBLIC)
+        if (
+            isinstance(session_token, ActorReference)
+            and session_token.credential_kind == "api_key"
+            and not isinstance(credential, ApiKeyCredential)
+        ):
+            raise InvalidApiKeyError("API key is not valid")
         if (
             len(payload.event_ids) != 1
             or payload.asset_ids
@@ -225,6 +344,8 @@ class GroundedQuestionService:
             json.dumps(["qa", scope.user_id, scope.tenant_id, idempotency_key]),
         )
         with Session(self.engine) as session:
+            scope = _lock_answer_scope(session, scope, session_token, credential=credential)
+            started = _database_now(session)
             prior = session.execute(
                 select(grounded_answers.c.model_trace).where(
                     grounded_answers.c.answer_id == str(answer_id),
@@ -250,8 +371,24 @@ class GroundedQuestionService:
             "usage_status": "not_yet_recorded",
         }
         reserved = False
+
+        def guard_external_io() -> None:
+            current_scope = scope_provider()
+            if current_scope.user_id != scope.user_id or current_scope.tenant_id != scope.tenant_id:
+                raise CrossTenantAccessError("resource not found")
+            with Session(self.engine) as session, session.begin():
+                _require_pending_answer(
+                    session,
+                    current_scope,
+                    answer_id,
+                    reservation_id,
+                    session_token,
+                    credential,
+                )
+
         try:
             with Session(self.engine) as session, session.begin():
+                scope = _lock_answer_scope(session, scope, session_token, credential=credential)
                 reserved_id = session.scalar(
                     pg_insert(grounded_answers)
                     .values(
@@ -267,24 +404,57 @@ class GroundedQuestionService:
                     .on_conflict_do_nothing()
                     .returning(grounded_answers.c.answer_id)
                 )
-                reserved = reserved_id is not None
+                if reserved_id is not None:
+                    if isinstance(credential, ApiKeyCredential):
+                        consume_api_key_rate_limit(
+                            session.connection(),
+                            credential,
+                            _database_now(session),
+                            operation="ask",
+                        )
+                    _require_pending_answer(
+                        session, scope, answer_id, reservation_id, session_token, credential
+                    )
+                else:
+                    prior = session.execute(
+                        select(grounded_answers.c.model_trace).where(
+                            grounded_answers.c.answer_id == str(answer_id),
+                            grounded_answers.c.user_id == scope.user_id,
+                            grounded_answers.c.tenant_id == scope.tenant_id,
+                        )
+                    ).scalar_one_or_none()
+                    if prior is None or prior.get("request_sha256") != request_digest:
+                        raise QuestionFailure("idempotency_conflict", 409)
+            reserved = reserved_id is not None
             if not reserved:
-                raise QuestionFailure("answer_in_progress", 409)
-            selection = self.retriever.retrieve(scope, payload.event_ids[0], payload.question)
+                return read_grounded_answer(
+                    self.engine, scope, answer_id, session_token=session_token
+                )
+            guard_external_io()
+            selection = self.retriever.retrieve(
+                scope, payload.event_ids[0], payload.question, before_io=guard_external_io
+            )
             trace.update(
                 embedding_model=selection.embedding_model,
                 reranker_model=selection.reranker_model,
                 candidate_count=selection.candidate_count,
                 event_id=str(selection.event_id),
             )
-            draft = generate_grounded_answer(self.client, payload.question, selection.citations)
+            draft = generate_grounded_answer(
+                self.client, payload.question, selection.citations, before_call=guard_external_io
+            )
             trace["attempts"] = _attempt_records(draft.attempts)
             trace["usage_status"] = "recorded"
             current_scope = scope_provider()
             if current_scope.user_id != scope.user_id or current_scope.tenant_id != scope.tenant_id:
                 raise CrossTenantAccessError("resource not found")
             with Session(self.engine) as session, session.begin():
-                current_scope = _lock_answer_scope(session, current_scope, session_token)
+                current_scope = _lock_answer_scope(
+                    session, current_scope, session_token, credential=credential
+                )
+                reservation_deadline = _lock_pending_answer_deadline(
+                    session, current_scope, answer_id, reservation_id
+                )
                 self.retriever.require_current(
                     session,
                     current_scope,
@@ -292,8 +462,12 @@ class GroundedQuestionService:
                     selection.epoch,
                     draft.citations,
                     lock_epoch=True,
+                    data_mode=self.data_mode,
                 )
-                completed = datetime.now(UTC)
+                current_scope = _lock_answer_scope(
+                    session, current_scope, session_token, credential=credential
+                )
+                completed = _database_now(session)
                 if completed >= reservation_deadline:
                     raise QuestionFailure("answer_lease_expired", 409)
                 answer = QuestionAnswerResponse(
@@ -341,8 +515,15 @@ class GroundedQuestionService:
                 )
                 if completed_id is None:
                     raise QuestionFailure("answer_failed", 409)
+                _lock_answer_scope(session, current_scope, session_token, credential=credential)
+                if _database_now(session) >= reservation_deadline:
+                    raise QuestionFailure("answer_lease_expired", 409)
             return answer
         except Exception as error:
+            if isinstance(error, GroundedAnswerGuardFailure):
+                trace["attempts"] = _attempt_records(error.attempts)
+                trace["usage_status"] = "recorded" if error.attempts else "not_yet_recorded"
+                error = error.error
             if isinstance(error, (GroundedAnswerFailure, GenerationFailure)):
                 trace["attempts"] = _attempt_records(error.attempts)
                 trace["usage_status"] = "recorded"
@@ -393,7 +574,9 @@ class GroundedQuestionService:
                                     {
                                         "attempts": trace["attempts"],
                                         "usage_status": "recorded_after_terminal",
-                                        "late_attempts_recorded_at": datetime.now(UTC).isoformat(),
+                                        "late_attempts_recorded_at": _database_now(
+                                            session
+                                        ).isoformat(),
                                     }
                                 )
                             )
@@ -406,9 +589,11 @@ class GroundedQuestionService:
                     InvalidCredentialsError,
                     SessionExpiredError,
                     PermissionDeniedError,
+                    InvalidApiKeyError,
+                    ApiKeyRateLimitedError,
                 ),
             ):
-                raise
+                raise error
             raise QuestionFailure(
                 code, 422 if isinstance(error, SemanticInputError) else 503
             ) from None

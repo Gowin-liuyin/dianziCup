@@ -471,7 +471,7 @@ def test_missing_raw_object_is_partial_not_a_false_empty_search(
     facts = seed_facts(proof_engine, tmp_path, register_sensitive_failure_value)
 
     class MissingStore(ContentStore):
-        def read_verified(self, digest):
+        def read_verified(self, digest, *, deadline_monotonic=None):
             raise FileNotFoundError("fixture object unavailable")
 
     result = read_facts(proof_engine, facts, store=MissingStore(tmp_path / "missing"))
@@ -503,7 +503,7 @@ def test_each_parent_revocation_denies_before_object_read(
         )
 
     class NoReadStore(ContentStore):
-        def read_verified(self, digest):
+        def read_verified(self, digest, *, deadline_monotonic=None):
             pytest.fail("revoked input caused object IO")
 
     with pytest.raises(CrossTenantAccessError, match="resource_unavailable"):
@@ -585,7 +585,7 @@ def test_io_has_no_actor_or_source_row_locks_and_revocation_is_rechecked(
     facts = seed_facts(proof_engine, tmp_path, register_sensitive_failure_value)
 
     class RevokingStore(ContentStore):
-        def read_verified(self, digest):
+        def read_verified(self, digest, *, deadline_monotonic=None):
             payload = facts.store.read_verified(digest)
             with proof_engine.begin() as connection:
                 connection.execute(
@@ -606,7 +606,7 @@ def test_source_text_change_during_io_invalidates_snapshot(
     facts = seed_facts(proof_engine, tmp_path, register_sensitive_failure_value)
 
     class ChangingStore(ContentStore):
-        def read_verified(self, digest):
+        def read_verified(self, digest, *, deadline_monotonic=None):
             payload = facts.store.read_verified(digest)
             with proof_engine.begin() as connection:
                 connection.execute(
@@ -628,7 +628,7 @@ def test_deadline_is_not_extended_for_source_io(
     class SlowStore(ContentStore):
         calls = 0
 
-        def read_verified(self, digest):
+        def read_verified(self, digest, *, deadline_monotonic=None):
             self.calls += 1
             time.sleep(0.4)
             return facts.store.read_verified(digest)
@@ -758,7 +758,7 @@ def test_withdrawn_event_revision_never_signs_a_source_report(
     class WithdrawingStore(ContentStore):
         calls = 0
 
-        def read_verified(self, digest):
+        def read_verified(self, digest, *, deadline_monotonic=None):
             self.calls += 1
             if not during_io:
                 pytest.fail("withdrawn association caused source object IO")

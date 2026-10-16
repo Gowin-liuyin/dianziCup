@@ -21,7 +21,7 @@ export function CapabilityWorkspace({ page, authenticated }: { page: PreparedPag
       <div className="table-scroll"><table className="intelligence-table" aria-label={section.title}><thead><tr>{section.columns.map((column) => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody /></table></div>
       <EmptyState title="本页能力待接通" description={section.explanation} />
       <div className="capability-notice"><span className="notice-mark" aria-hidden="true">!</span><p>依赖：{section.dependency}。<br />当前没有查询结果，不能据此判断为零记录或无风险。</p></div>
-      <div className="panel-actions"><a className="button secondary" href="#runtime">查看运行状态</a>{!authenticated && <a className="button" href="#session">登录并核对权限</a>}</div>
+      <div className="panel-actions">{page === "tasks" && <a className="button secondary" href="#investigations">打开调查工作台</a>}<a className="button secondary" href="#runtime">查看运行状态</a>{!authenticated && <a className="button" href="#session">登录并核对权限</a>}</div>
     </section>
     <aside className="panel evidence-inspector" aria-labelledby="inspector-title"><div className="panel-heading"><div><p className="eyebrow">INSPECTOR / 核查</p><h2 id="inspector-title">核查上下文</h2></div><span className="inspector-symbol" aria-hidden="true">⌁</span></div><div className="inspector-body"><p className="small-note">数据接通后，在这里保留当前研究对象的依据。</p><ul className="inspection-list">{section.inspector.map((item) => <li key={item}>{item}</li>)}</ul><p className="boundary-note">未知保持未知<br /><span>事实、推断与建议分别标明</span></p></div></aside>
   </div>;

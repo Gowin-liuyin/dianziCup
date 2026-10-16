@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import ssl
 import time
 from collections.abc import Iterator
@@ -28,7 +29,7 @@ from ai_intel.infrastructure.settings import ApplicationSettings
 from ai_intel.knowledge.models import job_runs, outbox_events
 from ai_intel.knowledge.persistence_models import change_events
 from ai_intel.retrieval.hybrid_contracts import HybridRetrievalError, IndexChange, IndexGeneration
-from ai_intel.retrieval.indexing import HybridIndexer
+from ai_intel.retrieval.indexing import HybridIndexer, require_projection_deadline
 from ai_intel.retrieval.opensearch_client import OpenSearchCorpusClient
 from ai_intel.workers.executor import (
     JobExecutionContext,
@@ -39,6 +40,16 @@ from ai_intel.workers.executor import (
 
 KNOWLEDGE_CHANGE_JOB_TYPE = "knowledge_change"
 PROJECTION_TIMEOUT_SECONDS = 20.0
+
+
+def _new_projection_deadline() -> float:
+    if (
+        type(PROJECTION_TIMEOUT_SECONDS) not in (int, float)
+        or not math.isfinite(PROJECTION_TIMEOUT_SECONDS)
+        or PROJECTION_TIMEOUT_SECONDS <= 0
+    ):
+        raise ValueError("projection timeout must be finite positive seconds")
+    return time.monotonic() + PROJECTION_TIMEOUT_SECONDS
 
 
 @dataclass(frozen=True)
@@ -103,14 +114,13 @@ def make_knowledge_change_handler(
     ) -> JobExecutionResult:
         if indexer is None:
             raise JobExecutionError("corpus_projection_not_configured", blocked=True)
-        change = find_projection_change(session, context)
         deadline = (
-            time.monotonic() + PROJECTION_TIMEOUT_SECONDS
-            if projection_deadline is None
-            else projection_deadline
+            _new_projection_deadline() if projection_deadline is None else projection_deadline
         )
         try:
-            indexer.prepare_generation()
+            require_projection_deadline(deadline)
+            change = find_projection_change(session, context)
+            indexer.prepare_generation(deadline=deadline)
             receipt = indexer.refresh_scope(change, deadline=deadline)
         except HybridRetrievalError as error:
             raise JobExecutionError(str(error)) from None
@@ -139,6 +149,7 @@ def build_projection_job_handlers(
     if settings.opensearch_url is None or settings.semantic_model_cache_directory is None:
         yield {KNOWLEDGE_CHANGE_JOB_TYPE: make_knowledge_change_handler(None)}
         return
+    deadline = _new_projection_deadline()
     generation = IndexGeneration(settings.hybrid_generation_id, settings.hybrid_index_name)
     generation.require_fixed_space()
     authentication = None
@@ -153,7 +164,6 @@ def build_projection_job_handlers(
         verify=ssl.create_default_context(cafile=settings.opensearch_ca_file),
         trust_env=False,
     ) as client:
-        deadline = time.monotonic() + PROJECTION_TIMEOUT_SECONDS
         models = _DeadlineSemanticModels(
             LocalSemanticModels(settings.semantic_model_cache_directory, timeout_seconds=10.0),
             deadline,

@@ -258,7 +258,7 @@ def test_object_failure_leaves_accurate_metadata_and_no_cursor(catalog_engine, t
                 raise OSError("synthetic storage error with credentials and body")
             return delegate.store_bytes(payload)
 
-        def read_verified(self, digest):
+        def read_verified(self, digest, *, deadline_monotonic=None):
             return b"corrupted response"
 
         def delete_object(self, digest):

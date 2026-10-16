@@ -2,6 +2,7 @@
 
 import gc
 import hashlib
+import time
 import weakref
 from dataclasses import FrozenInstanceError, replace
 from unittest.mock import MagicMock
@@ -62,6 +63,35 @@ def test_public_reads_reopen_storage_but_freeze_deduplicated_immutable_bytes():
         recorder.delete_object(SOURCE_HASH)
     store.store_bytes.assert_not_called()
     store.delete_object.assert_not_called()
+
+
+def test_recorder_forwards_original_deadline_without_wrapping_timeout():
+    store = MagicMock(spec=ContentStorage)
+    recorder = VerifiedContentRecorder(store, {SOURCE_HASH: len(SOURCE)})
+    deadline = time.monotonic() + 2
+    store.read_verified.side_effect = TimeoutError("content_read_deadline_exhausted")
+    with pytest.raises(TimeoutError, match="content_read_deadline_exhausted"):
+        recorder.read_verified(SOURCE_HASH, deadline_monotonic=deadline)
+    store.read_verified.assert_called_once_with(SOURCE_HASH, deadline_monotonic=deadline)
+    assert dict(recorder.freeze()) == {}
+
+
+def test_expired_recorder_deadline_never_opens_underlying_store():
+    store = MagicMock(spec=ContentStorage)
+    recorder = VerifiedContentRecorder(store, {SOURCE_HASH: len(SOURCE)})
+    with pytest.raises(TimeoutError):
+        recorder.read_verified(SOURCE_HASH, deadline_monotonic=time.monotonic() - 1)
+    store.read_verified.assert_not_called()
+    assert dict(recorder.freeze()) == {}
+
+
+def test_frozen_verified_content_respects_deadline_without_external_fallback():
+    frozen = FrozenVerifiedContent(proof())
+    assert frozen.read_verified(SOURCE_HASH, deadline_monotonic=time.monotonic() + 2) == SOURCE
+    with pytest.raises(TimeoutError):
+        frozen.read_verified(SOURCE_HASH, deadline_monotonic=time.monotonic() - 1)
+    with pytest.raises(ValueError, match="deadline must be finite"):
+        frozen.read_verified(SOURCE_HASH, deadline_monotonic=float("nan"))
 
 
 def test_proof_copies_input_mapping_and_hides_raw_bytes_from_result_representation():

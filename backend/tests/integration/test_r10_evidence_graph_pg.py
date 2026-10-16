@@ -90,6 +90,15 @@ def store_fixture_original(connection, revision_id):
             content_hash=stored.content_hash,
             parser_version="fixture-text-1.1",
             normalizer_version="fixture-unicode-1.1",
+            source_metadata={
+                **connection.scalar(
+                    select(document_revisions.c.source_metadata).where(
+                        document_revisions.c.revision_id == revision_id
+                    )
+                ),
+                "data_mode": "fixture",
+                "data_mode_policy_version": "trusted-source-runtime-v1",
+            },
         )
     )
     document_id = connection.scalar(
@@ -187,6 +196,8 @@ def replace_source_body(
                 or "https://example.invalid/advisory/" + submission.revision_id.value,
                 source_metadata={
                     "is_synthetic": True,
+                    "data_mode": "fixture",
+                    "data_mode_policy_version": "trusted-source-runtime-v1",
                     "content_coverage": "full_text",
                     "blocks_complete": True,
                     "source_version": source_version,

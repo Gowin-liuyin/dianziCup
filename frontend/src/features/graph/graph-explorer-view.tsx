@@ -172,6 +172,7 @@ function GraphRequest({ eventId, dataMode, onNavigateBack }: GraphExplorerProps)
 /** 调用者沿用AuthProvider；换事件/会话/权限即重建读取上下文，撤权和失败不会继续展示旧图。 */
 export function GraphExplorerView(props: GraphExplorerProps) {
   const { state, actionPending, sessionGeneration, error } = useAuthSession();
-  if (state.kind !== "authenticated" || actionPending) return <section className="graph-explorer">{error?.status === 401 && <ErrorPanel error={error} message="会话已失效。旧图已清除，请重新登录。" />}<EmptyState title="登录后查看证据图" description="当前没有可用认证上下文。请先恢复团队会话。" /></section>;
+  if (state.kind === "loading" || actionPending) return <section className="graph-explorer"><p className="loading-state" role="status">正在确认图谱访问会话…</p></section>;
+  if (state.kind !== "authenticated") return <section className="graph-explorer">{error?.status === 401 && <ErrorPanel error={error} message="会话已失效。旧图已清除，请重新登录。" />}<EmptyState title="登录后查看证据图" description="当前没有可用认证上下文。请先恢复团队会话。" /><a className="button secondary" href="#session">核对会话与权限</a></section>;
   return <GraphRequest key={`${sessionGeneration}-${state.user.user_id}-${state.user.permission_version}-${props.eventId}`} {...props} />;
 }

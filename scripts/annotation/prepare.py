@@ -5,8 +5,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import stat
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
@@ -15,7 +18,6 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from scripts.verify_plan import load_json
 
 
 class PreparationError(ValueError):
@@ -65,6 +67,8 @@ def digest(value: object) -> str:
 
 
 def read_document(path: Path) -> dict[str, object]:
+    from scripts.verify_plan import load_json
+
     try:
         if path.stat().st_size > 10_000_000:
             raise PreparationError("INPUT_TOO_LARGE")
@@ -352,15 +356,86 @@ def require_external(path: Path, roots: list[Path]) -> None:
         raise PreparationError("HUMAN_OR_HOLDOUT_PATH_MUST_BE_EXTERNAL")
 
 
-def write_new(path: Path, document: dict[str, object]) -> None:
-    """Exclusive creation prevents silent replacement of prior imports or exports."""
-    path.parent.mkdir(parents=True, exist_ok=True)
+def require_unlinked_output_parent(path: Path) -> None:
+    """Refuses existing symlink/junction ancestors; hostile concurrent renames remain a limit."""
+    if any(
+        parent.is_symlink() or (os.name == "nt" and parent.is_junction())
+        for parent in path.parents
+    ):
+        raise PreparationError("OUTPUT_PATH_UNSAFE")
+
+
+def sync_output_directory(directory: Path) -> None:
+    """Syncs POSIX directory entries; Windows file fsync does not promise power-loss durability."""
+    if os.name == "nt":
+        return
+    descriptor = os.open(directory, os.O_RDONLY)
     try:
-        with path.open("x", encoding="utf-8", newline="\n") as stream:
-            json.dump(document, stream, ensure_ascii=False, indent=2, allow_nan=False)
-            stream.write("\n")
-    except FileExistsError:
-        raise PreparationError("OUTPUT_EXISTS") from None
+        if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            raise PreparationError("OUTPUT_PATH_CHANGED")
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def remove_owned_pending(path: Path, created_identity: os.stat_result) -> None:
+    """Only unlinks the exact regular file this invocation created, never scans other residues."""
+    try:
+        current_identity = path.lstat()
+    except FileNotFoundError:
+        return
+    if stat.S_ISREG(current_identity.st_mode) and os.path.samestat(
+        created_identity, current_identity
+    ):
+        path.unlink()
+
+
+def write_new(path: Path, document: dict[str, object]) -> None:
+    """Publishes complete JSON without replacement; interrupted pending files require validation."""
+    path = Path(os.path.abspath(path))
+    require_unlinked_output_parent(path)
+    if path.exists() or path.is_symlink():
+        raise PreparationError("OUTPUT_EXISTS")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    require_unlinked_output_parent(path)
+    parent_identity = path.parent.stat()
+    pending: Path | None = None
+    created_identity: os.stat_result | None = None
+    descriptor, pending_name = tempfile.mkstemp(
+        prefix=".r19-pending-", suffix=".json", dir=path.parent
+    )
+    try:
+        try:
+            pending = Path(pending_name)
+            created_identity = os.fstat(descriptor)
+            stream = os.fdopen(descriptor, "w", encoding="utf-8", newline="\n")
+        except BaseException:
+            os.close(descriptor)
+            raise
+        with stream as output_stream:
+            json.dump(
+                document, output_stream, ensure_ascii=False, indent=2, allow_nan=False
+            )
+            output_stream.write("\n")
+            output_stream.flush()
+            os.fsync(output_stream.fileno())
+        require_unlinked_output_parent(path)
+        current_identity = pending.lstat()
+        if (
+            not os.path.samestat(parent_identity, path.parent.stat())
+            or not stat.S_ISREG(current_identity.st_mode)
+            or not os.path.samestat(created_identity, current_identity)
+        ):
+            raise PreparationError("OUTPUT_PATH_CHANGED")
+        try:
+            os.link(pending, path)
+        except FileExistsError:
+            raise PreparationError("OUTPUT_EXISTS") from None
+        sync_output_directory(path.parent)
+    finally:
+        if pending is not None and created_identity is not None:
+            remove_owned_pending(pending, created_identity)
+    sync_output_directory(path.parent)
 
 
 def scan_leaks(

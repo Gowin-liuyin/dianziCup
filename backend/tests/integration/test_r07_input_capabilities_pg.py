@@ -98,7 +98,7 @@ def test_each_private_parent_is_denied_before_object_read(migrated_engine, tmp_p
         )
 
     class NoReadStore:
-        def read_verified(self, digest):
+        def read_verified(self, digest, *, deadline_monotonic=None):
             pytest.fail("invisible catalogue caused object IO")
 
     with Session(migrated_engine) as session, pytest.raises(EnrichmentInputError):

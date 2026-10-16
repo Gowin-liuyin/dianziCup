@@ -52,7 +52,10 @@ def build_question_service(
         dns_resolver=settings.dns_resolver,
     )
     return GroundedQuestionService(
-        engine, EventEvidenceRetriever(engine, models), client, data_mode=settings.data_mode
+        engine,
+        EventEvidenceRetriever(engine, models, data_mode=settings.data_mode),
+        client,
+        data_mode=settings.data_mode,
     )
 
 
@@ -93,8 +96,9 @@ def build_question_router(
                 request, 404, "not_found", "requested resource is not available"
             )
         if isinstance(error, QuestionFailure):
+            code = "answer_failed" if error.code == "answer_lease_expired" else error.code
             return problem_response(
-                request, error.status, error.code, "question request could not be completed"
+                request, error.status, code, "question request could not be completed"
             )
         return problem_response(
             request, 503, "question_database_unavailable", "question database is unavailable"

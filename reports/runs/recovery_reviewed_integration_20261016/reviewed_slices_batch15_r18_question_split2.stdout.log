@@ -1,0 +1,229 @@
+..................................FFFF                                   [100%]
+================================== FAILURES ===================================
+_ test_question_failure_preserves_stable_public_problem[answer_lease_expired-answer_failed-/v1] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000021739F7FD70>
+prefix = '/v1', internal_code = 'answer_lease_expired'
+public_code = 'answer_failed'
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x000002173A073600>
+
+    @pytest.mark.parametrize("prefix", ["/v1", "/api/v1"])
+    @pytest.mark.parametrize(
+        ("internal_code", "public_code"),
+        [("answer_lease_expired", "answer_failed"), ("question_model_failed", "question_model_failed")],
+    )
+    def test_question_failure_preserves_stable_public_problem(
+        monkeypatch, prefix, internal_code, public_code, register_sensitive_failure_value
+    ):
+        engine = create_engine("sqlite://")
+        monkeypatch.setattr(application_module, "build_engine", lambda settings: engine)
+    
+        class FixtureExpiredQuestion:
+            """Only the HTTP error mapping is exercised; no model or SQL request is performed."""
+    
+            def ask(self, payload, scope_provider, key, *, session_token):
+                scope_provider()
+                raise QuestionFailure(internal_code, 409)
+    
+        monkeypatch.setattr(
+            question_routes, "build_question_service", lambda engine, settings: FixtureExpiredQuestion()
+        )
+        authentication = AuthenticationSessionService(InMemoryUserDirectory(), (ORIGIN,), False)
+        password = SecretStr(str(uuid4()))
+        register_sensitive_failure_value(password)
+        authentication.create_precreated_user(
+            "fixture-expired-answer-user", password.get_secret_value(), "tenant-a", Role.VIEWER
+        )
+        settings = ApplicationSettings(
+            app_env="test", data_mode="fixture", database_url=SecretStr("sqlite://")
+        )
+        try:
+            with TestClient(create_application(authentication, settings=settings)) as client:
+                login = client.post(
+                    "/v1/auth/login",
+                    json={"username": "fixture-expired-answer-user", "password": password.get_secret_value()},
+                    headers={"Origin": ORIGIN},
+                )
+                assert login.status_code == 200
+                response = client.post(
+                    prefix + "/questions",
+                    json={"question": "fixture expired answer", "event_ids": [str(uuid4())]},
+                    headers={"Origin": ORIGIN, CSRF_HEADER_NAME: login.json()["csrf_token"]},
+                )
+>               assert response.status_code == 409
+E               assert 422 == 409
+E                +  where 422 = <Response [422 Unprocessable Content]>.status_code
+
+tests\unit\test_r18_expired_answer_problem.py:65: AssertionError
+_ test_question_failure_preserves_stable_public_problem[answer_lease_expired-answer_failed-/api/v1] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002173A147890>
+prefix = '/api/v1', internal_code = 'answer_lease_expired'
+public_code = 'answer_failed'
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x000002173A218040>
+
+    @pytest.mark.parametrize("prefix", ["/v1", "/api/v1"])
+    @pytest.mark.parametrize(
+        ("internal_code", "public_code"),
+        [("answer_lease_expired", "answer_failed"), ("question_model_failed", "question_model_failed")],
+    )
+    def test_question_failure_preserves_stable_public_problem(
+        monkeypatch, prefix, internal_code, public_code, register_sensitive_failure_value
+    ):
+        engine = create_engine("sqlite://")
+        monkeypatch.setattr(application_module, "build_engine", lambda settings: engine)
+    
+        class FixtureExpiredQuestion:
+            """Only the HTTP error mapping is exercised; no model or SQL request is performed."""
+    
+            def ask(self, payload, scope_provider, key, *, session_token):
+                scope_provider()
+                raise QuestionFailure(internal_code, 409)
+    
+        monkeypatch.setattr(
+            question_routes, "build_question_service", lambda engine, settings: FixtureExpiredQuestion()
+        )
+        authentication = AuthenticationSessionService(InMemoryUserDirectory(), (ORIGIN,), False)
+        password = SecretStr(str(uuid4()))
+        register_sensitive_failure_value(password)
+        authentication.create_precreated_user(
+            "fixture-expired-answer-user", password.get_secret_value(), "tenant-a", Role.VIEWER
+        )
+        settings = ApplicationSettings(
+            app_env="test", data_mode="fixture", database_url=SecretStr("sqlite://")
+        )
+        try:
+            with TestClient(create_application(authentication, settings=settings)) as client:
+                login = client.post(
+                    "/v1/auth/login",
+                    json={"username": "fixture-expired-answer-user", "password": password.get_secret_value()},
+                    headers={"Origin": ORIGIN},
+                )
+                assert login.status_code == 200
+                response = client.post(
+                    prefix + "/questions",
+                    json={"question": "fixture expired answer", "event_ids": [str(uuid4())]},
+                    headers={"Origin": ORIGIN, CSRF_HEADER_NAME: login.json()["csrf_token"]},
+                )
+>               assert response.status_code == 409
+E               assert 422 == 409
+E                +  where 422 = <Response [422 Unprocessable Content]>.status_code
+
+tests\unit\test_r18_expired_answer_problem.py:65: AssertionError
+_ test_question_failure_preserves_stable_public_problem[question_model_failed-question_model_failed-/v1] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002173A13B380>
+prefix = '/v1', internal_code = 'question_model_failed'
+public_code = 'question_model_failed'
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x000002173A071800>
+
+    @pytest.mark.parametrize("prefix", ["/v1", "/api/v1"])
+    @pytest.mark.parametrize(
+        ("internal_code", "public_code"),
+        [("answer_lease_expired", "answer_failed"), ("question_model_failed", "question_model_failed")],
+    )
+    def test_question_failure_preserves_stable_public_problem(
+        monkeypatch, prefix, internal_code, public_code, register_sensitive_failure_value
+    ):
+        engine = create_engine("sqlite://")
+        monkeypatch.setattr(application_module, "build_engine", lambda settings: engine)
+    
+        class FixtureExpiredQuestion:
+            """Only the HTTP error mapping is exercised; no model or SQL request is performed."""
+    
+            def ask(self, payload, scope_provider, key, *, session_token):
+                scope_provider()
+                raise QuestionFailure(internal_code, 409)
+    
+        monkeypatch.setattr(
+            question_routes, "build_question_service", lambda engine, settings: FixtureExpiredQuestion()
+        )
+        authentication = AuthenticationSessionService(InMemoryUserDirectory(), (ORIGIN,), False)
+        password = SecretStr(str(uuid4()))
+        register_sensitive_failure_value(password)
+        authentication.create_precreated_user(
+            "fixture-expired-answer-user", password.get_secret_value(), "tenant-a", Role.VIEWER
+        )
+        settings = ApplicationSettings(
+            app_env="test", data_mode="fixture", database_url=SecretStr("sqlite://")
+        )
+        try:
+            with TestClient(create_application(authentication, settings=settings)) as client:
+                login = client.post(
+                    "/v1/auth/login",
+                    json={"username": "fixture-expired-answer-user", "password": password.get_secret_value()},
+                    headers={"Origin": ORIGIN},
+                )
+                assert login.status_code == 200
+                response = client.post(
+                    prefix + "/questions",
+                    json={"question": "fixture expired answer", "event_ids": [str(uuid4())]},
+                    headers={"Origin": ORIGIN, CSRF_HEADER_NAME: login.json()["csrf_token"]},
+                )
+>               assert response.status_code == 409
+E               assert 422 == 409
+E                +  where 422 = <Response [422 Unprocessable Content]>.status_code
+
+tests\unit\test_r18_expired_answer_problem.py:65: AssertionError
+_ test_question_failure_preserves_stable_public_problem[question_model_failed-question_model_failed-/api/v1] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000021739F97C80>
+prefix = '/api/v1', internal_code = 'question_model_failed'
+public_code = 'question_model_failed'
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x0000021739E82700>
+
+    @pytest.mark.parametrize("prefix", ["/v1", "/api/v1"])
+    @pytest.mark.parametrize(
+        ("internal_code", "public_code"),
+        [("answer_lease_expired", "answer_failed"), ("question_model_failed", "question_model_failed")],
+    )
+    def test_question_failure_preserves_stable_public_problem(
+        monkeypatch, prefix, internal_code, public_code, register_sensitive_failure_value
+    ):
+        engine = create_engine("sqlite://")
+        monkeypatch.setattr(application_module, "build_engine", lambda settings: engine)
+    
+        class FixtureExpiredQuestion:
+            """Only the HTTP error mapping is exercised; no model or SQL request is performed."""
+    
+            def ask(self, payload, scope_provider, key, *, session_token):
+                scope_provider()
+                raise QuestionFailure(internal_code, 409)
+    
+        monkeypatch.setattr(
+            question_routes, "build_question_service", lambda engine, settings: FixtureExpiredQuestion()
+        )
+        authentication = AuthenticationSessionService(InMemoryUserDirectory(), (ORIGIN,), False)
+        password = SecretStr(str(uuid4()))
+        register_sensitive_failure_value(password)
+        authentication.create_precreated_user(
+            "fixture-expired-answer-user", password.get_secret_value(), "tenant-a", Role.VIEWER
+        )
+        settings = ApplicationSettings(
+            app_env="test", data_mode="fixture", database_url=SecretStr("sqlite://")
+        )
+        try:
+            with TestClient(create_application(authentication, settings=settings)) as client:
+                login = client.post(
+                    "/v1/auth/login",
+                    json={"username": "fixture-expired-answer-user", "password": password.get_secret_value()},
+                    headers={"Origin": ORIGIN},
+                )
+                assert login.status_code == 200
+                response = client.post(
+                    prefix + "/questions",
+                    json={"question": "fixture expired answer", "event_ids": [str(uuid4())]},
+                    headers={"Origin": ORIGIN, CSRF_HEADER_NAME: login.json()["csrf_token"]},
+                )
+>               assert response.status_code == 409
+E               assert 422 == 409
+E                +  where 422 = <Response [422 Unprocessable Content]>.status_code
+
+tests\unit\test_r18_expired_answer_problem.py:65: AssertionError
+- generated xml file: D:\dianzi\reports\runs\recovery_reviewed_integration_20261016\reviewed_slices_batch15_r18_question_split2.xml -
+=========================== short test summary info ===========================
+FAILED tests/unit/test_r18_expired_answer_problem.py::test_question_failure_preserves_stable_public_problem[answer_lease_expired-answer_failed-/v1]
+FAILED tests/unit/test_r18_expired_answer_problem.py::test_question_failure_preserves_stable_public_problem[answer_lease_expired-answer_failed-/api/v1]
+FAILED tests/unit/test_r18_expired_answer_problem.py::test_question_failure_preserves_stable_public_problem[question_model_failed-question_model_failed-/v1]
+FAILED tests/unit/test_r18_expired_answer_problem.py::test_question_failure_preserves_stable_public_problem[question_model_failed-question_model_failed-/api/v1]
+4 failed, 34 passed in 4.93s

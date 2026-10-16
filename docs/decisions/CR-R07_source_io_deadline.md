@@ -13,3 +13,12 @@ StructuredFactProofReader先在短事务核身份、scope、修订/事实元数�
 兼容：仅内部可选参数，无公开DTO/评分/金标/迁移/新依赖。旧非deadline调用语义保留；新R14消费者须强制deadline。回滚停止受此新内部版本影响的活动任务并恢复旧reader/协议，保留事实、操作回执、历史及原失败。不同业务版本不拼同一稳定窗口。影响R02/R07/R10/R12/R14/R18/R20全部存储调用者，必须先索引并rg核全部实现和调用方，不以Any/cast/忽略掩盖协议失配。
 
 验证：真实延迟存储/慢响应与断流、剩余deadline耗尽、Unicode/大小/hash、并发独立deadline、不持续后台IO、初/末身份和版本失效、IO期间真实driver事务状态无SQL观察、57014/55P03映射与其他SQL错误传播；原348/304/658与affected原PG回归按必要去重。旧R10合成事实helper若缺mode/policy，仅明确fixture输入标签且记录逐字段变更，原断言/URI/金标不变；unknown/unmarked生产输入继续拒绝。最终deadline、真实PG/live/性能/人工各层分开，未运行not_run。
+
+
+## 2026-10-17T05:17:54+08:00 · Windows原生执行边界的根因修复
+
+新独立诊断以同一固定worker/guard证实NO_WINDOW派生额外conhost，而DETACHED_PROCESS保持PIPE与正确退出并减少两个console进程；冻结4d实际150ms原文deadline在656ms才OSError，最终8365byte stdin同步write未受communicate timeout约束。唯一IO作者获准仅将固定contentworker与共享_start_windows_cpu_guard的creationflags改DETACHED_PROCESS(0x8)，保留handle_list/PIPE/DEVNULL/Job/no-breakaway/并发slot2/原CPU与memory/进程10。不能过早退出持lastKILL_CLOSE handle的guardian。PDF与semantic全部受影响原生回归及typed失败必须复验，原CPU1秒红不能降低阈值。
+
+最终编码的内部配置有明确小上限，并在fresh sole-writer stdin实测pipe容量足以容纳完整bytes后才写；GetNamedPipeInfo不是任意时点free容量证明。worker在guard readiness前消费配置，startup仍归父绝对deadline。秘密不写tempfile/CLI/env，不用无界writer线程；非阻塞/短写需准确处理。清理保留主Timeout/取消并分别关闭pipe/held handles；未确认worker及guardian终态不能释放slot冒空闲，应保留有界owner状态供关闭复核。只允许定向私有native身份/终态判断，不建立通用平台或改共享guard生命周期。
+
+原4d/5a7 WIP及cap12/cap11/无XML红保留，既有658/76只归各自代码hash；新固定实现等待新的独立审查、真实PG事务两围栏及实际MinIO集成。loopback SDK与harmless native不计实际MinIO live。

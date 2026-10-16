@@ -18,7 +18,6 @@ from ai_intel.domain.access import AccessScope, CrossTenantAccessError, Role
 from ai_intel.domain.enums import ClaimStatus
 from ai_intel.domain.records import ClaimRecord
 from ai_intel.domain.values import Identifier, VisibilityScope
-from ai_intel.enrichment import inputs
 from ai_intel.enrichment.signals import enrich_structured_fields
 from ai_intel.enrichment.source_report_reader import build_source_report_reader
 from ai_intel.infrastructure.content_store import ContentStorage, ContentStore
@@ -112,6 +111,7 @@ def read_case(monkeypatch, tmp_path):
         "tenant_id": None,
         "parse_status": "parsed",
         "kind": "advisory",
+        "category": source.source_category.value,
         "normalizer_version": source.source_version,
         "source_metadata": {
             "content_coverage": "full_text",
@@ -150,6 +150,11 @@ def read_case(monkeypatch, tmp_path):
                 "block_id": str(block.block_id),
                 "revision_id": revision_id,
                 "start_offset": block.start_offset,
+                "end_offset": block.start_offset + len(block.text),
+                "block_text": block.text,
+                "text_sha256": block.text_sha256,
+                "json_pointer": block.json_pointer,
+                "page_number": block.page_number,
             }
             for block in source.blocks
         ),
@@ -186,7 +191,6 @@ def read_case(monkeypatch, tmp_path):
         reader, "_read_inputs", lambda session, request: getattr(case, next(snapshots))
     )
     monkeypatch.setattr(reader, "_lock_inputs", Mock())
-    monkeypatch.setattr(inputs, "_revision_blocks", lambda session, revision: (source.blocks, True))
     monkeypatch.setattr(bridge.KnowledgeRepository, "get_claim", lambda self, claim: case.record)
 
     def evidence_response(self, evidence_id):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from collections.abc import Callable
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -70,6 +71,15 @@ VERIFICATION_SYSTEM = (
     "project_suggestion仅在纯建议、不夹带事实、不声称官方处置时可supported，"
     "并将suggestion_only设true；含事实的建议必须unsupported。事实项suggestion_only=false。"
 )
+
+
+class GroundedAnswerGuardFailure(RuntimeError):
+    """Retain completed model attempts when fresh authorization rejects a later call."""
+
+    def __init__(self, error: Exception, attempts: tuple[AttemptMetadata, ...]) -> None:
+        super().__init__("answer_authorization_changed")
+        self.error = error
+        self.attempts = attempts
 
 
 def _validate_inputs(question: str, evidence: tuple[CitationProjection, ...]) -> None:
@@ -184,7 +194,11 @@ def _check_deadline(deadline: float) -> None:
 
 
 def generate_grounded_answer(
-    client: GenerationClient, question: str, evidence: tuple[CitationProjection, ...]
+    client: GenerationClient,
+    question: str,
+    evidence: tuple[CitationProjection, ...],
+    *,
+    before_call: Callable[[], None] | None = None,
 ) -> GroundedAnswerDraft:
     """Generate once, verify once, and fail safely with every actual attempt retained.
 
@@ -193,6 +207,15 @@ def generate_grounded_answer(
     """
     deadline = time.monotonic() + TOTAL_TIMEOUT_SECONDS
     attempts: tuple[AttemptMetadata, ...] = ()
+
+    def authorize_call() -> None:
+        if before_call is not None:
+            try:
+                before_call()
+            except Exception as error:
+                raise GroundedAnswerGuardFailure(error, attempts) from None
+            _check_deadline(deadline)
+
     try:
         _validate_inputs(question, evidence)
         if not isinstance(client, GenerationClient) or client.limits.total_timeout_seconds > 30:
@@ -212,6 +235,7 @@ def generate_grounded_answer(
             allow_format_repair=False,
         )
         _check_deadline(deadline)
+        authorize_call()
         generated_result = client.generate(request, GeneratedAnswer)
         attempts += generated_result.attempts
         if len(generated_result.attempts) != 1 or generated_result.format_repair_used:
@@ -238,6 +262,7 @@ def generate_grounded_answer(
             }
         )
         _check_deadline(deadline)
+        authorize_call()
         verification_result = client.generate(verification_request, SupportVerification)
         attempts += verification_result.attempts
         if len(verification_result.attempts) != 1 or verification_result.format_repair_used:

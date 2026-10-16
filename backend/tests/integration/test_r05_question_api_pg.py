@@ -532,12 +532,16 @@ def test_final_auth_lock_orders_later_pg_mutation_after_answer_commit(
     owner_pids = []
     require_current = EventEvidenceRetriever.require_current
 
-    def block_after_auth_lock(session, scope, event_id, epoch, citations, *, lock_epoch=False):
+    def block_after_auth_lock(
+        session, scope, event_id, epoch, citations, *, lock_epoch=False, data_mode="live"
+    ):
         if lock_epoch:
             owner_pids.append(session.scalar(text("SELECT pg_backend_pid()")))
             locked.set()
             assert release.wait(10), "fixture final commit barrier timed out"
-        return require_current(session, scope, event_id, epoch, citations, lock_epoch=lock_epoch)
+        return require_current(
+            session, scope, event_id, epoch, citations, lock_epoch=lock_epoch, data_mode=data_mode
+        )
 
     monkeypatch.setattr(
         EventEvidenceRetriever, "require_current", staticmethod(block_after_auth_lock)

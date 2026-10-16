@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
@@ -16,7 +17,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.selectable import FromClause
 
-from ai_intel.api.knowledge_contracts import CitationProjection
+from ai_intel.api.knowledge_contracts import CitationProjection, DataMode
 from ai_intel.api.knowledge_read_service import KnowledgeReadService, sources
 from ai_intel.domain.access import READ_PUBLIC, AccessScope, CrossTenantAccessError
 from ai_intel.infrastructure.models.clients import (
@@ -173,11 +174,23 @@ def current_public_epoch(session: Session, *, lock: bool = False) -> int:
 class EventEvidenceRetriever:
     """R05只为显式单事件建立/查询索引；R12的全库混合检索另有验收。"""
 
-    def __init__(self, engine: Engine, models: SemanticModels) -> None:
+    def __init__(
+        self, engine: Engine, models: SemanticModels, *, data_mode: DataMode = "live"
+    ) -> None:
+        if data_mode not in {"live", "fixture"}:
+            raise ValueError("invalid retrieval data mode")
         self.engine = engine
         self.models = models
+        self.data_mode = data_mode
 
-    def retrieve(self, scope: AccessScope, event_id: UUID, question: str) -> EvidenceSelection:
+    def retrieve(
+        self,
+        scope: AccessScope,
+        event_id: UUID,
+        question: str,
+        *,
+        before_io: Callable[[], None] | None = None,
+    ) -> EvidenceSelection:
         scope.requires(READ_PUBLIC)
         with Session(self.engine) as session:
             visible = session.scalar(
@@ -191,7 +204,7 @@ class EventEvidenceRetriever:
             )
             partial = len(rows) > MAX_EVIDENCE
             rows = rows[:MAX_EVIDENCE]
-            read_service = KnowledgeReadService(session, scope, "live")
+            read_service = KnowledgeReadService(session, scope, self.data_mode)
             available: dict[UUID, CitationProjection] = {}
             chunks: list[EvidenceChunk] = []
             for row in rows:
@@ -226,11 +239,15 @@ class EventEvidenceRetriever:
         pending: list[tuple[EvidenceChunk, tuple[float, ...]]] = []
         for offset in range(0, len(missing), 8):
             batch = missing[offset : offset + 8]
+            if before_io is not None:
+                before_io()
             embedded = self.models.embed_passages(tuple(chunk.text for chunk in batch))
             self._embedding(embedded, len(batch))
             pending.extend(zip(batch, embedded.vectors, strict=True))
         with Session(self.engine) as session, session.begin():
-            self.require_current(session, scope, event_id, epoch, tuple(available.values()))
+            self.require_current(
+                session, scope, event_id, epoch, tuple(available.values()), data_mode=self.data_mode
+            )
             for chunk, vector in pending:
                 session.execute(
                     insert(retrieval_chunks)
@@ -248,10 +265,14 @@ class EventEvidenceRetriever:
                     )
                     .on_conflict_do_nothing()
                 )
+        if before_io is not None:
+            before_io()
         query = self.models.embed_query(question)
         self._embedding(query, 1)
         with Session(self.engine) as session:
-            self.require_current(session, scope, event_id, epoch, tuple(available.values()))
+            self.require_current(
+                session, scope, event_id, epoch, tuple(available.values()), data_mode=self.data_mode
+            )
             distance = retrieval_chunks.c.embedding.cosine_distance(list(query.vectors[0]))
             selected = list(
                 session.execute(
@@ -267,6 +288,8 @@ class EventEvidenceRetriever:
         originals = {chunk.chunk_id: chunk for chunk in chunks}
         for row in selected:
             self._require_derived_integrity(row, originals[row["chunk_id"]])
+        if before_io is not None:
+            before_io()
         reranked = self.models.rerank(question, tuple(row["chunk_text"] for row in selected))
         if (
             reranked.model_version != RERANK_MODEL.model_version
@@ -335,6 +358,7 @@ class EventEvidenceRetriever:
         citations: tuple[CitationProjection, ...],
         *,
         lock_epoch: bool = False,
+        data_mode: DataMode = "live",
     ) -> None:
         scope.requires(READ_PUBLIC)
         if current_public_epoch(session, lock=lock_epoch) != epoch:
@@ -357,7 +381,7 @@ class EventEvidenceRetriever:
                 or citation.quote not in row["quote"]
             ):
                 raise RetrievalFailure("answer_evidence_changed")
-            current = KnowledgeReadService(session, scope, "live").read_evidence(
+            current = KnowledgeReadService(session, scope, data_mode).read_evidence(
                 citation.evidence_id
             )
             if (
