@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import math
 import re
+import time
+from collections.abc import Callable
 from urllib.parse import urlsplit
 
 import httpx
@@ -139,7 +143,13 @@ def bm25_body(
 class OpenSearchCorpusClient:
     """No arbitrary URL, raw query, shell, or SQL entry point is exposed to callers."""
 
-    def __init__(self, client: httpx.Client) -> None:
+    def __init__(
+        self,
+        client: httpx.Client,
+        *,
+        deadline: float | None = None,
+        async_client_factory: Callable[[], httpx.AsyncClient] | None = None,
+    ) -> None:
         parsed = urlsplit(str(client.base_url))
         if (
             parsed.scheme not in {"http", "https"}
@@ -154,6 +164,24 @@ class OpenSearchCorpusClient:
         ):
             raise ValueError("trusted OpenSearch base URL required; remote connections require TLS")
         self.client = client
+
+        def bounded_timeout(value: float | None) -> float:
+            return 10.0 if value is None else min(value, 10.0)
+
+        self.request_timeout = httpx.Timeout(
+            connect=bounded_timeout(client.timeout.connect),
+            read=bounded_timeout(client.timeout.read),
+            write=bounded_timeout(client.timeout.write),
+            pool=bounded_timeout(client.timeout.pool),
+        )
+        if (deadline is None) != (async_client_factory is None):
+            raise ValueError("a deadline requires an owned asynchronous client factory")
+        if deadline is not None and (
+            type(deadline) not in (int, float) or not math.isfinite(deadline)
+        ):
+            raise ValueError("deadline must be a finite monotonic timestamp")
+        self.deadline = deadline
+        self.async_client_factory = async_client_factory
 
     @staticmethod
     def _index(generation: IndexGeneration) -> str:
@@ -171,13 +199,15 @@ class OpenSearchCorpusClient:
         content: bytes | None = None,
     ) -> httpx.Response:
         try:
+            if self.deadline is not None:
+                return asyncio.run(self._request_before_deadline(method, path, body, content))
             response = self.client.request(
                 method,
                 path,
                 json=body,
                 content=content,
                 headers={"Content-Type": "application/x-ndjson"} if content is not None else None,
-                timeout=10.0,
+                timeout=self.request_timeout,
                 follow_redirects=False,
             )
             response.raise_for_status()
@@ -189,10 +219,46 @@ class OpenSearchCorpusClient:
             if status in {401, 403}:
                 raise HybridRetrievalError("opensearch_permission_denied") from None
             raise HybridRetrievalError(f"opensearch_http_{status}") from None
-        except httpx.TimeoutException:
+        except (httpx.TimeoutException, TimeoutError):
             raise HybridRetrievalError("opensearch_timeout") from None
         except (httpx.HTTPError, ValueError):
             raise HybridRetrievalError("opensearch_unavailable") from None
+
+    async def _request_before_deadline(
+        self, method: str, path: str, body: dict[str, object] | None, content: bytes | None
+    ) -> httpx.Response:
+        """Native async cancellation covers connect, headers, the whole body and client close."""
+        if self.deadline is None or self.async_client_factory is None:
+            raise HybridRetrievalError("opensearch_deadline_not_configured")
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise HybridRetrievalError("corpus_projection_deadline_exceeded")
+        async with asyncio.timeout(remaining):
+            async with self.async_client_factory() as client:
+                if client.base_url != self.client.base_url:
+                    raise HybridRetrievalError("opensearch_origin_mismatch")
+                async with client.stream(
+                    method,
+                    path,
+                    json=body,
+                    content=content,
+                    headers={"Content-Type": "application/x-ndjson"}
+                    if content is not None
+                    else None,
+                    follow_redirects=False,
+                ) as response:
+                    response.raise_for_status()
+                    collected = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        if len(collected) + len(chunk) > 2 * 1024**2:
+                            raise HybridRetrievalError("opensearch_response_limit")
+                        collected.extend(chunk)
+                    return httpx.Response(
+                        response.status_code,
+                        content=bytes(collected),
+                        headers={"Content-Type": response.headers.get("content-type", "")},
+                        request=response.request,
+                    )
 
     def create_index(self, generation: IndexGeneration) -> None:
         keyword_fields = (

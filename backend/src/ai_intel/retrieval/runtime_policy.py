@@ -158,7 +158,20 @@ def build_projection_job_handlers(
             LocalSemanticModels(settings.semantic_model_cache_directory, timeout_seconds=10.0),
             deadline,
         )
-        indexer = HybridIndexer(engine, models, OpenSearchCorpusClient(client), generation)
+
+        def async_search_client() -> httpx.AsyncClient:
+            return httpx.AsyncClient(
+                base_url=client.base_url,
+                timeout=settings.dependency_timeout_seconds,
+                auth=authentication,
+                verify=ssl.create_default_context(cafile=settings.opensearch_ca_file),
+                trust_env=False,
+            )
+
+        search = OpenSearchCorpusClient(
+            client, deadline=deadline, async_client_factory=async_search_client
+        )
+        indexer = HybridIndexer(engine, models, search, generation)
         yield {
             KNOWLEDGE_CHANGE_JOB_TYPE: make_knowledge_change_handler(
                 indexer, projection_deadline=deadline

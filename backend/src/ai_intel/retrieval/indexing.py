@@ -9,7 +9,7 @@ import time
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -20,9 +20,15 @@ from ai_intel.knowledge.persistence_models import change_events
 from ai_intel.retrieval.hybrid import (
     candidate_values,
     candidates_from_rows,
+    claims,
+    document_revisions,
+    documents,
+    events,
+    evidence,
     facts_query,
     read_scope_epochs,
     require_generation,
+    sources,
 )
 from ai_intel.retrieval.hybrid_contracts import (
     HybridQuery,
@@ -166,6 +172,15 @@ class HybridIndexer:
             epoch = epochs[change.scope_key]
             if event["epoch"] > epoch:
                 raise HybridRetrievalError("index_change_epoch_invalid")
+            authorities = (events, evidence, document_revisions, documents, sources, claims)
+            private_partition = or_(
+                *(relation.c.visibility == "tenant" for relation in authorities)
+            )
+            partition = (
+                and_(*(relation.c.visibility == "public" for relation in authorities))
+                if tenant is None
+                else private_partition
+            )
             rows = list(
                 session.execute(
                     facts_query(
@@ -175,14 +190,16 @@ class HybridIndexer:
                             available_before=datetime.max.replace(tzinfo=UTC),
                             include_graph=False,
                         ),
-                    ).limit(MAX_SCOPE_CHUNKS + 1)
+                    )
+                    .where(partition)
+                    .limit(MAX_SCOPE_CHUNKS + 1)
                 ).mappings()
             )
             if len(rows) > MAX_SCOPE_CHUNKS:
                 raise HybridRetrievalError("index_scope_capacity_exceeded")
             candidates = tuple(
                 item
-                for item in candidates_from_rows(session, worker_scope, rows)
+                for item in candidates_from_rows(session, worker_scope, rows, deadline=deadline)
                 if item.scope_key == change.scope_key
             )
             if len(candidates) > MAX_SCOPE_CHUNKS:

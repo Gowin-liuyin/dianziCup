@@ -185,11 +185,13 @@ def facts_query(scope: AccessScope, query: HybridQuery) -> Select[tuple[object, 
 
 
 def candidates_from_rows(
-    session: Session, scope: AccessScope, rows: list[RowMapping]
+    session: Session, scope: AccessScope, rows: list[RowMapping], *, deadline: float | None = None
 ) -> tuple[CorpusCandidate, ...]:
     candidates: list[CorpusCandidate] = []
     reader = KnowledgeReadService(session, scope, "live")
     for row in rows:
+        if deadline is not None and time.monotonic() >= deadline:
+            raise HybridRetrievalError("corpus_projection_deadline_exceeded")
         projection = reader.read_evidence(UUID(row["evidence_id"]))
         if projection.verified_at is None or projection.source_uri is None:
             raise HybridRetrievalError("corpus_evidence_integrity_unavailable")
