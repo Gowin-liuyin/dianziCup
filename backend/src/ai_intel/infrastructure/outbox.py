@@ -110,7 +110,7 @@ def relay_pending_events(
     publisher: EventPublisher,
     limit: int = 100,
 ) -> list[dict[str, str]]:
-    """broker失败保留事件与固定错误码；持行锁避免并发relay双发。"""
+    """仅发布权威job仍可投递且引用一致的事件，同行锁隔离取消与双发。"""
     if not 1 <= limit <= 1000:
         raise ValueError("outbox limit must be between 1 and 1000")
     if published_at.tzinfo is None or published_at.utcoffset() is None:
@@ -118,7 +118,10 @@ def relay_pending_events(
     pending = (
         session.execute(
             select(outbox_events)
+            .join(job_runs, job_runs.c.job_id == outbox_events.c.job_id)
             .where(
+                job_runs.c.status.in_(("queued", "retry_wait", "running")),
+                outbox_events.c.payload_ref == job_runs.c.payload_ref,
                 outbox_events.c.published_at.is_(None),
                 or_(
                     outbox_events.c.next_delivery_at.is_(None),
@@ -127,7 +130,7 @@ def relay_pending_events(
             )
             .order_by(outbox_events.c.created_at, outbox_events.c.event_id)
             .limit(limit)
-            .with_for_update(skip_locked=True)
+            .with_for_update(of=(job_runs, outbox_events), skip_locked=True)
         )
         .mappings()
         .all()

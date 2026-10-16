@@ -5,10 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, insert, or_, select, update
+from sqlalchemy import and_, case, func, insert, or_, select, update
 from sqlalchemy.orm import Session
 
 from ai_intel.domain.access import WRITE_ASSET, AccessScope, CrossTenantAccessError
@@ -16,6 +16,17 @@ from ai_intel.knowledge.models import job_payloads, job_runs, job_transitions, o
 from ai_intel.knowledge.persistence_models import change_events
 
 LEASE_SECONDS = 60
+DELIVERY_RECOVERY_GRACE_SECONDS = 60
+DELIVERY_ATTEMPTS_PER_JOB_ATTEMPT = 3
+DELIVERY_STOPPED_AT = datetime(9999, 12, 31, tzinfo=UTC)
+TERMINAL_JOB_STATUSES = (
+    "succeeded",
+    "partial",
+    "failed",
+    "cancelled",
+    "blocked",
+    "waiting_approval",
+)
 
 
 class JobLeaseLostError(RuntimeError):
@@ -354,46 +365,137 @@ def read_job_payload(session: Session, job_id: str, scope_tenant_id: str | None)
 
 
 def recover_expired_job_deliveries(session: Session, at: datetime, *, limit: int = 100) -> int:
-    """进程死亡后为过期租约重新建立outbox；已有未投递事件不再追加。"""
+    """PG补偿过期租约或已发布但未认领的投递，不增加job/attempt/预算。
+
+    每job既有broker尝试之和最多max_attempts×3。停止消息保留未发布事实，
+    以固定远期时间隔离；不会把认领前PG失败变成不可见的永久queued。
+    """
     require_aware_time(at)
     if not 1 <= limit <= 1000:
         raise ValueError("recovery limit must be between 1 and 1000")
+    stopped: list[str] = list(
+        session.execute(
+            select(outbox_events.c.event_id)
+            .join(job_runs, job_runs.c.job_id == outbox_events.c.job_id)
+            .where(
+                outbox_events.c.published_at.is_(None),
+                or_(
+                    outbox_events.c.next_delivery_at.is_(None),
+                    outbox_events.c.next_delivery_at < DELIVERY_STOPPED_AT,
+                ),
+                job_runs.c.status.in_(TERMINAL_JOB_STATUSES),
+            )
+            .limit(limit)
+            .with_for_update(of=outbox_events, skip_locked=True)
+        )
+        .scalars()
+        .all()
+    )
+    if stopped:
+        session.execute(
+            update(outbox_events)
+            .where(outbox_events.c.event_id.in_(stopped))
+            .values(next_delivery_at=DELIVERY_STOPPED_AT, last_error_code="job_delivery_stopped")
+        )
+    delivery_statistics = (
+        select(
+            outbox_events.c.job_id,
+            func.sum(outbox_events.c.delivery_attempts).label("delivery_attempts"),
+            func.max(outbox_events.c.published_at).label("latest_published_at"),
+            func.sum(
+                case(
+                    (
+                        and_(
+                            outbox_events.c.published_at.is_(None),
+                            or_(
+                                outbox_events.c.next_delivery_at.is_(None),
+                                outbox_events.c.next_delivery_at < DELIVERY_STOPPED_AT,
+                            ),
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("pending_count"),
+        )
+        .group_by(outbox_events.c.job_id)
+        .subquery()
+    )
+    delivery_count = func.coalesce(delivery_statistics.c.delivery_attempts, 0)
+    latest_reference = func.coalesce(
+        delivery_statistics.c.latest_published_at, job_runs.c.created_at
+    )
+    effective_pending = func.coalesce(delivery_statistics.c.pending_count, 0) > 0
+    lease_expired = and_(job_runs.c.status == "running", job_runs.c.lease_expires_at <= at)
+    awaiting_claim = or_(
+        job_runs.c.status == "queued",
+        and_(
+            job_runs.c.status == "retry_wait",
+            or_(job_runs.c.next_retry_at.is_(None), job_runs.c.next_retry_at <= at),
+        ),
+    )
     rows = (
         session.execute(
-            select(job_runs)
+            select(job_runs, delivery_count.label("broker_delivery_attempts"))
+            .outerjoin(delivery_statistics, delivery_statistics.c.job_id == job_runs.c.job_id)
             .where(
-                job_runs.c.status == "running",
-                job_runs.c.lease_expires_at <= at,
+                or_(awaiting_claim, lease_expired),
+                or_(
+                    delivery_count >= job_runs.c.max_attempts * DELIVERY_ATTEMPTS_PER_JOB_ATTEMPT,
+                    lease_expired,
+                    and_(
+                        latest_reference <= at - timedelta(seconds=DELIVERY_RECOVERY_GRACE_SECONDS),
+                        ~effective_pending,
+                    ),
+                ),
             )
-            .order_by(job_runs.c.lease_expires_at)
+            .order_by(job_runs.c.updated_at, job_runs.c.job_id)
             .limit(limit)
-            .with_for_update(skip_locked=True)
+            .with_for_update(of=job_runs, skip_locked=True)
         )
         .mappings()
         .all()
     )
     recovered = 0
     for row in rows:
+        reason = None
         if int(row["attempt_count"]) >= int(row["max_attempts"]):
+            reason = "attempts_exhausted"
+        elif int(row["broker_delivery_attempts"]) >= (
+            int(row["max_attempts"]) * DELIVERY_ATTEMPTS_PER_JOB_ATTEMPT
+        ):
+            reason = "delivery_attempts_exhausted"
+        if reason is not None:
             session.execute(
                 update(job_runs)
                 .where(job_runs.c.job_id == row["job_id"])
                 .values(
                     status="failed",
-                    error_code="attempts_exhausted",
+                    error_code=reason,
                     finished_at=at,
                     lease_owner=None,
                     lease_expires_at=None,
                     updated_at=at,
                 )
             )
-            record_job_transition(session, dict(row), "failed", "attempts_exhausted", at)
+            record_job_transition(session, dict(row), "failed", reason, at)
+            session.execute(
+                update(outbox_events)
+                .where(
+                    outbox_events.c.job_id == row["job_id"], outbox_events.c.published_at.is_(None)
+                )
+                .values(next_delivery_at=DELIVERY_STOPPED_AT, last_error_code=reason)
+            )
             continue
         pending = session.execute(
             select(outbox_events.c.event_id)
             .where(
                 outbox_events.c.job_id == row["job_id"],
                 outbox_events.c.published_at.is_(None),
+                or_(
+                    outbox_events.c.next_delivery_at.is_(None),
+                    outbox_events.c.next_delivery_at < DELIVERY_STOPPED_AT,
+                ),
             )
             .limit(1)
         ).scalar_one_or_none()

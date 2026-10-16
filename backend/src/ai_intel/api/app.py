@@ -28,6 +28,7 @@ from ai_intel.api.authentication import (
 from ai_intel.api.document_routes import build_document_router
 from ai_intel.api.enrichment_routes import build_enrichment_router
 from ai_intel.api.graph_routes import build_graph_router
+from ai_intel.api.investigation_routes import build_investigation_router
 from ai_intel.api.job_routes import build_job_router
 from ai_intel.api.knowledge_routes import build_knowledge_router
 from ai_intel.api.problems import problem_response
@@ -136,6 +137,7 @@ def create_application(
     question_router = build_question_router(lambda: service, engine, configuration)
     content_store = build_content_storage(configuration) if engine is not None else None
     assessment_router = build_assessment_router(lambda: service, engine, content_store)
+    investigation_router = build_investigation_router(lambda: service, engine, configuration)
     recommendation_router = build_recommendation_router(
         lambda: service,
         engine,
@@ -153,6 +155,7 @@ def create_application(
     application.include_router(graph_router, prefix="/v1")
     application.include_router(inventory_router, prefix="/v1")
     application.include_router(assessment_router, prefix="/v1")
+    application.include_router(investigation_router, prefix="/v1")
     application.include_router(recommendation_router, prefix="/v1")
     application.include_router(auth_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(health_router, prefix="/api/v1", include_in_schema=False)
@@ -165,6 +168,7 @@ def create_application(
     application.include_router(graph_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(inventory_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(assessment_router, prefix="/api/v1", include_in_schema=False)
+    application.include_router(investigation_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(recommendation_router, prefix="/api/v1", include_in_schema=False)
     application.include_router(auth_router, include_in_schema=False)
     application.include_router(health_router, include_in_schema=False)

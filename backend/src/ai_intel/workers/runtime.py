@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 from celery import Celery
 from celery.beat import PersistentScheduler
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -19,8 +19,15 @@ from ai_intel.infrastructure.runtime_observations import record_runtime_observat
 from ai_intel.infrastructure.settings import ConfigurationError, load_application_settings
 from ai_intel.ingestion.source_jobs import SOURCE_JOB_TYPE, build_source_page_handler
 from ai_intel.ingestion.source_polling import enqueue_due_source_collections
+from ai_intel.knowledge.models import job_runs
 from ai_intel.retrieval.runtime_policy import build_projection_job_handlers
-from ai_intel.workers.executor import JobHandler, execute_job, record_source_fetch_failure
+from ai_intel.revalidation.runtime_policy import make_revalidation_job_handlers
+from ai_intel.workers.executor import (
+    DetachedJobHandler,
+    JobHandler,
+    execute_job,
+    record_source_fetch_failure,
+)
 from ai_intel.workers.jobs import recover_expired_job_deliveries
 
 
@@ -98,7 +105,7 @@ class ObservedScheduler(PersistentScheduler):
 
 celery_app = build_celery_application()
 source_settings = load_application_settings()
-EXECUTION_HANDLERS: dict[str, JobHandler] = {
+EXECUTION_HANDLERS: dict[str, JobHandler | DetachedJobHandler] = {
     "record_source_fetch_failure": record_source_fetch_failure,
     SOURCE_JOB_TYPE: build_source_page_handler(
         build_content_storage(source_settings), dns_resolver=source_settings.dns_resolver
@@ -106,10 +113,18 @@ EXECUTION_HANDLERS: dict[str, JobHandler] = {
 }
 
 
-def publish_job_event(event: dict[str, str]) -> None:
+def publish_job_event(event: dict[str, str], *, job_type: str | None = None) -> None:
     """消息只含UUID，topic不决定可执行函数；禁用broker额外重试。"""
     job_id = str(UUID(event["job_id"]))
-    celery_app.send_task("ai_intel.jobs.execute", args=[job_id], retry=False)
+    if job_type == "investigation":
+        celery_app.send_task(
+            "ai_intel.investigations.execute",
+            args=[job_id],
+            queue="ai_intel_investigations",
+            retry=False,
+        )
+    else:
+        celery_app.send_task("ai_intel.jobs.execute", args=[job_id], retry=False)
 
 
 def dispatch_pending_jobs() -> dict[str, int]:
@@ -117,8 +132,22 @@ def dispatch_pending_jobs() -> dict[str, int]:
     engine = build_engine(load_application_settings())
     try:
         with Session(engine) as session, session.begin():
+            acquired = session.scalar(select(func.pg_try_advisory_xact_lock(0x44494E5A494A4F42)))
+            if acquired is not True:
+                return {"published": 0, "recovered": 0}
+
+            def publish_authoritative_job(event: dict[str, str]) -> None:
+                job_type = session.scalar(
+                    select(job_runs.c.job_type).where(
+                        job_runs.c.job_id == str(UUID(event["job_id"]))
+                    )
+                )
+                publish_job_event(event, job_type=job_type)
+
             recovered = recover_expired_job_deliveries(session, datetime.now(UTC))
-            released = relay_pending_events(session, datetime.now(UTC), publisher=publish_job_event)
+            released = relay_pending_events(
+                session, datetime.now(UTC), publisher=publish_authoritative_job
+            )
         return {"published": len(released), "recovered": recovered}
     except SQLAlchemyError:
         raise RuntimeError("runtime database unavailable") from None
@@ -136,12 +165,20 @@ def consume_job(job_id: str) -> dict[str, str]:
         enrichment = build_enrichment_job_service(engine, settings)
         if enrichment is not None:
             handlers.update(make_enrichment_job_handlers(enrichment))
+        if settings.revalidation_cursor_signing_key is not None:
+            handlers.update(
+                make_revalidation_job_handlers(
+                    engine,
+                    build_content_storage(settings),
+                    settings.revalidation_cursor_signing_key,
+                )
+            )
         with build_projection_job_handlers(engine, settings) as projection_handlers:
             handlers.update(projection_handlers)
             outcome = execute_job(engine, job_id, "celery-" + uuid4().hex, handlers)
         return {"job_id": job_id, "outcome": outcome}
     except SQLAlchemyError:
-        raise RuntimeError("runtime database unavailable") from None
+        return {"job_id": job_id, "outcome": "delivery_unavailable"}
     finally:
         engine.dispose()
 

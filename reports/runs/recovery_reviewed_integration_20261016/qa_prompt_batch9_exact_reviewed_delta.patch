@@ -1,0 +1,31 @@
+--- a/backend/src/ai_intel/investigation/workflow_service.py
++++ b/backend/src/ai_intel/investigation/workflow_service.py
+@@ -936,6 +936,19 @@
+         model = self.service._model_config["model_version"]
+         if not isinstance(model, str):
+             raise ValueError("model_not_configured")
++        if role == AgentRole.QA:
++            system += (
++                "citations是整份回答共用的全局集合，不是每条claim的附属列表；"
++                "每个evidence_id在citations中只能出现一次，"
++                "多个claims.support_ids可引用同一条citation。"
++                "同一证据支持多条claims时，只为它选择一个覆盖这些论断依据的"
++                "连续、精确、单行原文子串；不得把不相邻片段拼接成quote，"
++                "不得改变原文字符或扩大到输入quote以外。"
++                "只使用提供的evidence_id，不得制造或改写UUID、revision_id、版本和offset，"
++                "也不得把这些metadata增添为输出字段。"
++                "无法由所选quote直接支持的论断不得输出为确定事实，"
++                "未知、否定、条件和冲突必须保留。"
++            )
+         texts = tuple(citation.model_dump_json() for citation in self.projections(state))
+         if role == AgentRole.CRITIC and state["draft"] is not None:
+             draft = _record(GeneratedAnswer, state["draft"])
+@@ -958,7 +971,7 @@
+             system_text=system,
+             question=self.request.question,
+             evidence_texts=texts,
+-            prompt_version="r14-" + role.value + "-1",
++            prompt_version="r14-qa-2" if role == AgentRole.QA else "r14-" + role.value + "-1",
+             schema_version="r14-" + role.value + "-1",
+             model_version=model,
+             max_output_tokens=2048,
