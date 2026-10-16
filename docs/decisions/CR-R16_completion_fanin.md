@@ -38,3 +38,19 @@ DetachedJobHandler 增加服务器固定的可选 completion_guard，类型为 C
 验证新增范围：真实字节与 tamper/缺 hash/size、缓存边界/不跨生命周期、repr/日志边界、同 job 重放/lease 丢失/owner/actor/source 变化、旧/新/空 cohort、continuation 与真实 PG 并发/晚到。作者 194 离线/85 新只是自检，三 PG 仅 collect；新独审前不得 accepted 或称完整 R16。回滚关闭新 completion 生产，保留 PG 历史与旧请求/父结果；无表或公共 schema 迁移。
 
 本次写作结束时间：2026-10-17T00:31:04+08:00
+
+## 2026-10-17T00:45:35+08:00 · 既有真实变化重启与 effective epoch 表示的适用边界
+
+本次写作开始时间：2026-10-17T00:45:35+08:00；修订人Root；独立审查者须核本解释与两个冻结合同及真实负例是否一致。
+
+本次补充消除本单“不从头 restart”与 CR-R16_immutable_revalidation_actor_binding 在 2026-10-16T18:21:19+08:00 已批准的真实 ACL/epoch/规则 fingerprint 改变后一次有界 restart 的文字歧义，不撤销既有兼容修复，不改变评分、样本、分母或事实权限。
+
+仅因 requested_epoch 小于 effective_epoch、或者旧签名游标按 requested_epoch 编码，不得清游标/after_id/frozen map/fingerprint、重签输入或重置预算。本单的禁止从头 restart 指这一表示差异，不能把 requested 不同冒充真实 context_changed。
+
+实际关联权限、当前 epoch 或规则闭包 fingerprint 改变时，旧 actor-binding 单批准的非 fan_in 调度路径保留一次有界重查：原 change/cutoff/签名 key/剩余 page 与 child 预算不重置；重新发现前先拒绝旧 context，legacy after_id 缺 binding 仍按既有明确兼容路径处理。第二次继续变化应失败/partial，不做无界循环。一次 handler 的旧输入保持原 PG 字节和 owner binding，重查不能凭新数据改写旧父/孩子/结果。
+
+fan_in 完成检查不使用这项调度重启来修复旧 cohort：同一已冻结汇总所需 children/continuation/current guard 必须满足对应 effective epoch、权限及 input digest；旧 cohort 遇真实变化不得借另一 cohort 的成功升级自身 succeeded，应保留失效/partial 等可追溯原因。独审分别验证“只有 requested/effective 表示差异”“实际 ACL/epoch/fingerprint 改变”“剩余预算不重置”“旧汇总不能引用新成功”，原两类 Oracle 和历史均保留；未实跑不得签本项通过。
+
+兼容、迁移与回滚保持两原单：无表/公共 schema/权限/金标变更，停止新汇总生产保留 PG 历史与旧 cursor key。此补充的实际测试影响加入 R16 新独审，不给旧 source d550 未测行为背书。
+
+本次写作结束时间：2026-10-17T00:45:35+08:00。
