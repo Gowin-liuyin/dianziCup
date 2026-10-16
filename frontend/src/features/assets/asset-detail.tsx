@@ -5,6 +5,7 @@ import { EmptyState } from "../../components/status";
 import { getAsset, getAssetHistory, getAssetSnapshot } from "./asset-client";
 import type { Asset, AssetSnapshot, DeclaredField, SnapshotPage } from "./asset-contracts";
 import { AssetError, completenessLabels } from "./asset-status";
+import { SbomDetail } from "./sbom-detail";
 
 interface DetailProps { tenant: string; assetId: string; refresh: number; isCurrent: () => boolean; onAsset: (asset: Asset | null) => void; onFailure: (error: ApiProblem) => void }
 function savedTime(value: string) { return <time dateTime={value}>{formatShanghaiTimestamp(value)}</time>; }
@@ -14,7 +15,7 @@ function DeclaredFields({ title, fields }: { title: string; fields: DeclaredFiel
 }
 type SnapshotPosition = "current" | "history" | "unverified";
 const positionLabels: Record<SnapshotPosition, string> = { current: "CURRENT SNAPSHOT / 当前快照", history: "SAVED HISTORY / 保存历史", unverified: "REVALIDATE / 当前指针待复核" };
-function SnapshotView({ snapshot, position }: { snapshot: AssetSnapshot; position: SnapshotPosition }) {
+function SnapshotView({ snapshot, position, isCurrent, onFailure }: { snapshot: AssetSnapshot; position: SnapshotPosition; isCurrent: () => boolean; onFailure: (error: ApiProblem) => void }) {
   const [componentPage, setComponentPage] = useState(0);
   const components = snapshot.components.slice(componentPage * 20, (componentPage + 1) * 20);
   let toolPermissionsLabel = "未知 · 未提供声明";
@@ -32,6 +33,7 @@ function SnapshotView({ snapshot, position }: { snapshot: AssetSnapshot; positio
     <DeclaredFields title="输入通道声明" fields={snapshot.input_channels} />
     <DeclaredFields title="网络配置声明（不是外部观测）" fields={snapshot.network_exposure} />
     <section className="asset-field-section"><h4>工具权限声明</h4><p>{toolPermissionsLabel}</p></section>
+    <SbomDetail tenant={snapshot.tenant_id} snapshot={snapshot} isCurrent={isCurrent} onFailure={onFailure} />
   </div>;
 }
 
@@ -82,10 +84,10 @@ export function AssetDetail({ tenant, assetId, refresh, isCurrent, onAsset, onFa
   let snapshotContent: ReactNode = null;
   if (asset !== null) {
     const newerHistory = history?.items.some((snapshot) => snapshot.snapshot_number > asset.snapshot.snapshot_number) === true;
-    if (selectedSnapshotId === null) snapshotContent = <SnapshotView key={asset.snapshot.snapshot_id} snapshot={asset.snapshot} position={newerHistory ? "unverified" : "current"} />;
+    if (selectedSnapshotId === null) snapshotContent = <SnapshotView key={asset.snapshot.snapshot_id} snapshot={asset.snapshot} position={newerHistory ? "unverified" : "current"} isCurrent={isCurrent} onFailure={onFailure} />;
     else if (snapshotError !== null) snapshotContent = <AssetError error={snapshotError} onRetry={() => setSnapshotRetry(snapshotRetry + 1)} retryLabel="重试固定快照" />;
     else if (selectedSnapshot === null || selectedSnapshot.snapshot_id !== selectedSnapshotId) snapshotContent = <p className="loading-state" role="status">正在读取所选历史快照…</p>;
-    else snapshotContent = <><button className="button secondary asset-return-current" onClick={() => setSelectedSnapshotId(null)}>查看当前快照</button><SnapshotView key={selectedSnapshot.snapshot_id} snapshot={selectedSnapshot} position={selectedSnapshot.snapshot_number < asset.snapshot.snapshot_number ? "history" : "unverified"} /></>;
+    else snapshotContent = <><button className="button secondary asset-return-current" onClick={() => setSelectedSnapshotId(null)}>查看当前快照</button><SnapshotView key={selectedSnapshot.snapshot_id} snapshot={selectedSnapshot} position={selectedSnapshot.snapshot_number < asset.snapshot.snapshot_number ? "history" : "unverified"} isCurrent={isCurrent} onFailure={onFailure} /></>;
   }
 
   return <section className="panel asset-detail-panel" aria-labelledby="asset-detail-title">

@@ -1,5 +1,6 @@
 import { ApiProblem, fetchJson, getCsrfToken } from "../../api/client";
 import { AssetResponseScopeMismatch, isAssetIdentifier, parseAsset, parseAssetList, parseImportResult, parseSnapshot, parseSnapshotList, type Asset, type AssetImportResult, type AssetPage, type AssetSnapshot, type ManifestFormat, type SnapshotPage } from "./asset-contracts";
+import { parseSnapshotSbom, type SnapshotSbom } from "./sbom-contracts";
 
 export const MAX_ASSET_UPLOAD_BYTES = 1048576;
 export const csvFields = ["package_name", "ecosystem", "display_name", "purl", "version", "version_scheme", "image_digest"] as const;
@@ -35,6 +36,10 @@ export async function getAssetSnapshot(tenant: string, assetId: string, snapshot
   if (result.snapshot_id !== snapshotId.toLowerCase()) throw new AssetResponseScopeMismatch();
   return result;
 }
+export async function getAssetSnapshotSbom(tenant: string, snapshot: AssetSnapshot, signal?: AbortSignal): Promise<SnapshotSbom> {
+  if (!isAssetIdentifier(snapshot.snapshot_id)) return invalidInput();
+  return parseSnapshotSbom(await fetchJson(`${assetPath(snapshot.asset_id)}/snapshots/${encodeURIComponent(snapshot.snapshot_id)}/sbom`, {}, signal), tenant, snapshot);
+}
 export function parseCsvMapping(value: string): Record<string, string> {
   let parsed: unknown;
   try { parsed = JSON.parse(value); } catch { return invalidInput(); }
@@ -57,10 +62,11 @@ export async function importAsset(tenant: string, request: AssetImportRequest, s
   const query = new URLSearchParams({ display_name: request.displayName, source_version: request.sourceVersion, observed_at: request.observedAt, manifest_format: request.manifestFormat });
   if (request.assetId !== undefined) { assetPath(request.assetId); query.set("asset_id", request.assetId); }
   if (request.manifestFormat === "csv_components_v1") query.set("csv_column_mapping", JSON.stringify(parseCsvMapping(JSON.stringify(request.csvColumnMapping))));
-  else if (request.manifestFormat !== "json_manifest_v1" || request.csvColumnMapping !== undefined) return invalidInput();
+  else if (!["json_manifest_v1", "cyclonedx_json", "spdx_json"].includes(request.manifestFormat) || request.csvColumnMapping !== undefined) return invalidInput();
   const token = await getCsrfToken(signal);
   if (signal?.aborted || !isCurrent()) throw new ApiProblem(0, "request_canceled", false);
-  const result = parseImportResult(await fetchJson(`/v1/asset-imports?${query}`, { method: "POST", headers: { "Content-Type": request.manifestFormat === "json_manifest_v1" ? "application/json" : "text/csv", "X-CSRF-Token": token, "Idempotency-Key": request.idempotencyKey }, body: request.file }, signal), tenant);
+  const result = parseImportResult(await fetchJson(`/v1/asset-imports?${query}`, { method: "POST", headers: { "Content-Type": request.manifestFormat === "csv_components_v1" ? "text/csv" : "application/json", "X-CSRF-Token": token, "Idempotency-Key": request.idempotencyKey }, body: request.file }, signal), tenant);
+  if ((request.manifestFormat === "cyclonedx_json" || request.manifestFormat === "spdx_json") && result.snapshot.source_kind !== request.manifestFormat) throw new AssetResponseScopeMismatch();
   if (request.assetId !== undefined && result.asset_id !== request.assetId.toLowerCase()) throw new AssetResponseScopeMismatch();
   return result;
 }

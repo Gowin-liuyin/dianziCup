@@ -35,6 +35,14 @@ export function AssetImport({ tenant, currentAsset, isCurrent, onImported, onFai
       try { parsed = JSON.parse(text); } catch { setPreview({ kind: "failed", message: "JSON 语法无效，请核对原文件。" }); return; }
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) { setPreview({ kind: "failed", message: "JSON v1 清单必须是对象。" }); return; }
       const fields = Object.fromEntries(Object.entries(parsed));
+      if (manifestFormat === "cyclonedx_json") {
+        setPreview({ kind: "ready", format: fields.bomFormat === "CycloneDX" && ["1.5", "1.6", "1.7"].includes(String(fields.specVersion)) ? `CycloneDX JSON ${String(fields.specVersion)}` : "CycloneDX 标记或版本待服务端校验", components: Array.isArray(fields.components) ? `${fields.components.length} 个顶层组件声明（嵌套数量待服务端解析）` : "components 字段待校验", completeness: "安装范围完整性未知 · composition 仅为文档声明" });
+        return;
+      }
+      if (manifestFormat === "spdx_json") {
+        setPreview({ kind: "ready", format: fields.spdxVersion === "SPDX-2.3" ? "SPDX JSON 2.3" : "SPDX 版本待服务端校验", components: Array.isArray(fields.packages) ? `${fields.packages.length} 个 package 声明` : "packages 字段待校验", completeness: "安装范围完整性未知 · 文件和关系不证明已安装" });
+        return;
+      }
       let completeness = "完整性未知";
       if (fields.inventory_completeness === "complete_for_declared_scope") completeness = "文件声明：范围内完整";
       if (fields.inventory_completeness === "partial") completeness = "文件声明：部分清单";
@@ -68,13 +76,13 @@ export function AssetImport({ tenant, currentAsset, isCurrent, onImported, onFai
   if (request.current !== null && error?.retryable) submitLabel = "重试相同导入";
   if (pending) submitLabel = "正在提交实际导入…";
   return <details className="panel asset-import-panel">
-    <summary>导入授权清单 <span className="small-note">JSON v1 / CSV · 最大 1 MiB</span></summary>
+    <summary>导入授权清单 <span className="small-note">JSON / CSV / CycloneDX / SPDX · 最大 1 MiB</span></summary>
     <div className="asset-import-body">
       <p className="asset-boundary">仅导入已获授权的资产。原文件保留在浏览器与私有后端，页面不展示原文件内容。完整性属于输入声明，不代表独立核验。</p>
       <form onSubmit={(event) => void submit(event)}>
         <fieldset disabled={pending} className="asset-import-fields">
-          <div><label htmlFor="asset-manifest-format">清单格式</label><select id="asset-manifest-format" value={manifestFormat} onChange={(event) => { changed(); setManifestFormat(event.target.value === "csv_components_v1" ? "csv_components_v1" : "json_manifest_v1"); }}><option value="json_manifest_v1">JSON manifest v1</option><option value="csv_components_v1">CSV 组件清单</option></select></div>
-          <div><label htmlFor="asset-manifest-file">选择本地清单</label><input ref={fileInput} id="asset-manifest-file" type="file" accept={manifestFormat === "json_manifest_v1" ? ".json,application/json" : ".csv,text/csv"} required onChange={(event) => { changed(); setFile(event.target.files?.[0] ?? null); }} /></div>
+          <div><label htmlFor="asset-manifest-format">清单格式</label><select id="asset-manifest-format" value={manifestFormat} onChange={(event) => { const value = event.target.value; if (value === "json_manifest_v1" || value === "csv_components_v1" || value === "cyclonedx_json" || value === "spdx_json") { changed(); setManifestFormat(value); } }}><option value="json_manifest_v1">JSON manifest v1</option><option value="csv_components_v1">CSV 组件清单</option><option value="cyclonedx_json">CycloneDX JSON 1.5 / 1.6 / 1.7</option><option value="spdx_json">SPDX JSON 2.3</option></select></div>
+          <div><label htmlFor="asset-manifest-file">选择本地清单</label><input ref={fileInput} id="asset-manifest-file" type="file" accept={manifestFormat === "csv_components_v1" ? ".csv,text/csv" : ".json,application/json"} required onChange={(event) => { changed(); setFile(event.target.files?.[0] ?? null); }} /></div>
           {currentAsset !== null && <label className="asset-checkbox"><input type="checkbox" checked={append} onChange={(event) => { changed(); setAppend(event.target.checked); }} />追加到当前所选资产（名称保持一致）</label>}
           <div><label htmlFor="asset-display-name">资产名称</label><input id="asset-display-name" value={append && currentAsset !== null ? currentAsset.display_name : displayName} disabled={append && currentAsset !== null} required maxLength={200} onChange={(event) => { changed(); setDisplayName(event.target.value); }} /></div>
           <div><label htmlFor="asset-source-version">输入来源版本</label><input id="asset-source-version" value={sourceVersion} required maxLength={200} placeholder="填写实际清单版本" onChange={(event) => { changed(); setSourceVersion(event.target.value); }} /></div>
@@ -84,7 +92,7 @@ export function AssetImport({ tenant, currentAsset, isCurrent, onImported, onFai
         {preview.kind === "loading" && <p role="status">正在读取本地文件结构…</p>}
         {preview.kind === "failed" && <p role="alert" className="asset-warning">{preview.message}</p>}
         {preview.kind === "ready" && <dl className="asset-preview"><dt>本地结构预览</dt><dd>{preview.format}</dd><dt>组件声明</dt><dd>{preview.components}</dd><dt>完整性</dt><dd>{preview.completeness}</dd><dt>文件大小</dt><dd>{file?.size} 字节</dd></dl>}
-        <p className="small-note">JSON 需包含 format_version: 1、components；组件生态、版本、配置与声明范围由原文件提供。CycloneDX / SPDX 尚不支持。</p>
+        <p className="small-note">本地预览只读取结构，不校验完整规范、重复键或真实性。服务端决定支持范围、字段错误及最多 10000 个组件；原文件原样提交。SBOM 的完整声明不等于安装范围已核验。</p>
         <button className="button" type="submit" disabled={pending || file === null || preview.kind !== "ready"}>{submitLabel}</button>
       </form>
       {error !== null && <AssetError error={error} />}

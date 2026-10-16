@@ -1,7 +1,7 @@
 import { ApiProblem } from "../../api/client";
 
 export type InventoryCompleteness = "complete_for_declared_scope" | "partial" | "unknown";
-export type ManifestFormat = "json_manifest_v1" | "csv_components_v1";
+export type ManifestFormat = "json_manifest_v1" | "csv_components_v1" | "cyclonedx_json" | "spdx_json";
 export interface DeclaredField { name: string; value: string | boolean | null; source_field_locator: string }
 export interface AssetComponent {
   component_id: string; ecosystem: string; package_name: string; display_name: string | null; purl: string | null;
@@ -63,6 +63,30 @@ function component(value: unknown): AssetComponent {
   return { component_id: identifier(item.component_id), ecosystem: text(item.ecosystem), package_name: text(item.package_name), display_name: nullableText(item.display_name), purl: nullableText(item.purl), version: nullableText(item.version), version_scheme: text(item.version_scheme), image_digest: nullableText(item.image_digest), dependency_path: item.dependency_path === null ? null : strings(item.dependency_path), source_field_locator: text(item.source_field_locator) };
 }
 
+/** 展示安全子集先按原始 @ 切版本并分离 npm @scope，再解码；不构造组件身份或版本真值。 */
+export function isSafeSbomPurl(value: string): boolean {
+  if (!value.startsWith("pkg:") || /[\u0000-\u0020\u007f?#]/.test(value)) return false;
+  const match = /^pkg:([a-z][a-z0-9._-]*)\/(.+)$/i.exec(value);
+  const type = match?.[1]?.toLowerCase();
+  let path = match?.[2];
+  if (type === undefined || path === undefined) return false;
+  let namespace = "";
+  if (type === "npm" && path.startsWith("@")) {
+    const scopeEnd = path.indexOf("/");
+    if (scopeEnd < 1) return false;
+    namespace = path.slice(0, scopeEnd); path = path.slice(scopeEnd + 1);
+  }
+  const versionPosition = path.lastIndexOf("@");
+  const packagePath = versionPosition < 0 ? path : path.slice(0, versionPosition);
+  const rawVersion = versionPosition < 0 ? null : path.slice(versionPosition + 1);
+  if (!packagePath || packagePath.endsWith("/") || rawVersion === "") return false;
+  try {
+    const fields = [namespace, packagePath, rawVersion ?? ""].map((field) => decodeURIComponent(field));
+    if (fields.some((field) => /[\u0000-\u0020\u007f\\:%?#]/.test(field))) return false;
+    return !/[\/@]/.test(fields[2] ?? "");
+  } catch { return false; }
+}
+
 /** 响应必须与当前认证租户及指定资产一致；配置 null 保持未知，原文和存储路径不进入 DTO。 */
 export function parseSnapshot(value: unknown, tenant: string, assetId: string): AssetSnapshot {
   const item = record(value, ["schema_version", "snapshot_id", "asset_id", "tenant_id", "snapshot_number", "observed_at", "recorded_at", "source_kind", "inventory_completeness", "declared_scope", "components", "configuration", "tool_permissions", "input_channels", "network_exposure", "snapshot_sha256"]);
@@ -73,7 +97,9 @@ export function parseSnapshot(value: unknown, tenant: string, assetId: string): 
   if (typeof item.snapshot_number !== "number" || !Number.isSafeInteger(item.snapshot_number) || item.snapshot_number < 1) return invalid();
   const hash = text(item.snapshot_sha256, 64);
   if (!/^[0-9a-f]{64}$/.test(hash)) return invalid();
-  return { schema_version: item.schema_version, snapshot_id: identifier(item.snapshot_id), asset_id: identifier(item.asset_id), tenant_id: tenant, snapshot_number: item.snapshot_number, observed_at: timestamp(item.observed_at), recorded_at: timestamp(item.recorded_at), source_kind: text(item.source_kind), inventory_completeness: completeness, declared_scope: strings(item.declared_scope), components: unique(list(item.components, component, 10000), (entry) => entry.component_id), configuration: fields(item.configuration), tool_permissions: item.tool_permissions === null ? null : strings(item.tool_permissions), input_channels: item.input_channels === null ? null : fields(item.input_channels), network_exposure: item.network_exposure === null ? null : fields(item.network_exposure), snapshot_sha256: hash };
+  const components = unique(list(item.components, component, 10000), (entry) => entry.component_id);
+  if ((item.source_kind === "cyclonedx_json" || item.source_kind === "spdx_json") && components.some((entry) => entry.purl !== null && !isSafeSbomPurl(entry.purl))) throw new AssetResponseScopeMismatch();
+  return { schema_version: item.schema_version, snapshot_id: identifier(item.snapshot_id), asset_id: identifier(item.asset_id), tenant_id: tenant, snapshot_number: item.snapshot_number, observed_at: timestamp(item.observed_at), recorded_at: timestamp(item.recorded_at), source_kind: text(item.source_kind), inventory_completeness: completeness, declared_scope: strings(item.declared_scope), components, configuration: fields(item.configuration), tool_permissions: item.tool_permissions === null ? null : strings(item.tool_permissions), input_channels: item.input_channels === null ? null : fields(item.input_channels), network_exposure: item.network_exposure === null ? null : fields(item.network_exposure), snapshot_sha256: hash };
 }
 export function parseAsset(value: unknown, tenant: string): Asset {
   const item = record(value, ["asset_id", "tenant_id", "display_name", "criticality", "active", "current_snapshot_id", "created_at", "updated_at", "snapshot"]);
