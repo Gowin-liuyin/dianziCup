@@ -1,0 +1,1756 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dianzi:public-api:extensions:v1",
+  "title": "Versioned public API envelopes; legacy v2 definitions preserved",
+  "schema_version": 1,
+  "base_schema_id": "urn:dianzi:public-api:v2",
+  "base_schema_canonical_sha256": "1c12e4dee3682a531f35f776760da4a97e47eab65564e28e93f9b026382a17f3",
+  "x-change-records": [
+    "CR-R09",
+    "CR-R18_public_envelopes_and_output_budget"
+  ],
+  "$defs": {
+    "NormalizedIntel": {
+      "type": "object",
+      "properties": {
+        "intel_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "revision_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "advisory",
+            "article",
+            "paper",
+            "repository_record",
+            "standard",
+            "policy"
+          ]
+        },
+        "external_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "maxItems": 100
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Citation"
+          },
+          "maxItems": 100
+        },
+        "data_mode": {
+          "enum": [
+            "live",
+            "fixture"
+          ]
+        }
+      },
+      "required": [
+        "intel_id",
+        "revision_id",
+        "title",
+        "kind",
+        "external_ids",
+        "citations",
+        "data_mode"
+      ],
+      "additionalProperties": false
+    },
+    "Vulnerability": {
+      "type": "object",
+      "properties": {
+        "intel_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "event_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "external_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "maxItems": 100
+        },
+        "enrichments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Enrichment"
+          },
+          "maxItems": 9
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Relation"
+          },
+          "maxItems": 100
+        },
+        "freshness": {
+          "enum": [
+            "current",
+            "stale",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "intel_id",
+        "event_id",
+        "title",
+        "external_ids",
+        "enrichments",
+        "relations",
+        "freshness"
+      ],
+      "additionalProperties": false
+    },
+    "Advisory": {
+      "type": "object",
+      "properties": {
+        "intel_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "revision_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_uri": {
+          "type": "string",
+          "format": "uri"
+        },
+        "published_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Citation"
+          },
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "intel_id",
+        "revision_id",
+        "title",
+        "source_uri",
+        "published_at",
+        "citations"
+      ],
+      "additionalProperties": false
+    },
+    "Component": {
+      "type": "object",
+      "properties": {
+        "component_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "ecosystem": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "purl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "ecosystem",
+        "package_name",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "Enrichment": {
+      "type": "object",
+      "properties": {
+        "dimension": {
+          "enum": [
+            "cvss",
+            "epss",
+            "kev",
+            "cwe",
+            "atlas",
+            "versions",
+            "literature",
+            "poc",
+            "exposure"
+          ]
+        },
+        "status": {
+          "enum": [
+            "available",
+            "not_found",
+            "not_applicable",
+            "conflict",
+            "blocked",
+            "failed",
+            "pending"
+          ]
+        },
+        "claim_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "maxItems": 100
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Citation"
+          },
+          "maxItems": 100
+        },
+        "freshness": {
+          "enum": [
+            "current",
+            "stale",
+            "unknown"
+          ]
+        },
+        "observed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "source_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "dimension",
+        "status",
+        "claim_ids",
+        "citations",
+        "freshness",
+        "observed_at",
+        "source_version",
+        "error_code"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "available"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "citations": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Relation": {
+      "type": "object",
+      "properties": {
+        "relation_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "relation_type": {
+          "enum": [
+            "same_event",
+            "affects_component_version",
+            "mapped_atlas",
+            "related_paper",
+            "remediated_by",
+            "component_version_vulnerability"
+          ]
+        },
+        "subject_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "object_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "source_revision": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Citation"
+          },
+          "maxItems": 100
+        },
+        "rule_or_model_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "supported",
+            "disputed",
+            "unverified",
+            "superseded",
+            "withdrawn"
+          ]
+        }
+      },
+      "required": [
+        "relation_id",
+        "relation_type",
+        "subject_id",
+        "object_id",
+        "source_revision",
+        "citations",
+        "rule_or_model_version",
+        "reason",
+        "status"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "supported"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "citations": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Citation": {
+      "type": "object",
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "revision_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_uri": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "revision_id",
+        "quote",
+        "locator",
+        "source_uri"
+      ],
+      "additionalProperties": false
+    },
+    "QAAnswer": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "completed"
+        },
+        "answer_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "answer_text": {
+          "type": "string"
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "enum": [
+                  "source_fact",
+                  "rule_result",
+                  "project_suggestion"
+                ]
+              },
+              "support_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "maxItems": 100
+              }
+            },
+            "required": [
+              "text",
+              "kind",
+              "support_ids"
+            ],
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "source_fact",
+                        "rule_result"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "support_ids": {
+                      "minItems": 1
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "maxItems": 100
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Citation"
+          },
+          "maxItems": 100
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "maxItems": 100
+        },
+        "freshness": {
+          "enum": [
+            "current",
+            "stale",
+            "unknown"
+          ]
+        },
+        "data_mode": {
+          "enum": [
+            "live",
+            "fixture"
+          ]
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "completed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "latency_milliseconds": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "kind",
+        "answer_id",
+        "answer_text",
+        "claims",
+        "citations",
+        "limitations",
+        "freshness",
+        "data_mode",
+        "started_at",
+        "completed_at",
+        "latency_milliseconds"
+      ],
+      "additionalProperties": false
+    },
+    "TaskHandle": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "task"
+        },
+        "task_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "retry_wait",
+            "waiting_approval",
+            "partial"
+          ]
+        },
+        "poll_uri": {
+          "type": "string",
+          "pattern": "^/api/v1/tasks/"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "kind",
+        "task_id",
+        "status",
+        "poll_uri",
+        "created_at"
+      ],
+      "additionalProperties": false
+    },
+    "AskResult": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/QAAnswer"
+        },
+        {
+          "$ref": "#/$defs/TaskHandle"
+        }
+      ]
+    },
+    "AskRequest": {
+      "type": "object",
+      "properties": {
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "conversation_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "asset_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "maxItems": 20
+        },
+        "event_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "maxItems": 20
+        },
+        "mode": {
+          "enum": [
+            "auto",
+            "library",
+            "investigate"
+          ]
+        },
+        "known_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "valid_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "question",
+        "mode"
+      ],
+      "additionalProperties": false
+    },
+    "StackCheckRequest": {
+      "type": "object",
+      "properties": {
+        "components": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Component"
+          },
+          "maxItems": 200
+        }
+      },
+      "required": [
+        "components"
+      ],
+      "additionalProperties": false
+    },
+    "StackCheckResult": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "completed"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "component": {
+                "$ref": "#/$defs/Component"
+              },
+              "status": {
+                "enum": [
+                  "supported_applicability",
+                  "excluded_with_evidence",
+                  "insufficient_evidence",
+                  "conflicting_evidence"
+                ]
+              },
+              "reason_code": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assessment_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "citations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/Citation"
+                },
+                "maxItems": 100
+              },
+              "freshness": {
+                "enum": [
+                  "current",
+                  "stale",
+                  "unknown"
+                ]
+              }
+            },
+            "required": [
+              "component",
+              "status",
+              "reason_code",
+              "assessment_id",
+              "citations",
+              "freshness"
+            ],
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "reason_code": {
+                      "enum": [
+                        "no_match",
+                        "unsupported",
+                        "unsupported_rule",
+                        "unsupported_ecosystem"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "reason_code"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "status": {
+                      "const": "insufficient_evidence"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "maxItems": 200
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "kind",
+        "results",
+        "limitations"
+      ],
+      "additionalProperties": false
+    },
+    "StackUploadRequest": {
+      "type": "object",
+      "properties": {
+        "upload_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10485760
+        },
+        "declared_component_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "format": {
+          "enum": [
+            "requirements_txt",
+            "package_lock",
+            "sbom_cyclonedx",
+            "json_components",
+            "csv_components"
+          ]
+        }
+      },
+      "required": [
+        "upload_id",
+        "size_bytes",
+        "declared_component_count",
+        "format"
+      ],
+      "additionalProperties": false
+    },
+    "RiskFinding": {
+      "type": "object",
+      "properties": {
+        "component_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 199
+        },
+        "event_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "assessment_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "rule_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "rule_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "grading_claim_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "severity": {
+          "enum": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "cvss_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "cvss_version": {
+          "enum": [
+            "2.0",
+            "3.0",
+            "3.1",
+            "4.0"
+          ]
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Citation"
+          },
+          "maxItems": 100,
+          "minItems": 1
+        },
+        "freshness": {
+          "const": "current"
+        }
+      },
+      "required": [
+        "component_index",
+        "event_id",
+        "assessment_id",
+        "rule_id",
+        "rule_version",
+        "grading_claim_id",
+        "severity",
+        "cvss_score",
+        "cvss_version",
+        "citations",
+        "freshness"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "severity": {
+                "const": "none"
+              }
+            },
+            "required": [
+              "severity"
+            ]
+          },
+          "then": {
+            "properties": {
+              "cvss_score": {
+                "const": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "severity": {
+                "const": "low"
+              }
+            },
+            "required": [
+              "severity"
+            ]
+          },
+          "then": {
+            "properties": {
+              "cvss_score": {
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 4
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "severity": {
+                "const": "medium"
+              }
+            },
+            "required": [
+              "severity"
+            ]
+          },
+          "then": {
+            "properties": {
+              "cvss_score": {
+                "minimum": 4,
+                "exclusiveMaximum": 7
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "severity": {
+                "const": "high"
+              }
+            },
+            "required": [
+              "severity"
+            ]
+          },
+          "then": {
+            "properties": {
+              "cvss_score": {
+                "minimum": 7,
+                "exclusiveMaximum": 9
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "severity": {
+                "const": "critical"
+              }
+            },
+            "required": [
+              "severity"
+            ]
+          },
+          "then": {
+            "properties": {
+              "cvss_score": {
+                "minimum": 9,
+                "maximum": 10
+              }
+            }
+          }
+        }
+      ]
+    },
+    "RiskSummary": {
+      "type": "object",
+      "properties": {
+        "policy_version": {
+          "const": "r18-risk-policy-1"
+        },
+        "minimum_severity": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "confirmation": {
+          "enum": [
+            "confirmed",
+            "none_confirmed",
+            "unknown",
+            "conflict"
+          ]
+        },
+        "coverage": {
+          "enum": [
+            "complete",
+            "partial",
+            "unknown"
+          ]
+        },
+        "freshness": {
+          "enum": [
+            "current",
+            "stale",
+            "unknown"
+          ]
+        },
+        "evaluated_components": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 200
+        },
+        "unknown_component_indices": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 199
+          },
+          "maxItems": 200,
+          "uniqueItems": true
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RiskFinding"
+          },
+          "maxItems": 200
+        }
+      },
+      "required": [
+        "policy_version",
+        "minimum_severity",
+        "confirmation",
+        "coverage",
+        "freshness",
+        "evaluated_components",
+        "unknown_component_indices",
+        "findings"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "confirmation": {
+                "const": "confirmed"
+              }
+            },
+            "required": [
+              "confirmation"
+            ]
+          },
+          "then": {
+            "properties": {
+              "findings": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "confirmation": {
+                "const": "confirmed"
+              },
+              "minimum_severity": {
+                "const": "low"
+              }
+            },
+            "required": [
+              "confirmation",
+              "minimum_severity"
+            ]
+          },
+          "then": {
+            "properties": {
+              "findings": {
+                "contains": {
+                  "properties": {
+                    "severity": {
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "critical"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "severity"
+                  ]
+                },
+                "minContains": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "confirmation": {
+                "const": "confirmed"
+              },
+              "minimum_severity": {
+                "const": "medium"
+              }
+            },
+            "required": [
+              "confirmation",
+              "minimum_severity"
+            ]
+          },
+          "then": {
+            "properties": {
+              "findings": {
+                "contains": {
+                  "properties": {
+                    "severity": {
+                      "enum": [
+                        "medium",
+                        "high",
+                        "critical"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "severity"
+                  ]
+                },
+                "minContains": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "confirmation": {
+                "const": "confirmed"
+              },
+              "minimum_severity": {
+                "const": "high"
+              }
+            },
+            "required": [
+              "confirmation",
+              "minimum_severity"
+            ]
+          },
+          "then": {
+            "properties": {
+              "findings": {
+                "contains": {
+                  "properties": {
+                    "severity": {
+                      "enum": [
+                        "high",
+                        "critical"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "severity"
+                  ]
+                },
+                "minContains": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "confirmation": {
+                "const": "confirmed"
+              },
+              "minimum_severity": {
+                "const": "critical"
+              }
+            },
+            "required": [
+              "confirmation",
+              "minimum_severity"
+            ]
+          },
+          "then": {
+            "properties": {
+              "findings": {
+                "contains": {
+                  "properties": {
+                    "severity": {
+                      "enum": [
+                        "critical"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "severity"
+                  ]
+                },
+                "minContains": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "StackCheckEnvelope": {
+      "type": "object",
+      "properties": {
+        "result": {
+          "$ref": "#/$defs/StackCheckResult"
+        },
+        "risk_summary": {
+          "$ref": "#/$defs/RiskSummary"
+        }
+      },
+      "required": [
+        "result",
+        "risk_summary"
+      ],
+      "additionalProperties": false
+    },
+    "VulnerabilityPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Vulnerability"
+          },
+          "maxItems": 100
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "data_mode": {
+          "enum": [
+            "live",
+            "fixture"
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor",
+        "data_mode"
+      ],
+      "additionalProperties": false
+    },
+    "VulnerabilityDetailPage": {
+      "type": "object",
+      "properties": {
+        "vulnerability": {
+          "$ref": "#/$defs/Vulnerability"
+        },
+        "advisories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Advisory"
+          },
+          "maxItems": 100
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "mapping_limits": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "maxItems": 100
+        },
+        "data_mode": {
+          "enum": [
+            "live",
+            "fixture"
+          ]
+        }
+      },
+      "required": [
+        "vulnerability",
+        "advisories",
+        "next_cursor",
+        "mapping_limits",
+        "data_mode"
+      ],
+      "additionalProperties": false
+    },
+    "SourceDescriptor": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "category": {
+          "enum": [
+            "structured_vulnerability",
+            "vendor_advisory",
+            "security_community",
+            "code_repository",
+            "technical_blog",
+            "academic_paper",
+            "technical_standard",
+            "policy_regulation"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "health": {
+          "enum": [
+            "never_polled",
+            "healthy",
+            "partial",
+            "failed",
+            "blocked",
+            "unknown"
+          ]
+        },
+        "last_attempt_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "last_success_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "reason_code": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "data_mode": {
+          "enum": [
+            "live",
+            "fixture"
+          ]
+        }
+      },
+      "required": [
+        "source_id",
+        "name",
+        "category",
+        "enabled",
+        "health",
+        "last_attempt_at",
+        "last_success_at",
+        "reason_code",
+        "data_mode"
+      ],
+      "additionalProperties": false
+    },
+    "SourcePage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceDescriptor"
+          },
+          "maxItems": 100
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "data_mode": {
+          "enum": [
+            "live",
+            "fixture"
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor",
+        "data_mode"
+      ],
+      "additionalProperties": false
+    },
+    "TaskDescriptor": {
+      "type": "object",
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "task_type": {
+          "enum": [
+            "ask",
+            "stack_check"
+          ]
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "retry_wait",
+            "waiting_approval",
+            "succeeded",
+            "partial",
+            "failed",
+            "cancelled",
+            "blocked"
+          ]
+        },
+        "poll_uri": {
+          "type": "string",
+          "pattern": "^/api/v1/tasks/[0-9a-fA-F-]{36}$"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "task_id",
+        "task_type",
+        "status",
+        "poll_uri",
+        "created_at",
+        "updated_at"
+      ],
+      "additionalProperties": false
+    },
+    "PublicProblem": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "format": "uri"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 400,
+          "maximum": 599
+        },
+        "error": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "trace_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "type",
+        "title",
+        "status",
+        "error",
+        "trace_id"
+      ],
+      "additionalProperties": false
+    },
+    "TaskResultEnvelope": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "$ref": "#/$defs/TaskDescriptor"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/QAAnswer"
+            },
+            {
+              "$ref": "#/$defs/StackCheckEnvelope"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PublicProblem"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completed_steps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "maxItems": 100,
+          "uniqueItems": true
+        },
+        "pending_steps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "maxItems": 100,
+          "uniqueItems": true
+        },
+        "failed_steps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "maxItems": 100,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "task",
+        "result",
+        "error",
+        "completed_steps",
+        "pending_steps",
+        "failed_steps"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "task": {
+                "properties": {
+                  "task_type": {
+                    "const": "ask"
+                  }
+                },
+                "required": [
+                  "task_type"
+                ]
+              }
+            },
+            "required": [
+              "task"
+            ]
+          },
+          "then": {
+            "properties": {
+              "result": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/QAAnswer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "task": {
+                "properties": {
+                  "task_type": {
+                    "const": "stack_check"
+                  }
+                },
+                "required": [
+                  "task_type"
+                ]
+              }
+            },
+            "required": [
+              "task"
+            ]
+          },
+          "then": {
+            "properties": {
+              "result": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/StackCheckEnvelope"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "task": {
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "queued",
+                      "running",
+                      "retry_wait",
+                      "waiting_approval"
+                    ]
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            },
+            "required": [
+              "task"
+            ]
+          },
+          "then": {
+            "properties": {
+              "result": {
+                "type": "null"
+              },
+              "error": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "task": {
+                "properties": {
+                  "status": {
+                    "const": "succeeded"
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            },
+            "required": [
+              "task"
+            ]
+          },
+          "then": {
+            "properties": {
+              "result": {
+                "not": {
+                  "type": "null"
+                }
+              },
+              "error": {
+                "type": "null"
+              },
+              "pending_steps": {
+                "maxItems": 0
+              },
+              "failed_steps": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "task": {
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "failed",
+                      "cancelled",
+                      "blocked"
+                    ]
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            },
+            "required": [
+              "task"
+            ]
+          },
+          "then": {
+            "properties": {
+              "result": {
+                "type": "null"
+              },
+              "error": {
+                "$ref": "#/$defs/PublicProblem"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
