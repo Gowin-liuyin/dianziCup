@@ -1,4 +1,4 @@
-"""固定任务handler在PG租约围栏内执行，效果与完成状态同事务提交。"""
+"""固定handler默认原子提交；显式detached服务在释放job锁后执行。"""
 
 from __future__ import annotations
 
@@ -77,15 +77,26 @@ class JobExecutionError(RuntimeError):
 JobHandler = Callable[[Session, JobExecutionContext, bytes], JobExecutionResult]
 
 
+@dataclass(frozen=True)
+class DetachedJobHandler:
+    """仅服务端registry显式构造；服务须自行鉴权、围栏与PG幂等。
+
+    没有worker Session传入，外部IO前释放服务自己的锁；效果已提交而
+    完成租约丢失时不会回滚效果，重放必须沿服务台账，不能重复付费。
+    """
+
+    handler: Callable[[JobExecutionContext, bytes], JobExecutionResult]
+
+
 def execute_job(
     engine: Engine,
     job_id: str,
     worker_id: str,
-    handlers: Mapping[str, JobHandler],
+    handlers: Mapping[str, JobHandler | DetachedJobHandler],
     *,
     clock: Callable[[], datetime] = utc_now,
 ) -> str:
-    """先提交短认领事务；handler回滚后用新事务记录有界重试。"""
+    """短认领后按服务端类型执行；失败沿现有fresh事务有界重试。"""
     UUID(job_id)
     with Session(engine) as session, session.begin():
         claimed = claim_job(session, job_id, worker_id, clock())
@@ -106,7 +117,21 @@ def execute_job(
             if handler is None:
                 raise JobExecutionError("unsupported_job_type", blocked=True)
             payload = read_job_payload(session, job_id, tenant_id)
-            result = handler(session, context, payload)
+            if not isinstance(handler, DetachedJobHandler):
+                result = handler(session, context, payload)
+                complete_job(
+                    session,
+                    job_id,
+                    worker_id,
+                    result.outcome,
+                    clock(),
+                    expected_attempt=attempt_count,
+                    result_ref=result.result_ref,
+                    error_code=result.error_code,
+                )
+                return result.outcome
+        result = handler.handler(context, payload)
+        with Session(engine) as session, session.begin():
             complete_job(
                 session,
                 job_id,
