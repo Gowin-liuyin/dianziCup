@@ -10,6 +10,7 @@ from sqlalchemy import insert, select
 from sqlalchemy.engine import Engine, RowMapping
 from sqlalchemy.orm import Session
 
+from ai_intel.api.actor_references import ActorReference
 from ai_intel.api.auth_state import lock_authenticated_scope
 from ai_intel.assessment.assessment_persistence import assessment_results, assessment_scope_watches
 from ai_intel.assessment.conditions import (
@@ -103,7 +104,9 @@ def _bind_source_evidence(
 class AssessmentService:
     """Current reads/commits recheck bounded CAS bytes while their PG inputs remain locked."""
 
-    def __init__(self, engine: Engine, session_token: str, content_store: ContentStorage) -> None:
+    def __init__(
+        self, engine: Engine, session_token: str | ActorReference, content_store: ContentStorage
+    ) -> None:
         self.engine = engine
         self._session_token = session_token
         self.content_store = content_store

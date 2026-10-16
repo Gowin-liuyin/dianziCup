@@ -16,3 +16,18 @@
 
 本次写作结束时间：2026-10-16T16:14:10+08:00
 最后更新时间：2026-10-16T16:14:10+08:00
+
+## 核心绑定兼容修订 · 2026-10-16T16:35:50+08:00
+
+本次写作开始时间：2026-10-16T16:35:50+08:00；修订人：/root。
+
+实际只读核查发现原Core804并不支持配置换绑：authorization.py固定PRODUCT_SHA=e310；controlled_supervise.py固定产品目录、e310、旧sourceDB/0016与旧queue；deploy_runtime_entry.py固定旧Redis prefix/queue。新9脚本仅改configuration会被拒绝，或仍指旧资源。本条纠正此前“原core行为保持”适用于新包的错误兼容判断；旧10core物理字节和历史8ops包仍只读保留。
+
+批准指定独立核心集成人在新worktree/new-core目录为上述三个入口增加唯一固定运行绑定适配，必要时新增一个小run_binding.py，不对旧文件原地改写。新绑定精确包含产品1cdb9e7d99b7d24f702f5f19309a56d5afedd526及clean checkout、marked新库name/OID/0029_recommendation_receipts、新queue/Redis15 prefix、新RUN/nonce/OPS/DEPLOY路径、原observer与9ops/新core全部hash。绑定来自root准备后冻结并独立复核的文件，字段缺失/未知/不一致在外部IO前拒绝；不得把schema检查取消、把任意body/path/URL变为配置自由度或静默兼容旧queue。
+
+所有资源caps、父期限、七activation=false和ready=false保持。新core所有变更要连同9ops/config/prepare/deploy重新固定source/material与总manifest审查，旧804的Ship不自动背书新core。准备作者唯一写9ops/config，核心作者唯一写新core及直属tests，root负责公共变更、库创建/0030不纳入本采集基线和最终启动。原sourceDB只读保护，无游标/事实迁移的默认许可；新段如不迁移，必须注明从新的可证起点观察，不能声称延续旧段。
+
+测试影响：重复键/未知字段、产品/表head/DBname+OID+marker/queue/prefix/run/nonce任一变更、旧8hash缺controller、corehash漂移、父期限/预算、activation缺失全部拒绝；正例只能准备成功，不能假造live启动。回滚只停新自有资源/保留材料与新库，不清旧库/旧queue、不downgrade/改全局权限。此为已授权持续采集运行入口的必要兼容修复，无新增范围、评分或费用授权变化。
+
+本次修订写作结束时间：2026-10-16T16:35:50+08:00
+最后更新时间：2026-10-16T16:35:50+08:00
