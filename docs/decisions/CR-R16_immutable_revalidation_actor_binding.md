@@ -36,3 +36,13 @@ R16执行切片与R18内部owner适配，不代表整T39/R16完成；推荐/问�
 
 本次补充写作结束时间：2026-10-16T16:43:52+08:00
 最后更新时间：2026-10-16T16:43:52+08:00
+
+## 两个独立游标缺陷的兼容修复 · 2026-10-16T18:21:19+08:00
+
+本次写作开始时间：2026-10-16T18:21:19+08:00；状态approved_for_implementation，原f56/014独审两Must未关闭。M1无旧assessment时相关source ACL改变且epoch未变，cutoff cursor未失效；仅证明合同冻结漏ACL，不声称已有泄露。M2rule-only续页跨真实publish epoch，after_id使新小ID规则漏调度。原两PG反例18:10:18.616→27.490+08 2failed保留。
+
+批准cutoff非None候选相关latest visible rule及event/doc/revision/evidence/claim ACL闭包fingerprint，避免无关全source扫描。内部CandidatePage/RevalidationPlan可选rule_scope_fingerprint 64hex；ChangeRequest成对可选frozen_scope_epoch_map和frozen_rule_scope_fingerprint，strict校验；默认None保留原raw cursor/querydigest形状，不加公开HTTP输入。nextparent同immutable binding持久这些字段；rule-only续页先核frozen epoch/map/FP再after_id，变化时一次有界restart同时清cursor/afterid/两frozen字段，剩余预算不重置。legacy afterid缺新binding显式从头restart；首无位置按原coalescing。enqueue前再次核FP，覆盖无epoch的ACL改变。
+
+兼容/迁移/回滚：不新表/index/权限/评分或gold，更不unknown改safe；停新调度仍保留旧history/outbox/binding。root公共0030不再变，指定作者仅revalidation内部+tests；原reviewer必须原两probe亲复green，并追加ACL/lowerID/重放/预算/旧None/v1形状回归。默认factory和secret/parentfan-in不因本修复声称完成。
+
+本次写作结束/最后更新时间：2026-10-16T18:21:20+08:00；修订人/root。

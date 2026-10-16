@@ -1,3 +1,17 @@
+## 当前权威续接与所有权 · 2026-10-16T18:21:19+08:00
+
+主控 codex/full-delivery-recovery@9b632296d8c2ca08fc4150bf1d7a7d799bdf326a，origin核对仍授权URL，最后已核远端G-B c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7；G-C in_progress/partial，无新阶段放行/push，G-D/G-E独立准备。原60T/历史/整卡验证不改绿，user frontend/tsconfig.tsbuildinfo SHA 3c587edfd308fb5cf04efa6e2d87b7005ef28c8c656842059b2eca405738e43d保持、不stage/build/restore。
+
+实际主分支集成451646 R12、a7/32d Actor授权、c5 SDK、76 Detached、733/0e88全前端依赖、1cdb0028/29、7e6 App/proxy、30db0030+Assessment内部Actor、dd33/9b完整R15HTTP/defaultAPI。root两个遗漏依赖均保留collection红与修复证据。main全量旧3492=3469pass22fail1error未重新整跑；切片测试不能给whole背书。source/doc/remoteSHA分开。
+
+主控唯一共享合同/schema/迁移/锁/配置/App/progress/集成commit/push；唯一指定R14作者拥有其隔离WT shared workers/jobs.py、workers/runtime.py、investigation/runtime.py、workers/investigation.py及直属tests，root当前不得重写这几文件。R16作者仅自有revalidation模块/tests；secret作者仅安全登记五依赖；其他新reviewer/诊断/交付骨架各自WT/runs/report。作者不push/签accepted，首审新Agent，原非作者只同批fix复核。
+
+实际新并行：R14共享恢复修复；R16游标修复；R06 9+11 fresh独审；R20 secret fresh LF/CRLF复核；R20 native handle新诊断；R07→R14 evidence互操作新诊断；R24-A候选骨架准备。主控持续源集成/正式CR/真实资源门。PG最多2heavy，当前A限额授权R14恢复，B原R16两反例18:10:27前已释放audit0；每Agent单pytest串行/NullPool≤2conn/自有标记schema。不得增加PG上限/kill他人。真实静态WSL Docker路径已核，禁止误开Desktop替代。
+
+PG25432/Redis26379/OS29200父截止2026-10-17T21:49:15+08不扩；Neo4j2026-10-16T19:35:43.312788+08不扩。新R06窗口21600s+关闭900s，ledger42成本unknown，OID/marker空activation全false，新采集尚未开始。old1670.457817s不拼新6h。模型仅DoH Planner真实200/deepseek-flash352input81output433total、costunknown，evidence partial后QA/Critic未跑。
+
+外部：双人核验/裁决及FOFA授权资产范围仍未知，CNNVD内置登录未确认不取cookie、ZoomEye401；PPT后置未取消。内部尚有R14七write adapters/search、R11 default assessment、R16 fan-in/历史/旧新空/撤回、公开六tool/三plugin、正式评测/性能/恢复/CI/材料/cleanrepro；不能说只剩外部或整个目标blocked。下一：两Must修复复核→共享runtime接线，SourceProof+SDK完整依赖显式集成与针对回归，R06fresh总协议审查→root实际资源identity激活门→真实单版本新窗口。维持R24-A→R23→R24-B。
+
 ## 当前权威续接与所有权 · 2026-10-16T14:50:57+08:00
 
 主控codex/full-delivery-recovery@9e6abcab95916340655f7dcdd163bf4cf851c7a4；origin授权URL不变，最后已核远端仍G-B c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7，G-C未放行/未push，G-D/G-E仅独立准备。受保护用户frontend/tsconfig.tsbuildinfo SHA 3c587edfd308fb5cf04efa6e2d87b7005ef28c8c656842059b2eca405738e43d，不stage/build/restore。原60T、金标、阈值、分母和历史保留；整卡状态不因局部Ship提升。

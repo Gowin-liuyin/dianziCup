@@ -31,3 +31,13 @@
 
 本次修订写作结束时间：2026-10-16T16:35:50+08:00
 最后更新时间：2026-10-16T16:35:50+08:00
+
+## 联合身份、原生marker和累计额度修订 · 2026-10-16T18:21:19+08:00
+
+本次写作开始时间：2026-10-16T18:21:19+08:00；批准实现/准备，独立激活门未过。实际旧ToolRoot804e clean依赖要求与新core直接复制矛盾，因此明确双身份：旧ToolRootDEPLOY@804e保持clean与旧observer，独立固定CORE目录D:/dianzi-runtime-cache/r06-nine-script-core-20261016只放新source440346十一Gitblobs，OPS55a九Gitblobs。准备启动时ToolRoot必须全clean；运行中仅固定currentnonce原observer root_live_gate.json与live_RUN_ID未跟踪输出允许，tracked/HEAD/其他变化拒绝。原gate14fields不加nonce，通过segment_id='segment_'+nonce绑定。
+
+新库test_dianzi_r06_nine_script_20261016只前向0029；OID/marker尚None不启用。root实际创建后原生COMMENT ON DATABASE/读取shobj_description确认strictJSON exactproject/kind/run_id/owner/product_sha/maximum_seconds/queue/redis_prefix/created_at和rawSHA，不拿旁表metadata自称身份。旧OID3680428/旧facts/cursors不变，不默认clone。公开冻结OPS/core互相引用hash不要求文档自提交SHA，避免自引用循环。
+
+累计budget ledger42经旧初11subset+旧close42+fresh42同ID/type/time/provenance并集去重亲只读验证，source_budget_ledger SHA2604347a4559d3353a045a57393ea632f90ba74fd2c98615400751672e0d03b9；总450/prestop410/solo418不扩，对应remaining408/368/376。21600+900/父deadline/其他资源cap不改，真实wire/cost unknown。准备finalprivate/newcore安装/新库/activation不因临时WSL正例记live。兼容回滚仅停止新自有资源，保留旧包/旧库/失败证据，绝不清全WSL/用户资料。新fresh reviewer完整20文件冻结亲复后root再做实际OID/marker/端口/预算/权限资源门，6h不能拼历史段。评分/原分母/gold不变。
+
+本次写作结束/最后更新时间：2026-10-16T18:21:20+08:00；修订人/root。
