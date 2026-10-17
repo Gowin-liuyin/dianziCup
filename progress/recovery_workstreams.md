@@ -746,3 +746,8 @@ Root唯一integration/App/Git/push/actual秘密注入；0031/public_task_binding
 Root基线0f8c1f6，23代码文件集成源207d/36b9/3873/36fb及R17 5af9+4fa。Root315离线+72前端、mypy6/TS/ESLint通过，仅checkpoint候选awaiting新非作者。真实PG typed17全部passed仅f316 source，不是Root默认任务口；风险52caf双来源40P01confirmed及grade1pass/3source_name setup红均保留，作者修bounded cohort/唯一synthetic name，原11oracles不动。Source新6b86/f418/helper5e39独立迁移审查，actual9e旧fresh17closed，未新ready/6h，不reset CPU37.6875与ledger42/450。G-C仍in_progress/partial，无新阶段push，最后已核远端c229。详见reports/tasks/Root-batch16-integration.md与root_batch16_code_freeze/导入/原始收据。
 
 Root独占公共App/schema/迁移/合同/locks/状态/文档/Git/秘密；R06固定pin与新独审、typed独审、risk作者与新独审、R17复核与plugin deadline作者/新独审各独立WT，CBM独占与PG逐窗不会覆盖。下一立即冻结默认App review、实际Source安装/fresh17/start、typed默认读/发布/任务端口、risk新cohort和真实浏览器；完整R12/R14/R16/R18/R19–24仍未完成。tsbuildinfo SHA3c587e/push台账/用户diff保护，原60T/Gold/分母不变。
+
+
+### 2026-10-17T10:23:42+08:00 · 滚动并行与文件所有权
+
+真实快照8active（Root/Source/R16HTTP/R17UI/pluginports/readerfix/riskreview/publication；riskreview随后完成释放，新Source reviewer补位）。16宿主槽；不是16CPU/连接额度。Root公共App/schema/migrations/状态/Git/资源；R06 source c46a→全新review独立WT；R16 D:/wt/r16-change-http 5ff7唯一read_adapters及3新HTTP；R17 D:/wt/r17-change-history dd35仅features/changes及直属测试；plugin D:/wt/r18-plugin-ports唯一newports+tool_gateway/workflow_service两个seam；readerfix D:/wt/r18-qa-reader-fix1唯一reader/newgeneration_requests；publication D:/wt/r18-task-qa-publication仅新writer，不能改旧reader；risk原独审封8125singlecase绿色不扩accepted。CBM同固定cache串行≤45s/full双OS16/own0，PGRoot独占每label2+1/58ctl48child60outer/nonceexactcleanup。每新行为冻结后新非作者首次review，原reviewer仅定向复核，不自审/不push。

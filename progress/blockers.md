@@ -627,3 +627,8 @@ Root独占公共App/schema/迁移/合同/locks/状态/文档/Git/秘密；R06固
 本批scripts/verify_plan.py原exit1：STATE_RECOVERY_DEP_INCOMPLETE R02→R01。Git0f基线已是R01 needs_changes/R02 accepted，checker与依赖合同未改。按已有前置回退规则将当前R02转awaiting_review，保留原accepted完整历史、implementation与冻结测试证据；不会把R01改绿或改checker放松规则。R02事实持久化的旧源独立证据仍有效，当前整包前置需复核，历史G-A/G-B已推冻结SHA报告不重写。新默认入口review追加R01当前Engine释放/失败路径与依赖重验。
 
 全staged diffcheck原exit1仅四个pytest原始失败stdout/XML尾部空白。只对明确四文件路径加-text -diff保原raw，其他本批原始收据精确文件-text；业务/文档继续正常diff/style检查。不是全仓禁用，不改变失败数量或原始字节。
+
+
+### 2026-10-17T10:23:42+08:00 · 当前缺陷传播
+
+R06第三次pre-ready/import超时阻断六小时；新c46a仅源级待新review，actual未换，不把source_owner_exit当完备closure。R18旧default Must1 package资源/Must2 identity audit已Root修、82offlinepassed，但新源码actual部署/PG待review；9d actualaudit1fail保留。QAreader b46新3独立负例阻断可信task返回，338旧绿不抹红，新fixer/publisher独立继续。Risk fixture合法时间修后原targetpassed/producer限定Ship，Rootdefault仍未装。R16/UI当前summary不代表old/new/history full。live与人工Gold/授权资产/CNNVD仍未满足，内部继续。

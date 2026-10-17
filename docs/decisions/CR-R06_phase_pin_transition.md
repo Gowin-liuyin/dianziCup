@@ -17,3 +17,8 @@
 helper 最终源码 5e39ee391fdcdfbd8ebf695645d748d9387aa286，物理与 Git 字节均为34525，SHA256 19c8a68bdf03937edee4c81c5dce336669b09893f1a482ae9c9ff7403e5cc8a2。f34237ea27ecb295eaca81b0cadf14272aa5d8b0 的 Git LF33547 与派生物理 CRLF34525 不一致，首次 prepare_auxiliary guard 真实拒绝已保留。允许仅 helper 精确路径与作者独占 ownrun/** 添加 -text，保留原5bfb物理行尾；不得扩到全仓或一般业务文件。函数 AST 仍只六个固定常量变化；OPS f4187 与 source20/23 清单 fe0887dd0dc92cb6f64c2cefa668dd06c8ec26dbf821a06bd8bc6d7d0700d4b1 不变，helper单独manifest避免自身提交SHA循环。
 
 此修订只落实已批准固定pin迁移与原字节验证；新独立reviewer核最终候选及文档追加。actual安装、fresh17、15秒ready、6h与阶段门均未由此通过。修订人Root。
+
+
+## 实际归档边界补充 · 2026-10-17T09:24:36+08:00
+
+首次新helper实际拒绝unknown_or_pending_runtime_artifact：已批准归档器在OPS建立pre_ready_history，但不变的helper只承认attempt_history。Root仅核对刚创建的精确nonce/6b86+f418/随机generation：plan与manifest原字节相同、17实际审计hash637de6一致、原pre_ready不存在且0诊断文件、control未动、所有层只有这一自有条目，严格realpath无redirect后将其整体保全到同OPS/attempt_history/phase_diagnostics_3438c30cdabf44b7989601d464b70f37。没有删除证据或改helper allowlist；原目录记录与首次真实拒绝留存。新fresh17必须重新实际运行；这是已授权项目内证据归档兼容修正，非调整预算/权限/观察门。由原独立迁移reviewer核本补充与实际收据，启动尚未发生。

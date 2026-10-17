@@ -25,7 +25,7 @@ from ai_intel.domain.access import PermissionDeniedError, Role
 from ai_intel.knowledge.models import document_revisions, scope_epochs, users
 
 pytestmark = pytest.mark.real_pg
-HEAD = "0030_revalidation_actor_bindings"
+HEAD = "0031_public_task_bindings"
 
 
 @pytest.fixture(scope="module")

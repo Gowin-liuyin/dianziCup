@@ -71,7 +71,7 @@ def pg_engine():
         assert connection.scalar(text("SELECT current_schema()")) == schema
         assert (
             connection.scalar(text("SELECT version_num FROM alembic_version"))
-            == "0030_revalidation_actor_bindings"
+            == "0031_public_task_bindings"
         )
     run = Path(os.environ["R16_RUNTIME_EVIDENCE_DIR"])
     (run / "schema_receipt.json").write_text(
@@ -79,7 +79,7 @@ def pg_engine():
             dict(
                 schema=schema,
                 database=url.database,
-                revision="0030_revalidation_actor_bindings",
+                revision="0031_public_task_bindings",
                 synthetic=True,
                 forward_only=True,
                 retained=True,

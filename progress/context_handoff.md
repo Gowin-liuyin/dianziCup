@@ -984,3 +984,14 @@ Root独占公共App/schema/迁移/合同/locks/状态/文档/Git/秘密；R06固
 本批scripts/verify_plan.py原exit1：STATE_RECOVERY_DEP_INCOMPLETE R02→R01。Git0f基线已是R01 needs_changes/R02 accepted，checker与依赖合同未改。按已有前置回退规则将当前R02转awaiting_review，保留原accepted完整历史、implementation与冻结测试证据；不会把R01改绿或改checker放松规则。R02事实持久化的旧源独立证据仍有效，当前整包前置需复核，历史G-A/G-B已推冻结SHA报告不重写。新默认入口review追加R01当前Engine释放/失败路径与依赖重验。
 
 全staged diffcheck原exit1仅四个pytest原始失败stdout/XML尾部空白。只对明确四文件路径加-text -diff保原raw，其他本批原始收据精确文件-text；业务/文档继续正常diff/style检查。不是全仓禁用，不改变失败数量或原始字节。
+
+
+## 2026-10-17T10:23:42+08:00 · 批次17真实默认PG与并行Root候选
+
+Root HEAD9d8b222/codex/full-delivery-recovery/origin授权原URL；当前21files code候选root_batch17_code_freeze，不是accepted/push。Root包资源/共享身份audit修复82+typed90 offline/mypy4/styles6通过，7head测试只0030→0031八处，Source912仍0030。独审9d六窗21PG实际10:11:31–10:13:19全0，模型fixture；9d新身份审计实际1fail已证须新源同oracle复验。原R01→R05状态回退历史仍保留，不能凭21无条件改绿。
+
+Source actual6b/f418/5e39/bae第三次09:36:17失败，auth8.2s/import未完成，12fixed phase，第三guardianCPU18.15625+先37.6875=55.84375 pendingclosure；未ready/6h，服务不运行。Root precise_identity_addendum保17digit decimal strings/原rawhash，旧JS preliminary无authority。Source c46a新3行为+19精确baseline、54direct，freshreview /root/r06_startup_common_fix_first_independent_review 在独立WT，实际新17/audit/cache migration/7gate/start尚未做，15s/450/21600/deadline不变。
+
+Risk9aa生产12场景+8125合法原expiry1实际通过，indreport raw1c27bf...限定producer；Root尚未导入。QAreader b46独审338绿/3新负例红（request binding/context误拒），新fixer独占reader+generation_requests，publisher新作者独占新publication/atomic rollback；workflow_service唯一plugin owner接纯helper委托，tool_gateway唯一pluginownerextract，read_adapters唯一R16 HTTP author。R16 source5ff7已173offline、PG12collect，UI dd35已124fixtures/strict/lint/build但未App/浏览器；CBM fixedcache串行Windows+Linux16，R1620.875s已释放，UI接窗→Source新独审。
+
+Root旧defaultreviewer原needs_changes已冻结，下一Root checkpoint后 followup新SHA做wheel/Docker/PG audit sameoracle+当前R01 lifecycle。原PGpacket日志 D:/dz16r1/.../pg_support+pg_audit_support，oldaudit red保留。所有task/phase stillpartial，不pushG-Caccepted。人工gold0/授权资产/CNNVD外部缺口不停止内部；后段多跳/9roles/图谱/重判/defaultports/evaluation/doc仍可执行。用户tsbuildinfo3c587e/pushledger/Root-batch13-index/未知未提交不stage。详细report reports/tasks/Root-batch17-integration.md。

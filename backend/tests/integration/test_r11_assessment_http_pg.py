@@ -38,7 +38,7 @@ RUN_ID = "r11_assessment_http_20261016"
 DATABASE = "test_dianzi_" + RUN_ID
 SCHEMA_PREFIX = "test_r11_assessment_http_"
 ORIGIN = "http://testserver"
-HEAD = "0030_revalidation_actor_bindings"
+HEAD = "0031_public_task_bindings"
 
 
 @pytest.fixture(scope="module")

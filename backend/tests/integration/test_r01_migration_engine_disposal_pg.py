@@ -35,7 +35,7 @@ PWSH = (
     "C:/Users/yinha/.cache/codex-runtimes/codex-primary-runtime/"
     "dependencies/native/powershell/pwsh.exe"
 )
-HEAD = "0030_revalidation_actor_bindings"
+HEAD = "0031_public_task_bindings"
 
 
 def emit_record(record: dict[str, object]) -> None:

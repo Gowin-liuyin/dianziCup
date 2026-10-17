@@ -31,3 +31,8 @@
 - reports/runs/recovery_r06_activation_prep_20261016/candidate/ops/minio_controller.py
 
 候选20源清单原SHA8021c07b6741307577264c336d214f550c3287bdd1bda10c84f0e37188e8cfac，source6b86f43e34f3ab406cf8136c7106c7f340fc198d，材料5e81224bb638c2ce74f45278333be7af6e2a7d15。诊断有限键空间11阶段×3状态：每generation最多33final与33pending，最大66KiB；正常21final。write/link失败保留pending且禁止继续/覆写ready。原74真实71通过/3失败，新增精确freeze4/独立native4另列，非旧74green。新非作者必须核对本补录与旧记录差异及此前package授权，不承担OPS新pin/新helper/真实安装或15秒ready放行。
+
+
+## 诊断收据计量单位澄清 · 2026-10-17T09:53:51+08:00
+
+08:26补录的33 final+33 pending/66KiB、正常21 final，是每个固定actor PID+完整100ns birth身份的界限。一个attempt实际并发worker与beat两身份，总上限132KiB（每身份最多66文件），正常42 final；API不走该Celery入口诊断。不得按33/整个attempt误拒两合法actor，也不得把两身份视为无限generation。actor失败前role可null，文件/内容身份保持Python整数原值，不使用JavaScript不安全整数来签实际identity；未知目录/字段/phase/重放/redirect仍拒。此为原filename及作者两role测试的计量解释，不增加15sready、6h、CPU、内存、日志或Source请求预算，不把diagnostics作为ready/closure权威。新helper严格验证非权威diagnostics但仍原17键/authority evidence map，归档沿原attempt_history保留，须新非作者核本澄清及实现。

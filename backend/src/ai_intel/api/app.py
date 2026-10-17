@@ -37,6 +37,7 @@ from ai_intel.api.public_ask_routes import build_public_ask_router
 from ai_intel.api.public_extension_routes import build_public_extension_router
 from ai_intel.api.question_routes import build_question_router
 from ai_intel.api.recommendation_routes import build_recommendation_router
+from ai_intel.api.request_audit import REJECTED_IDENTITY_FIELDS, record_rejected_identity_fields
 from ai_intel.api.source_routes import build_source_router
 from ai_intel.assessment.http_routes import build_assessment_router
 from ai_intel.assets.inventory_routes import build_inventory_router
@@ -95,16 +96,15 @@ def create_application(
     @application.exception_handler(RequestValidationError)
     async def invalid_request(request: Request, error: RequestValidationError) -> JSONResponse:
         """错误不回显Pydantic输入，身份伪造审计仅记录固定字段名。"""
-        identity_fields = {"tenant_id", "user_id", "role", "permissions"}
         submitted_keys = {
             str(location)
             for detail in error.errors()
             for location in detail.get("loc", ())
-            if location in identity_fields
+            if location in REJECTED_IDENTITY_FIELDS
         }
         if service is not None and submitted_keys:
             try:
-                service.record_identity_spoof_attempt(dict.fromkeys(submitted_keys, ""))
+                record_rejected_identity_fields(service, submitted_keys)
             except SQLAlchemyError:
                 return problem_response(
                     request,

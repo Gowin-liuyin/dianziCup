@@ -4,7 +4,7 @@ import json
 import re
 from collections.abc import Callable
 from datetime import datetime
-from pathlib import Path
+from importlib.resources import files
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
@@ -35,12 +35,14 @@ from ai_intel.api.problems import problem_response
 from ai_intel.api.public_write_adapters import MAX_PUBLIC_WRITE_BYTES, parse_public_ask_request
 from ai_intel.api.question_contracts import QuestionAnswerResponse, QuestionRequest
 from ai_intel.api.question_routes import build_question_service
+from ai_intel.api.request_audit import record_rejected_identity_fields
 from ai_intel.domain.access import (
     READ_PUBLIC,
     AccessScope,
     CrossTenantAccessError,
     PermissionDeniedError,
 )
+from ai_intel.infrastructure.models.json_output import strict_json_object
 from ai_intel.infrastructure.settings import ApplicationSettings
 
 
@@ -112,10 +114,11 @@ def build_public_ask_router(
         if questions_provider is not None
         else build_question_service(engine, settings)
     )
-    contract_path = (
-        Path(__file__).resolve().parents[4] / "contracts/schemas/public_api_extensions_v1.json"
+    request_schema = json.loads(
+        files("ai_intel.api")
+        .joinpath("schemas/public_ask_request_v1.json")
+        .read_text(encoding="utf-8")
     )
-    request_schema = json.loads(contract_path.read_text(encoding="utf-8"))["$defs"]["AskRequest"]
 
     def serve(
         request: Request,
@@ -221,6 +224,21 @@ def build_public_ask_router(
                 if len(raw) + len(chunk) > MAX_PUBLIC_WRITE_BYTES:
                     raise ValueError("public request exceeds byte limit")
                 raw.extend(chunk)
+            submitted = strict_json_object(bytes(raw), MAX_PUBLIC_WRITE_BYTES, maximum_nodes=1000)
+            try:
+                await run_in_threadpool(
+                    record_rejected_identity_fields, service_provider(), submitted.keys()
+                )
+            except SQLAlchemyError:
+                response = problem_response(
+                    request,
+                    503,
+                    "authentication_unavailable",
+                    "authentication database is unavailable",
+                    True,
+                )
+                response.headers["Cache-Control"] = "no-store"
+                return response
             payload = parse_public_ask_request(bytes(raw))
         except (ValueError, RecursionError):
             response = problem_response(

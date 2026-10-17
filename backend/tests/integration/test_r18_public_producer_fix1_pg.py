@@ -71,7 +71,7 @@ def pg_engine(isolated_test_database_url):
             with engine.connect() as connection:
                 assert (
                     connection.scalar(text("SELECT version_num FROM alembic_version"))
-                    == "0030_revalidation_actor_bindings"
+                    == "0031_public_task_bindings"
                 )
             yield engine
         finally:

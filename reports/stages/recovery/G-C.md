@@ -1,11 +1,11 @@
 # G-C · 广来源、九维富化与关联知识
 
 文档首次创建时间：2026-10-15T19:18:55+08:00
-本次写作开始时间：2026-10-16T21:14:23+08:00
-本次写作结束时间：2026-10-16T21:14:23+08:00
-最后更新时间：2026-10-17T09:11:38+08:00
+本次写作开始时间：2026-10-17T10:23:42+08:00
+本次写作结束时间：2026-10-17T10:27:06+08:00
+最后更新时间：2026-10-17T10:27:06+08:00
 阶段实际开始/结束时间：准备包首个时钟见原run，整体开始历史未单独记录 / 尚未结束
-本报告证据截止时间：2026-10-17T09:11:38+08:00
+本报告证据截止时间：2026-10-17T10:27:06+08:00
 主控/实现Agent：/root、r06_feed_parsers、r06_repository_community_adapters
 独立审查Agent与报告：R06源准备、parser、社区适配器各新reviewer，见第3节；阶段新reviewer尚未委派
 阶段状态：in_progress
@@ -499,3 +499,14 @@ selector最新36b969bd修正两处测试输入后的原7个PG案例已在07:35:2
 Root基线0f8c1f6，23代码文件集成源207d/36b9/3873/36fb及R17 5af9+4fa。Root315离线+72前端、mypy6/TS/ESLint通过，仅checkpoint候选awaiting新非作者。真实PG typed17全部passed仅f316 source，不是Root默认任务口；风险52caf双来源40P01confirmed及grade1pass/3source_name setup红均保留，作者修bounded cohort/唯一synthetic name，原11oracles不动。Source新6b86/f418/helper5e39独立迁移审查，actual9e旧fresh17closed，未新ready/6h，不reset CPU37.6875与ledger42/450。G-C仍in_progress/partial，无新阶段push，最后已核远端c229。详见reports/tasks/Root-batch16-integration.md与root_batch16_code_freeze/导入/原始收据。
 
 Root独占公共App/schema/迁移/合同/locks/状态/文档/Git/秘密；R06固定pin与新独审、typed独审、risk作者与新独审、R17复核与plugin deadline作者/新独审各独立WT，CBM独占与PG逐窗不会覆盖。下一立即冻结默认App review、实际Source安装/fresh17/start、typed默认读/发布/任务端口、risk新cohort和真实浏览器；完整R12/R14/R16/R18/R19–24仍未完成。tsbuildinfo SHA3c587e/push台账/用户diff保护，原60T/Gold/分母不变。
+
+
+## 文档修订 2026-10-17T10:23:42+08:00 · 当前仍in_progress/partial
+
+Root HEAD9d8b222/codex/full-delivery-recovery/origin授权原URL；当前21files code候选root_batch17_code_freeze，不是accepted/push。Root包资源/共享身份audit修复82+typed90 offline/mypy4/styles6通过，7head测试只0030→0031八处，Source912仍0030。独审9d六窗21PG实际10:11:31–10:13:19全0，模型fixture；9d新身份审计实际1fail已证须新源同oracle复验。原R01→R05状态回退历史仍保留，不能凭21无条件改绿。
+
+Source actual6b/f418/5e39/bae第三次09:36:17失败，auth8.2s/import未完成，12fixed phase，第三guardianCPU18.15625+先37.6875=55.84375 pendingclosure；未ready/6h，服务不运行。Root precise_identity_addendum保17digit decimal strings/原rawhash，旧JS preliminary无authority。Source c46a新3行为+19精确baseline、54direct，freshreview /root/r06_startup_common_fix_first_independent_review 在独立WT，实际新17/audit/cache migration/7gate/start尚未做，15s/450/21600/deadline不变。
+
+Risk9aa生产12场景+8125合法原expiry1实际通过，indreport raw1c27bf...限定producer；Root尚未导入。QAreader b46独审338绿/3新负例红（request binding/context误拒），新fixer独占reader+generation_requests，publisher新作者独占新publication/atomic rollback；workflow_service唯一plugin owner接纯helper委托，tool_gateway唯一pluginownerextract，read_adapters唯一R16 HTTP author。R16 source5ff7已173offline、PG12collect，UI dd35已124fixtures/strict/lint/build但未App/浏览器；CBM fixedcache串行Windows+Linux16，R1620.875s已释放，UI接窗→Source新独审。
+
+Root旧defaultreviewer原needs_changes已冻结，下一Root checkpoint后 followup新SHA做wheel/Docker/PG audit sameoracle+当前R01 lifecycle。原PGpacket日志 D:/dz16r1/.../pg_support+pg_audit_support，oldaudit red保留。所有task/phase stillpartial，不pushG-Caccepted。人工gold0/授权资产/CNNVD外部缺口不停止内部；后段多跳/9roles/图谱/重判/defaultports/evaluation/doc仍可执行。用户tsbuildinfo3c587e/pushledger/Root-batch13-index/未知未提交不stage。详细report reports/tasks/Root-batch17-integration.md。
