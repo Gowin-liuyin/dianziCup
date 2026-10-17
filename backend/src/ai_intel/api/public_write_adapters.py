@@ -17,15 +17,19 @@ from ai_intel.api.knowledge_read_service import KnowledgeReadService
 from ai_intel.api.question_contracts import QuestionAnswerResponse, QuestionRequest
 from ai_intel.assessment.assessment_service import AssessmentService
 from ai_intel.assessment.conditions import (
+    AllOf,
+    AnyOf,
     ComponentMatches,
+    ConditionEvaluation,
     InventoryProvesAbsence,
     VersionInRange,
     condition_digest,
+    evaluate_condition_tree,
     iter_condition_nodes,
 )
 from ai_intel.assessment.persistence_contracts import AssessmentReceipt
 from ai_intel.domain.access import READ_ASSET, AccessScope
-from ai_intel.domain.enums import AssessmentStatus, FreshnessStatus
+from ai_intel.domain.enums import AssessmentStatus, ConditionValue, FreshnessStatus
 from ai_intel.infrastructure.models.json_output import strict_json_object
 from ai_intel.knowledge.models import evidence
 
@@ -182,6 +186,37 @@ def _rule_targets_only_component(component: PublicComponent, receipt: Assessment
     )
 
 
+def _component_context_evaluation(
+    component: PublicComponent, receipt: AssessmentReceipt, scope: AccessScope
+) -> ConditionEvaluation | None:
+    """Evaluate mixed rules with only the component evidence supplied by this request."""
+    condition = receipt.prepared.inputs.rule.condition_ast
+    if all(
+        isinstance(node, AllOf | AnyOf | ComponentMatches | VersionInRange | InventoryProvesAbsence)
+        for node in iter_condition_nodes(condition)
+    ):
+        return None
+    snapshot = receipt.prepared.asset_snapshot
+    component_snapshot = snapshot.model_copy(
+        update={
+            "components": tuple(
+                item
+                for item in snapshot.components
+                if item.ecosystem == component.ecosystem
+                and item.package_name == component.package_name
+                and item.version == component.version
+            ),
+            "configuration": (),
+            "tool_permissions": None,
+            "input_channels": None,
+            "network_exposure": None,
+            "inventory_completeness": "unknown",
+            "declared_scope": (),
+        }
+    )
+    return evaluate_condition_tree(condition, component_snapshot, access_scope=scope)
+
+
 def _current_citations(
     receipt: AssessmentReceipt, knowledge: KnowledgeReadService
 ) -> tuple[CitationProjection, ...]:
@@ -283,6 +318,18 @@ def stack_current_assessments(
                     if receipt.rule_result is not None
                     else "unsupported_rule"
                 )
+                component_evaluation = _component_context_evaluation(
+                    component, receipt, knowledge.scope
+                )
+                if component_evaluation is not None:
+                    status = {
+                        ConditionValue.TRUE: AssessmentStatus.SUPPORTED_APPLICABILITY,
+                        ConditionValue.FALSE: AssessmentStatus.EXCLUDED_WITH_EVIDENCE,
+                        ConditionValue.UNKNOWN: AssessmentStatus.INSUFFICIENT_EVIDENCE,
+                        ConditionValue.CONFLICT: AssessmentStatus.CONFLICTING_EVIDENCE,
+                    }[component_evaluation.value]
+                    reason = component_evaluation.reason_code
+                    limitations.append("component_request_does_not_supply_asset_runtime_context")
                 citations = _current_citations(receipt, knowledge)
                 if status in {
                     AssessmentStatus.SUPPORTED_APPLICABILITY,

@@ -89,6 +89,41 @@ describe("question workspace — isolated fixture, not live", () => {
     expect(screen.getByText("会话已失效，请重新登录。")).toBeTruthy();
     expect(screen.queryByLabelText("你的问题")).toBeNull(); expect(screen.queryByText(/question-ui-/)).toBeNull();
   });
+  it.each(["submit", "lookup"] as const)("clears private question state and stops requests after business 403 during %s", async (action) => {
+    const apiOptions: { status?: number; code?: string } = {};
+    const requests = fixtureApi(apiOptions); render(<App />); await formReady();
+    fillQuestion("权限撤回后的私有问题");
+    if (action === "lookup") {
+      submitForm(); await screen.findByRole("article", { name: "完整证据回答" });
+    }
+    apiOptions.status = 403; apiOptions.code = "permission_denied";
+    if (action === "submit") submitForm();
+    else fireEvent.submit(screen.getByRole("form", { name: "查询已保存回答" }));
+    await screen.findByRole("heading", { name: "问答访问已暂停" });
+    expect(screen.queryByLabelText("你的问题")).toBeNull();
+    expect(screen.queryByLabelText("回答标识")).toBeNull();
+    expect(screen.queryByText("权限撤回后的私有问题")).toBeNull();
+    expect(screen.queryByText(/question-ui-/)).toBeNull();
+    expect(screen.queryByRole("article", { name: "完整证据回答" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "原样重试本轮" })).toBeNull();
+    expect(screen.getByRole("link", { name: "重新核对会话与权限" }).getAttribute("href")).toBe("#session");
+    const privateRequests = requests.filter((request) => request.path === "/v1/questions" || request.path.startsWith("/v1/answers/"));
+    expect(privateRequests).toHaveLength(action === "submit" ? 1 : 2);
+  });
+  it("retains the frozen request for CSRF 403 and retries with the same body and key", async () => {
+    const apiOptions: { status?: number; code?: string } = { status: 403, code: "csrf_rejected" };
+    const requests = fixtureApi(apiOptions); render(<App />); await formReady(); fillQuestion(); submitForm();
+    await screen.findByText(/会话写入校验未通过/);
+    expect(screen.queryByRole("heading", { name: "问答访问已暂停" })).toBeNull();
+    expect(screen.getByLabelText("你的问题").hasAttribute("disabled")).toBe(true);
+    apiOptions.status = undefined;
+    fireEvent.click(screen.getByRole("button", { name: "原样重试本轮" }));
+    await screen.findByRole("article", { name: "完整证据回答" });
+    const posts = requests.filter((request) => request.path === "/v1/questions");
+    expect(posts).toHaveLength(2);
+    expect(posts[1]?.options.body).toBe(posts[0]?.options.body);
+    expect(new Headers(posts[1]?.options.headers).get("Idempotency-Key")).toBe(new Headers(posts[0]?.options.headers).get("Idempotency-Key"));
+  });
   it.each(["stale", "unknown"])("renders limited coverage and %s without asserting current success", async (freshness) => {
     fixtureApi({ wire: { ...questionAnswerFixture(), freshness } }); render(<App />); await formReady(); fillQuestion(); submitForm(); await screen.findByRole("article", { name: "完整证据回答" });
     expect(screen.getByText(/隔离测试没有资产快照/)).toBeTruthy(); expect(screen.getByText(freshness === "stale" ? /这是已过期回答/ : /服务未确认该回答的当前性/)).toBeTruthy();

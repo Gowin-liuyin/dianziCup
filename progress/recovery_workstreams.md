@@ -735,3 +735,14 @@ Root HEAD仍3fd9cd68，专用codex/full-delivery-recovery；此次正准备check
 主控只追加history，不升级任何整卡status/implementation/verification。共享checkout仅Root业务写者；实现/复审独立WT：publicask作者3873+新reviewer；Risk作者326+全新reviewer；sharedJSON作者207d+全新reviewer；selector唯一fixture作者36+原reviewer定向复核；Source第二启动全新诊断只读已结束。宿主16slots，按依赖滚动约8–10角色；PG物理target2+parentSampler1=3独占、CBMfullWin+guest16有界与普通Win10/native同限制。Root普通tests和工具IO无model/测绘paid调用；Source HTTP实际unknown，费用unknown，累计CPU旧19.15625+第二guardian18.53125须后续prepare沿历史累计，不能reset。用户tsbuildinfo/pushledger/Root-batch13-index与未知output保护，显式文件选择。
 
 下一：冻结Rootcheckpoint供oldlatewriter复核、Root挂真实publicask/CORS/OpenAPI；component36最后7→QAalias1→publicask18→Risk11+lockBarrier→workflowPG8排同mature nonce控制窗；RootSource需fresh实际kernel closure及少量phase证据定位pre-ready，不放宽ready15/资源/金标/六小时。内部仍可执行，goal active；人工gold/授权资产/CNNVD登录资料外部缺口不包装通过。
+
+## 2026-10-17T07:53:58+08:00 · 批次16并行独占
+
+Root唯一integration/App/Git/push/actual秘密注入；0031/public_task_bindings唯一r18_typed_task_binding_implementation；question-workspace/directtests唯一r17_real_workbench_e2e_preparation；plugins/**与直属tests唯一r18_plugin_real_gateway_analysis（可内部划分exclusive runner文件）；CORE deploy_runtime_entry/directtests唯一r06_pre_ready_phase_receipt_implementation；0f冻结集成新reviewer root_batch15_first_independent_review；公开问答3873 actual PG18独立r18_public_ask_first_independent_review；0f alias旧PG1独立r18_question_credential_first_independent_review。各WT固定已commit基线，不改中央状态、不自行push/accepted。CBM共享daemon按窗口滚动、不同project快照，PG最多2target+1sampler且Root唯一launch，不以工具竞争串行全部实现。
+
+
+## 批次16冻结与并行续接 · 2026-10-17T09:11:38+08:00
+
+Root基线0f8c1f6，23代码文件集成源207d/36b9/3873/36fb及R17 5af9+4fa。Root315离线+72前端、mypy6/TS/ESLint通过，仅checkpoint候选awaiting新非作者。真实PG typed17全部passed仅f316 source，不是Root默认任务口；风险52caf双来源40P01confirmed及grade1pass/3source_name setup红均保留，作者修bounded cohort/唯一synthetic name，原11oracles不动。Source新6b86/f418/helper5e39独立迁移审查，actual9e旧fresh17closed，未新ready/6h，不reset CPU37.6875与ledger42/450。G-C仍in_progress/partial，无新阶段push，最后已核远端c229。详见reports/tasks/Root-batch16-integration.md与root_batch16_code_freeze/导入/原始收据。
+
+Root独占公共App/schema/迁移/合同/locks/状态/文档/Git/秘密；R06固定pin与新独审、typed独审、risk作者与新独审、R17复核与plugin deadline作者/新独审各独立WT，CBM独占与PG逐窗不会覆盖。下一立即冻结默认App review、实际Source安装/fresh17/start、typed默认读/发布/任务端口、risk新cohort和真实浏览器；完整R12/R14/R16/R18/R19–24仍未完成。tsbuildinfo SHA3c587e/push台账/用户diff保护，原60T/Gold/分母不变。

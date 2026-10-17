@@ -1,0 +1,19 @@
+# CR-R06 · 新诊断CORE的固定前驱控制包迁移
+
+文档首次创建/写作开始/写作结束时间：2026-10-17T08:44:00+08:00
+状态：awaiting_review；常规版本迁移修复，整R06/G-C未放行。
+
+依据：前条CR58e6e9ce与新非作者CORE6b86限定Ship；当前真实旧binding=9e3066565a0fe45fed58574a77baee0e9492651baa3ed953a610abe2b5b5e8fd，CORE37ffe6da1d9a258359363d42488d236b7c00ad87/OPS81053fd680dbfb275bfcc511ae44f573340efd56。Root08:04:33已fresh17项kernel关闭证明，20 evidence，原audit与失败保留。现legacy代码只允许更早2a32/984/3c，不能冒充9e为same-version或删state绕attempt_history。
+
+授权精确改动：OPS configuration.py既有CORE_SOURCE_SHA→6b86f43e34f3ab406cf8136c7106c7f340fc198d，并在prepare_launch仅三个固定前驱hash/source字面量2a→当前精确9e、984→37、3c→810；helper只原三个package assignments加LEGACY_HASH/CORE/OPS三个assign更新同精确tuple。剔除这些精确常量后所有函数AST/解析/资源/权限/ledger/ready15/21600观察900关闭/期限不变，不接受任意版本、不拓宽白名单。新OPS实际source f4187db1800188a1f302163ce8a24a19324edd6f，helper与20/23manifest待冻结；source_20严格20，source_23同20+旧observer a191三项兼容既有严格len23，观察器原字节核验。
+
+迁移：Root先真实旧17关闭核验，再保持原observation/auth/activation/launch_state/失败raw和完整旧20备份；独立严格owned路径、非reparse、nonce/generation无覆写归档pre_ready（不存在如实记录）；安装新20并只重算binding四source字段，非source/protected两OID/COMMENT/ledger42/450/累计guardianCPU37.6875/原父deadline全保持。新包单前驱迁移与7门/atomic prepare由新非作者冻结检查，Root安装后fresh新17，旧audit不作新绿；禁止旧手工prepare后launch重复prepare，禁止删除state伪sameversion。
+
+回滚：只有实际held/kernel闭合且无新runtime后Root恢复原20/manifest/binding，归档新失败/诊断保持，旧helper版本重新fresh17；不能运行时换包或缩观察窗口。测试影响：新固定tuple正例必须使用真实9e非秘密public raw（不能mock sha通过），wrong-hash/旧2a/篡改metadata/source/budget/无closure均拒绝，exactAST/pins与实际artifact/nooverwrite/秘密边界。原legacy oracle保留原红与历史版本；旧6hfalse不改。各层验证unit/contract/security等待独审，integration/live/Source15s/6h未运行。Root唯一秘密/安装/门/actual state/start/push，作者仅离线包。
+
+
+## 最终 helper raw 冻结 · 2026-10-17T09:00:10+08:00
+
+helper 最终源码 5e39ee391fdcdfbd8ebf695645d748d9387aa286，物理与 Git 字节均为34525，SHA256 19c8a68bdf03937edee4c81c5dce336669b09893f1a482ae9c9ff7403e5cc8a2。f34237ea27ecb295eaca81b0cadf14272aa5d8b0 的 Git LF33547 与派生物理 CRLF34525 不一致，首次 prepare_auxiliary guard 真实拒绝已保留。允许仅 helper 精确路径与作者独占 ownrun/** 添加 -text，保留原5bfb物理行尾；不得扩到全仓或一般业务文件。函数 AST 仍只六个固定常量变化；OPS f4187 与 source20/23 清单 fe0887dd0dc92cb6f64c2cefa668dd06c8ec26dbf821a06bd8bc6d7d0700d4b1 不变，helper单独manifest避免自身提交SHA循环。
+
+此修订只落实已批准固定pin迁移与原字节验证；新独立reviewer核最终候选及文档追加。actual安装、fresh17、15秒ready、6h与阶段门均未由此通过。修订人Root。

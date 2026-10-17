@@ -970,3 +970,17 @@ Root HEAD仍3fd9cd68，专用codex/full-delivery-recovery；此次正准备check
 ## 2026-10-17T07:46:09+08:00 · 冻结前证据校正
 
 selector最新36b969bd修正两处测试输入后的原7个PG案例已在07:35:25.6948531至07:35:34.9276899实际7/7通过；独立报告G-E-R18-component-selector-review-1-final-fixture.md限定内部切片，默认producer仍未验。共享JSON207d独审750个不同case通过，尚未导入本冻结版本。原始run行尾空白保持；本run新增仅针对本次显式暂存原始收据的-text规则保存Git原字节，未全局忽略检查或改原日志。
+
+
+## 批次16冻结与并行续接 · 2026-10-17T09:11:38+08:00
+
+Root基线0f8c1f6，23代码文件集成源207d/36b9/3873/36fb及R17 5af9+4fa。Root315离线+72前端、mypy6/TS/ESLint通过，仅checkpoint候选awaiting新非作者。真实PG typed17全部passed仅f316 source，不是Root默认任务口；风险52caf双来源40P01confirmed及grade1pass/3source_name setup红均保留，作者修bounded cohort/唯一synthetic name，原11oracles不动。Source新6b86/f418/helper5e39独立迁移审查，actual9e旧fresh17closed，未新ready/6h，不reset CPU37.6875与ledger42/450。G-C仍in_progress/partial，无新阶段push，最后已核远端c229。详见reports/tasks/Root-batch16-integration.md与root_batch16_code_freeze/导入/原始收据。
+
+Root独占公共App/schema/迁移/合同/locks/状态/文档/Git/秘密；R06固定pin与新独审、typed独审、risk作者与新独审、R17复核与plugin deadline作者/新独审各独立WT，CBM独占与PG逐窗不会覆盖。下一立即冻结默认App review、实际Source安装/fresh17/start、typed默认读/发布/任务端口、risk新cohort和真实浏览器；完整R12/R14/R16/R18/R19–24仍未完成。tsbuildinfo SHA3c587e/push台账/用户diff保护，原60T/Gold/分母不变。
+
+
+## 前置状态纠偏与原始日志 · 2026-10-17T09:15:00+08:00
+
+本批scripts/verify_plan.py原exit1：STATE_RECOVERY_DEP_INCOMPLETE R02→R01。Git0f基线已是R01 needs_changes/R02 accepted，checker与依赖合同未改。按已有前置回退规则将当前R02转awaiting_review，保留原accepted完整历史、implementation与冻结测试证据；不会把R01改绿或改checker放松规则。R02事实持久化的旧源独立证据仍有效，当前整包前置需复核，历史G-A/G-B已推冻结SHA报告不重写。新默认入口review追加R01当前Engine释放/失败路径与依赖重验。
+
+全staged diffcheck原exit1仅四个pytest原始失败stdout/XML尾部空白。只对明确四文件路径加-text -diff保原raw，其他本批原始收据精确文件-text；业务/文档继续正常diff/style检查。不是全仓禁用，不改变失败数量或原始字节。

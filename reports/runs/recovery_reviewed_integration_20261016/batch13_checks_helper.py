@@ -84,6 +84,9 @@ def execute(label, command, *, timeout=60, process_cap=10):
                 for pid, item in reversed(list(tree.items())):
                     if pid in {os.getpid(), control["pid"]}:
                         continue
+                    previous = preexisting.get(pid)
+                    if previous is not None and previous["birth_utc"] == item["birth_utc"]:
+                        continue
                     try:
                         if metadata.identity(pid) != {"pid": pid, "birth_utc": item["birth_utc"]}:
                             continue

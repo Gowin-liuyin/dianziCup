@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="1.808" timestamp="2026-10-17T08:12:02.351633+08:00" hostname="yin"><testcase classname="tests.unit.test_r18_public_ask_default_app" name="test_default_app_reuses_one_question_service_and_documents_exact_public_request" time="0.020"><failure message="assert 0 == 1&#10; +  where 0 = len([])">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000012A05BB2A50&gt;
+
+    def test_default_app_reuses_one_question_service_and_documents_exact_public_request(monkeypatch):
+        calls = []
+        assert create_application.__globals__["question_routes"] is question_routes
+    
+        def configured_questions(engine, settings):
+            calls.append((engine, settings))
+            return None
+    
+        monkeypatch.setattr(question_routes, "build_question_service", configured_questions)
+        application = create_application(settings=ApplicationSettings(app_env="test", data_mode="fixture"))
+        assert len(calls) == 1
+        routes = [route for route in application.routes if getattr(route, "path", None) == "/api/v1/ask"]
+&gt;       assert len(routes) == 1
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests\unit\test_r18_public_ask_default_app.py:26: AssertionError</failure></testcase></testsuite></testsuites>

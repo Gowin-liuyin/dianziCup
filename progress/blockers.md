@@ -613,3 +613,17 @@ Source实际独立912控制器03:34:02.196146至03:34:22.012818提前退出19.81
 并行：R17新独审d7d3068对8e4发现M01刷新竞态，779distinct既有用例/Edge11fixture通过不消除该红；作者在新WT修所有subscription caller。R19新独审8f326cd仅3文件Ship/69fixture，人工gold0。R18独立适配与assessment同事务read由唯一作者实现；Root持有App/QA身份/seletor/typedtaskbinding。R10默认worker工厂CR已经登记，后续独立作者复用Neo4j与PG/租约/graph policy；公开schema、迁移/lock仍Root独占。R20 strict1CPU红仍未关闭，产品默认30与startup诊断不同，不能下调门槛。
 
 宿主16Agent槽，按能力依赖滚动6–10包；运行资源另行独占，普通完整进程10/60s、CBM16/60s、Edge16有界。默认shell/profile共同延迟已通过显式C:/Program Files/PowerShell/7/pwsh.exe、login=false恢复；原长延迟未洗成合规。真实Source成本unknown，本轮模型/测绘paid调用0。无新阶段放行/push，G-C仍in_progress/partial；用户tsbuildinfo/push台账保护。人工双标/授权资产/CNNVD登录仍缺，最终未验收。
+
+
+## 批次16冻结与并行续接 · 2026-10-17T09:11:38+08:00
+
+Root基线0f8c1f6，23代码文件集成源207d/36b9/3873/36fb及R17 5af9+4fa。Root315离线+72前端、mypy6/TS/ESLint通过，仅checkpoint候选awaiting新非作者。真实PG typed17全部passed仅f316 source，不是Root默认任务口；风险52caf双来源40P01confirmed及grade1pass/3source_name setup红均保留，作者修bounded cohort/唯一synthetic name，原11oracles不动。Source新6b86/f418/helper5e39独立迁移审查，actual9e旧fresh17closed，未新ready/6h，不reset CPU37.6875与ledger42/450。G-C仍in_progress/partial，无新阶段push，最后已核远端c229。详见reports/tasks/Root-batch16-integration.md与root_batch16_code_freeze/导入/原始收据。
+
+Root独占公共App/schema/迁移/合同/locks/状态/文档/Git/秘密；R06固定pin与新独审、typed独审、risk作者与新独审、R17复核与plugin deadline作者/新独审各独立WT，CBM独占与PG逐窗不会覆盖。下一立即冻结默认App review、实际Source安装/fresh17/start、typed默认读/发布/任务端口、risk新cohort和真实浏览器；完整R12/R14/R16/R18/R19–24仍未完成。tsbuildinfo SHA3c587e/push台账/用户diff保护，原60T/Gold/分母不变。
+
+
+## 前置状态纠偏与原始日志 · 2026-10-17T09:15:00+08:00
+
+本批scripts/verify_plan.py原exit1：STATE_RECOVERY_DEP_INCOMPLETE R02→R01。Git0f基线已是R01 needs_changes/R02 accepted，checker与依赖合同未改。按已有前置回退规则将当前R02转awaiting_review，保留原accepted完整历史、implementation与冻结测试证据；不会把R01改绿或改checker放松规则。R02事实持久化的旧源独立证据仍有效，当前整包前置需复核，历史G-A/G-B已推冻结SHA报告不重写。新默认入口review追加R01当前Engine释放/失败路径与依赖重验。
+
+全staged diffcheck原exit1仅四个pytest原始失败stdout/XML尾部空白。只对明确四文件路径加-text -diff保原raw，其他本批原始收据精确文件-text；业务/文档继续正常diff/style检查。不是全仓禁用，不改变失败数量或原始字节。

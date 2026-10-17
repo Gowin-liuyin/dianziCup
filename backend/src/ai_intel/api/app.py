@@ -18,6 +18,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException
 
+from ai_intel.api import question_routes
 from ai_intel.api.auth_routes import build_auth_router
 from ai_intel.api.auth_state import PgAuthenticationStateStore
 from ai_intel.api.authentication import (
@@ -32,6 +33,7 @@ from ai_intel.api.investigation_routes import build_investigation_router
 from ai_intel.api.job_routes import build_job_router
 from ai_intel.api.knowledge_routes import build_knowledge_router
 from ai_intel.api.problems import problem_response
+from ai_intel.api.public_ask_routes import build_public_ask_router
 from ai_intel.api.public_extension_routes import build_public_extension_router
 from ai_intel.api.question_routes import build_question_router
 from ai_intel.api.recommendation_routes import build_recommendation_router
@@ -135,7 +137,13 @@ def create_application(
     job_router = build_job_router(lambda: service, engine, enrichment)
     graph_router = build_graph_router(lambda: service, engine)
     inventory_router = build_inventory_router(lambda: service, engine)
-    question_router = build_question_router(lambda: service, engine, configuration)
+    questions = question_routes.build_question_service(engine, configuration)
+    question_router = build_question_router(
+        lambda: service, engine, configuration, questions_provider=lambda: questions
+    )
+    public_ask_router = build_public_ask_router(
+        lambda: service, engine, configuration, questions_provider=lambda: questions
+    )
     content_store = build_content_storage(configuration) if engine is not None else None
     assessment_router = build_assessment_router(lambda: service, engine, content_store)
     investigation_router = build_investigation_router(lambda: service, engine, configuration)
@@ -179,6 +187,7 @@ def create_application(
         ),
         prefix="/api/v1",
     )
+    application.include_router(public_ask_router, prefix="/api/v1")
     application.include_router(auth_router, include_in_schema=False)
     application.include_router(health_router, include_in_schema=False)
     return application

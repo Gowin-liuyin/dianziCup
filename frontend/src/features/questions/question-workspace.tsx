@@ -61,6 +61,7 @@ function AuthenticatedQuestions({ initialEventId }: { initialEventId: string }) 
   const [answerEventId, setAnswerEventId] = useState<string | null>(null);
   const confirmedAnswerScope = useRef<{ answerId: string; eventId: string } | null>(null);
   const [failure, setFailure] = useState<{ error: ApiProblem; submitting: boolean } | null>(null);
+  const [accessDenied, setAccessDenied] = useState<ApiProblem | null>(null);
   const [completed, setCompleted] = useState(false);
   const active = useRef<AbortController | null>(null);
   const inFlight = useRef(false);
@@ -68,7 +69,7 @@ function AuthenticatedQuestions({ initialEventId }: { initialEventId: string }) 
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; active.current?.abort(); }; }, []);
 
   async function runRequest(kind: "submit" | "lookup", frozen?: QuestionSubmission) {
-    if (inFlight.current || actionPending || !isSessionCurrent(sessionGeneration)) return;
+    if (inFlight.current || accessDenied !== null || actionPending || !isSessionCurrent(sessionGeneration)) return;
     const controller = new AbortController();
     active.current = controller;
     inFlight.current = true;
@@ -91,6 +92,11 @@ function AuthenticatedQuestions({ initialEventId }: { initialEventId: string }) 
       if (!current()) return;
       const problem = publicProblem(error);
       setFailure({ error: problem, submitting: kind === "submit" });
+      if (problem.status === 403 && problem.code !== "csrf_rejected") {
+        setAccessDenied(problem);
+        setSubmission(null); setCompleted(false); setQuestion(""); setEventId(""); setAnswerId(""); setAnswerEventId(null);
+        confirmedAnswerScope.current = null;
+      }
       if (problem.status === 401) expireSession(sessionGeneration);
     } finally {
       if (current()) { inFlight.current = false; setPending(null); }
@@ -110,6 +116,8 @@ function AuthenticatedQuestions({ initialEventId }: { initialEventId: string }) 
     if (inFlight.current || actionPending || !isSessionCurrent(sessionGeneration)) return;
     setSubmission(null); setCompleted(false); setAnswer(null); setFailure(null); setQuestion("");
   }
+
+  if (accessDenied !== null) return <section className="panel question-access"><ErrorPanel error={accessDenied} message={failureMessage(accessDenied, false)} /><EmptyState title="问答访问已暂停" description="本页已清除问题、回答和冻结请求。请重新验证团队会话与授权后再使用问答。" /><a className="button secondary" href="#session">重新核对会话与权限</a></section>;
 
   const locked = submission !== null || pending !== null || actionPending;
   return <div className="question-workspace"><div className="question-scope"><p className="eyebrow">LIBRARY / 单事件证据研究</p><p>基于当前有权查看的事件资料提问。此次只支持资料库单事件，不支持资产研判、历史时间或自动调查。</p><span className="question-mode">当前会话：{state.kind === "authenticated" && state.user.data_mode === "fixture" ? "合成 / Fixture · 隔离数据" : "真实 / Live"}</span></div><div className="question-workspace-grid">

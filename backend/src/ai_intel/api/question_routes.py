@@ -63,9 +63,15 @@ def build_question_router(
     service_provider: Callable[[], AuthenticationSessionService | None],
     engine: Engine | None,
     settings: ApplicationSettings,
+    *,
+    questions_provider: Callable[[], GroundedQuestionService | None] | None = None,
 ) -> APIRouter:
     router = APIRouter()
-    questions = build_question_service(engine, settings)
+    questions = (
+        questions_provider()
+        if questions_provider is not None
+        else build_question_service(engine, settings)
+    )
 
     def authenticate(request: Request, *, write: bool) -> AccessScope:
         token = request.cookies.get(SESSION_COOKIE_NAME, "")

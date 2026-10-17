@@ -88,6 +88,8 @@ def _security_settings(
 
 
 def _bearer_credential(request: Request) -> SecretStr:
+    if request.scope.get("query_string") or request.headers.getlist("cookie"):
+        raise ClientConfigurationError("only the Bearer credential channel is allowed")
     values = request.headers.getlist("authorization")
     if len(values) != 1:
         raise ClientConfigurationError("one Bearer credential is required")

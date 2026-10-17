@@ -24,9 +24,12 @@ def strict_json_object(
     encoded = raw.encode("utf-8") if isinstance(raw, str) else raw
     if not 1 <= len(encoded) <= maximum_bytes:
         raise ValueError("JSON body outside limit")
-    payload: object = json.loads(
-        encoded.decode("utf-8"), object_pairs_hook=pairs, parse_constant=constant
-    )
+    try:
+        payload: object = json.loads(
+            encoded.decode("utf-8"), object_pairs_hook=pairs, parse_constant=constant
+        )
+    except RecursionError:
+        raise ValueError("JSON structure outside limit") from None
     pending: list[tuple[object, int]] = [(payload, 0)]
     count = 0
     while pending:

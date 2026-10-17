@@ -1,0 +1,15 @@
+# CR-R18 · 直属ActorReference过期负例的异常合同纠正
+
+首次创建/写作开始/结束时间：2026-10-17T08:47:37+08:00
+状态：awaiting_review；独立审查同触发输入复核后生效。
+
+问题：source3e84原test_credential_lock_wait_denies_expired_actor_before_result_read第523实际传ActorReference给public_task_bindings，原第518却期待旧cookie SessionExpiredError。Root真实原16=15通过/1失败，失败路径为_lock_job→lock_actor_reference→_validate_lifetime→InvalidActorReferenceError（PermissionDeniedError），过期已拒且未读结果；不是允许expired。该直属服务的原ActorReference合同一直把失效/过期引用统一为InvalidActorReferenceError，cookie契约与HTTP401原条件不变。
+
+变更：只在这一新直属PG case增加原异常class导入并把pytest.raises目标从SessionExpiredError改为InvalidActorReferenceError；expired时点、锁等待、事务、reader零调用、DB不出版、原全部其余assert/原16case/body均保持，若调用者仍用cookie就不能适用此改动。补AST精确两项delta与一份锁后过期拒绝回归；原15/1和原日志/JUnit保留，不能改成passed历史。
+
+兼容/迁移：仅测试对正确内部port类型的验拒断言；不改公共HTTP/schema/权限/算法/金标/分母/门槛/失败skip，也不改变实际调用方异常。新修复2133的M01/M02必须原17全量真实PG及独审重验，此断言纠正不能代替安全修复。回滚为保留原测试source3e84与失败材料；如发现端口契约应SessionExpiredError，则恢复原assert并修实际实现，不篡改证据。任务影响R18/T35公共任务type切片，正式评测与人工金标无变。
+
+
+## 导入集合澄清 · 2026-10-17T09:00:10+08:00
+
+允许移除因目标raises名称替换而不再使用的 SessionExpiredError 导入，并将 InvalidActorReferenceError 合并到已有 actor_references 导入。这是异常导入集合唯一替换，另一个delta仅目标raises Name；原16个case全部其他正文/等待/阈值/断言保持。原case没有显式reader0/DB不出版断言，新直属回归另外验证，不能把新证明写成原case已有事实。独立reviewer已源码核 ActorReference 与cookie分流，候选 f316c7af54bfc14de3b345c39d90aac2b9699872 尚待新17真实PG；历史15/1与同txn负例0/1保留。修订人Root。
