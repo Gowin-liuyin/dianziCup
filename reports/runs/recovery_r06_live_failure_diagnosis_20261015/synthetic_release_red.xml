@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="7" skipped="0" tests="8" time="0.579" timestamp="2026-10-15T23:03:11.713404+08:00" hostname="yin"><testcase classname="reports.runs.recovery_r06_live_failure_diagnosis_20261015.test_minimal_release_regressions" name="test_legitimate_twenty_release_asset_metadata_can_exceed_model_node_default" time="0.008"><failure message="ai_intel.ingestion.sources.repository.RepositoryFetchError: invalid release JSON response">def test_legitimate_twenty_release_asset_metadata_can_exceed_model_node_default():
+        body = json.dumps([synthetic_release(identifier, 40) for identifier in range(1, 21)]).encode()
+        assert len(body) &lt; 2 * 1024 * 1024
+        with pytest.raises(ValueError, match="JSON structure outside limit"):
+            strict_json_object(b'{"releases":' + body + b'}', 2 * 1024 * 1024 + 13)
+&gt;       page = normalize_catalog_page("ollama_releases", body, {}, {
+            "Link": '&lt;https://api.github.com/repositories/658928958/releases?per_page=20&amp;page=2&gt;; rel="next"'
+        })
+
+..\reports\runs\recovery_r06_live_failure_diagnosis_20261015\test_minimal_release_regressions.py:31: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\ingestion\catalog_pages.py:604: in normalize_catalog_page
+    return _release_page(body, cursor, headers or {})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\ingestion\catalog_pages.py:325: in _release_page
+    records = parse_github_releases(body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+payload = b'[{"id": 1, "tag_name": "v1.0", "name": "Synthetic release", "body": "Synthetic release notes", "draft": false, "prer...ttps://github.com/ollama/ollama/releases/download/v1.0/synthetic.bin", "uploader": {"id": 1, "login": "synthetic"}}]}]'
+
+    def parse_github_releases(payload: bytes) -&gt; tuple[RepositoryRecord, ...]:
+        """处理固定仓库的一页实际 JSON；坏记录使整页显式失败，调用方保存原文。"""
+        if not isinstance(payload, bytes) or not 1 &lt;= len(payload) &lt;= MAX_RELEASE_BYTES:
+            raise RepositoryFetchError("release response outside byte limit")
+        try:
+            document = strict_json_object(b'{"releases":' + payload + b"}", MAX_RELEASE_BYTES + 13)
+        except (ValueError, UnicodeError, RecursionError):
+&gt;           raise RepositoryFetchError("invalid release JSON response") from None
+E           ai_intel.ingestion.sources.repository.RepositoryFetchError: invalid release JSON response
+
+src\ai_intel\ingestion\sources\github_releases.py:27: RepositoryFetchError</failure></testcase><testcase classname="reports.runs.recovery_r06_live_failure_diagnosis_20261015.test_minimal_release_regressions" name="test_source_node_limit_must_remain_finite" time="0.043"><failure message="ai_intel.ingestion.sources.repository.RepositoryFetchError: invalid release JSON response">def test_source_node_limit_must_remain_finite():
+        release = synthetic_release()
+        release["assets"] = [0] * 50001
+        with pytest.raises(ValueError):
+&gt;           parse_github_releases(json.dumps([release]).encode())
+
+..\reports\runs\recovery_r06_live_failure_diagnosis_20261015\test_minimal_release_regressions.py:43: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+payload = b'[{"id": 1, "tag_name": "v1.0", "name": "Synthetic release", "body": "Synthetic release notes", "draft": false, "prer...0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}]'
+
+    def parse_github_releases(payload: bytes) -&gt; tuple[RepositoryRecord, ...]:
+        """处理固定仓库的一页实际 JSON；坏记录使整页显式失败，调用方保存原文。"""
+        if not isinstance(payload, bytes) or not 1 &lt;= len(payload) &lt;= MAX_RELEASE_BYTES:
+            raise RepositoryFetchError("release response outside byte limit")
+        try:
+            document = strict_json_object(b'{"releases":' + payload + b"}", MAX_RELEASE_BYTES + 13)
+        except (ValueError, UnicodeError, RecursionError):
+&gt;           raise RepositoryFetchError("invalid release JSON response") from None
+E           ai_intel.ingestion.sources.repository.RepositoryFetchError: invalid release JSON response
+
+src\ai_intel\ingestion\sources\github_releases.py:27: RepositoryFetchError</failure></testcase><testcase classname="reports.runs.recovery_r06_live_failure_diagnosis_20261015.test_minimal_release_regressions" name="test_invalid_json_does_not_become_success[[{&quot;id&quot;:1,&quot;id&quot;:2}]]" time="0.001"><failure message="ai_intel.ingestion.sources.repository.RepositoryFetchError: invalid release JSON response">bad = b'[{"id":1,"id":2}]'
+
+    @pytest.mark.parametrize("bad", [
+        b'[{"id":1,"id":2}]', b'[{"id":NaN}]', b'[{"id":"\\u0000"}]',
+        b'[{"id":"\\ud800"}]', b'[{"id":"\xff"}]',
+    ])
+    def test_invalid_json_does_not_become_success(bad):
+        with pytest.raises(ValueError):
+&gt;           parse_github_releases(bad)
+
+..\reports\runs\recovery_r06_live_failure_diagnosis_20261015\test_minimal_release_regressions.py:52: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+payload = b'[{"id":1,"id":2}]'
+
+    def parse_github_releases(payload: bytes) -&gt; tuple[RepositoryRecord, ...]:
+        """处理固定仓库的一页实际 JSON；坏记录使整页显式失败，调用方保存原文。"""
+        if not isinstance(payload, bytes) or not 1 &lt;= len(payload) &lt;= MAX_RELEASE_BYTES:
+            raise RepositoryFetchError("release response outside byte limit")
+        try:
+            document = strict_json_object(b'{"releases":' + payload + b"}", MAX_RELEASE_BYTES + 13)
+        except (ValueError, UnicodeError, RecursionError):
+&gt;           raise RepositoryFetchError("invalid release JSON response") from None
+E           ai_intel.ingestion.sources.repository.RepositoryFetchError: invalid release JSON response
+
+src\ai_intel\ingestion\sources\github_releases.py:27: RepositoryFetchError</failure></testcase><testcase classname="reports.runs.recovery_r06_live_failure_diagnosis_20261015.test_minimal_release_regressions" name="test_invalid_json_does_not_become_success[[{&quot;id&quot;:NaN}]]" time="0.000"><failure message="ai_intel.ingestion.sources.repository.RepositoryFetchError: invalid release JSON response">bad = b'[{"id":NaN}]'
+
+    @pytest.mark.parametrize("bad", [
+        b'[{"id":1,"id":2}]', b'[{"id":NaN}]', b'[{"id":"\\u0000"}]',
+        b'[{"id":"\\ud800"}]', b'[{"id":"\xff"}]',
+    ])
+    def test_invalid_json_does_not_become_success(bad):
+        with pytest.raises(ValueError):
+&gt;           parse_github_releases(bad)
+
+..\reports\runs\recovery_r06_live_failure_diagnosis_20261015\test_minimal_release_regressions.py:52: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+payload = b'[{"id":NaN}]'
+
+    def parse_github_releases(payload: bytes) -&gt; tuple[RepositoryRecord, ...]:
+        """处理固定仓库的一页实际 JSON；坏记录使整页显式失败，调用方保存原文。"""
+        if not isinstance(payload, bytes) or not 1 &lt;= len(payload) &lt;= MAX_RELEASE_BYTES:
+            raise RepositoryFetchError("release response outside byte limit")
+        try:
+            document = strict_json_object(b'{"releases":' + payload + b"}", MAX_RELEASE_BYTES + 13)
+        except (ValueError, UnicodeError, RecursionError):
+&gt;           raise RepositoryFetchError("invalid release JSON response") from None
+E           ai_intel.ingestion.sources.repository.RepositoryFetchError: invalid release JSON response
+
+src\ai_intel\ingestion\sources\github_releases.py:27: RepositoryFetchError</failure></testcase><testcase classname="reports.runs.recovery_r06_live_failure_diagnosis_20261015.test_minimal_release_regressions" name="test_invalid_json_does_not_become_success[[{&quot;id&quot;:&quot;\u0000&quot;}]]" time="0.001"><failure message="ai_intel.ingestion.sources.repository.RepositoryFetchError: invalid release JSON response">bad = b'[{"id":"\\u0000"}]'
+
+    @pytest.mark.parametrize("bad", [
+        b'[{"id":1,"id":2}]', b'[{"id":NaN}]', b'[{"id":"\\u0000"}]',
+        b'[{"id":"\\ud800"}]', b'[{"id":"\xff"}]',
+    ])
+    def test_invalid_json_does_not_become_success(bad):
+        with pytest.raises(ValueError):
+&gt;           parse_github_releases(bad)
+
+..\reports\runs\recovery_r06_live_failure_diagnosis_20261015\test_minimal_release_regressions.py:52: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+payload = b'[{"id":"\\u0000"}]'
+
+    def parse_github_releases(payload: bytes) -&gt; tuple[RepositoryRecord, ...]:
+        """处理固定仓库的一页实际 JSON；坏记录使整页显式失败，调用方保存原文。"""
+        if not isinstance(payload, bytes) or not 1 &lt;= len(payload) &lt;= MAX_RELEASE_BYTES:
+            raise RepositoryFetchError("release response outside byte limit")
+        try:
+            document = strict_json_object(b'{"releases":' + payload + b"}", MAX_RELEASE_BYTES + 13)
+        except (ValueError, UnicodeError, RecursionError):
+&gt;           raise RepositoryFetchError("invalid release JSON response") from None
+E           ai_intel.ingestion.sources.repository.RepositoryFetchError: invalid release JSON response
+
+src\ai_intel\ingestion\sources\github_releases.py:27: RepositoryFetchError</failure></testcase><testcase classname="reports.runs.recovery_r06_live_failure_diagnosis_20261015.test_minimal_release_regressions" name="test_invalid_json_does_not_become_success[[{&quot;id&quot;:&quot;\ud800&quot;}]]" time="0.001"><failure message="ai_intel.ingestion.sources.repository.RepositoryFetchError: invalid release JSON response">bad = b'[{"id":"\\ud800"}]'
+
+    @pytest.mark.parametrize("bad", [
+        b'[{"id":1,"id":2}]', b'[{"id":NaN}]', b'[{"id":"\\u0000"}]',
+        b'[{"id":"\\ud800"}]', b'[{"id":"\xff"}]',
+    ])
+    def test_invalid_json_does_not_become_success(bad):
+        with pytest.raises(ValueError):
+&gt;           parse_github_releases(bad)
+
+..\reports\runs\recovery_r06_live_failure_diagnosis_20261015\test_minimal_release_regressions.py:52: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+payload = b'[{"id":"\\ud800"}]'
+
+    def parse_github_releases(payload: bytes) -&gt; tuple[RepositoryRecord, ...]:
+        """处理固定仓库的一页实际 JSON；坏记录使整页显式失败，调用方保存原文。"""
+        if not isinstance(payload, bytes) or not 1 &lt;= len(payload) &lt;= MAX_RELEASE_BYTES:
+            raise RepositoryFetchError("release response outside byte limit")
+        try:
+            document = strict_json_object(b'{"releases":' + payload + b"}", MAX_RELEASE_BYTES + 13)
+        except (ValueError, UnicodeError, RecursionError):
+&gt;           raise RepositoryFetchError("invalid release JSON response") from None
+E           ai_intel.ingestion.sources.repository.RepositoryFetchError: invalid release JSON response
+
+src\ai_intel\ingestion\sources\github_releases.py:27: RepositoryFetchError</failure></testcase><testcase classname="reports.runs.recovery_r06_live_failure_diagnosis_20261015.test_minimal_release_regressions" name="test_invalid_json_does_not_become_success[[{&quot;id&quot;:&quot;\xff&quot;}]]" time="0.000"><failure message="ai_intel.ingestion.sources.repository.RepositoryFetchError: invalid release JSON response">bad = b'[{"id":"\xff"}]'
+
+    @pytest.mark.parametrize("bad", [
+        b'[{"id":1,"id":2}]', b'[{"id":NaN}]', b'[{"id":"\\u0000"}]',
+        b'[{"id":"\\ud800"}]', b'[{"id":"\xff"}]',
+    ])
+    def test_invalid_json_does_not_become_success(bad):
+        with pytest.raises(ValueError):
+&gt;           parse_github_releases(bad)
+
+..\reports\runs\recovery_r06_live_failure_diagnosis_20261015\test_minimal_release_regressions.py:52: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+payload = b'[{"id":"\xff"}]'
+
+    def parse_github_releases(payload: bytes) -&gt; tuple[RepositoryRecord, ...]:
+        """处理固定仓库的一页实际 JSON；坏记录使整页显式失败，调用方保存原文。"""
+        if not isinstance(payload, bytes) or not 1 &lt;= len(payload) &lt;= MAX_RELEASE_BYTES:
+            raise RepositoryFetchError("release response outside byte limit")
+        try:
+            document = strict_json_object(b'{"releases":' + payload + b"}", MAX_RELEASE_BYTES + 13)
+        except (ValueError, UnicodeError, RecursionError):
+&gt;           raise RepositoryFetchError("invalid release JSON response") from None
+E           ai_intel.ingestion.sources.repository.RepositoryFetchError: invalid release JSON response
+
+src\ai_intel\ingestion\sources\github_releases.py:27: RepositoryFetchError</failure></testcase><testcase classname="reports.runs.recovery_r06_live_failure_diagnosis_20261015.test_minimal_release_regressions" name="test_model_default_still_rejects_ten_thousand_plus_nodes" time="0.004" /></testsuite></testsuites>

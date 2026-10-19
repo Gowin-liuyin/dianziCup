@@ -1,0 +1,2353 @@
+{
+  "totals": {
+    "primary_worker_samples": 20,
+    "observed_process_instances": 111,
+    "observed_cpu_seconds": 26.03125,
+    "sample_wall_seconds_sum": 27.37399999999616,
+    "all_observed_signaled": true,
+    "outer_timeout_count": 0
+  },
+  "identity": {
+    "python": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+    "version": "3.12.13 (main, Mar  3 2026, 15:01:35) [MSC v.1944 64 bit (AMD64)]",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "head": "8a1b04d48346d8550f0326a77f003246a0ebbab5",
+    "locked_environment": "uv sync --locked --offline; editable root project installed by uv sync",
+    "sources": [
+      {
+        "path": "backend/src/ai_intel/infrastructure/process_limits.py",
+        "sha256": "0e427be27ddce7ec2abb6ef183acb1df7008d112e0ea3a2b9b9ba9f86fe4dc56"
+      },
+      {
+        "path": "backend/src/ai_intel/ingestion/parsing/_pdf_worker.py",
+        "sha256": "24ea5c30a58eda43410700e5dd9396cecb6bc59b5da8e8d1c0a1c53041956c60"
+      },
+      {
+        "path": "backend/src/ai_intel/ingestion/parsing/pdf_text.py",
+        "sha256": "21713150d1bb597b0357bd87a636226c41ca5c7860e9ca9dacf4839e76b09e3a"
+      },
+      {
+        "path": "backend/src/ai_intel/infrastructure/models/semantic.py",
+        "sha256": "239d645f70b51c4c4de8ac34d764966bd04f109f282c04493b406ca202a96b2f"
+      },
+      {
+        "path": "backend/tests/unit/test_r20_native_cpu_guard.py",
+        "sha256": "d36f79a39904c2f03fb11cae415835c79f45a07dde6c207fd04be95373167261"
+      },
+      {
+        "path": "backend/tests/unit/test_r20_process_startup.py",
+        "sha256": "69d4854643c3911f9cf148747f511281dcb8c7127622acd409d076801508cd08"
+      },
+      {
+        "path": "backend/pyproject.toml",
+        "sha256": "87ecaf680eddbd3a95f656e9f2820725e86c9bc3890cfa738a3e67a3ac493c7c"
+      },
+      {
+        "path": "backend/uv.lock",
+        "sha256": "ad599c0dc15554d5a658e70e2be7607cbc7b9322ff383b8c5a8e4bd0398f6a47"
+      },
+      {
+        "path": "docs/references/competition_brief.pdf",
+        "sha256": "37f28bc38db91ec0407551b1254c8bc882432a8488ce896c681e1210814c6cf3"
+      }
+    ]
+  },
+  "original_test_cases": [
+    {
+      "name": "test_short_cpu_task_keeps_its_result",
+      "seconds": 0.958,
+      "failure": null
+    },
+    {
+      "name": "test_guard_hard_exit_after_readiness_terminates_worker_tree[python-gil-held]",
+      "seconds": 1.5,
+      "failure": "assert (7187500 + 6718750) < 10000000\n +  where 7187500 = c_ulonglong(7187500).value\n +  and   6718750 = c_ulonglong(6718750).value"
+    },
+    {
+      "name": "test_guard_hard_exit_after_readiness_terminates_worker_tree[native-gil-held-idle]",
+      "seconds": 1.4,
+      "failure": null
+    },
+    {
+      "name": "test_guard_hard_exit_after_readiness_terminates_worker_tree[native-cpu]",
+      "seconds": 1.303,
+      "failure": "assert (3750000 + 7968750) < 10000000\n +  where 3750000 = c_ulonglong(3750000).value\n +  and   7968750 = c_ulonglong(7968750).value"
+    }
+  ],
+  "samples": [
+    {
+      "sample_id": "controlled_idle_near_budget",
+      "argv": [
+        "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+        "-c",
+        "\nimport ctypes,json,os,sys,time\n_api_start=time.monotonic()\n_native_dll=ctypes.WinDLL\ndef _diag(event, **fields):\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\nclass _Function:\n    def __init__(self,name,function):\n        object.__setattr__(self,'name',name)\n        object.__setattr__(self,'function',function)\n    def __setattr__(self,name,value):\n        setattr(self.function,name,value)\n    def __call__(self,*args):\n        ctypes.set_last_error(0)\n        result=self.function(*args)\n        error=ctypes.get_last_error()\n        fields=dict(api=self.name,result=result,win32_error=error)\n        if self.name=='GetProcessTimes':\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\n        if self.name=='SetInformationJobObject':\n            limits=args[2]._obj\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\n        _diag('api',**fields)\n        return result\nclass _Kernel:\n    def __init__(self,native): self.native=native\n    def __getattr__(self,name):\n        function=_Function(name,getattr(self.native,name))\n        setattr(self,name,function)\n        return function\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\n\nfrom ai_intel.infrastructure import process_limits as limits\n_diag('before_bound')\nlimits._WINDOWS_CPU_GUARD_CODE=\"\\nimport ctypes,json,os,sys,time\\n_api_start=time.monotonic()\\n_native_dll=ctypes.WinDLL\\ndef _diag(event, **fields):\\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\\nclass _Function:\\n    def __init__(self,name,function):\\n        object.__setattr__(self,'name',name)\\n        object.__setattr__(self,'function',function)\\n    def __setattr__(self,name,value):\\n        setattr(self.function,name,value)\\n    def __call__(self,*args):\\n        ctypes.set_last_error(0)\\n        result=self.function(*args)\\n        error=ctypes.get_last_error()\\n        fields=dict(api=self.name,result=result,win32_error=error)\\n        if self.name=='GetProcessTimes':\\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\\n        if self.name=='SetInformationJobObject':\\n            limits=args[2]._obj\\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\\n        _diag('api',**fields)\\n        return result\\nclass _Kernel:\\n    def __init__(self,native): self.native=native\\n    def __getattr__(self,name):\\n        function=_Function(name,getattr(self.native,name))\\n        setattr(self,name,function)\\n        return function\\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\\n\"+limits._WINDOWS_CPU_GUARD_CODE\nlimits._WINDOWS_CPU_GUARD_CODE=limits._WINDOWS_CPU_GUARD_CODE.replace('    while True:\\n',\"    _diag('fault_window_start')\\n    import time,os\\n    time.sleep(0.4)\\n    _diag('hard_exit')\\n    os._exit(99)\\n    while True:\\n\")\n_original_popen=limits.subprocess.Popen\ndef _guard_popen(*args,**kwargs):\n    kwargs['stdout']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\controlled_idle_near_budget\\\\guard.stdout.jsonl','wb',buffering=0)\n    kwargs['stderr']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\controlled_idle_near_budget\\\\guard.stderr.log','wb',buffering=0)\n    child=_original_popen(*args,**kwargs)\n    _diag('guard_launched',guard_pid=child.pid)\n    return child\nlimits.subprocess.Popen=_guard_popen\nwhile time.process_time()<0.96: pass\n_diag('controlled_cpu_before_bound')\nhandle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nlimits.subprocess.Popen=_original_popen\n_diag('after_bound')\nimport subprocess\nleaf=subprocess.Popen([os.path.join(sys.base_prefix,'python.exe'),'-I','-S','-c','import time;time.sleep(10)'],creationflags=0x08000000)\nprint('TREE',os.getpid(),limits._WINDOWS_CPU_GUARDS[0].pid,leaf.pid,flush=True)\n_diag('before_workload')\nctypes.PyDLL('kernel32').Sleep(2000)\nprint('UNSUPERVISED_RESULT',flush=True)\n"
+      ],
+      "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+      "started_at": "2026-10-16T03:12:17.487760+08:00",
+      "ended_at": "2026-10-16T03:12:19.020156+08:00",
+      "wall_seconds": 1.5309999999881256,
+      "exit_code": 0,
+      "outer_timeout": false,
+      "observed_process_count": 6,
+      "observed_cpu_seconds": 1.234375,
+      "primary_worker_samples": 1,
+      "sample_validity": "valid for stated scenario",
+      "events": [
+        {
+          "event": "entry",
+          "pid": 45576,
+          "wall": 0.0,
+          "self_cpu": 0.109375,
+          "coverage_imported": false,
+          "coverage_active": false,
+          "executable": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "before_bound",
+          "pid": 45576,
+          "wall": 0.030999999988125637,
+          "self_cpu": 0.140625
+        },
+        {
+          "event": "controlled_cpu_before_bound",
+          "pid": 45576,
+          "wall": 0.8439999999973224,
+          "self_cpu": 0.96875
+        },
+        {
+          "event": "guard_launched",
+          "pid": 45576,
+          "wall": 0.875,
+          "self_cpu": 0.984375,
+          "guard_pid": 45156
+        },
+        {
+          "event": "after_bound",
+          "pid": 45576,
+          "wall": 1.0,
+          "self_cpu": 0.984375
+        },
+        {
+          "event": "before_workload",
+          "pid": 45576,
+          "wall": 1.0159999999887077,
+          "self_cpu": 1.0
+        }
+      ],
+      "target_final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365651375039816,
+        "exit_ticks": 134365651390099242,
+        "kernel_ticks": 5156250,
+        "user_ticks": 4843750,
+        "cpu_seconds": 1.0,
+        "process_exit_code": 0,
+        "signaled": true
+      },
+      "guard_events": [
+        {
+          "event": "entry",
+          "pid": 45156,
+          "wall": 0.0,
+          "self_cpu": 0.109375,
+          "coverage_imported": false,
+          "coverage_active": false,
+          "executable": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "api",
+          "pid": 45156,
+          "wall": 0.01600000000325963,
+          "self_cpu": 0.109375,
+          "api": "GetHandleInformation",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            556,
+            "<class '_ctypes.CArgObject'>"
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 45156,
+          "wall": 0.01600000000325963,
+          "self_cpu": 0.109375,
+          "api": "GetProcessTimes",
+          "result": 1,
+          "win32_error": 0,
+          "target_handle": 548,
+          "times": [
+            134365651375039816,
+            0,
+            5156250,
+            4687500
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 45156,
+          "wall": 0.01600000000325963,
+          "self_cpu": 0.109375,
+          "api": "SetEvent",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            544
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 45156,
+          "wall": 0.01600000000325963,
+          "self_cpu": 0.109375,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            544
+          ]
+        },
+        {
+          "event": "fault_window_start",
+          "pid": 45156,
+          "wall": 0.01600000000325963,
+          "self_cpu": 0.109375
+        },
+        {
+          "event": "hard_exit",
+          "pid": 45156,
+          "wall": 0.40699999999196734,
+          "self_cpu": 0.109375
+        }
+      ],
+      "guard_stderr": "",
+      "result_lines": [
+        "TREE 45576 45156 37676"
+      ],
+      "all_observed_signaled": true,
+      "failed_get_process_times": [],
+      "discovery_errors": []
+    },
+    {
+      "sample_id": "controlled_initial_exhausted",
+      "argv": [
+        "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+        "-c",
+        "\nimport ctypes,json,os,sys,time\n_api_start=time.monotonic()\n_native_dll=ctypes.WinDLL\ndef _diag(event, **fields):\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\nclass _Function:\n    def __init__(self,name,function):\n        object.__setattr__(self,'name',name)\n        object.__setattr__(self,'function',function)\n    def __setattr__(self,name,value):\n        setattr(self.function,name,value)\n    def __call__(self,*args):\n        ctypes.set_last_error(0)\n        result=self.function(*args)\n        error=ctypes.get_last_error()\n        fields=dict(api=self.name,result=result,win32_error=error)\n        if self.name=='GetProcessTimes':\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\n        if self.name=='SetInformationJobObject':\n            limits=args[2]._obj\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\n        _diag('api',**fields)\n        return result\nclass _Kernel:\n    def __init__(self,native): self.native=native\n    def __getattr__(self,name):\n        function=_Function(name,getattr(self.native,name))\n        setattr(self,name,function)\n        return function\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\n\nfrom ai_intel.infrastructure import process_limits as limits\n_diag('before_bound')\nlimits._WINDOWS_CPU_GUARD_CODE=\"\\nimport ctypes,json,os,sys,time\\n_api_start=time.monotonic()\\n_native_dll=ctypes.WinDLL\\ndef _diag(event, **fields):\\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\\nclass _Function:\\n    def __init__(self,name,function):\\n        object.__setattr__(self,'name',name)\\n        object.__setattr__(self,'function',function)\\n    def __setattr__(self,name,value):\\n        setattr(self.function,name,value)\\n    def __call__(self,*args):\\n        ctypes.set_last_error(0)\\n        result=self.function(*args)\\n        error=ctypes.get_last_error()\\n        fields=dict(api=self.name,result=result,win32_error=error)\\n        if self.name=='GetProcessTimes':\\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\\n        if self.name=='SetInformationJobObject':\\n            limits=args[2]._obj\\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\\n        _diag('api',**fields)\\n        return result\\nclass _Kernel:\\n    def __init__(self,native): self.native=native\\n    def __getattr__(self,name):\\n        function=_Function(name,getattr(self.native,name))\\n        setattr(self,name,function)\\n        return function\\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\\n\"+limits._WINDOWS_CPU_GUARD_CODE\nlimits._WINDOWS_CPU_GUARD_CODE=limits._WINDOWS_CPU_GUARD_CODE.replace('    while True:\\n',\"    _diag('fault_window_start')\\n    import time,os\\n    time.sleep(0.4)\\n    _diag('hard_exit')\\n    os._exit(99)\\n    while True:\\n\")\n_original_popen=limits.subprocess.Popen\ndef _guard_popen(*args,**kwargs):\n    kwargs['stdout']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\controlled_initial_exhausted\\\\guard.stdout.jsonl','wb',buffering=0)\n    kwargs['stderr']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\controlled_initial_exhausted\\\\guard.stderr.log','wb',buffering=0)\n    child=_original_popen(*args,**kwargs)\n    _diag('guard_launched',guard_pid=child.pid)\n    return child\nlimits.subprocess.Popen=_guard_popen\nwhile time.process_time()<1.05: pass\n_diag('controlled_cpu_before_bound')\nhandle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nlimits.subprocess.Popen=_original_popen\n_diag('after_bound')\nimport subprocess\nleaf=subprocess.Popen([os.path.join(sys.base_prefix,'python.exe'),'-I','-S','-c','import time;time.sleep(10)'],creationflags=0x08000000)\nprint('TREE',os.getpid(),limits._WINDOWS_CPU_GUARDS[0].pid,leaf.pid,flush=True)\n_diag('before_workload')\nsys.setswitchinterval(60)\nwhile time.process_time()<2.25:\n    pass\nprint('UNSUPERVISED_RESULT',flush=True)\n"
+      ],
+      "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+      "started_at": "2026-10-16T03:12:16.243867+08:00",
+      "ended_at": "2026-10-16T03:12:17.484377+08:00",
+      "wall_seconds": 1.2340000000112923,
+      "exit_code": 3221225540,
+      "outer_timeout": false,
+      "observed_process_count": 4,
+      "observed_cpu_seconds": 1.21875,
+      "primary_worker_samples": 1,
+      "sample_validity": "valid for stated scenario",
+      "events": [
+        {
+          "event": "entry",
+          "pid": 4132,
+          "wall": 0.0,
+          "self_cpu": 0.0625,
+          "coverage_imported": false,
+          "coverage_active": false,
+          "executable": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "before_bound",
+          "pid": 4132,
+          "wall": 0.01600000000325963,
+          "self_cpu": 0.078125
+        },
+        {
+          "event": "controlled_cpu_before_bound",
+          "pid": 4132,
+          "wall": 1.0,
+          "self_cpu": 1.0625
+        },
+        {
+          "event": "guard_launched",
+          "pid": 4132,
+          "wall": 1.0319999999919673,
+          "self_cpu": 1.078125,
+          "guard_pid": 33504
+        }
+      ],
+      "target_final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365651362608782,
+        "exit_ticks": 134365651374731024,
+        "kernel_ticks": 5625000,
+        "user_ticks": 5312500,
+        "cpu_seconds": 1.09375,
+        "process_exit_code": 3221225540,
+        "signaled": true
+      },
+      "guard_events": [
+        {
+          "event": "entry",
+          "pid": 33504,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "coverage_imported": false,
+          "coverage_active": false,
+          "executable": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "api",
+          "pid": 33504,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "GetHandleInformation",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            532,
+            "<class '_ctypes.CArgObject'>"
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 33504,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "GetProcessTimes",
+          "result": 1,
+          "win32_error": 0,
+          "target_handle": 392,
+          "times": [
+            134365651362608782,
+            0,
+            5468750,
+            5312500
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 33504,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "TerminateProcess",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            392,
+            3221225540
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 33504,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            396
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 33504,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            392
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 33504,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            532
+          ]
+        }
+      ],
+      "guard_stderr": "Traceback (most recent call last):\n  File \"<string>\", line 57, in <module>\nOSError: CPU budget exhausted before readiness\n",
+      "result_lines": [],
+      "all_observed_signaled": true,
+      "failed_get_process_times": [],
+      "discovery_errors": []
+    },
+    {
+      "sample_id": "coverage_idle",
+      "argv": [
+        "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+        "-c",
+        "\nimport ctypes,json,os,sys,time\n_api_start=time.monotonic()\n_native_dll=ctypes.WinDLL\ndef _diag(event, **fields):\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\nclass _Function:\n    def __init__(self,name,function):\n        object.__setattr__(self,'name',name)\n        object.__setattr__(self,'function',function)\n    def __setattr__(self,name,value):\n        setattr(self.function,name,value)\n    def __call__(self,*args):\n        ctypes.set_last_error(0)\n        result=self.function(*args)\n        error=ctypes.get_last_error()\n        fields=dict(api=self.name,result=result,win32_error=error)\n        if self.name=='GetProcessTimes':\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\n        if self.name=='SetInformationJobObject':\n            limits=args[2]._obj\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\n        _diag('api',**fields)\n        return result\nclass _Kernel:\n    def __init__(self,native): self.native=native\n    def __getattr__(self,name):\n        function=_Function(name,getattr(self.native,name))\n        setattr(self,name,function)\n        return function\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\n_diag('entry',coverage_active='coverage' in sys.modules, executable=sys.executable,base_prefix=sys.base_prefix)\n\nfrom ai_intel.infrastructure import process_limits as limits\n_diag('before_bound')\nlimits._WINDOWS_CPU_GUARD_CODE=\"\\nimport ctypes,json,os,sys,time\\n_api_start=time.monotonic()\\n_native_dll=ctypes.WinDLL\\ndef _diag(event, **fields):\\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\\nclass _Function:\\n    def __init__(self,name,function):\\n        object.__setattr__(self,'name',name)\\n        object.__setattr__(self,'function',function)\\n    def __setattr__(self,name,value):\\n        setattr(self.function,name,value)\\n    def __call__(self,*args):\\n        ctypes.set_last_error(0)\\n        result=self.function(*args)\\n        error=ctypes.get_last_error()\\n        fields=dict(api=self.name,result=result,win32_error=error)\\n        if self.name=='GetProcessTimes':\\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\\n        if self.name=='SetInformationJobObject':\\n            limits=args[2]._obj\\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\\n        _diag('api',**fields)\\n        return result\\nclass _Kernel:\\n    def __init__(self,native): self.native=native\\n    def __getattr__(self,name):\\n        function=_Function(name,getattr(self.native,name))\\n        setattr(self,name,function)\\n        return function\\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\\n_diag('entry',coverage_active='coverage' in sys.modules, executable=sys.executable,base_prefix=sys.base_prefix)\\n\"+limits._WINDOWS_CPU_GUARD_CODE\nlimits._WINDOWS_CPU_GUARD_CODE=limits._WINDOWS_CPU_GUARD_CODE.replace('    while True:\\n',\"    _diag('fault_window_start')\\n    import time,os\\n    time.sleep(0.4)\\n    _diag('hard_exit')\\n    os._exit(99)\\n    while True:\\n\")\n_original_popen=limits.subprocess.Popen\ndef _guard_popen(*args,**kwargs):\n    kwargs['stdout']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\coverage_idle\\\\guard.stdout.jsonl','wb',buffering=0)\n    kwargs['stderr']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\coverage_idle\\\\guard.stderr.log','wb',buffering=0)\n    child=_original_popen(*args,**kwargs)\n    _diag('guard_launched',guard_pid=child.pid)\n    return child\nlimits.subprocess.Popen=_guard_popen\nhandle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nlimits.subprocess.Popen=_original_popen\n_diag('after_bound')\nimport subprocess\nleaf=subprocess.Popen([os.path.join(sys.base_prefix,'python.exe'),'-I','-S','-c','import time;time.sleep(10)'],creationflags=0x08000000)\nprint('TREE',os.getpid(),limits._WINDOWS_CPU_GUARDS[0].pid,leaf.pid,flush=True)\n_diag('before_workload')\nctypes.PyDLL('kernel32').Sleep(2000)\nprint('UNSUPERVISED_RESULT',flush=True)\n"
+      ],
+      "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+      "started_at": "2026-10-16T03:09:40.696996+08:00",
+      "ended_at": "2026-10-16T03:09:41.928092+08:00",
+      "wall_seconds": 1.2189999999973224,
+      "exit_code": 0,
+      "outer_timeout": false,
+      "observed_process_count": 6,
+      "observed_cpu_seconds": 0.9375,
+      "primary_worker_samples": 1,
+      "sample_validity": "misconfigured coverage: import cost only, tracing inactive",
+      "events": [
+        {
+          "event": "entry",
+          "pid": 28724,
+          "wall": 0.0,
+          "self_cpu": 0.65625,
+          "coverage_active": true,
+          "executable": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "before_bound",
+          "pid": 28724,
+          "wall": 0.0,
+          "self_cpu": 0.65625
+        },
+        {
+          "event": "guard_launched",
+          "pid": 28724,
+          "wall": 0.01600000000325963,
+          "self_cpu": 0.671875,
+          "guard_pid": 13952
+        },
+        {
+          "event": "after_bound",
+          "pid": 28724,
+          "wall": 0.11000000000058208,
+          "self_cpu": 0.671875
+        },
+        {
+          "event": "before_workload",
+          "pid": 28724,
+          "wall": 0.125,
+          "self_cpu": 0.6875
+        }
+      ],
+      "target_final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365649807163144,
+        "exit_ticks": 134365649819107939,
+        "kernel_ticks": 2968750,
+        "user_ticks": 4062500,
+        "cpu_seconds": 0.703125,
+        "signaled": true
+      },
+      "guard_events": [
+        {
+          "event": "entry",
+          "pid": 13952,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "coverage_active": false,
+          "executable": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "api",
+          "pid": 13952,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "api": "GetHandleInformation",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            752,
+            "<class '_ctypes.CArgObject'>"
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 13952,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "api": "GetProcessTimes",
+          "result": 1,
+          "win32_error": 0,
+          "target_handle": 380,
+          "times": [
+            134365649807163144,
+            0,
+            2656250,
+            4062500
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 13952,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "api": "SetEvent",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            376
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 13952,
+          "wall": 0.0,
+          "self_cpu": 0.109375,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            376
+          ]
+        },
+        {
+          "event": "fault_window_start",
+          "pid": 13952,
+          "wall": 0.0,
+          "self_cpu": 0.109375
+        },
+        {
+          "event": "hard_exit",
+          "pid": 13952,
+          "wall": 0.40600000000267755,
+          "self_cpu": 0.109375
+        }
+      ],
+      "guard_stderr": "",
+      "result_lines": [
+        "TREE 28724 13952 15764"
+      ],
+      "all_observed_signaled": true,
+      "failed_get_process_times": [],
+      "discovery_errors": []
+    },
+    {
+      "sample_id": "coverage_native",
+      "argv": [
+        "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+        "-c",
+        "\nimport ctypes,json,os,sys,time\n_api_start=time.monotonic()\n_native_dll=ctypes.WinDLL\ndef _diag(event, **fields):\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\nclass _Function:\n    def __init__(self,name,function):\n        object.__setattr__(self,'name',name)\n        object.__setattr__(self,'function',function)\n    def __setattr__(self,name,value):\n        setattr(self.function,name,value)\n    def __call__(self,*args):\n        ctypes.set_last_error(0)\n        result=self.function(*args)\n        error=ctypes.get_last_error()\n        fields=dict(api=self.name,result=result,win32_error=error)\n        if self.name=='GetProcessTimes':\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\n        if self.name=='SetInformationJobObject':\n            limits=args[2]._obj\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\n        _diag('api',**fields)\n        return result\nclass _Kernel:\n    def __init__(self,native): self.native=native\n    def __getattr__(self,name):\n        function=_Function(name,getattr(self.native,name))\n        setattr(self,name,function)\n        return function\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\n_diag('entry',coverage_active='coverage' in sys.modules, executable=sys.executable,base_prefix=sys.base_prefix)\n\nfrom ai_intel.infrastructure import process_limits as limits\n_diag('before_bound')\nlimits._WINDOWS_CPU_GUARD_CODE=\"\\nimport ctypes,json,os,sys,time\\n_api_start=time.monotonic()\\n_native_dll=ctypes.WinDLL\\ndef _diag(event, **fields):\\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\\nclass _Function:\\n    def __init__(self,name,function):\\n        object.__setattr__(self,'name',name)\\n        object.__setattr__(self,'function',function)\\n    def __setattr__(self,name,value):\\n        setattr(self.function,name,value)\\n    def __call__(self,*args):\\n        ctypes.set_last_error(0)\\n        result=self.function(*args)\\n        error=ctypes.get_last_error()\\n        fields=dict(api=self.name,result=result,win32_error=error)\\n        if self.name=='GetProcessTimes':\\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\\n        if self.name=='SetInformationJobObject':\\n            limits=args[2]._obj\\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\\n        _diag('api',**fields)\\n        return result\\nclass _Kernel:\\n    def __init__(self,native): self.native=native\\n    def __getattr__(self,name):\\n        function=_Function(name,getattr(self.native,name))\\n        setattr(self,name,function)\\n        return function\\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\\n_diag('entry',coverage_active='coverage' in sys.modules, executable=sys.executable,base_prefix=sys.base_prefix)\\n\"+limits._WINDOWS_CPU_GUARD_CODE\nlimits._WINDOWS_CPU_GUARD_CODE=limits._WINDOWS_CPU_GUARD_CODE.replace('    while True:\\n',\"    _diag('fault_window_start')\\n    import time,os\\n    time.sleep(0.4)\\n    _diag('hard_exit')\\n    os._exit(99)\\n    while True:\\n\")\n_original_popen=limits.subprocess.Popen\ndef _guard_popen(*args,**kwargs):\n    kwargs['stdout']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\coverage_native\\\\guard.stdout.jsonl','wb',buffering=0)\n    kwargs['stderr']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\coverage_native\\\\guard.stderr.log','wb',buffering=0)\n    child=_original_popen(*args,**kwargs)\n    _diag('guard_launched',guard_pid=child.pid)\n    return child\nlimits.subprocess.Popen=_guard_popen\nhandle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nlimits.subprocess.Popen=_original_popen\n_diag('after_bound')\nimport subprocess\nleaf=subprocess.Popen([os.path.join(sys.base_prefix,'python.exe'),'-I','-S','-c','import time;time.sleep(10)'],creationflags=0x08000000)\nprint('TREE',os.getpid(),limits._WINDOWS_CPU_GUARDS[0].pid,leaf.pid,flush=True)\n_diag('before_workload')\nimport hashlib\nhashlib.pbkdf2_hmac('sha256',b'a',b'b',100_000_000)\nprint('UNSUPERVISED_RESULT',flush=True)\n"
+      ],
+      "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+      "started_at": "2026-10-16T03:09:41.932089+08:00",
+      "ended_at": "2026-10-16T03:09:43.110877+08:00",
+      "wall_seconds": 1.1720000000059372,
+      "exit_code": 0,
+      "outer_timeout": false,
+      "observed_process_count": 6,
+      "observed_cpu_seconds": 1.25,
+      "primary_worker_samples": 1,
+      "sample_validity": "misconfigured coverage: import cost only, tracing inactive",
+      "events": [
+        {
+          "event": "entry",
+          "pid": 44408,
+          "wall": 0.0,
+          "self_cpu": 0.609375,
+          "coverage_active": true,
+          "executable": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "before_bound",
+          "pid": 44408,
+          "wall": 0.0,
+          "self_cpu": 0.609375
+        },
+        {
+          "event": "guard_launched",
+          "pid": 44408,
+          "wall": 0.014999999999417923,
+          "self_cpu": 0.640625,
+          "guard_pid": 47232
+        },
+        {
+          "event": "after_bound",
+          "pid": 44408,
+          "wall": 0.10899999999674037,
+          "self_cpu": 0.640625
+        },
+        {
+          "event": "before_workload",
+          "pid": 44408,
+          "wall": 0.125,
+          "self_cpu": 0.65625
+        }
+      ],
+      "target_final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365649819500017,
+        "exit_ticks": 134365649830966197,
+        "kernel_ticks": 2500000,
+        "user_ticks": 8125000,
+        "cpu_seconds": 1.0625,
+        "signaled": true
+      },
+      "guard_events": [
+        {
+          "event": "entry",
+          "pid": 47232,
+          "wall": 0.0,
+          "self_cpu": 0.0625,
+          "coverage_active": false,
+          "executable": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "api",
+          "pid": 47232,
+          "wall": 0.0,
+          "self_cpu": 0.0625,
+          "api": "GetHandleInformation",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            408,
+            "<class '_ctypes.CArgObject'>"
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 47232,
+          "wall": 0.0,
+          "self_cpu": 0.0625,
+          "api": "GetProcessTimes",
+          "result": 1,
+          "win32_error": 0,
+          "target_handle": 396,
+          "times": [
+            134365649819500017,
+            0,
+            2031250,
+            4375000
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 47232,
+          "wall": 0.0,
+          "self_cpu": 0.0625,
+          "api": "SetEvent",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            392
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 47232,
+          "wall": 0.0,
+          "self_cpu": 0.0625,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            392
+          ]
+        },
+        {
+          "event": "fault_window_start",
+          "pid": 47232,
+          "wall": 0.0,
+          "self_cpu": 0.0625
+        },
+        {
+          "event": "hard_exit",
+          "pid": 47232,
+          "wall": 0.40600000000267755,
+          "self_cpu": 0.0625
+        }
+      ],
+      "guard_stderr": "",
+      "result_lines": [
+        "TREE 44408 47232 12484"
+      ],
+      "all_observed_signaled": true,
+      "failed_get_process_times": [],
+      "discovery_errors": []
+    },
+    {
+      "sample_id": "coverage_python",
+      "argv": [
+        "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+        "-c",
+        "\nimport ctypes,json,os,sys,time\n_api_start=time.monotonic()\n_native_dll=ctypes.WinDLL\ndef _diag(event, **fields):\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\nclass _Function:\n    def __init__(self,name,function):\n        object.__setattr__(self,'name',name)\n        object.__setattr__(self,'function',function)\n    def __setattr__(self,name,value):\n        setattr(self.function,name,value)\n    def __call__(self,*args):\n        ctypes.set_last_error(0)\n        result=self.function(*args)\n        error=ctypes.get_last_error()\n        fields=dict(api=self.name,result=result,win32_error=error)\n        if self.name=='GetProcessTimes':\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\n        if self.name=='SetInformationJobObject':\n            limits=args[2]._obj\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\n        _diag('api',**fields)\n        return result\nclass _Kernel:\n    def __init__(self,native): self.native=native\n    def __getattr__(self,name):\n        function=_Function(name,getattr(self.native,name))\n        setattr(self,name,function)\n        return function\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\n_diag('entry',coverage_active='coverage' in sys.modules, executable=sys.executable,base_prefix=sys.base_prefix)\n\nfrom ai_intel.infrastructure import process_limits as limits\n_diag('before_bound')\nlimits._WINDOWS_CPU_GUARD_CODE=\"\\nimport ctypes,json,os,sys,time\\n_api_start=time.monotonic()\\n_native_dll=ctypes.WinDLL\\ndef _diag(event, **fields):\\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\\nclass _Function:\\n    def __init__(self,name,function):\\n        object.__setattr__(self,'name',name)\\n        object.__setattr__(self,'function',function)\\n    def __setattr__(self,name,value):\\n        setattr(self.function,name,value)\\n    def __call__(self,*args):\\n        ctypes.set_last_error(0)\\n        result=self.function(*args)\\n        error=ctypes.get_last_error()\\n        fields=dict(api=self.name,result=result,win32_error=error)\\n        if self.name=='GetProcessTimes':\\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\\n        if self.name=='SetInformationJobObject':\\n            limits=args[2]._obj\\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\\n        _diag('api',**fields)\\n        return result\\nclass _Kernel:\\n    def __init__(self,native): self.native=native\\n    def __getattr__(self,name):\\n        function=_Function(name,getattr(self.native,name))\\n        setattr(self,name,function)\\n        return function\\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\\n_diag('entry',coverage_active='coverage' in sys.modules, executable=sys.executable,base_prefix=sys.base_prefix)\\n\"+limits._WINDOWS_CPU_GUARD_CODE\nlimits._WINDOWS_CPU_GUARD_CODE=limits._WINDOWS_CPU_GUARD_CODE.replace('    while True:\\n',\"    _diag('fault_window_start')\\n    import time,os\\n    time.sleep(0.4)\\n    _diag('hard_exit')\\n    os._exit(99)\\n    while True:\\n\")\n_original_popen=limits.subprocess.Popen\ndef _guard_popen(*args,**kwargs):\n    kwargs['stdout']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\coverage_python\\\\guard.stdout.jsonl','wb',buffering=0)\n    kwargs['stderr']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\coverage_python\\\\guard.stderr.log','wb',buffering=0)\n    child=_original_popen(*args,**kwargs)\n    _diag('guard_launched',guard_pid=child.pid)\n    return child\nlimits.subprocess.Popen=_guard_popen\nhandle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nlimits.subprocess.Popen=_original_popen\n_diag('after_bound')\nimport subprocess\nleaf=subprocess.Popen([os.path.join(sys.base_prefix,'python.exe'),'-I','-S','-c','import time;time.sleep(10)'],creationflags=0x08000000)\nprint('TREE',os.getpid(),limits._WINDOWS_CPU_GUARDS[0].pid,leaf.pid,flush=True)\n_diag('before_workload')\nsys.setswitchinterval(60)\nwhile time.process_time()<2.25:\n    pass\nprint('UNSUPERVISED_RESULT',flush=True)\n"
+      ],
+      "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+      "started_at": "2026-10-16T03:09:39.444610+08:00",
+      "ended_at": "2026-10-16T03:09:40.692992+08:00",
+      "wall_seconds": 1.25,
+      "exit_code": 0,
+      "outer_timeout": false,
+      "observed_process_count": 6,
+      "observed_cpu_seconds": 1.28125,
+      "primary_worker_samples": 1,
+      "sample_validity": "misconfigured coverage: import cost only, tracing inactive",
+      "events": [
+        {
+          "event": "entry",
+          "pid": 13248,
+          "wall": 0.0,
+          "self_cpu": 0.671875,
+          "coverage_active": true,
+          "executable": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "before_bound",
+          "pid": 13248,
+          "wall": 0.0,
+          "self_cpu": 0.671875
+        },
+        {
+          "event": "guard_launched",
+          "pid": 13248,
+          "wall": 0.01600000000325963,
+          "self_cpu": 0.6875,
+          "guard_pid": 45684
+        },
+        {
+          "event": "after_bound",
+          "pid": 13248,
+          "wall": 0.125,
+          "self_cpu": 0.6875
+        },
+        {
+          "event": "before_workload",
+          "pid": 13248,
+          "wall": 0.14100000000325963,
+          "self_cpu": 0.6875
+        }
+      ],
+      "target_final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365649794625029,
+        "exit_ticks": 134365649806756548,
+        "kernel_ticks": 4062500,
+        "user_ticks": 6718750,
+        "cpu_seconds": 1.078125,
+        "signaled": true
+      },
+      "guard_events": [
+        {
+          "event": "entry",
+          "pid": 45684,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "coverage_active": false,
+          "executable": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "api",
+          "pid": 45684,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "GetHandleInformation",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            384,
+            "<class '_ctypes.CArgObject'>"
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 45684,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "GetProcessTimes",
+          "result": 1,
+          "win32_error": 0,
+          "target_handle": 380,
+          "times": [
+            134365649794625029,
+            0,
+            2187500,
+            4687500
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 45684,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "SetEvent",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            376
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 45684,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            376
+          ]
+        },
+        {
+          "event": "fault_window_start",
+          "pid": 45684,
+          "wall": 0.0,
+          "self_cpu": 0.078125
+        },
+        {
+          "event": "hard_exit",
+          "pid": 45684,
+          "wall": 0.40700000000651926,
+          "self_cpu": 0.078125
+        }
+      ],
+      "guard_stderr": "",
+      "result_lines": [
+        "TREE 13248 45684 36972"
+      ],
+      "all_observed_signaled": true,
+      "failed_get_process_times": [],
+      "discovery_errors": []
+    },
+    {
+      "sample_id": "coverage_short",
+      "argv": [
+        "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+        "-c",
+        "\nimport ctypes,json,os,sys,time\n_api_start=time.monotonic()\n_native_dll=ctypes.WinDLL\ndef _diag(event, **fields):\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\nclass _Function:\n    def __init__(self,name,function):\n        object.__setattr__(self,'name',name)\n        object.__setattr__(self,'function',function)\n    def __setattr__(self,name,value):\n        setattr(self.function,name,value)\n    def __call__(self,*args):\n        ctypes.set_last_error(0)\n        result=self.function(*args)\n        error=ctypes.get_last_error()\n        fields=dict(api=self.name,result=result,win32_error=error)\n        if self.name=='GetProcessTimes':\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\n        if self.name=='SetInformationJobObject':\n            limits=args[2]._obj\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\n        _diag('api',**fields)\n        return result\nclass _Kernel:\n    def __init__(self,native): self.native=native\n    def __getattr__(self,name):\n        function=_Function(name,getattr(self.native,name))\n        setattr(self,name,function)\n        return function\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\n_diag('entry',coverage_active='coverage' in sys.modules, executable=sys.executable,base_prefix=sys.base_prefix)\n\nfrom ai_intel.infrastructure import process_limits as limits\n_diag('before_bound')\nlimits._WINDOWS_CPU_GUARD_CODE=\"\\nimport ctypes,json,os,sys,time\\n_api_start=time.monotonic()\\n_native_dll=ctypes.WinDLL\\ndef _diag(event, **fields):\\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\\nclass _Function:\\n    def __init__(self,name,function):\\n        object.__setattr__(self,'name',name)\\n        object.__setattr__(self,'function',function)\\n    def __setattr__(self,name,value):\\n        setattr(self.function,name,value)\\n    def __call__(self,*args):\\n        ctypes.set_last_error(0)\\n        result=self.function(*args)\\n        error=ctypes.get_last_error()\\n        fields=dict(api=self.name,result=result,win32_error=error)\\n        if self.name=='GetProcessTimes':\\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\\n        if self.name=='SetInformationJobObject':\\n            limits=args[2]._obj\\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\\n        _diag('api',**fields)\\n        return result\\nclass _Kernel:\\n    def __init__(self,native): self.native=native\\n    def __getattr__(self,name):\\n        function=_Function(name,getattr(self.native,name))\\n        setattr(self,name,function)\\n        return function\\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\\n_diag('entry',coverage_active='coverage' in sys.modules, executable=sys.executable,base_prefix=sys.base_prefix)\\n\"+limits._WINDOWS_CPU_GUARD_CODE\n_original_popen=limits.subprocess.Popen\ndef _guard_popen(*args,**kwargs):\n    kwargs['stdout']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\coverage_short\\\\guard.stdout.jsonl','wb',buffering=0)\n    kwargs['stderr']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\coverage_short\\\\guard.stderr.log','wb',buffering=0)\n    child=_original_popen(*args,**kwargs)\n    _diag('guard_launched',guard_pid=child.pid)\n    return child\nlimits.subprocess.Popen=_guard_popen\nhandle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nlimits.subprocess.Popen=_original_popen\n_diag('after_bound')\nprint('RESULT',sum(range(100_000)),flush=True)\n"
+      ],
+      "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+      "started_at": "2026-10-16T03:09:38.493475+08:00",
+      "ended_at": "2026-10-16T03:09:39.440611+08:00",
+      "wall_seconds": 0.9529999999940628,
+      "exit_code": 0,
+      "outer_timeout": false,
+      "observed_process_count": 4,
+      "observed_cpu_seconds": 0.96875,
+      "primary_worker_samples": 1,
+      "sample_validity": "misconfigured coverage: import cost only, tracing inactive",
+      "events": [
+        {
+          "event": "entry",
+          "pid": 41924,
+          "wall": 0.0,
+          "self_cpu": 0.734375,
+          "coverage_active": true,
+          "executable": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "before_bound",
+          "pid": 41924,
+          "wall": 0.0,
+          "self_cpu": 0.75
+        },
+        {
+          "event": "guard_launched",
+          "pid": 41924,
+          "wall": 0.03200000000651926,
+          "self_cpu": 0.765625,
+          "guard_pid": 47252
+        },
+        {
+          "event": "after_bound",
+          "pid": 41924,
+          "wall": 0.125,
+          "self_cpu": 0.765625
+        }
+      ],
+      "target_final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365649785150919,
+        "exit_ticks": 134365649794232724,
+        "kernel_ticks": 3906250,
+        "user_ticks": 4218750,
+        "cpu_seconds": 0.8125,
+        "signaled": true
+      },
+      "guard_events": [
+        {
+          "event": "entry",
+          "pid": 47252,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "coverage_active": false,
+          "executable": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "api",
+          "pid": 47252,
+          "wall": 0.014999999999417923,
+          "self_cpu": 0.078125,
+          "api": "GetHandleInformation",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            836,
+            "<class '_ctypes.CArgObject'>"
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 47252,
+          "wall": 0.014999999999417923,
+          "self_cpu": 0.078125,
+          "api": "GetProcessTimes",
+          "result": 1,
+          "win32_error": 0,
+          "target_handle": 392,
+          "times": [
+            134365649785150919,
+            0,
+            3906250,
+            3750000
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 47252,
+          "wall": 0.014999999999417923,
+          "self_cpu": 0.078125,
+          "api": "SetEvent",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            388
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 47252,
+          "wall": 0.014999999999417923,
+          "self_cpu": 0.078125,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            388
+          ]
+        }
+      ],
+      "guard_stderr": "",
+      "result_lines": [
+        "RESULT 4999950000"
+      ],
+      "all_observed_signaled": true,
+      "failed_get_process_times": [],
+      "discovery_errors": []
+    },
+    {
+      "sample_id": "coverage_valid_idle",
+      "argv": [
+        "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+        "-c",
+        "\nimport ctypes,json,os,sys,time\n_api_start=time.monotonic()\n_native_dll=ctypes.WinDLL\ndef _diag(event, **fields):\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\nclass _Function:\n    def __init__(self,name,function):\n        object.__setattr__(self,'name',name)\n        object.__setattr__(self,'function',function)\n    def __setattr__(self,name,value):\n        setattr(self.function,name,value)\n    def __call__(self,*args):\n        ctypes.set_last_error(0)\n        result=self.function(*args)\n        error=ctypes.get_last_error()\n        fields=dict(api=self.name,result=result,win32_error=error)\n        if self.name=='GetProcessTimes':\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\n        if self.name=='SetInformationJobObject':\n            limits=args[2]._obj\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\n        _diag('api',**fields)\n        return result\nclass _Kernel:\n    def __init__(self,native): self.native=native\n    def __getattr__(self,name):\n        function=_Function(name,getattr(self.native,name))\n        setattr(self,name,function)\n        return function\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\n\nfrom ai_intel.infrastructure import process_limits as limits\n_diag('before_bound')\nlimits._WINDOWS_CPU_GUARD_CODE=\"\\nimport ctypes,json,os,sys,time\\n_api_start=time.monotonic()\\n_native_dll=ctypes.WinDLL\\ndef _diag(event, **fields):\\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\\nclass _Function:\\n    def __init__(self,name,function):\\n        object.__setattr__(self,'name',name)\\n        object.__setattr__(self,'function',function)\\n    def __setattr__(self,name,value):\\n        setattr(self.function,name,value)\\n    def __call__(self,*args):\\n        ctypes.set_last_error(0)\\n        result=self.function(*args)\\n        error=ctypes.get_last_error()\\n        fields=dict(api=self.name,result=result,win32_error=error)\\n        if self.name=='GetProcessTimes':\\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\\n        if self.name=='SetInformationJobObject':\\n            limits=args[2]._obj\\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\\n        _diag('api',**fields)\\n        return result\\nclass _Kernel:\\n    def __init__(self,native): self.native=native\\n    def __getattr__(self,name):\\n        function=_Function(name,getattr(self.native,name))\\n        setattr(self,name,function)\\n        return function\\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\\n\"+limits._WINDOWS_CPU_GUARD_CODE\nlimits._WINDOWS_CPU_GUARD_CODE=limits._WINDOWS_CPU_GUARD_CODE.replace('    while True:\\n',\"    _diag('fault_window_start')\\n    import time,os\\n    time.sleep(0.4)\\n    _diag('hard_exit')\\n    os._exit(99)\\n    while True:\\n\")\n_original_popen=limits.subprocess.Popen\ndef _guard_popen(*args,**kwargs):\n    kwargs['stdout']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\coverage_valid_idle\\\\guard.stdout.jsonl','wb',buffering=0)\n    kwargs['stderr']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\coverage_valid_idle\\\\guard.stderr.log','wb',buffering=0)\n    child=_original_popen(*args,**kwargs)\n    _diag('guard_launched',guard_pid=child.pid)\n    return child\nlimits.subprocess.Popen=_guard_popen\nhandle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nlimits.subprocess.Popen=_original_popen\n_diag('after_bound')\nimport subprocess\nleaf=subprocess.Popen([os.path.join(sys.base_prefix,'python.exe'),'-I','-S','-c','import time;time.sleep(10)'],creationflags=0x08000000)\nprint('TREE',os.getpid(),limits._WINDOWS_CPU_GUARDS[0].pid,leaf.pid,flush=True)\n_diag('before_workload')\nctypes.PyDLL('kernel32').Sleep(2000)\nprint('UNSUPERVISED_RESULT',flush=True)\n"
+      ],
+      "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+      "started_at": "2026-10-16T03:10:18.193320+08:00",
+      "ended_at": "2026-10-16T03:10:19.646466+08:00",
+      "wall_seconds": 1.4529999999940628,
+      "exit_code": 0,
+      "outer_timeout": false,
+      "observed_process_count": 6,
+      "observed_cpu_seconds": 1.125,
+      "primary_worker_samples": 1,
+      "sample_validity": "valid for stated scenario",
+      "events": [
+        {
+          "event": "entry",
+          "pid": 41564,
+          "wall": 0.0,
+          "self_cpu": 0.875,
+          "coverage_imported": true,
+          "coverage_active": true,
+          "executable": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "before_bound",
+          "pid": 41564,
+          "wall": 0.0,
+          "self_cpu": 0.875
+        },
+        {
+          "event": "guard_launched",
+          "pid": 41564,
+          "wall": 0.015999999988707714,
+          "self_cpu": 0.90625,
+          "guard_pid": 17076
+        },
+        {
+          "event": "after_bound",
+          "pid": 41564,
+          "wall": 0.10899999999674037,
+          "self_cpu": 0.90625
+        },
+        {
+          "event": "before_workload",
+          "pid": 41564,
+          "wall": 0.125,
+          "self_cpu": 0.90625
+        }
+      ],
+      "target_final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365650182133498,
+        "exit_ticks": 134365650196326724,
+        "kernel_ticks": 5000000,
+        "user_ticks": 4062500,
+        "cpu_seconds": 0.90625,
+        "signaled": true
+      },
+      "guard_events": [
+        {
+          "event": "entry",
+          "pid": 17076,
+          "wall": 0.0,
+          "self_cpu": 0.0625,
+          "coverage_imported": false,
+          "coverage_active": false,
+          "executable": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "api",
+          "pid": 17076,
+          "wall": 0.0,
+          "self_cpu": 0.0625,
+          "api": "GetHandleInformation",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            804,
+            "<class '_ctypes.CArgObject'>"
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 17076,
+          "wall": 0.0,
+          "self_cpu": 0.0625,
+          "api": "GetProcessTimes",
+          "result": 1,
+          "win32_error": 0,
+          "target_handle": 488,
+          "times": [
+            134365650182133498,
+            0,
+            5000000,
+            4062500
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 17076,
+          "wall": 0.0,
+          "self_cpu": 0.0625,
+          "api": "SetEvent",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            692
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 17076,
+          "wall": 0.01600000000325963,
+          "self_cpu": 0.078125,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            692
+          ]
+        },
+        {
+          "event": "fault_window_start",
+          "pid": 17076,
+          "wall": 0.01600000000325963,
+          "self_cpu": 0.078125
+        },
+        {
+          "event": "hard_exit",
+          "pid": 17076,
+          "wall": 0.40699999999196734,
+          "self_cpu": 0.078125
+        }
+      ],
+      "guard_stderr": "",
+      "result_lines": [
+        "TREE 41564 17076 42988"
+      ],
+      "all_observed_signaled": true,
+      "failed_get_process_times": [],
+      "discovery_errors": []
+    },
+    {
+      "sample_id": "coverage_valid_native",
+      "argv": [
+        "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+        "-c",
+        "\nimport ctypes,json,os,sys,time\n_api_start=time.monotonic()\n_native_dll=ctypes.WinDLL\ndef _diag(event, **fields):\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\nclass _Function:\n    def __init__(self,name,function):\n        object.__setattr__(self,'name',name)\n        object.__setattr__(self,'function',function)\n    def __setattr__(self,name,value):\n        setattr(self.function,name,value)\n    def __call__(self,*args):\n        ctypes.set_last_error(0)\n        result=self.function(*args)\n        error=ctypes.get_last_error()\n        fields=dict(api=self.name,result=result,win32_error=error)\n        if self.name=='GetProcessTimes':\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\n        if self.name=='SetInformationJobObject':\n            limits=args[2]._obj\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\n        _diag('api',**fields)\n        return result\nclass _Kernel:\n    def __init__(self,native): self.native=native\n    def __getattr__(self,name):\n        function=_Function(name,getattr(self.native,name))\n        setattr(self,name,function)\n        return function\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\n\nfrom ai_intel.infrastructure import process_limits as limits\n_diag('before_bound')\nlimits._WINDOWS_CPU_GUARD_CODE=\"\\nimport ctypes,json,os,sys,time\\n_api_start=time.monotonic()\\n_native_dll=ctypes.WinDLL\\ndef _diag(event, **fields):\\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\\nclass _Function:\\n    def __init__(self,name,function):\\n        object.__setattr__(self,'name',name)\\n        object.__setattr__(self,'function',function)\\n    def __setattr__(self,name,value):\\n        setattr(self.function,name,value)\\n    def __call__(self,*args):\\n        ctypes.set_last_error(0)\\n        result=self.function(*args)\\n        error=ctypes.get_last_error()\\n        fields=dict(api=self.name,result=result,win32_error=error)\\n        if self.name=='GetProcessTimes':\\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\\n        if self.name=='SetInformationJobObject':\\n            limits=args[2]._obj\\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\\n        _diag('api',**fields)\\n        return result\\nclass _Kernel:\\n    def __init__(self,native): self.native=native\\n    def __getattr__(self,name):\\n        function=_Function(name,getattr(self.native,name))\\n        setattr(self,name,function)\\n        return function\\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\\n\"+limits._WINDOWS_CPU_GUARD_CODE\nlimits._WINDOWS_CPU_GUARD_CODE=limits._WINDOWS_CPU_GUARD_CODE.replace('    while True:\\n',\"    _diag('fault_window_start')\\n    import time,os\\n    time.sleep(0.4)\\n    _diag('hard_exit')\\n    os._exit(99)\\n    while True:\\n\")\n_original_popen=limits.subprocess.Popen\ndef _guard_popen(*args,**kwargs):\n    kwargs['stdout']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\coverage_valid_native\\\\guard.stdout.jsonl','wb',buffering=0)\n    kwargs['stderr']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\coverage_valid_native\\\\guard.stderr.log','wb',buffering=0)\n    child=_original_popen(*args,**kwargs)\n    _diag('guard_launched',guard_pid=child.pid)\n    return child\nlimits.subprocess.Popen=_guard_popen\nhandle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nlimits.subprocess.Popen=_original_popen\n_diag('after_bound')\nimport subprocess\nleaf=subprocess.Popen([os.path.join(sys.base_prefix,'python.exe'),'-I','-S','-c','import time;time.sleep(10)'],creationflags=0x08000000)\nprint('TREE',os.getpid(),limits._WINDOWS_CPU_GUARDS[0].pid,leaf.pid,flush=True)\n_diag('before_workload')\nimport hashlib\nhashlib.pbkdf2_hmac('sha256',b'a',b'b',100_000_000)\nprint('UNSUPERVISED_RESULT',flush=True)\n"
+      ],
+      "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+      "started_at": "2026-10-16T03:10:19.650247+08:00",
+      "ended_at": "2026-10-16T03:10:21.016864+08:00",
+      "wall_seconds": 1.3589999999967404,
+      "exit_code": 0,
+      "outer_timeout": false,
+      "observed_process_count": 6,
+      "observed_cpu_seconds": 1.4375,
+      "primary_worker_samples": 1,
+      "sample_validity": "valid for stated scenario",
+      "events": [
+        {
+          "event": "entry",
+          "pid": 46404,
+          "wall": 0.0,
+          "self_cpu": 0.78125,
+          "coverage_imported": true,
+          "coverage_active": true,
+          "executable": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "before_bound",
+          "pid": 46404,
+          "wall": 0.0,
+          "self_cpu": 0.796875
+        },
+        {
+          "event": "guard_launched",
+          "pid": 46404,
+          "wall": 0.03199999999196734,
+          "self_cpu": 0.796875,
+          "guard_pid": 10188
+        },
+        {
+          "event": "after_bound",
+          "pid": 46404,
+          "wall": 0.11000000000058208,
+          "self_cpu": 0.796875
+        },
+        {
+          "event": "before_workload",
+          "pid": 46404,
+          "wall": 0.125,
+          "self_cpu": 0.796875
+        }
+      ],
+      "target_final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365650196660539,
+        "exit_ticks": 134365650209939677,
+        "kernel_ticks": 4062500,
+        "user_ticks": 7968750,
+        "cpu_seconds": 1.203125,
+        "signaled": true
+      },
+      "guard_events": [
+        {
+          "event": "entry",
+          "pid": 10188,
+          "wall": 0.0,
+          "self_cpu": 0.0625,
+          "coverage_imported": false,
+          "coverage_active": false,
+          "executable": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "api",
+          "pid": 10188,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "GetHandleInformation",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            384,
+            "<class '_ctypes.CArgObject'>"
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 10188,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "GetProcessTimes",
+          "result": 1,
+          "win32_error": 0,
+          "target_handle": 504,
+          "times": [
+            134365650196660539,
+            0,
+            3906250,
+            4062500
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 10188,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "SetEvent",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            488
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 10188,
+          "wall": 0.014999999999417923,
+          "self_cpu": 0.078125,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            488
+          ]
+        },
+        {
+          "event": "fault_window_start",
+          "pid": 10188,
+          "wall": 0.014999999999417923,
+          "self_cpu": 0.078125
+        },
+        {
+          "event": "hard_exit",
+          "pid": 10188,
+          "wall": 0.40600000000267755,
+          "self_cpu": 0.078125
+        }
+      ],
+      "guard_stderr": "",
+      "result_lines": [
+        "TREE 46404 10188 47576"
+      ],
+      "all_observed_signaled": true,
+      "failed_get_process_times": [],
+      "discovery_errors": []
+    },
+    {
+      "sample_id": "coverage_valid_python",
+      "argv": [
+        "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+        "-c",
+        "\nimport ctypes,json,os,sys,time\n_api_start=time.monotonic()\n_native_dll=ctypes.WinDLL\ndef _diag(event, **fields):\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\nclass _Function:\n    def __init__(self,name,function):\n        object.__setattr__(self,'name',name)\n        object.__setattr__(self,'function',function)\n    def __setattr__(self,name,value):\n        setattr(self.function,name,value)\n    def __call__(self,*args):\n        ctypes.set_last_error(0)\n        result=self.function(*args)\n        error=ctypes.get_last_error()\n        fields=dict(api=self.name,result=result,win32_error=error)\n        if self.name=='GetProcessTimes':\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\n        if self.name=='SetInformationJobObject':\n            limits=args[2]._obj\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\n        _diag('api',**fields)\n        return result\nclass _Kernel:\n    def __init__(self,native): self.native=native\n    def __getattr__(self,name):\n        function=_Function(name,getattr(self.native,name))\n        setattr(self,name,function)\n        return function\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\n\nfrom ai_intel.infrastructure import process_limits as limits\n_diag('before_bound')\nlimits._WINDOWS_CPU_GUARD_CODE=\"\\nimport ctypes,json,os,sys,time\\n_api_start=time.monotonic()\\n_native_dll=ctypes.WinDLL\\ndef _diag(event, **fields):\\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\\nclass _Function:\\n    def __init__(self,name,function):\\n        object.__setattr__(self,'name',name)\\n        object.__setattr__(self,'function',function)\\n    def __setattr__(self,name,value):\\n        setattr(self.function,name,value)\\n    def __call__(self,*args):\\n        ctypes.set_last_error(0)\\n        result=self.function(*args)\\n        error=ctypes.get_last_error()\\n        fields=dict(api=self.name,result=result,win32_error=error)\\n        if self.name=='GetProcessTimes':\\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\\n        if self.name=='SetInformationJobObject':\\n            limits=args[2]._obj\\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\\n        _diag('api',**fields)\\n        return result\\nclass _Kernel:\\n    def __init__(self,native): self.native=native\\n    def __getattr__(self,name):\\n        function=_Function(name,getattr(self.native,name))\\n        setattr(self,name,function)\\n        return function\\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\\n\"+limits._WINDOWS_CPU_GUARD_CODE\nlimits._WINDOWS_CPU_GUARD_CODE=limits._WINDOWS_CPU_GUARD_CODE.replace('    while True:\\n',\"    _diag('fault_window_start')\\n    import time,os\\n    time.sleep(0.4)\\n    _diag('hard_exit')\\n    os._exit(99)\\n    while True:\\n\")\n_original_popen=limits.subprocess.Popen\ndef _guard_popen(*args,**kwargs):\n    kwargs['stdout']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\coverage_valid_python\\\\guard.stdout.jsonl','wb',buffering=0)\n    kwargs['stderr']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\coverage_valid_python\\\\guard.stderr.log','wb',buffering=0)\n    child=_original_popen(*args,**kwargs)\n    _diag('guard_launched',guard_pid=child.pid)\n    return child\nlimits.subprocess.Popen=_guard_popen\nhandle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nlimits.subprocess.Popen=_original_popen\n_diag('after_bound')\nimport subprocess\nleaf=subprocess.Popen([os.path.join(sys.base_prefix,'python.exe'),'-I','-S','-c','import time;time.sleep(10)'],creationflags=0x08000000)\nprint('TREE',os.getpid(),limits._WINDOWS_CPU_GUARDS[0].pid,leaf.pid,flush=True)\n_diag('before_workload')\nsys.setswitchinterval(60)\nwhile time.process_time()<2.25:\n    pass\nprint('UNSUPERVISED_RESULT',flush=True)\n"
+      ],
+      "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+      "started_at": "2026-10-16T03:10:16.723865+08:00",
+      "ended_at": "2026-10-16T03:10:18.189321+08:00",
+      "wall_seconds": 1.4689999999973224,
+      "exit_code": 0,
+      "outer_timeout": false,
+      "observed_process_count": 6,
+      "observed_cpu_seconds": 1.609375,
+      "primary_worker_samples": 1,
+      "sample_validity": "valid for stated scenario",
+      "events": [
+        {
+          "event": "entry",
+          "pid": 45068,
+          "wall": 0.0,
+          "self_cpu": 0.875,
+          "coverage_imported": true,
+          "coverage_active": true,
+          "executable": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "before_bound",
+          "pid": 45068,
+          "wall": 0.0,
+          "self_cpu": 0.890625
+        },
+        {
+          "event": "guard_launched",
+          "pid": 45068,
+          "wall": 0.03200000000651926,
+          "self_cpu": 0.90625,
+          "guard_pid": 41716
+        },
+        {
+          "event": "after_bound",
+          "pid": 45068,
+          "wall": 0.125,
+          "self_cpu": 0.90625
+        },
+        {
+          "event": "before_workload",
+          "pid": 45068,
+          "wall": 0.14100000000325963,
+          "self_cpu": 0.921875
+        }
+      ],
+      "target_final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365650167449006,
+        "exit_ticks": 134365650181765506,
+        "kernel_ticks": 6562500,
+        "user_ticks": 6718750,
+        "cpu_seconds": 1.328125,
+        "signaled": true
+      },
+      "guard_events": [
+        {
+          "event": "entry",
+          "pid": 41716,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "coverage_imported": false,
+          "coverage_active": false,
+          "executable": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "api",
+          "pid": 41716,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "api": "GetHandleInformation",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            824,
+            "<class '_ctypes.CArgObject'>"
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 41716,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "api": "GetProcessTimes",
+          "result": 1,
+          "win32_error": 0,
+          "target_handle": 760,
+          "times": [
+            134365650167449006,
+            0,
+            4218750,
+            4843750
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 41716,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "api": "SetEvent",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            384
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 41716,
+          "wall": 0.0,
+          "self_cpu": 0.109375,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            384
+          ]
+        },
+        {
+          "event": "fault_window_start",
+          "pid": 41716,
+          "wall": 0.0,
+          "self_cpu": 0.109375
+        },
+        {
+          "event": "hard_exit",
+          "pid": 41716,
+          "wall": 0.40700000000651926,
+          "self_cpu": 0.109375
+        }
+      ],
+      "guard_stderr": "",
+      "result_lines": [
+        "TREE 45068 41716 1768"
+      ],
+      "all_observed_signaled": true,
+      "failed_get_process_times": [],
+      "discovery_errors": []
+    },
+    {
+      "sample_id": "coverage_valid_short",
+      "argv": [
+        "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+        "-c",
+        "\nimport ctypes,json,os,sys,time\n_api_start=time.monotonic()\n_native_dll=ctypes.WinDLL\ndef _diag(event, **fields):\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\nclass _Function:\n    def __init__(self,name,function):\n        object.__setattr__(self,'name',name)\n        object.__setattr__(self,'function',function)\n    def __setattr__(self,name,value):\n        setattr(self.function,name,value)\n    def __call__(self,*args):\n        ctypes.set_last_error(0)\n        result=self.function(*args)\n        error=ctypes.get_last_error()\n        fields=dict(api=self.name,result=result,win32_error=error)\n        if self.name=='GetProcessTimes':\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\n        if self.name=='SetInformationJobObject':\n            limits=args[2]._obj\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\n        _diag('api',**fields)\n        return result\nclass _Kernel:\n    def __init__(self,native): self.native=native\n    def __getattr__(self,name):\n        function=_Function(name,getattr(self.native,name))\n        setattr(self,name,function)\n        return function\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\n\nfrom ai_intel.infrastructure import process_limits as limits\n_diag('before_bound')\nlimits._WINDOWS_CPU_GUARD_CODE=\"\\nimport ctypes,json,os,sys,time\\n_api_start=time.monotonic()\\n_native_dll=ctypes.WinDLL\\ndef _diag(event, **fields):\\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\\nclass _Function:\\n    def __init__(self,name,function):\\n        object.__setattr__(self,'name',name)\\n        object.__setattr__(self,'function',function)\\n    def __setattr__(self,name,value):\\n        setattr(self.function,name,value)\\n    def __call__(self,*args):\\n        ctypes.set_last_error(0)\\n        result=self.function(*args)\\n        error=ctypes.get_last_error()\\n        fields=dict(api=self.name,result=result,win32_error=error)\\n        if self.name=='GetProcessTimes':\\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\\n        if self.name=='SetInformationJobObject':\\n            limits=args[2]._obj\\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\\n        _diag('api',**fields)\\n        return result\\nclass _Kernel:\\n    def __init__(self,native): self.native=native\\n    def __getattr__(self,name):\\n        function=_Function(name,getattr(self.native,name))\\n        setattr(self,name,function)\\n        return function\\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\\n\"+limits._WINDOWS_CPU_GUARD_CODE\n_original_popen=limits.subprocess.Popen\ndef _guard_popen(*args,**kwargs):\n    kwargs['stdout']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\coverage_valid_short\\\\guard.stdout.jsonl','wb',buffering=0)\n    kwargs['stderr']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\coverage_valid_short\\\\guard.stderr.log','wb',buffering=0)\n    child=_original_popen(*args,**kwargs)\n    _diag('guard_launched',guard_pid=child.pid)\n    return child\nlimits.subprocess.Popen=_guard_popen\nhandle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nlimits.subprocess.Popen=_original_popen\n_diag('after_bound')\nprint('RESULT',sum(range(100_000)),flush=True)\n"
+      ],
+      "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+      "started_at": "2026-10-16T03:10:15.527841+08:00",
+      "ended_at": "2026-10-16T03:10:16.720350+08:00",
+      "wall_seconds": 1.187000000005355,
+      "exit_code": 3221225540,
+      "outer_timeout": false,
+      "observed_process_count": 4,
+      "observed_cpu_seconds": 1.15625,
+      "primary_worker_samples": 1,
+      "sample_validity": "valid for stated scenario",
+      "events": [
+        {
+          "event": "entry",
+          "pid": 28516,
+          "wall": 0.0,
+          "self_cpu": 0.984375,
+          "coverage_imported": true,
+          "coverage_active": true,
+          "executable": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "before_bound",
+          "pid": 28516,
+          "wall": 0.0,
+          "self_cpu": 1.0
+        },
+        {
+          "event": "guard_launched",
+          "pid": 28516,
+          "wall": 0.031000000002677552,
+          "self_cpu": 1.015625,
+          "guard_pid": 44668
+        }
+      ],
+      "target_final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365650155491268,
+        "exit_ticks": 134365650167046195,
+        "kernel_ticks": 5156250,
+        "user_ticks": 5156250,
+        "cpu_seconds": 1.03125,
+        "signaled": true
+      },
+      "guard_events": [
+        {
+          "event": "entry",
+          "pid": 44668,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "coverage_imported": false,
+          "coverage_active": false,
+          "executable": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "api",
+          "pid": 44668,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "GetHandleInformation",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            436,
+            "<class '_ctypes.CArgObject'>"
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 44668,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "GetProcessTimes",
+          "result": 1,
+          "win32_error": 0,
+          "target_handle": 860,
+          "times": [
+            134365650155491268,
+            0,
+            5000000,
+            5156250
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 44668,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "TerminateProcess",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            860,
+            3221225540
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 44668,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            864
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 44668,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            860
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 44668,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            436
+          ]
+        }
+      ],
+      "guard_stderr": "Traceback (most recent call last):\n  File \"<string>\", line 57, in <module>\nOSError: CPU budget exhausted before readiness\n",
+      "result_lines": [],
+      "all_observed_signaled": true,
+      "failed_get_process_times": [],
+      "discovery_errors": []
+    },
+    {
+      "sample_id": "no_coverage_idle",
+      "argv": [
+        "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+        "-c",
+        "\nimport ctypes,json,os,sys,time\n_api_start=time.monotonic()\n_native_dll=ctypes.WinDLL\ndef _diag(event, **fields):\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\nclass _Function:\n    def __init__(self,name,function):\n        object.__setattr__(self,'name',name)\n        object.__setattr__(self,'function',function)\n    def __setattr__(self,name,value):\n        setattr(self.function,name,value)\n    def __call__(self,*args):\n        ctypes.set_last_error(0)\n        result=self.function(*args)\n        error=ctypes.get_last_error()\n        fields=dict(api=self.name,result=result,win32_error=error)\n        if self.name=='GetProcessTimes':\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\n        if self.name=='SetInformationJobObject':\n            limits=args[2]._obj\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\n        _diag('api',**fields)\n        return result\nclass _Kernel:\n    def __init__(self,native): self.native=native\n    def __getattr__(self,name):\n        function=_Function(name,getattr(self.native,name))\n        setattr(self,name,function)\n        return function\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\n\nfrom ai_intel.infrastructure import process_limits as limits\n_diag('before_bound')\nlimits._WINDOWS_CPU_GUARD_CODE=\"\\nimport ctypes,json,os,sys,time\\n_api_start=time.monotonic()\\n_native_dll=ctypes.WinDLL\\ndef _diag(event, **fields):\\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\\nclass _Function:\\n    def __init__(self,name,function):\\n        object.__setattr__(self,'name',name)\\n        object.__setattr__(self,'function',function)\\n    def __setattr__(self,name,value):\\n        setattr(self.function,name,value)\\n    def __call__(self,*args):\\n        ctypes.set_last_error(0)\\n        result=self.function(*args)\\n        error=ctypes.get_last_error()\\n        fields=dict(api=self.name,result=result,win32_error=error)\\n        if self.name=='GetProcessTimes':\\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\\n        if self.name=='SetInformationJobObject':\\n            limits=args[2]._obj\\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\\n        _diag('api',**fields)\\n        return result\\nclass _Kernel:\\n    def __init__(self,native): self.native=native\\n    def __getattr__(self,name):\\n        function=_Function(name,getattr(self.native,name))\\n        setattr(self,name,function)\\n        return function\\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\\n\"+limits._WINDOWS_CPU_GUARD_CODE\nlimits._WINDOWS_CPU_GUARD_CODE=limits._WINDOWS_CPU_GUARD_CODE.replace('    while True:\\n',\"    _diag('fault_window_start')\\n    import time,os\\n    time.sleep(0.4)\\n    _diag('hard_exit')\\n    os._exit(99)\\n    while True:\\n\")\n_original_popen=limits.subprocess.Popen\ndef _guard_popen(*args,**kwargs):\n    kwargs['stdout']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\no_coverage_idle\\\\guard.stdout.jsonl','wb',buffering=0)\n    kwargs['stderr']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\no_coverage_idle\\\\guard.stderr.log','wb',buffering=0)\n    child=_original_popen(*args,**kwargs)\n    _diag('guard_launched',guard_pid=child.pid)\n    return child\nlimits.subprocess.Popen=_guard_popen\nhandle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nlimits.subprocess.Popen=_original_popen\n_diag('after_bound')\nimport subprocess\nleaf=subprocess.Popen([os.path.join(sys.base_prefix,'python.exe'),'-I','-S','-c','import time;time.sleep(10)'],creationflags=0x08000000)\nprint('TREE',os.getpid(),limits._WINDOWS_CPU_GUARDS[0].pid,leaf.pid,flush=True)\n_diag('before_workload')\nctypes.PyDLL('kernel32').Sleep(2000)\nprint('UNSUPERVISED_RESULT',flush=True)\n"
+      ],
+      "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+      "started_at": "2026-10-16T03:10:32.671121+08:00",
+      "ended_at": "2026-10-16T03:10:33.361230+08:00",
+      "wall_seconds": 0.6870000000053551,
+      "exit_code": 0,
+      "outer_timeout": false,
+      "observed_process_count": 6,
+      "observed_cpu_seconds": 0.3125,
+      "primary_worker_samples": 1,
+      "sample_validity": "valid for stated scenario",
+      "events": [
+        {
+          "event": "entry",
+          "pid": 40872,
+          "wall": 0.0,
+          "self_cpu": 0.0625,
+          "coverage_imported": false,
+          "coverage_active": false,
+          "executable": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "before_bound",
+          "pid": 40872,
+          "wall": 0.01600000000325963,
+          "self_cpu": 0.078125
+        },
+        {
+          "event": "guard_launched",
+          "pid": 40872,
+          "wall": 0.04700000000593718,
+          "self_cpu": 0.09375,
+          "guard_pid": 48020
+        },
+        {
+          "event": "after_bound",
+          "pid": 40872,
+          "wall": 0.15600000000267755,
+          "self_cpu": 0.09375
+        },
+        {
+          "event": "before_workload",
+          "pid": 40872,
+          "wall": 0.17200000000593718,
+          "self_cpu": 0.109375
+        }
+      ],
+      "target_final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365650326914904,
+        "exit_ticks": 134365650333391819,
+        "kernel_ticks": 937500,
+        "user_ticks": 156250,
+        "cpu_seconds": 0.109375,
+        "signaled": true
+      },
+      "guard_events": [
+        {
+          "event": "entry",
+          "pid": 48020,
+          "wall": 0.0,
+          "self_cpu": 0.125,
+          "coverage_imported": false,
+          "coverage_active": false,
+          "executable": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "api",
+          "pid": 48020,
+          "wall": 0.0,
+          "self_cpu": 0.125,
+          "api": "GetHandleInformation",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            576,
+            "<class '_ctypes.CArgObject'>"
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 48020,
+          "wall": 0.0,
+          "self_cpu": 0.125,
+          "api": "GetProcessTimes",
+          "result": 1,
+          "win32_error": 0,
+          "target_handle": 396,
+          "times": [
+            134365650326914904,
+            0,
+            781250,
+            156250
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 48020,
+          "wall": 0.0,
+          "self_cpu": 0.125,
+          "api": "SetEvent",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            392
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 48020,
+          "wall": 0.0,
+          "self_cpu": 0.125,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            392
+          ]
+        },
+        {
+          "event": "fault_window_start",
+          "pid": 48020,
+          "wall": 0.0,
+          "self_cpu": 0.125
+        },
+        {
+          "event": "hard_exit",
+          "pid": 48020,
+          "wall": 0.39100000000325963,
+          "self_cpu": 0.125
+        }
+      ],
+      "guard_stderr": "",
+      "result_lines": [
+        "TREE 40872 48020 38176"
+      ],
+      "all_observed_signaled": true,
+      "failed_get_process_times": [],
+      "discovery_errors": []
+    },
+    {
+      "sample_id": "no_coverage_native",
+      "argv": [
+        "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+        "-c",
+        "\nimport ctypes,json,os,sys,time\n_api_start=time.monotonic()\n_native_dll=ctypes.WinDLL\ndef _diag(event, **fields):\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\nclass _Function:\n    def __init__(self,name,function):\n        object.__setattr__(self,'name',name)\n        object.__setattr__(self,'function',function)\n    def __setattr__(self,name,value):\n        setattr(self.function,name,value)\n    def __call__(self,*args):\n        ctypes.set_last_error(0)\n        result=self.function(*args)\n        error=ctypes.get_last_error()\n        fields=dict(api=self.name,result=result,win32_error=error)\n        if self.name=='GetProcessTimes':\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\n        if self.name=='SetInformationJobObject':\n            limits=args[2]._obj\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\n        _diag('api',**fields)\n        return result\nclass _Kernel:\n    def __init__(self,native): self.native=native\n    def __getattr__(self,name):\n        function=_Function(name,getattr(self.native,name))\n        setattr(self,name,function)\n        return function\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\n\nfrom ai_intel.infrastructure import process_limits as limits\n_diag('before_bound')\nlimits._WINDOWS_CPU_GUARD_CODE=\"\\nimport ctypes,json,os,sys,time\\n_api_start=time.monotonic()\\n_native_dll=ctypes.WinDLL\\ndef _diag(event, **fields):\\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\\nclass _Function:\\n    def __init__(self,name,function):\\n        object.__setattr__(self,'name',name)\\n        object.__setattr__(self,'function',function)\\n    def __setattr__(self,name,value):\\n        setattr(self.function,name,value)\\n    def __call__(self,*args):\\n        ctypes.set_last_error(0)\\n        result=self.function(*args)\\n        error=ctypes.get_last_error()\\n        fields=dict(api=self.name,result=result,win32_error=error)\\n        if self.name=='GetProcessTimes':\\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\\n        if self.name=='SetInformationJobObject':\\n            limits=args[2]._obj\\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\\n        _diag('api',**fields)\\n        return result\\nclass _Kernel:\\n    def __init__(self,native): self.native=native\\n    def __getattr__(self,name):\\n        function=_Function(name,getattr(self.native,name))\\n        setattr(self,name,function)\\n        return function\\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\\n\"+limits._WINDOWS_CPU_GUARD_CODE\nlimits._WINDOWS_CPU_GUARD_CODE=limits._WINDOWS_CPU_GUARD_CODE.replace('    while True:\\n',\"    _diag('fault_window_start')\\n    import time,os\\n    time.sleep(0.4)\\n    _diag('hard_exit')\\n    os._exit(99)\\n    while True:\\n\")\n_original_popen=limits.subprocess.Popen\ndef _guard_popen(*args,**kwargs):\n    kwargs['stdout']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\no_coverage_native\\\\guard.stdout.jsonl','wb',buffering=0)\n    kwargs['stderr']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\no_coverage_native\\\\guard.stderr.log','wb',buffering=0)\n    child=_original_popen(*args,**kwargs)\n    _diag('guard_launched',guard_pid=child.pid)\n    return child\nlimits.subprocess.Popen=_guard_popen\nhandle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nlimits.subprocess.Popen=_original_popen\n_diag('after_bound')\nimport subprocess\nleaf=subprocess.Popen([os.path.join(sys.base_prefix,'python.exe'),'-I','-S','-c','import time;time.sleep(10)'],creationflags=0x08000000)\nprint('TREE',os.getpid(),limits._WINDOWS_CPU_GUARDS[0].pid,leaf.pid,flush=True)\n_diag('before_workload')\nimport hashlib\nhashlib.pbkdf2_hmac('sha256',b'a',b'b',100_000_000)\nprint('UNSUPERVISED_RESULT',flush=True)\n"
+      ],
+      "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+      "started_at": "2026-10-16T03:10:33.364229+08:00",
+      "ended_at": "2026-10-16T03:10:34.038051+08:00",
+      "wall_seconds": 0.6719999999913853,
+      "exit_code": 0,
+      "outer_timeout": false,
+      "observed_process_count": 6,
+      "observed_cpu_seconds": 0.6875,
+      "primary_worker_samples": 1,
+      "sample_validity": "valid for stated scenario",
+      "events": [
+        {
+          "event": "entry",
+          "pid": 28112,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "coverage_imported": false,
+          "coverage_active": false,
+          "executable": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "before_bound",
+          "pid": 28112,
+          "wall": 0.03199999999196734,
+          "self_cpu": 0.09375
+        },
+        {
+          "event": "guard_launched",
+          "pid": 28112,
+          "wall": 0.046999999991385266,
+          "self_cpu": 0.109375,
+          "guard_pid": 21828
+        },
+        {
+          "event": "after_bound",
+          "pid": 28112,
+          "wall": 0.15699999999196734,
+          "self_cpu": 0.109375
+        },
+        {
+          "event": "before_workload",
+          "pid": 28112,
+          "wall": 0.17199999999138527,
+          "self_cpu": 0.125
+        }
+      ],
+      "target_final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365650333848717,
+        "exit_ticks": 134365650340270312,
+        "kernel_ticks": 1093750,
+        "user_ticks": 4062500,
+        "cpu_seconds": 0.515625,
+        "signaled": true
+      },
+      "guard_events": [
+        {
+          "event": "entry",
+          "pid": 21828,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "coverage_imported": false,
+          "coverage_active": false,
+          "executable": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "api",
+          "pid": 21828,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "api": "GetHandleInformation",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            540,
+            "<class '_ctypes.CArgObject'>"
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 21828,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "api": "GetProcessTimes",
+          "result": 1,
+          "win32_error": 0,
+          "target_handle": 396,
+          "times": [
+            134365650333848717,
+            0,
+            781250,
+            312500
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 21828,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "api": "SetEvent",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            400
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 21828,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            400
+          ]
+        },
+        {
+          "event": "fault_window_start",
+          "pid": 21828,
+          "wall": 0.0,
+          "self_cpu": 0.09375
+        },
+        {
+          "event": "hard_exit",
+          "pid": 21828,
+          "wall": 0.3899999999994179,
+          "self_cpu": 0.09375
+        }
+      ],
+      "guard_stderr": "",
+      "result_lines": [
+        "TREE 28112 21828 9736"
+      ],
+      "all_observed_signaled": true,
+      "failed_get_process_times": [],
+      "discovery_errors": []
+    },
+    {
+      "sample_id": "no_coverage_python",
+      "argv": [
+        "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+        "-c",
+        "\nimport ctypes,json,os,sys,time\n_api_start=time.monotonic()\n_native_dll=ctypes.WinDLL\ndef _diag(event, **fields):\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\nclass _Function:\n    def __init__(self,name,function):\n        object.__setattr__(self,'name',name)\n        object.__setattr__(self,'function',function)\n    def __setattr__(self,name,value):\n        setattr(self.function,name,value)\n    def __call__(self,*args):\n        ctypes.set_last_error(0)\n        result=self.function(*args)\n        error=ctypes.get_last_error()\n        fields=dict(api=self.name,result=result,win32_error=error)\n        if self.name=='GetProcessTimes':\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\n        if self.name=='SetInformationJobObject':\n            limits=args[2]._obj\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\n        _diag('api',**fields)\n        return result\nclass _Kernel:\n    def __init__(self,native): self.native=native\n    def __getattr__(self,name):\n        function=_Function(name,getattr(self.native,name))\n        setattr(self,name,function)\n        return function\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\n\nfrom ai_intel.infrastructure import process_limits as limits\n_diag('before_bound')\nlimits._WINDOWS_CPU_GUARD_CODE=\"\\nimport ctypes,json,os,sys,time\\n_api_start=time.monotonic()\\n_native_dll=ctypes.WinDLL\\ndef _diag(event, **fields):\\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\\nclass _Function:\\n    def __init__(self,name,function):\\n        object.__setattr__(self,'name',name)\\n        object.__setattr__(self,'function',function)\\n    def __setattr__(self,name,value):\\n        setattr(self.function,name,value)\\n    def __call__(self,*args):\\n        ctypes.set_last_error(0)\\n        result=self.function(*args)\\n        error=ctypes.get_last_error()\\n        fields=dict(api=self.name,result=result,win32_error=error)\\n        if self.name=='GetProcessTimes':\\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\\n        if self.name=='SetInformationJobObject':\\n            limits=args[2]._obj\\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\\n        _diag('api',**fields)\\n        return result\\nclass _Kernel:\\n    def __init__(self,native): self.native=native\\n    def __getattr__(self,name):\\n        function=_Function(name,getattr(self.native,name))\\n        setattr(self,name,function)\\n        return function\\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\\n\"+limits._WINDOWS_CPU_GUARD_CODE\nlimits._WINDOWS_CPU_GUARD_CODE=limits._WINDOWS_CPU_GUARD_CODE.replace('    while True:\\n',\"    _diag('fault_window_start')\\n    import time,os\\n    time.sleep(0.4)\\n    _diag('hard_exit')\\n    os._exit(99)\\n    while True:\\n\")\n_original_popen=limits.subprocess.Popen\ndef _guard_popen(*args,**kwargs):\n    kwargs['stdout']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\no_coverage_python\\\\guard.stdout.jsonl','wb',buffering=0)\n    kwargs['stderr']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\no_coverage_python\\\\guard.stderr.log','wb',buffering=0)\n    child=_original_popen(*args,**kwargs)\n    _diag('guard_launched',guard_pid=child.pid)\n    return child\nlimits.subprocess.Popen=_guard_popen\nhandle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nlimits.subprocess.Popen=_original_popen\n_diag('after_bound')\nimport subprocess\nleaf=subprocess.Popen([os.path.join(sys.base_prefix,'python.exe'),'-I','-S','-c','import time;time.sleep(10)'],creationflags=0x08000000)\nprint('TREE',os.getpid(),limits._WINDOWS_CPU_GUARDS[0].pid,leaf.pid,flush=True)\n_diag('before_workload')\nsys.setswitchinterval(60)\nwhile time.process_time()<2.25:\n    pass\nprint('UNSUPERVISED_RESULT',flush=True)\n"
+      ],
+      "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+      "started_at": "2026-10-16T03:10:31.983203+08:00",
+      "ended_at": "2026-10-16T03:10:32.668464+08:00",
+      "wall_seconds": 0.6879999999946449,
+      "exit_code": 0,
+      "outer_timeout": false,
+      "observed_process_count": 6,
+      "observed_cpu_seconds": 0.71875,
+      "primary_worker_samples": 1,
+      "sample_validity": "valid for stated scenario",
+      "events": [
+        {
+          "event": "entry",
+          "pid": 38092,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "coverage_imported": false,
+          "coverage_active": false,
+          "executable": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "before_bound",
+          "pid": 38092,
+          "wall": 0.01600000000325963,
+          "self_cpu": 0.09375
+        },
+        {
+          "event": "guard_launched",
+          "pid": 38092,
+          "wall": 0.03199999999196734,
+          "self_cpu": 0.125,
+          "guard_pid": 44616
+        },
+        {
+          "event": "after_bound",
+          "pid": 38092,
+          "wall": 0.15699999999196734,
+          "self_cpu": 0.125
+        },
+        {
+          "event": "before_workload",
+          "pid": 38092,
+          "wall": 0.17199999999138527,
+          "self_cpu": 0.140625
+        }
+      ],
+      "target_final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365650320024763,
+        "exit_ticks": 134365650326497617,
+        "kernel_ticks": 4062500,
+        "user_ticks": 1093750,
+        "cpu_seconds": 0.515625,
+        "signaled": true
+      },
+      "guard_events": [
+        {
+          "event": "entry",
+          "pid": 44616,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "coverage_imported": false,
+          "coverage_active": false,
+          "executable": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "api",
+          "pid": 44616,
+          "wall": 0.015999999988707714,
+          "self_cpu": 0.09375,
+          "api": "GetHandleInformation",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            372,
+            "<class '_ctypes.CArgObject'>"
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 44616,
+          "wall": 0.015999999988707714,
+          "self_cpu": 0.09375,
+          "api": "GetProcessTimes",
+          "result": 1,
+          "win32_error": 0,
+          "target_handle": 412,
+          "times": [
+            134365650320024763,
+            0,
+            1250000,
+            0
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 44616,
+          "wall": 0.015999999988707714,
+          "self_cpu": 0.09375,
+          "api": "SetEvent",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            416
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 44616,
+          "wall": 0.015999999988707714,
+          "self_cpu": 0.09375,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            416
+          ]
+        },
+        {
+          "event": "fault_window_start",
+          "pid": 44616,
+          "wall": 0.015999999988707714,
+          "self_cpu": 0.09375
+        },
+        {
+          "event": "hard_exit",
+          "pid": 44616,
+          "wall": 0.40599999998812564,
+          "self_cpu": 0.09375
+        }
+      ],
+      "guard_stderr": "",
+      "result_lines": [
+        "TREE 38092 44616 31132"
+      ],
+      "all_observed_signaled": true,
+      "failed_get_process_times": [],
+      "discovery_errors": []
+    },
+    {
+      "sample_id": "no_coverage_short",
+      "argv": [
+        "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+        "-c",
+        "\nimport ctypes,json,os,sys,time\n_api_start=time.monotonic()\n_native_dll=ctypes.WinDLL\ndef _diag(event, **fields):\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\nclass _Function:\n    def __init__(self,name,function):\n        object.__setattr__(self,'name',name)\n        object.__setattr__(self,'function',function)\n    def __setattr__(self,name,value):\n        setattr(self.function,name,value)\n    def __call__(self,*args):\n        ctypes.set_last_error(0)\n        result=self.function(*args)\n        error=ctypes.get_last_error()\n        fields=dict(api=self.name,result=result,win32_error=error)\n        if self.name=='GetProcessTimes':\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\n        if self.name=='SetInformationJobObject':\n            limits=args[2]._obj\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\n        _diag('api',**fields)\n        return result\nclass _Kernel:\n    def __init__(self,native): self.native=native\n    def __getattr__(self,name):\n        function=_Function(name,getattr(self.native,name))\n        setattr(self,name,function)\n        return function\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\n\nfrom ai_intel.infrastructure import process_limits as limits\n_diag('before_bound')\nlimits._WINDOWS_CPU_GUARD_CODE=\"\\nimport ctypes,json,os,sys,time\\n_api_start=time.monotonic()\\n_native_dll=ctypes.WinDLL\\ndef _diag(event, **fields):\\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\\nclass _Function:\\n    def __init__(self,name,function):\\n        object.__setattr__(self,'name',name)\\n        object.__setattr__(self,'function',function)\\n    def __setattr__(self,name,value):\\n        setattr(self.function,name,value)\\n    def __call__(self,*args):\\n        ctypes.set_last_error(0)\\n        result=self.function(*args)\\n        error=ctypes.get_last_error()\\n        fields=dict(api=self.name,result=result,win32_error=error)\\n        if self.name=='GetProcessTimes':\\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\\n        if self.name=='SetInformationJobObject':\\n            limits=args[2]._obj\\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\\n        _diag('api',**fields)\\n        return result\\nclass _Kernel:\\n    def __init__(self,native): self.native=native\\n    def __getattr__(self,name):\\n        function=_Function(name,getattr(self.native,name))\\n        setattr(self,name,function)\\n        return function\\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\\n\"+limits._WINDOWS_CPU_GUARD_CODE\n_original_popen=limits.subprocess.Popen\ndef _guard_popen(*args,**kwargs):\n    kwargs['stdout']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\no_coverage_short\\\\guard.stdout.jsonl','wb',buffering=0)\n    kwargs['stderr']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\no_coverage_short\\\\guard.stderr.log','wb',buffering=0)\n    child=_original_popen(*args,**kwargs)\n    _diag('guard_launched',guard_pid=child.pid)\n    return child\nlimits.subprocess.Popen=_guard_popen\nhandle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nlimits.subprocess.Popen=_original_popen\n_diag('after_bound')\nprint('RESULT',sum(range(100_000)),flush=True)\n"
+      ],
+      "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+      "started_at": "2026-10-16T03:10:31.669038+08:00",
+      "ended_at": "2026-10-16T03:10:31.981081+08:00",
+      "wall_seconds": 0.3120000000053551,
+      "exit_code": 0,
+      "outer_timeout": false,
+      "observed_process_count": 4,
+      "observed_cpu_seconds": 0.34375,
+      "primary_worker_samples": 1,
+      "sample_validity": "valid for stated scenario",
+      "events": [
+        {
+          "event": "entry",
+          "pid": 9024,
+          "wall": 0.0,
+          "self_cpu": 0.09375,
+          "coverage_imported": false,
+          "coverage_active": false,
+          "executable": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "before_bound",
+          "pid": 9024,
+          "wall": 0.014999999999417923,
+          "self_cpu": 0.125
+        },
+        {
+          "event": "guard_launched",
+          "pid": 9024,
+          "wall": 0.046000000002095476,
+          "self_cpu": 0.140625,
+          "guard_pid": 38344
+        },
+        {
+          "event": "after_bound",
+          "pid": 9024,
+          "wall": 0.15600000000267755,
+          "self_cpu": 0.140625
+        }
+      ],
+      "target_final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365650316892810,
+        "exit_ticks": 134365650319722277,
+        "kernel_ticks": 1250000,
+        "user_ticks": 312500,
+        "cpu_seconds": 0.15625,
+        "signaled": true
+      },
+      "guard_events": [
+        {
+          "event": "entry",
+          "pid": 38344,
+          "wall": 0.0,
+          "self_cpu": 0.109375,
+          "coverage_imported": false,
+          "coverage_active": false,
+          "executable": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "api",
+          "pid": 38344,
+          "wall": 0.0,
+          "self_cpu": 0.125,
+          "api": "GetHandleInformation",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            596,
+            "<class '_ctypes.CArgObject'>"
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 38344,
+          "wall": 0.0,
+          "self_cpu": 0.125,
+          "api": "GetProcessTimes",
+          "result": 1,
+          "win32_error": 0,
+          "target_handle": 400,
+          "times": [
+            134365650316892810,
+            0,
+            1093750,
+            312500
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 38344,
+          "wall": 0.0,
+          "self_cpu": 0.125,
+          "api": "SetEvent",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            404
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 38344,
+          "wall": 0.0,
+          "self_cpu": 0.125,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            404
+          ]
+        }
+      ],
+      "guard_stderr": "",
+      "result_lines": [
+        "RESULT 4999950000"
+      ],
+      "all_observed_signaled": true,
+      "failed_get_process_times": [],
+      "discovery_errors": []
+    },
+    {
+      "sample_id": "normal_poll_coverage",
+      "argv": [
+        "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+        "-c",
+        "\nimport ctypes,json,os,sys,time\n_api_start=time.monotonic()\n_native_dll=ctypes.WinDLL\ndef _diag(event, **fields):\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\nclass _Function:\n    def __init__(self,name,function):\n        object.__setattr__(self,'name',name)\n        object.__setattr__(self,'function',function)\n    def __setattr__(self,name,value):\n        setattr(self.function,name,value)\n    def __call__(self,*args):\n        ctypes.set_last_error(0)\n        result=self.function(*args)\n        error=ctypes.get_last_error()\n        fields=dict(api=self.name,result=result,win32_error=error)\n        if self.name=='GetProcessTimes':\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\n        if self.name=='SetInformationJobObject':\n            limits=args[2]._obj\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\n        _diag('api',**fields)\n        return result\nclass _Kernel:\n    def __init__(self,native): self.native=native\n    def __getattr__(self,name):\n        function=_Function(name,getattr(self.native,name))\n        setattr(self,name,function)\n        return function\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\n\nfrom ai_intel.infrastructure import process_limits as limits\n_diag('before_bound')\nlimits._WINDOWS_CPU_GUARD_CODE=\"\\nimport ctypes,json,os,sys,time\\n_api_start=time.monotonic()\\n_native_dll=ctypes.WinDLL\\ndef _diag(event, **fields):\\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\\nclass _Function:\\n    def __init__(self,name,function):\\n        object.__setattr__(self,'name',name)\\n        object.__setattr__(self,'function',function)\\n    def __setattr__(self,name,value):\\n        setattr(self.function,name,value)\\n    def __call__(self,*args):\\n        ctypes.set_last_error(0)\\n        result=self.function(*args)\\n        error=ctypes.get_last_error()\\n        fields=dict(api=self.name,result=result,win32_error=error)\\n        if self.name=='GetProcessTimes':\\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\\n        if self.name=='SetInformationJobObject':\\n            limits=args[2]._obj\\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\\n        _diag('api',**fields)\\n        return result\\nclass _Kernel:\\n    def __init__(self,native): self.native=native\\n    def __getattr__(self,name):\\n        function=_Function(name,getattr(self.native,name))\\n        setattr(self,name,function)\\n        return function\\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\\n\"+limits._WINDOWS_CPU_GUARD_CODE\n_original_popen=limits.subprocess.Popen\ndef _guard_popen(*args,**kwargs):\n    kwargs['stdout']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\normal_poll_coverage\\\\guard.stdout.jsonl','wb',buffering=0)\n    kwargs['stderr']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\normal_poll_coverage\\\\guard.stderr.log','wb',buffering=0)\n    child=_original_popen(*args,**kwargs)\n    _diag('guard_launched',guard_pid=child.pid)\n    return child\nlimits.subprocess.Popen=_guard_popen\nhandle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nlimits.subprocess.Popen=_original_popen\n_diag('after_bound')\nimport hashlib\nhashlib.pbkdf2_hmac('sha256',b'a',b'b',100_000_000)\n"
+      ],
+      "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+      "started_at": "2026-10-16T03:12:14.964827+08:00",
+      "ended_at": "2026-10-16T03:12:16.239867+08:00",
+      "wall_seconds": 1.2660000000032596,
+      "exit_code": 3221225540,
+      "outer_timeout": false,
+      "observed_process_count": 4,
+      "observed_cpu_seconds": 1.265625,
+      "primary_worker_samples": 1,
+      "sample_validity": "valid for stated scenario",
+      "events": [
+        {
+          "event": "entry",
+          "pid": 29608,
+          "wall": 0.0,
+          "self_cpu": 1.0625,
+          "coverage_imported": true,
+          "coverage_active": true,
+          "executable": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "before_bound",
+          "pid": 29608,
+          "wall": 0.0,
+          "self_cpu": 1.0625
+        },
+        {
+          "event": "guard_launched",
+          "pid": 29608,
+          "wall": 0.03199999999196734,
+          "self_cpu": 1.09375,
+          "guard_pid": 34124
+        }
+      ],
+      "target_final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365651349849150,
+        "exit_ticks": 134365651362167825,
+        "kernel_ticks": 5312500,
+        "user_ticks": 5625000,
+        "cpu_seconds": 1.09375,
+        "process_exit_code": 3221225540,
+        "signaled": true
+      },
+      "guard_events": [
+        {
+          "event": "entry",
+          "pid": 34124,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "coverage_imported": false,
+          "coverage_active": false,
+          "executable": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\python.exe",
+          "base_prefix": "C:\\Users\\yinha\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none"
+        },
+        {
+          "event": "api",
+          "pid": 34124,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "GetHandleInformation",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            816,
+            "<class '_ctypes.CArgObject'>"
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 34124,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "GetProcessTimes",
+          "result": 1,
+          "win32_error": 0,
+          "target_handle": 820,
+          "times": [
+            134365651349849150,
+            0,
+            5312500,
+            5625000
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 34124,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "TerminateProcess",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            820,
+            3221225540
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 34124,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            812
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 34124,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            820
+          ]
+        },
+        {
+          "event": "api",
+          "pid": 34124,
+          "wall": 0.0,
+          "self_cpu": 0.078125,
+          "api": "CloseHandle",
+          "result": 1,
+          "win32_error": 0,
+          "arguments": [
+            816
+          ]
+        }
+      ],
+      "guard_stderr": "Traceback (most recent call last):\n  File \"<string>\", line 57, in <module>\nOSError: CPU budget exhausted before readiness\n",
+      "result_lines": [],
+      "all_observed_signaled": true,
+      "failed_get_process_times": [],
+      "discovery_errors": []
+    },
+    {
+      "sample_id": "original_four",
+      "argv": [
+        "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "pytest",
+        "tests/unit/test_r20_native_cpu_guard.py::test_short_cpu_task_keeps_its_result",
+        "tests/unit/test_r20_native_cpu_guard.py::test_guard_hard_exit_after_readiness_terminates_worker_tree[python-gil-held]",
+        "tests/unit/test_r20_native_cpu_guard.py::test_guard_hard_exit_after_readiness_terminates_worker_tree[native-gil-held-idle]",
+        "tests/unit/test_r20_native_cpu_guard.py::test_guard_hard_exit_after_readiness_terminates_worker_tree[native-cpu]",
+        "-v",
+        "--junitxml=D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\reports\\runs\\recovery_r20_8a_cpu_diagnosis_20261016\\original_four.xml",
+        "--cov-report=json:D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\reports\\runs\\recovery_r20_8a_cpu_diagnosis_20261016\\original_four.coverage.json",
+        "-o",
+        "cache_dir=D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\reports\\runs\\recovery_r20_8a_cpu_diagnosis_20261016\\pytest_cache",
+        "--basetemp=D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\reports\\runs\\recovery_r20_8a_cpu_diagnosis_20261016\\pytest_temp"
+      ],
+      "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+      "started_at": "2026-10-16T03:08:45.784431+08:00",
+      "ended_at": "2026-10-16T03:08:55.437078+08:00",
+      "wall_seconds": 9.656000000002678,
+      "exit_code": 1,
+      "outer_timeout": false,
+      "observed_process_count": 24,
+      "observed_cpu_seconds": 9.234375,
+      "primary_worker_samples": 4,
+      "sample_validity": "valid for stated scenario",
+      "events": [],
+      "target_final": null,
+      "guard_events": [],
+      "guard_stderr": null,
+      "result_lines": [],
+      "all_observed_signaled": true,
+      "failed_get_process_times": [],
+      "discovery_errors": []
+    },
+    {
+      "sample_id": "real_pdf_parent",
+      "argv": [
+        "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+        "-c",
+        "from pathlib import Path\nfrom ai_intel.ingestion.parsing.pdf_text import parse_pdf_text_layer\nsource=Path('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\docs\\\\references\\\\competition_brief.pdf')\nresult=parse_pdf_text_layer(source.read_bytes())\nprint('PDF_RESULT',result.status,len(result.blocks),sorted({b.page_number for b in result.blocks}),flush=True)\nassert result.status=='parsed' and {b.page_number for b in result.blocks}=={1,2,3,4}\n"
+      ],
+      "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+      "started_at": "2026-10-16T03:12:19.024151+08:00",
+      "ended_at": "2026-10-16T03:12:20.282402+08:00",
+      "wall_seconds": 1.2660000000032596,
+      "exit_code": 0,
+      "outer_timeout": false,
+      "observed_process_count": 7,
+      "observed_cpu_seconds": 1.25,
+      "primary_worker_samples": 1,
+      "sample_validity": "valid for stated scenario",
+      "events": [],
+      "target_final": null,
+      "guard_events": [],
+      "guard_stderr": null,
+      "result_lines": [
+        "PDF_RESULT parsed 4 [1, 2, 3, 4]"
+      ],
+      "all_observed_signaled": true,
+      "failed_get_process_times": [],
+      "discovery_errors": []
+    }
+  ],
+  "sampling_limitations": [
+    "Toolhelp discovery at nominal 5ms can miss a process which starts and exits before a snapshot.",
+    "All counts and CPU totals are observed process instances, not a proof of every kernel helper or a universal CPU cap.",
+    "Instrumented code adds imports, JSON serialization and logging; absolute entry CPU includes that diagnostic work.",
+    "time.monotonic() on this interpreter shows approximately 15.625ms quantization; no hard scheduling bound inferred."
+  ]
+}

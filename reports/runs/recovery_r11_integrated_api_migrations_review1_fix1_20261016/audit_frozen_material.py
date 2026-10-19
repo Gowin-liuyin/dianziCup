@@ -1,0 +1,104 @@
+"""Verify author exact-raw materials, original review seal and unchanged mother test ASTs."""
+
+import ast
+import hashlib
+import json
+import subprocess
+import tarfile
+from pathlib import Path
+
+RUN = Path(__file__).resolve().parent
+ROOT = RUN.parents[2]
+OLD = Path("D:/wt/r11-integrated-api-review1")
+AUTHOR_RUN = ROOT / "reports/runs/recovery_r11_sbom_locator_privacy_fix1_20261016"
+EXPECTED = {
+    "reports/tasks/R11-sbom-locator-privacy-fix1.md": "fc711954f276b0d16676249991bb90a8f800c3c058635047d44a1a1d64ed2684",
+    "manifest": "39feefefb9c3884b911f4c50ed442276a26256f1c3b015a504fbf49ca3c30cfe",
+    "archive": "37f993007648b6bdebe436aee68ed5e0a2239821d1f181194f3fe7e5a5f2873c",
+}
+
+
+def digest(content):
+    return hashlib.sha256(content).hexdigest()
+
+
+def git(*arguments):
+    return subprocess.check_output(["git", *arguments], cwd=ROOT)
+
+
+def test_asts(path):
+    tree = ast.parse(path.read_bytes())
+    return {node.name: ast.dump(node, include_attributes=False) for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_")}
+
+
+def main():
+    material = "54f17c9a61d55af5ffe43e58d9252efad6317646"
+    code = "dcbc3d928b26f6755a5bfa71a3b70f71527bd832"
+    assert git("rev-parse", "HEAD").decode().strip() == material
+    assert git("rev-parse", "HEAD^{tree}").decode().strip() == "905511223ab99e15b51f515a51b95f3bd1bb08c6"
+    manifest_path = AUTHOR_RUN / "artifact_manifest.json"
+    archive_path = AUTHOR_RUN / "evidence_exact_raw.tar.gz"
+    assert digest(manifest_path.read_bytes()) == EXPECTED["manifest"]
+    assert digest(archive_path.read_bytes()) == EXPECTED["archive"]
+    manifest = json.loads(manifest_path.read_text())
+    assert len(manifest["entries"]) == 188
+    raw_members = {}
+    with tarfile.open(archive_path) as archive:
+        for member in archive.getmembers():
+            assert member.isfile() and not member.name.startswith(("/", "\\"))
+            assert ".." not in Path(member.name).parts
+            assert member.name not in raw_members
+            raw_members[member.name] = archive.extractfile(member).read()
+    assert len(raw_members) == 187
+    audit = []
+    for entry in manifest["entries"]:
+        path = entry["path"]
+        content = raw_members[path] if path in raw_members else (ROOT / path).read_bytes()
+        assert len(content) == entry["bytes"] and digest(content) == entry["sha256"]
+        checkout = (ROOT / path).read_bytes()
+        audit.append({"path": path, "raw_source": "exact_archive" if path in raw_members else "archive_file", "bytes": len(content), "sha256": digest(content),
+                      "checkout_raw_sha256": digest(checkout), "checkout_raw_equal": checkout == content,
+                      "checkout_lf_equal": checkout.replace(b"\r\n", b"\n") == content.replace(b"\r\n", b"\n")})
+    assert digest(raw_members["reports/tasks/R11-sbom-locator-privacy-fix1.md"]) == EXPECTED["reports/tasks/R11-sbom-locator-privacy-fix1.md"]
+    source_paths = ["backend/src/ai_intel/assets/sbom_inventory.py", "backend/tests/unit/test_r11_sbom_locator_privacy.py"]
+    source = []
+    for path in source_paths:
+        content = git("show", code + ":" + path)
+        assert content == git("show", material + ":" + path)
+        assert content == raw_members[path].replace(b"\r\n", b"\n")
+        source.append({"path": path, "code_material_blob_equal": True, "sha256": digest(content),
+                       "exact_archive_raw_sha256": digest(raw_members[path]), "archive_raw_equals_git": content == raw_members[path],
+                       "archive_lf_equals_git": True})
+    changed = git("diff", "--name-only", "6aeeeec5489b92bb49613fe5daa4eec379182348", code, "--", "backend/src", "backend/tests").decode().splitlines()
+    assert sorted(changed) == sorted(source_paths)
+    old_run = OLD / "reports/runs/recovery_r11_integrated_api_migrations_review1_20261016"
+    old_manifest = json.loads((old_run / "review_manifest.json").read_text())
+    assert len(old_manifest["members"]) == 200
+    for entry in old_manifest["members"]:
+        content = (OLD / entry["path"]).read_bytes()
+        assert len(content) == entry["bytes"] and digest(content) == entry["sha256"]
+    old_seal = json.loads((old_run / "review_seal.json").read_text())
+    assert digest((old_run / "review_manifest.json").read_bytes()) == old_seal["manifest_raw_sha256"]
+    assert digest((OLD / "reports/reviews/recovery/G-D-R11-integrated-api-migrations-review-1.md").read_bytes()) == old_seal["report_raw_sha256"]
+    original_probe = old_run / "adapted_tests/test_default_inventory_api.py"
+    copied_probe = RUN / "original_probe_frozen.py"
+    assert original_probe.read_bytes() == copied_probe.read_bytes()
+    assert digest(copied_probe.read_bytes()) == "7e26ef18e236f915447e413784adf8b650b69d257db31afd004a2bebedebd62d"
+    ast_checks = []
+    for mother, adapted in [(original_probe, copied_probe), (AUTHOR_RUN / "adapted_tests/test_locator_history.py", RUN / "adapted_tests/test_author_history_adapted.py"),
+                            (old_run / "adapted_tests/test_original_inventory_production_head.py", RUN / "adapted_tests/test_original_inventory_production_head.py")]:
+        assert test_asts(mother) == test_asts(adapted)
+        ast_checks.append({"mother": str(mother), "adapted": str(adapted), "test_function_ast_equal": True, "test_function_names": sorted(test_asts(mother))})
+    protected = git("status", "--porcelain", "--untracked-files=no").decode()
+    assert not protected and not git("diff", "--cached", "--numstat")
+    result = {"material": material, "code": code, "tree": "905511223ab99e15b51f515a51b95f3bd1bb08c6", "author_raw_members": audit,
+              "author_manifest_raw_sha256": EXPECTED["manifest"], "author_archive_raw_sha256": EXPECTED["archive"],
+              "source": source, "changed_source_test_paths": changed, "old_review_members_verified": 200,
+              "old_manifest_sha256": old_seal["manifest_raw_sha256"], "old_report_sha256": old_seal["report_raw_sha256"], "mother_function_ast_checks": ast_checks,
+              "tracked_changes": 0, "staged_changes": 0}
+    (RUN / "frozen_material_validation.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"author_raw188": 188, "archive187": 187, "old_review200": 200, "probe_exact_sha256": digest(copied_probe.read_bytes()), "mother_ast_equal": True}))
+
+
+if __name__ == "__main__":
+    main()

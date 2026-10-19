@@ -1,0 +1,39 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0 -- D:\dianzi\backend\.venv\Scripts\python.exe
+cachedir: D:\tmp\nativecpu-guard-fix1-20261015\pytest-cache
+rootdir: D:\wt\native-cpu-guard\backend
+configfile: pyproject.toml
+plugins: anyio-4.15.1, cov-6.3.0
+collecting ... collected 16 items / 14 deselected / 2 selected
+
+tests/unit/test_r20_native_cpu_guard.py::test_pdf_parent_rejects_result_missing_after_guard_hard_exit PASSED [ 50%]
+tests/unit/test_r20_native_cpu_guard.py::test_semantic_parent_rejects_eof_after_guard_hard_exit FAILED [100%]
+
+================================== FAILURES ===================================
+___________ test_semantic_parent_rejects_eof_after_guard_hard_exit ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000247633415B0>
+tmp_path = WindowsPath('D:/tmp/nativecpu-guard-fix1-20261015/pytest-temp-parents/test_semantic_parent_rejects_e0')
+
+    def test_semantic_parent_rejects_eof_after_guard_hard_exit(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        if sys.platform != "win32":
+            return
+    
+        from ai_intel.infrastructure.models import semantic
+    
+        monkeypatch.setattr(semantic, "_semantic_worker", _hard_exit_guard_semantic_worker)
+        with pytest.raises(semantic.SemanticRuntimeError, match="exited without a result"):
+            semantic._run_worker(
+                semantic.LocalSemanticModels(tmp_path), semantic.E5_MODEL, "query", ("bounded",), None
+            )
+>       assert b"UNBOUNDED_WORKER" not in result.stdout
+                                          ^^^^^^
+E       NameError: name 'result' is not defined
+
+tests\unit\test_r20_native_cpu_guard.py:226: NameError
+- generated xml file: D:\wt\native-cpu-guard\reports\runs\recovery_native_cpu_guard_fix1_20261015\fault_parents.xml -
+=========================== short test summary info ===========================
+FAILED tests/unit/test_r20_native_cpu_guard.py::test_semantic_parent_rejects_eof_after_guard_hard_exit
+================= 1 failed, 1 passed, 14 deselected in 1.71s ==================

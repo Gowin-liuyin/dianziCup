@@ -1,0 +1,25 @@
+F...................                                                     [100%]
+================================== FAILURES ===================================
+___ test_forward_migration_exposes_metadata_without_a_duplicate_job_status ____
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_metadata_review1_20261016?...-c+search_path%3Dtest_r06_catalog_ad4dff60fd384ea48408716609734627+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+
+    def test_forward_migration_exposes_metadata_without_a_duplicate_job_status(catalog_engine):
+        tables = set(inspect(catalog_engine).get_table_names())
+        assert {"enrichment_workflows", "enrichment_job_steps", "job_runs"} <= tables
+        for name in ("enrichment_workflows", "enrichment_job_steps"):
+            assert "status" not in {row["name"] for row in inspect(catalog_engine).get_columns(name)}
+        with catalog_engine.connect() as connection:
+>           assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "0017_enrichment_job_workflows"
+            )
+E           AssertionError: assert '0019_aggregate_observations' == '0017_enrichm...job_workflows'
+E             
+E             - 0017_enrichment_job_workflows
+E             + 0019_aggregate_observations
+
+tests\integration\test_r07_enrichment_job_metadata_pg.py:73: AssertionError
+- generated xml file: D:\wt\r07-default-entry-review1\reports\runs\recovery_r07_default_entry_review1_20261016\independent_metadata_pg.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r07_enrichment_job_metadata_pg.py::test_forward_migration_exposes_metadata_without_a_duplicate_job_status
+1 failed, 19 passed in 29.41s

@@ -1,0 +1,104 @@
+"""Independent synthetic PG/OS negative probes against the unchanged frozen implementation."""
+
+from __future__ import annotations
+
+import json
+
+import httpx
+import pytest
+from sqlalchemy import func, select, update
+from test_t30_hybrid_retrieval import PUBLIC, corpus, index_fact_set
+from tests.r12_hybrid_fixtures import record_change, seed_fact
+
+import ai_intel.retrieval.hybrid as hybrid
+from ai_intel.knowledge.models import scope_epochs
+from ai_intel.knowledge.persistence_models import claims
+from ai_intel.retrieval.hybrid_contracts import HybridQuery, HybridRetrievalError
+from ai_intel.retrieval.hybrid_schema import hybrid_index_receipts, hybrid_index_watermarks
+from ai_intel.retrieval.opensearch_client import OpenSearchCorpusClient
+
+pytestmark = pytest.mark.real_pg
+
+
+def test_precision_exact_cve_nearby_event_and_other_tenant(corpus) -> None:
+    engine, indexer, retriever = corpus
+    target = seed_fact(engine, "CVE-2026-77701 prompt injection target", cve="CVE-2026-77701")
+    seed_fact(engine, "CVE-2026-77702 prompt injection target repeated repeatedly", cve="CVE-2026-77702")
+    private = seed_fact(engine, "CVE-2026-77701 prompt injection target", tenant="tenant-b", cve="CVE-2026-77701")
+    index_fact_set(engine, indexer)
+    index_fact_set(engine, indexer, "tenant:tenant-b")
+    result = retriever.retrieve(PUBLIC, HybridQuery("CVE-2026-77701 prompt injection", include_graph=False))
+    assert result.hits[0].candidate.event_id == target["event_id"]
+    assert result.trace.exact_count == 1 and result.hits[0].exact_identifier
+    assert private["event_id"] not in repr(result)
+    assert not result.partial
+
+
+@pytest.mark.parametrize("withdraw", [False, True], ids=["new_fact_epoch_after_final_read", "withdraw_after_final_read"])
+def test_post_read_epoch_change_must_not_return_complete_stale_snapshot(corpus, monkeypatch, withdraw: bool) -> None:
+    engine, indexer, retriever = corpus
+    target = seed_fact(engine, "prompt injection active synthetic risk")
+    index_fact_set(engine, indexer)
+    original = hybrid.read_scope_epochs
+    reads = 0
+
+    def after_read(session, scope, *, lock=False):
+        nonlocal reads
+        result = original(session, scope, lock=lock)
+        reads += 1
+        if reads == 2:
+            if withdraw:
+                with engine.begin() as connection:
+                    connection.execute(update(claims).where(claims.c.claim_id == target["claim_id"]).values(claim_status="withdrawn"))
+            else:
+                seed_fact(engine, "prompt injection NEW matching synthetic risk")
+            record_change(engine)
+        return result
+
+    monkeypatch.setattr(hybrid, "read_scope_epochs", after_read)
+    result = retriever.retrieve(PUBLIC, HybridQuery("prompt injection", include_graph=False))
+    with engine.connect() as connection:
+        actual_epoch = connection.scalar(select(scope_epochs.c.epoch).where(scope_epochs.c.scope_key == "public"))
+        target_status = connection.scalar(select(claims.c.claim_status).where(claims.c.claim_id == target["claim_id"]))
+    print(json.dumps(dict(probe="post_final_epoch_read_before_facts_query", withdrew=withdraw, reads=reads, returned_epoch=dict(result.scope_epochs)["public"], actual_epoch=actual_epoch, target_status=target_status, hit_count=len(result.hits), partial=result.partial, reasons=result.reasons)))
+    assert reads == 2 and actual_epoch == 2
+    assert result.partial and not result.hits and "scope_changed_during_retrieval" in result.reasons
+
+
+def test_os_intermediate_write_failure_keeps_pg_lag_partial(corpus, monkeypatch) -> None:
+    engine, indexer, retriever = corpus
+    seed_fact(engine, "prompt injection old risk")
+    index_fact_set(engine, indexer)
+    fresh = seed_fact(engine, "prompt injection new risk")
+    pending = record_change(engine)
+
+    def interrupted(*arguments):
+        raise HybridRetrievalError("opensearch_delete_incomplete")
+
+    monkeypatch.setattr(indexer.search, "remove_older_scope", interrupted)
+    with pytest.raises(HybridRetrievalError, match="opensearch_delete_incomplete"):
+        indexer.refresh_scope(pending)
+    result = retriever.retrieve(PUBLIC, HybridQuery("prompt injection", include_graph=False))
+    assert result.partial and "index_lag" in result.reasons
+    assert fresh["evidence_id"] not in {hit.candidate.evidence_id for hit in result.hits}
+    with engine.connect() as connection:
+        assert connection.scalar(select(hybrid_index_watermarks.c.indexed_epoch)) == 1
+        assert connection.scalar(select(func.count()).select_from(hybrid_index_receipts)) == 1
+
+
+@pytest.mark.parametrize("failure,expected", [(401, "bm25_permission_denied"), (403, "bm25_permission_denied"), ("timeout", "bm25_timeout")])
+def test_product_failure_classification_never_echoes_auth(corpus, failure, expected: str) -> None:
+    engine, indexer, retriever = corpus
+    seed_fact(engine, "prompt injection synthetic risk")
+    index_fact_set(engine, indexer)
+
+    def failed_response(request):
+        if failure == "timeout":
+            raise httpx.ReadTimeout("review fixture authorization secret", request=request)
+        return httpx.Response(failure, text="review fixture authorization secret")
+
+    with httpx.Client(base_url="https://search.invalid", auth=("review-user", "review fixture authorization secret"), transport=httpx.MockTransport(failed_response)) as client:
+        retriever.bm25 = OpenSearchCorpusClient(client)
+        result = retriever.retrieve(PUBLIC, HybridQuery("prompt injection", include_graph=False))
+    assert result.hits and result.partial and expected in result.reasons
+    assert "secret" not in repr(result) and "review-user" not in repr(result)

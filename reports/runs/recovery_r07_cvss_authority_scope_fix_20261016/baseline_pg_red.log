@@ -1,0 +1,46 @@
+F.                                                                       [100%]
+================================== FAILURES ===================================
+_ test_two_source_scores_preserve_authority_quotes_metadata_detail_and_replay[False-available] _
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_cvss_fix_20261016?options=-c+search_path%3Dtest_r06_catalog_95e3e148b6484a51978cc200b268a414+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-646/test_two_source_scores_preserv0')
+same_authority = False, expected_status = 'available'
+
+    @pytest.mark.parametrize("same_authority,expected_status", [(False, "available"), (True, "conflict")])
+    def test_two_source_scores_preserve_authority_quotes_metadata_detail_and_replay(
+        catalog_engine, tmp_path, same_authority, expected_status
+    ):
+        body, _ = source_response("nvd_ollama")
+        payload = json.loads(body)
+        rows = payload["vulnerabilities"][0]["cve"]["metrics"]["cvssMetricV31"]
+        rows[0]["source"] = "nvd@nist.gov"
+        rows[0]["cvssData"]["baseScore"] = 9.8
+        second = copy.deepcopy(rows[0])
+        second["source"] = "nvd@nist.gov" if same_authority else "cna@example.org"
+        second["cvssData"]["baseScore"] = 8.1
+        rows[:] = [rows[0], second]
+        raw = json.dumps(payload).encode()
+        store = ContentStore(tmp_path / "synthetic-content")
+        with Session(catalog_engine) as session, session.begin():
+            saved = persist_source_response(
+                session, store, ADMIN,
+                SourceResponse("nvd_ollama", raw,
+                               "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=ollama&resultsPerPage=100&startIndex=0", NOW),
+                ingested_at=NOW,
+            )
+        event_id = UUID(saved.event_ids[0])
+        with Session(catalog_engine) as session:
+            loaded = load_event_enrichment_inputs(session, store, ADMIN, event_id, "cvss-authority-fix-1")
+        attempts = enrich_structured_fields(loaded.context, loaded.documents)
+        cvss = next(a for a in attempts if a.dimension == "cvss")
+>       assert cvss.status.value == expected_status and len(cvss.candidates) == 2
+E       AssertionError: assert ('conflict' == 'available'
+E         
+E         - available
+E         + conflict)
+
+tests\integration\test_r07_cvss_authority_scope_fix_pg.py:56: AssertionError
+- generated xml file: D:\wt\r07-cvss-scope\reports\runs\recovery_r07_cvss_authority_scope_fix_20261016\baseline_pg_red.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r07_cvss_authority_scope_fix_pg.py::test_two_source_scores_preserve_authority_quotes_metadata_detail_and_replay[False-available]
+1 failed, 1 passed in 6.01s

@@ -1,0 +1,1372 @@
+diff --git a/sdk/python/ai_intel_client/mcp_adapter.py b/sdk/python/ai_intel_client/mcp_adapter.py
+new file mode 100644
+index 00000000..23a6b393
+--- /dev/null
++++ b/sdk/python/ai_intel_client/mcp_adapter.py
+@@ -0,0 +1,205 @@
++"""Official MCP transport handlers for the currently frozen read-tool DTOs."""
++
++from __future__ import annotations
++
++import hashlib
++import json
++from collections.abc import AsyncIterator, Mapping
++from contextlib import asynccontextmanager
++from functools import partial
++
++import anyio
++from mcp.server.context import ServerRequestContext
++from mcp.server.lowlevel import Server
++from mcp.shared.exceptions import MCPError
++from mcp_types import (
++    SERVER_INFO_META_KEY,
++    CallToolRequestParams,
++    CallToolResult,
++    ListToolsResult,
++    PaginatedRequestParams,
++    TextContent,
++    Tool,
++    ToolAnnotations,
++)
++from mcp_types.jsonrpc import INVALID_PARAMS
++from pydantic import ValidationError
++from starlette.requests import Request
++
++from ai_intel_client.client import (
++    ClientInputError,
++    DianziApiError,
++    DianziClient,
++    DianziTransportError,
++    ResponseContractError,
++)
++from ai_intel_client.models import (
++    ASK_RESULT_ADAPTER,
++    AskRequest,
++    PublicRecord,
++    QAAnswer,
++    StackCheckRequest,
++    StackCheckResult,
++)
++from ai_intel_client.output_budget import McpOutputBudget as McpOutputBudget
++from ai_intel_client.output_budget import OutputBudgetTokenizationError
++
++SERVER_NAME = "dianzi-current-read-tools"
++SERVER_VERSION = "0.1.0"
++
++
++def _result_metadata() -> dict[str, object]:
++    return {SERVER_INFO_META_KEY: {"name": SERVER_NAME, "version": SERVER_VERSION}}
++
++
++def _tool_error(code: str) -> CallToolResult:
++    return CallToolResult(
++        _meta=_result_metadata(),
++        is_error=True,
++        content=[TextContent(text=json.dumps({"error": {"code": code}}, separators=(",", ":")))],
++    )
++
++
++def _complete_result(record: PublicRecord, budget: McpOutputBudget) -> CallToolResult:
++    text = record.wire_json()
++    result = CallToolResult(
++        _meta=_result_metadata(),
++        content=[TextContent(text=text)],
++        structured_content=json.loads(text),
++    )
++    if not budget.fits(result):
++        citations = []
++        if isinstance(record, QAAnswer):
++            citations = [citation.model_dump(mode="json") for citation in record.citations]
++        elif isinstance(record, StackCheckResult):
++            citations = [
++                citation.model_dump(mode="json")
++                for assessment in record.results
++                for citation in assessment.citations
++            ]
++        details = {
++            "code": "output_budget_exceeded",
++            "budget_profile": budget.profile,
++            "complete": False,
++            "result_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
++            "pagination": "not_configured",
++            "references_status": "complete",
++            "citations": citations,
++        }
++        error = CallToolResult(
++            _meta=_result_metadata(),
++            is_error=True,
++            content=[TextContent(text=json.dumps({"error": details}, separators=(",", ":")))],
++        )
++        if budget.fits(error):
++            return error
++        details["references_status"] = "unavailable_within_budget"
++        details.pop("citations")
++        return CallToolResult(
++            _meta=_result_metadata(),
++            is_error=True,
++            content=[TextContent(text=json.dumps({"error": details}, separators=(",", ":")))],
++        )
++    return result
++
++
++@asynccontextmanager
++async def _server_lifespan(_: Server[None]) -> AsyncIterator[None]:
++    yield None
++
++
++def create_current_read_tool_server(
++    client: DianziClient,
++    output_budget: McpOutputBudget,
++) -> Server[None]:
++    """Expose only implemented shared-backend calls; no HTTP auth or invented endpoints.
++
++    The owning runtime must verify its tokenizer/cache and authenticate transport
++    requests before exposing this server. HTTP clients must have a request-bound
++    credential; the fixed client supplied here is intended for one stdio identity.
++    """
++    request_models: dict[str, type[PublicRecord]] = {
++        "ask": AskRequest,
++        "check_stack": StackCheckRequest,
++    }
++    output_schemas = {
++        "ask": {"type": "object", **ASK_RESULT_ADAPTER.json_schema()},
++        "check_stack": StackCheckResult.model_json_schema(),
++    }
++    tools = [
++        Tool(
++            name=name,
++            description=(
++                "Ask the shared backend with traceable source support."
++                if name == "ask"
++                else "Check component applicability; absence of a match remains unknown."
++            ),
++            input_schema=model.model_json_schema(),
++            output_schema=output_schemas[name],
++            annotations=ToolAnnotations(
++                read_only_hint=True, destructive_hint=False, open_world_hint=True
++            ),
++        )
++        for name, model in request_models.items()
++    ]
++    worker_slots = anyio.CapacityLimiter(4)
++
++    async def list_tools(
++        _: ServerRequestContext[None, Request], params: PaginatedRequestParams | None
++    ) -> ListToolsResult:
++        if params is not None and params.cursor is not None:
++            raise MCPError(INVALID_PARAMS, "tool discovery cursor is invalid")
++        return ListToolsResult(tools=tools)
++
++    async def call_tool(
++        context: ServerRequestContext[None, Request], params: CallToolRequestParams
++    ) -> CallToolResult:
++        if context.request is not None:
++            return _tool_error("not_configured")
++        if params.name not in request_models:
++            return _tool_error("unknown_tool")
++        try:
++            raw = json.dumps(params.arguments or {}, allow_nan=False).encode("utf-8")
++            validated_request = request_models[params.name].model_validate_json(raw)
++        except (ValidationError, UnicodeError, ValueError):
++            return _tool_error("invalid_arguments")
++        record: PublicRecord
++        try:
++            if params.name == "ask":
++                if not isinstance(validated_request, AskRequest):
++                    return _tool_error("invalid_arguments")
++                record = await anyio.to_thread.run_sync(
++                    partial(client.ask, validated_request), limiter=worker_slots
++                )
++            else:
++                if not isinstance(validated_request, StackCheckRequest):
++                    return _tool_error("invalid_arguments")
++                record = await anyio.to_thread.run_sync(
++                    partial(client.check_stack, validated_request), limiter=worker_slots
++                )
++            return _complete_result(record, output_budget)
++        except ClientInputError:
++            return _tool_error("backend_request_error")
++        except DianziApiError as error:
++            return _tool_error(error.code)
++        except DianziTransportError:
++            return _tool_error("backend_transport_error")
++        except ResponseContractError:
++            return _tool_error("backend_contract_error")
++        except OutputBudgetTokenizationError:
++            return _tool_error("tokenizer_unavailable")
++        except Exception:
++            return _tool_error("backend_internal_error")
++
++    def input_schema(name: str) -> Mapping[str, object] | None:
++        model = request_models.get(name)
++        return None if model is None else model.model_json_schema()
++
++    return Server(
++        SERVER_NAME,
++        version=SERVER_VERSION,
++        lifespan=_server_lifespan,
++        on_list_tools=list_tools,
++        on_call_tool=call_tool,
++        get_tool_input_schema=input_schema,
++    )
+diff --git a/sdk/python/ai_intel_client/mcp_stdio.py b/sdk/python/ai_intel_client/mcp_stdio.py
+new file mode 100644
+index 00000000..c4035e68
+--- /dev/null
++++ b/sdk/python/ai_intel_client/mcp_stdio.py
+@@ -0,0 +1,38 @@
++"""One-identity stdio entry point with the pinned offline output tokenizer."""
++
++from __future__ import annotations
++
++import asyncio
++import os
++import sys
++from pathlib import Path
++
++from mcp.server.stdio import stdio_server
++
++from ai_intel_client.client import ClientConfigurationError, DianziClient
++from ai_intel_client.mcp_adapter import create_current_read_tool_server
++from ai_intel_client.output_budget import McpOutputBudget, OutputBudgetConfigurationError
++
++
++async def serve_stdio() -> None:
++    cache_file = os.environ.get("DIANZI_MCP_ENCODING_CACHE_FILE")
++    if not cache_file:
++        raise OutputBudgetConfigurationError("not_configured")
++    budget = McpOutputBudget(Path(cache_file))
++    with DianziClient.from_environment() as backend:
++        server = create_current_read_tool_server(backend, budget)
++        async with stdio_server() as (read_stream, write_stream):
++            await server.run(read_stream, write_stream, server.create_initialization_options())
++
++
++def main() -> int:
++    try:
++        asyncio.run(serve_stdio())
++    except (ClientConfigurationError, OutputBudgetConfigurationError):
++        sys.stderr.write('{"error":{"code":"not_configured"}}\n')
++        return 3
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/sdk/python/ai_intel_client/output_budget.py b/sdk/python/ai_intel_client/output_budget.py
+new file mode 100644
+index 00000000..88503ae7
+--- /dev/null
++++ b/sdk/python/ai_intel_client/output_budget.py
+@@ -0,0 +1,119 @@
++"""Offline official tokenizer loading and the complete MCP result budget."""
++
++from __future__ import annotations
++
++import hashlib
++from importlib import import_module
++from importlib.metadata import version
++from pathlib import Path
++from types import FunctionType
++
++import tiktoken
++from mcp_types import CallToolResult
++from tiktoken.load import load_tiktoken_bpe
++
++OUTPUT_BUDGET_PROFILE = "r18-output-budget-1"
++MAX_TOOL_OUTPUT_TOKENS = 8000
++MAX_TOOL_OUTPUT_BYTES = 1048576
++ENCODING_URL = "https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken"
++ENCODING_SHA256 = "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d"
++ENCODING_SIZE_BYTES = 3613922
++
++
++class OutputBudgetConfigurationError(ValueError):
++    """The pinned tokenizer could not be loaded without network access."""
++
++
++class OutputBudgetTokenizationError(RuntimeError):
++    """The native tokenizer failed; no count or complete output is claimed."""
++
++
++def load_offline_encoding(cache_file: Path) -> tiktoken.Encoding:
++    """Reuse the official constructor and parser with a private in-memory reader.
++
++    Neither official module globals nor environment/cache settings are patched.
++    The verified bytes remain the sole input even if the file later changes.
++    """
++    if version("tiktoken") != "0.14.0":
++        raise OutputBudgetConfigurationError("not_configured")
++    try:
++        with cache_file.open("rb") as cache:
++            verified_bytes = cache.read(ENCODING_SIZE_BYTES + 1)
++    except OSError:
++        raise OutputBudgetConfigurationError("not_configured") from None
++    if (
++        len(verified_bytes) != ENCODING_SIZE_BYTES
++        or hashlib.sha256(verified_bytes).hexdigest() != ENCODING_SHA256
++    ):
++        raise OutputBudgetConfigurationError("not_configured")
++
++    def read_verified_bytes(path: str, expected_hash: str | None = None) -> bytes:
++        if path != ENCODING_URL or expected_hash != ENCODING_SHA256:
++            raise OutputBudgetConfigurationError("not_configured")
++        return verified_bytes
++
++    local_parser = FunctionType(
++        load_tiktoken_bpe.__code__,
++        {**load_tiktoken_bpe.__globals__, "read_file_cached": read_verified_bytes},
++    )
++    official_constructor: object = import_module("tiktoken_ext.openai_public").o200k_base
++    if not isinstance(official_constructor, FunctionType):
++        raise OutputBudgetConfigurationError("not_configured")
++    local_constructor = FunctionType(
++        official_constructor.__code__,
++        {**official_constructor.__globals__, "load_tiktoken_bpe": local_parser},
++    )
++    configuration: object = local_constructor()
++    if not isinstance(configuration, dict):
++        raise OutputBudgetConfigurationError("not_configured")
++    name = configuration.get("name")
++    pattern = configuration.get("pat_str")
++    raw_ranks = configuration.get("mergeable_ranks")
++    raw_special = configuration.get("special_tokens")
++    if name != "o200k_base" or not isinstance(pattern, str):
++        raise OutputBudgetConfigurationError("not_configured")
++    if not isinstance(raw_ranks, dict) or not isinstance(raw_special, dict):
++        raise OutputBudgetConfigurationError("not_configured")
++    ranks: dict[bytes, int] = {}
++    special: dict[str, int] = {}
++    for token, rank in raw_ranks.items():
++        if not isinstance(token, bytes) or type(rank) is not int:
++            raise OutputBudgetConfigurationError("not_configured")
++        ranks[token] = rank
++    for token, rank in raw_special.items():
++        if not isinstance(token, str) or type(rank) is not int:
++            raise OutputBudgetConfigurationError("not_configured")
++        special[token] = rank
++    return tiktoken.Encoding(
++        name="o200k_base", pat_str=pattern, mergeable_ranks=ranks, special_tokens=special
++    )
++
++
++class McpOutputBudget:
++    """Count the final compact JSON, including text, structured data and metadata."""
++
++    def __init__(self, cache_file: Path) -> None:
++        self.encoding = load_offline_encoding(cache_file)
++        self.profile = OUTPUT_BUDGET_PROFILE
++
++    @classmethod
++    def for_fixture(cls, encoding: tiktoken.Encoding) -> McpOutputBudget:
++        """Explicit isolated test counting; this never advertises the formal profile."""
++        budget = cls.__new__(cls)
++        budget.encoding = encoding
++        budget.profile = "explicit-fixture-token-budget"
++        return budget
++
++    def fits(self, result: CallToolResult) -> bool:
++        serialized = result.model_dump_json(by_alias=True, exclude_none=True)
++        if len(serialized.encode("utf-8")) > MAX_TOOL_OUTPUT_BYTES:
++            return False
++        try:
++            return len(self.encoding.encode_ordinary(serialized)) <= MAX_TOOL_OUTPUT_TOKENS
++        except BaseException as error:
++            if (
++                type(error).__module__ == "pyo3_runtime"
++                and type(error).__name__ == "PanicException"
++            ):
++                raise OutputBudgetTokenizationError("tokenizer_unavailable") from None
++            raise
+diff --git a/sdk/python/tests/fixtures/mcp_stdio_server.py b/sdk/python/tests/fixtures/mcp_stdio_server.py
+new file mode 100644
+index 00000000..d8dcf13c
+--- /dev/null
++++ b/sdk/python/tests/fixtures/mcp_stdio_server.py
+@@ -0,0 +1,56 @@
++"""Explicit stdio fixture process, isolated from product API keys and live services."""
++
++from __future__ import annotations
++
++import asyncio
++import os
++import sys
++from pathlib import Path
++
++import httpx
++import tiktoken
++from pydantic import SecretStr
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from ai_intel_client.client import DianziClient
++from ai_intel_client.mcp_adapter import McpOutputBudget, create_current_read_tool_server
++from mcp.server.stdio import stdio_server
++
++ID = "00000000-0000-4000-8000-000000000001"
++
++
++async def main() -> None:
++    if os.environ.get("DIANZI_MCP_TEST_MODE") != "fixture":
++        raise SystemExit("stdio harness requires explicit fixture mode")
++    encoding = tiktoken.Encoding(
++        "synthetic-byte-vocabulary-fixture",
++        pat_str=r"(?s).",
++        mergeable_ranks={bytes([value]): value for value in range(256)},
++        special_tokens={},
++    )
++    answer = {
++        "kind": "completed",
++        "answer_id": ID,
++        "answer_text": "explicit stdio fixture",
++        "claims": [],
++        "citations": [],
++        "limitations": ["fixture has no evidence"],
++        "freshness": "unknown",
++        "data_mode": "fixture",
++        "started_at": "2026-10-16T00:00:00Z",
++        "completed_at": "2026-10-16T00:00:01Z",
++        "latency_milliseconds": 1000,
++    }
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr("synthetic-test-key-with-no-provider-access"),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=answer)),
++    ) as backend:
++        server = create_current_read_tool_server(backend, McpOutputBudget.for_fixture(encoding))
++        async with stdio_server() as (read_stream, write_stream):
++            await server.run(read_stream, write_stream, server.create_initialization_options())
++
++
++if __name__ == "__main__":
++    asyncio.run(main())
+diff --git a/sdk/python/tests/test_mcp_adapter.py b/sdk/python/tests/test_mcp_adapter.py
+new file mode 100644
+index 00000000..7c6ff8ed
+--- /dev/null
++++ b/sdk/python/tests/test_mcp_adapter.py
+@@ -0,0 +1,309 @@
++"""Explicit fixture-only SDK transport tests; no live backend or product credentials."""
++
++from __future__ import annotations
++
++import json
++import sys
++from pathlib import Path
++
++import httpx
++import pytest
++import tiktoken
++from ai_intel_client.client import DianziClient
++from ai_intel_client.mcp_adapter import (
++    McpOutputBudget,
++    create_current_read_tool_server,
++)
++from mcp import Client
++from mcp.client.stdio import StdioServerParameters
++from mcp.server.transport_security import TransportSecuritySettings
++from mcp.shared.exceptions import MCPError
++from mcp_types import CLIENT_CAPABILITIES_META_KEY, PROTOCOL_VERSION_META_KEY
++from pydantic import SecretStr
++
++SYNTHETIC_KEY = "synthetic-test-key-with-no-provider-access"
++ID = "00000000-0000-4000-8000-000000000001"
++ANSWER = {
++    "kind": "completed",
++    "answer_id": ID,
++    "answer_text": "synthetic unknown",
++    "claims": [],
++    "citations": [],
++    "limitations": ["fixture has no evidence"],
++    "freshness": "unknown",
++    "data_mode": "fixture",
++    "started_at": "2026-10-16T00:00:00Z",
++    "completed_at": "2026-10-16T00:00:01Z",
++    "latency_milliseconds": 1000,
++}
++
++
++@pytest.fixture
++def anyio_backend() -> str:
++    return "asyncio"
++
++
++@pytest.fixture
++def fixture_token_budget() -> McpOutputBudget:
++    """Synthetic tokenizer exercises counting code; it is never named o200k_base."""
++    encoding = tiktoken.Encoding(
++        "synthetic-byte-vocabulary-fixture",
++        pat_str=r"(?s).",
++        mergeable_ranks={bytes([value]): value for value in range(256)},
++        special_tokens={},
++    )
++    return McpOutputBudget.for_fixture(encoding)
++
++
++@pytest.mark.anyio
++async def test_official_client_discovers_exact_implemented_tools_and_calls_shared_rest(
++    fixture_token_budget: McpOutputBudget,
++) -> None:
++    calls: list[httpx.Request] = []
++
++    def handler(request: httpx.Request) -> httpx.Response:
++        calls.append(request)
++        return httpx.Response(200, json=ANSWER)
++
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(handler),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, fixture_token_budget)) as client:
++            listed = await client.list_tools()
++            assert [tool.name for tool in listed.tools] == ["ask", "check_stack"]
++            assert all(tool.input_schema["additionalProperties"] is False for tool in listed.tools)
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is False
++            assert result.structured_content == ANSWER
++            assert "fixture" in result.model_dump_json()
++    assert len(calls) == 1
++    assert calls[0].url.path == "/api/v1/ask"
++    assert calls[0].headers["authorization"] == "Bearer " + SYNTHETIC_KEY
++
++
++@pytest.mark.anyio
++@pytest.mark.parametrize(
++    "arguments",
++    [
++        {"question": "synthetic", "mode": "library", "tenant_id": ID},
++        {"question": "synthetic", "mode": "library", "skip_validation": True},
++        {"question": "synthetic", "mode": "unsupported"},
++        {"question": "synthetic", "mode": "library", "event_ids": "[]"},
++    ],
++)
++async def test_extra_identity_bypass_and_stringified_json_rejected_before_backend(
++    fixture_token_budget: McpOutputBudget, arguments: dict[str, object]
++) -> None:
++    calls: list[httpx.Request] = []
++
++    def handler(request: httpx.Request) -> httpx.Response:
++        calls.append(request)
++        return httpx.Response(200, json=ANSWER)
++
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(handler),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, fixture_token_budget)) as client:
++            result = await client.call_tool("ask", arguments)
++            assert result.is_error is True
++            assert "invalid_arguments" in result.model_dump_json()
++    assert calls == []
++
++
++@pytest.mark.anyio
++async def test_queued_handle_preserved_without_answer(
++    fixture_token_budget: McpOutputBudget,
++) -> None:
++    queued = {
++        "kind": "task",
++        "task_id": ID,
++        "status": "queued",
++        "poll_uri": "/api/v1/tasks/" + ID,
++        "created_at": "2026-10-16T00:00:00Z",
++    }
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(202, json=queued)),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, fixture_token_budget)) as client:
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is False
++            assert result.structured_content == queued
++            assert "answer_text" not in result.model_dump_json()
++
++
++@pytest.mark.anyio
++async def test_backend_contract_failure_remains_distinct_from_input_failure(
++    fixture_token_budget: McpOutputBudget,
++) -> None:
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json={"unexpected": True})),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, fixture_token_budget)) as client:
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is True
++            assert "backend_contract_error" in result.model_dump_json()
++
++
++@pytest.mark.anyio
++async def test_atomic_output_budget_fails_instead_of_truncating_evidence(
++    fixture_token_budget: McpOutputBudget,
++) -> None:
++    large_answer = dict(ANSWER, answer_text="synthetic " * 900)
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=large_answer)),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, fixture_token_budget)) as client:
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is True
++            assert result.structured_content is None
++            assert "output_budget_exceeded" in result.model_dump_json()
++            assert "synthetic " not in result.model_dump_json()
++
++
++@pytest.mark.anyio
++async def test_backend_permission_failure_has_no_server_body_or_key(
++    fixture_token_budget: McpOutputBudget,
++) -> None:
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(
++            lambda _: httpx.Response(403, text="SYNTHETIC_PRIVATE_BACKEND_BODY")
++        ),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, fixture_token_budget)) as client:
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is True
++            assert "http_error" in result.model_dump_json()
++            assert "SYNTHETIC_PRIVATE" not in result.model_dump_json()
++            assert SYNTHETIC_KEY not in result.model_dump_json()
++
++
++@pytest.mark.anyio
++async def test_stack_unknown_semantics_preserved(
++    fixture_token_budget: McpOutputBudget,
++) -> None:
++    stack = {
++        "kind": "completed",
++        "results": [],
++        "limitations": ["fixture has no inventory"],
++    }
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=stack)),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, fixture_token_budget)) as client:
++            result = await client.call_tool("check_stack", {"components": []})
++            assert result.is_error is False
++            assert result.structured_content == stack
++            assert "clean" not in json.dumps(result.structured_content)
++
++
++@pytest.mark.anyio
++async def test_official_stdio_subprocess_discovery_and_tool_call() -> None:
++    parameters = StdioServerParameters(
++        command=sys.executable,
++        args=[str(Path(__file__).parent / "fixtures" / "mcp_stdio_server.py")],
++        env={"DIANZI_MCP_TEST_MODE": "fixture"},
++    )
++    async with Client(parameters, read_timeout_seconds=10) as client:
++        listed = await client.list_tools()
++        assert [tool.name for tool in listed.tools] == ["ask", "check_stack"]
++        result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++        assert result.is_error is False
++        assert isinstance(result.structured_content, dict)
++        assert result.structured_content["data_mode"] == "fixture"
++        assert result.structured_content["answer_text"] == "explicit stdio fixture"
++
++
++@pytest.mark.anyio
++async def test_tool_discovery_rejects_unbound_cursor_as_protocol_input_error(
++    fixture_token_budget: McpOutputBudget,
++) -> None:
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=ANSWER)),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, fixture_token_budget)) as client:
++            with pytest.raises(MCPError) as raised:
++                await client.list_tools(cursor="unbound-cursor")
++            assert raised.value.code == -32602
++
++
++@pytest.mark.anyio
++@pytest.mark.parametrize(
++    "host,origin,expected_status",
++    [
++        ("127.0.0.1:12345", "http://127.0.0.1:12345", 200),
++        ("untrusted.example:12345", "http://127.0.0.1:12345", 421),
++        ("127.0.0.1:12345", "https://untrusted.example", 403),
++    ],
++)
++async def test_official_http_asgi_discovery_host_and_origin_boundary(
++    fixture_token_budget: McpOutputBudget,
++    host: str,
++    origin: str,
++    expected_status: int,
++) -> None:
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=ANSWER)),
++    ) as backend:
++        server = create_current_read_tool_server(backend, fixture_token_budget)
++        app = server.streamable_http_app(
++            stateless_http=True,
++            json_response=True,
++            max_request_body_size=1048576,
++            transport_security=TransportSecuritySettings(
++                allowed_hosts=["127.0.0.1:12345"],
++                allowed_origins=["http://127.0.0.1:12345"],
++            ),
++        )
++        async with (
++            app.router.lifespan_context(app),
++            httpx.AsyncClient(
++                transport=httpx.ASGITransport(app=app),
++                base_url="http://127.0.0.1:12345",
++            ) as client,
++        ):
++            response = await client.post(
++                "/mcp",
++                headers={
++                    "host": host,
++                    "origin": origin,
++                    "Accept": "application/json, text/event-stream",
++                    "MCP-Protocol-Version": "2026-07-28",
++                    "MCP-Method": "tools/list",
++                },
++                json={
++                    "jsonrpc": "2.0",
++                    "id": 1,
++                    "method": "tools/list",
++                    "params": {
++                        "_meta": {
++                            PROTOCOL_VERSION_META_KEY: "2026-07-28",
++                            CLIENT_CAPABILITIES_META_KEY: {},
++                        }
++                    },
++                },
++            )
++            assert response.status_code == expected_status, response.text
++            if expected_status == 200:
++                body = response.json()
++                assert [tool["name"] for tool in body["result"]["tools"]] == [
++                    "ask",
++                    "check_stack",
++                ]
+diff --git a/sdk/python/tests/test_mcp_output_security.py b/sdk/python/tests/test_mcp_output_security.py
+new file mode 100644
+index 00000000..b7da2891
+--- /dev/null
++++ b/sdk/python/tests/test_mcp_output_security.py
+@@ -0,0 +1,281 @@
++"""Explicit loopback/ASGI fixtures for the official MCP and credential boundary."""
++
++from __future__ import annotations
++
++import json
++import sys
++import threading
++import time
++from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
++from pathlib import Path
++
++import anyio
++import httpx
++import pytest
++from ai_intel_client.client import DianziClient
++from ai_intel_client.mcp_adapter import create_current_read_tool_server
++from ai_intel_client.output_budget import McpOutputBudget
++from mcp import Client
++from mcp.client.stdio import StdioServerParameters
++from mcp.server.transport_security import TransportSecuritySettings
++from mcp_types import CLIENT_CAPABILITIES_META_KEY, PROTOCOL_VERSION_META_KEY
++from pydantic import SecretStr
++
++CACHE_FILE = Path(
++    "D:/dianzi-runtime-cache/tiktoken-o200k-base-20261016/fb374d419588a4632f3f557e76b4b70aebbca790"
++)
++KEY = "synthetic-test-key-with-no-provider-access"
++ID = "00000000-0000-4000-8000-000000000001"
++ANSWER = {
++    "kind": "completed",
++    "answer_id": ID,
++    "answer_text": "中文证据不足；🙂",
++    "claims": [],
++    "citations": [],
++    "limitations": ["explicit synthetic loopback fixture"],
++    "freshness": "unknown",
++    "data_mode": "fixture",
++    "started_at": "2026-10-16T00:00:00Z",
++    "completed_at": "2026-10-16T00:00:01Z",
++    "latency_milliseconds": 1000,
++}
++
++
++@pytest.fixture
++def anyio_backend() -> str:
++    return "asyncio"
++
++
++@pytest.fixture(scope="module")
++def official_budget() -> McpOutputBudget:
++    return McpOutputBudget(CACHE_FILE)
++
++
++@pytest.mark.anyio
++@pytest.mark.parametrize("authorization", [None, "Bearer synthetic-other-identity-token-12345"])
++async def test_http_cannot_execute_using_shared_stdio_identity(
++    official_budget: McpOutputBudget, authorization: str | None
++) -> None:
++    calls: list[httpx.Request] = []
++
++    def handler(request: httpx.Request) -> httpx.Response:
++        calls.append(request)
++        return httpx.Response(200, json=ANSWER)
++
++    with DianziClient(
++        "http://127.0.0.1:12345", SecretStr(KEY), transport=httpx.MockTransport(handler)
++    ) as backend:
++        app = create_current_read_tool_server(backend, official_budget).streamable_http_app(
++            stateless_http=True,
++            json_response=True,
++            max_request_body_size=1048576,
++            transport_security=TransportSecuritySettings(
++                allowed_hosts=["127.0.0.1:12345"],
++                allowed_origins=["http://127.0.0.1:12345"],
++            ),
++        )
++        headers = {
++            "Accept": "application/json, text/event-stream",
++            "MCP-Protocol-Version": "2026-07-28",
++            "MCP-Method": "tools/call",
++            "MCP-Name": "ask",
++        }
++        if authorization is not None:
++            headers["authorization"] = authorization
++        async with (
++            app.router.lifespan_context(app),
++            httpx.AsyncClient(
++                transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:12345"
++            ) as client,
++        ):
++            for request_id in (1, 2):
++                response = await client.post(
++                    "/mcp",
++                    headers=headers,
++                    json={
++                        "jsonrpc": "2.0",
++                        "id": request_id,
++                        "method": "tools/call",
++                        "params": {
++                            "name": "ask",
++                            "arguments": {"question": "synthetic", "mode": "library"},
++                            "_meta": {
++                                PROTOCOL_VERSION_META_KEY: "2026-07-28",
++                                CLIENT_CAPABILITIES_META_KEY: {},
++                            },
++                        },
++                    },
++                )
++                assert response.status_code == 200, response.text
++                result = response.json()["result"]
++                assert result["isError"] is True
++                assert "not_configured" in json.dumps(result)
++                assert KEY not in json.dumps(result)
++    assert calls == []
++
++
++@pytest.mark.anyio
++@pytest.mark.parametrize(
++    "status,code", [(401, "credential_revoked"), (403, "forbidden"), (429, "rate_limited")]
++)
++async def test_backend_permission_and_rate_errors_keep_fixed_safe_metadata(
++    official_budget: McpOutputBudget, status: int, code: str
++) -> None:
++    problem = {
++        "type": "https://example.invalid/explicit-fixture-error",
++        "title": "synthetic",
++        "status": status,
++        "detail": "SYNTHETIC_PRIVATE_BODY",
++        "instance": "/api/v1/ask",
++        "trace_id": ID,
++        "error": {
++            "code": code,
++            "message": "SYNTHETIC_PRIVATE_BODY",
++            "retryable": status == 429,
++            "details": {"private": KEY},
++        },
++    }
++    calls: list[httpx.Request] = []
++
++    def handler(request: httpx.Request) -> httpx.Response:
++        calls.append(request)
++        return httpx.Response(
++            status,
++            json=problem,
++            headers={
++                "set-cookie": "synthetic=private",
++                "content-type": "application/problem+json",
++            },
++        )
++
++    with DianziClient(
++        "http://127.0.0.1:12345", SecretStr(KEY), transport=httpx.MockTransport(handler)
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, official_budget)) as client:
++            for _ in range(2):
++                result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++                serialized = result.model_dump_json()
++                assert result.is_error is True
++                assert code in serialized
++                assert "PRIVATE_BODY" not in serialized
++                assert KEY not in serialized
++                assert official_budget.fits(result)
++    assert len(calls) == 2
++    assert all("cookie" not in request.headers for request in calls)
++
++
++@pytest.mark.anyio
++async def test_network_failure_has_no_success_or_automatic_retry(
++    official_budget: McpOutputBudget,
++) -> None:
++    calls: list[httpx.Request] = []
++
++    def handler(request: httpx.Request) -> httpx.Response:
++        calls.append(request)
++        raise httpx.ReadTimeout("SYNTHETIC_PRIVATE_NETWORK_ERROR")
++
++    with DianziClient(
++        "http://127.0.0.1:12345", SecretStr(KEY), transport=httpx.MockTransport(handler)
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, official_budget)) as client:
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is True
++            assert "backend_transport_error" in result.model_dump_json()
++            assert "PRIVATE_NETWORK" not in result.model_dump_json()
++    assert len(calls) == 1
++
++
++@pytest.mark.anyio
++async def test_parallel_backend_calls_keep_four_worker_bound(
++    official_budget: McpOutputBudget,
++) -> None:
++    lock = threading.Lock()
++    active = peak = completed = 0
++
++    def handler(_: httpx.Request) -> httpx.Response:
++        nonlocal active, peak, completed
++        with lock:
++            active += 1
++            peak = max(peak, active)
++        time.sleep(0.03)
++        with lock:
++            active -= 1
++            completed += 1
++        return httpx.Response(200, json=ANSWER)
++
++    with DianziClient(
++        "http://127.0.0.1:12345", SecretStr(KEY), transport=httpx.MockTransport(handler)
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, official_budget)) as client:
++
++            async def call_once() -> None:
++                result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++                assert result.is_error is False
++                assert official_budget.fits(result)
++
++            with anyio.fail_after(10):
++                async with anyio.create_task_group() as group:
++                    for _ in range(8):
++                        group.start_soon(call_once)
++    assert completed == 8
++    assert peak == 4
++    assert active == 0
++
++
++@pytest.mark.anyio
++async def test_real_stdio_entry_discovers_and_calls_loopback_with_ascii_environment(
++    official_budget: McpOutputBudget,
++) -> None:
++    calls: list[tuple[str, str, dict[str, object]]] = []
++    deadline = time.monotonic() + 60
++
++    class Handler(BaseHTTPRequestHandler):
++        def do_POST(self) -> None:
++            if len(calls) >= 10 or time.monotonic() > deadline:
++                self.send_error(503)
++                return
++            size = int(self.headers.get("content-length", "0"))
++            if not 0 < size <= 1048576:
++                self.send_error(413)
++                return
++            body = json.loads(self.rfile.read(size))
++            calls.append((self.path, self.headers.get("authorization", ""), body))
++            raw = json.dumps(ANSWER, ensure_ascii=False).encode()
++            self.send_response(200)
++            self.send_header("Content-Type", "application/json")
++            self.send_header("Content-Length", str(len(raw)))
++            self.end_headers()
++            self.wfile.write(raw)
++
++        def log_message(self, format: str, *args: object) -> None:
++            return
++
++    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
++    worker = threading.Thread(target=server.serve_forever)
++    worker.start()
++    try:
++        parameters = StdioServerParameters(
++            command=sys.executable,
++            args=["-m", "ai_intel_client.mcp_stdio"],
++            env={
++                "PYTHONPATH": str(Path(__file__).resolve().parents[1]),
++                "PYTHONIOENCODING": "ascii",
++                "DIANZI_API_BASE_URL": "http://127.0.0.1:" + str(server.server_port),
++                "DIANZI_API_KEY": KEY,
++                "DIANZI_MCP_ENCODING_CACHE_FILE": str(CACHE_FILE),
++            },
++        )
++        async with Client(parameters, read_timeout_seconds=10) as client:
++            listed = await client.list_tools()
++            assert [tool.name for tool in listed.tools] == ["ask", "check_stack"]
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is False
++            assert result.structured_content == ANSWER
++            assert official_budget.fits(result)
++            assert "io.modelcontextprotocol/serverInfo" in (result.meta or {})
++    finally:
++        server.shutdown()
++        server.server_close()
++        worker.join(timeout=3)
++    assert not worker.is_alive()
++    assert calls == [("/api/v1/ask", "Bearer " + KEY, {"question": "synthetic", "mode": "library"})]
+diff --git a/sdk/python/tests/test_output_budget.py b/sdk/python/tests/test_output_budget.py
+new file mode 100644
+index 00000000..24ae1b54
+--- /dev/null
++++ b/sdk/python/tests/test_output_budget.py
+@@ -0,0 +1,322 @@
++"""Pinned tokenizer tests use local official bytes and explicit protocol fixtures."""
++
++from __future__ import annotations
++
++import hashlib
++import json
++import os
++import subprocess
++import sys
++from concurrent.futures import ThreadPoolExecutor
++from pathlib import Path
++from unittest.mock import patch
++
++import httpx
++import pytest
++import tiktoken.load
++import tiktoken_ext.openai_public
++from ai_intel_client.client import DianziClient
++from ai_intel_client.mcp_adapter import create_current_read_tool_server
++from ai_intel_client.models import QAAnswer
++from ai_intel_client.output_budget import (
++    ENCODING_SHA256,
++    MAX_TOOL_OUTPUT_BYTES,
++    OUTPUT_BUDGET_PROFILE,
++    McpOutputBudget,
++    OutputBudgetConfigurationError,
++    OutputBudgetTokenizationError,
++    load_offline_encoding,
++)
++from mcp import Client
++from mcp_types import CallToolResult, TextContent
++from pydantic import SecretStr
++
++CACHE_FILE = Path(
++    "D:/dianzi-runtime-cache/tiktoken-o200k-base-20261016/fb374d419588a4632f3f557e76b4b70aebbca790"
++)
++SYNTHETIC_KEY = "synthetic-test-key-with-no-provider-access"
++ID = "00000000-0000-4000-8000-000000000001"
++ANSWER = {
++    "kind": "completed",
++    "answer_id": ID,
++    "answer_text": "中文证据不足；🙂 <|endoftext|>",
++    "claims": [],
++    "citations": [],
++    "limitations": ["explicit fixture with unknown evidence"],
++    "freshness": "unknown",
++    "data_mode": "fixture",
++    "started_at": "2026-10-16T00:00:00Z",
++    "completed_at": "2026-10-16T00:00:01Z",
++    "latency_milliseconds": 1000,
++}
++
++
++@pytest.fixture
++def anyio_backend() -> str:
++    return "asyncio"
++
++
++@pytest.fixture(scope="module")
++def official_budget() -> McpOutputBudget:
++    return McpOutputBudget(CACHE_FILE)
++
++
++def test_official_loader_never_touches_network_environment_or_module_globals() -> None:
++    environment = os.environ.copy()
++    reader = tiktoken.load.read_file_cached
++    constructor_loader = tiktoken_ext.openai_public.load_tiktoken_bpe
++    with (
++        patch("tiktoken.load.read_file", side_effect=AssertionError("network forbidden")) as io,
++        patch("requests.get", side_effect=AssertionError("network forbidden")) as network,
++    ):
++        with ThreadPoolExecutor(max_workers=2) as workers:
++            encodings = list(workers.map(load_offline_encoding, [CACHE_FILE, CACHE_FILE]))
++        for encoding in encodings:
++            for text in ("中文🙂", "ordinary ASCII", "<|endoftext|>"):
++                assert encoding.decode(encoding.encode_ordinary(text)) == text
++        assert io.call_count == network.call_count == 0
++    assert os.environ == environment
++    assert tiktoken.load.read_file_cached is reader
++    assert tiktoken_ext.openai_public.load_tiktoken_bpe is constructor_loader
++    assert encodings[0].name == encodings[1].name == "o200k_base"
++
++
++@pytest.mark.parametrize("state", ["missing", "empty", "corrupt", "oversized"])
++def test_missing_corrupt_cache_is_not_configured_without_download(
++    tmp_path: Path, state: str
++) -> None:
++    cache = tmp_path / "encoding"
++    if state == "empty":
++        cache.write_bytes(b"")
++    elif state == "corrupt":
++        cache.write_bytes(b"x" * 3613922)
++    elif state == "oversized":
++        cache.write_bytes(b"x" * 3613923)
++    with patch("requests.get", side_effect=AssertionError("network forbidden")) as network:
++        with pytest.raises(OutputBudgetConfigurationError, match="not_configured"):
++            load_offline_encoding(cache)
++        assert network.call_count == 0
++    if cache.exists():
++        assert cache.read_bytes() == (b"" if state == "empty" else b"x" * cache.stat().st_size)
++
++
++def test_verified_encoding_survives_cache_replacement(
++    tmp_path: Path, official_budget: McpOutputBudget
++) -> None:
++    path = tmp_path / "encoding"
++    path.write_bytes(CACHE_FILE.read_bytes())
++    encoding = load_offline_encoding(path)
++    path.write_bytes(b"corrupt after deployment preload")
++    text = "并发中文🙂"
++    assert encoding.encode_ordinary(text) == official_budget.encoding.encode_ordinary(text)
++
++
++def test_cache_official_digest_and_profile(official_budget: McpOutputBudget) -> None:
++    assert hashlib.sha256(CACHE_FILE.read_bytes()).hexdigest() == ENCODING_SHA256
++    assert official_budget.profile == OUTPUT_BUDGET_PROFILE
++
++
++def test_complete_result_counts_text_structured_and_continuation(
++    official_budget: McpOutputBudget,
++) -> None:
++    text = "证据🙂" * 900
++    text_only = CallToolResult(content=[TextContent(text=text)])
++    complete = CallToolResult(
++        content=[TextContent(text=text)],
++        structured_content={"unknown": text, "continuation": text},
++    )
++    assert official_budget.fits(text_only)
++    assert not official_budget.fits(complete)
++
++
++@pytest.mark.parametrize("token_count,expected", [(7999, True), (8000, True), (8001, False)])
++def test_official_exact_token_boundary(
++    official_budget: McpOutputBudget, token_count: int, expected: bool
++) -> None:
++    overhead = (
++        len(
++            official_budget.encoding.encode_ordinary(
++                CallToolResult(content=[TextContent(text=" x")]).model_dump_json(
++                    by_alias=True, exclude_none=True
++                )
++            )
++        )
++        - 1
++    )
++    result = CallToolResult(content=[TextContent(text=" x" * (token_count - overhead))])
++    actual = len(
++        official_budget.encoding.encode_ordinary(
++            result.model_dump_json(by_alias=True, exclude_none=True)
++        )
++    )
++    assert actual == token_count
++    assert official_budget.fits(result) is expected
++
++
++def test_byte_ceiling_is_independent_of_token_ceiling(
++    official_budget: McpOutputBudget,
++) -> None:
++    result = CallToolResult(content=[TextContent(text=" " * MAX_TOOL_OUTPUT_BYTES)])
++    compact = result.model_dump_json(by_alias=True, exclude_none=True)
++    assert len(compact.encode("utf-8")) > MAX_TOOL_OUTPUT_BYTES
++    with patch.object(
++        official_budget.encoding, "encode_ordinary", side_effect=AssertionError("byte guard first")
++    ) as encoder:
++        assert not official_budget.fits(result)
++        assert encoder.call_count == 0
++
++
++def test_native_regex_stack_failure_is_explicit_not_a_fake_count(
++    official_budget: McpOutputBudget,
++) -> None:
++    result = CallToolResult(content=[TextContent(text=" " * 500000)])
++    assert len(result.model_dump_json().encode()) < MAX_TOOL_OUTPUT_BYTES
++    assert official_budget.fits(result)
++
++    class PanicException(BaseException):
++        """Explicit native-failure-shape injection; no actual panic is claimed."""
++
++        __module__ = "pyo3_runtime"
++
++    with (
++        patch.object(
++            official_budget.encoding, "encode_ordinary", side_effect=PanicException("synthetic")
++        ),
++        pytest.raises(OutputBudgetTokenizationError, match="tokenizer_unavailable"),
++    ):
++        official_budget.fits(result)
++
++
++@pytest.mark.anyio
++async def test_native_tokenizer_failure_stays_a_bounded_tool_error(
++    official_budget: McpOutputBudget,
++) -> None:
++    class PanicException(BaseException):
++        """Explicit isolated native-failure injection."""
++
++        __module__ = "pyo3_runtime"
++
++    answer = dict(ANSWER)
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=answer)),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, official_budget)) as client:
++            with patch.object(
++                official_budget.encoding, "encode_ordinary", side_effect=PanicException("synthetic")
++            ):
++                result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is True
++            assert "tokenizer_unavailable" in result.model_dump_json()
++            assert official_budget.fits(result)
++
++
++@pytest.mark.parametrize("exception", [KeyboardInterrupt, SystemExit])
++def test_process_control_exceptions_are_not_swallowed(
++    official_budget: McpOutputBudget, exception: type[BaseException]
++) -> None:
++    with (
++        patch.object(official_budget.encoding, "encode_ordinary", side_effect=exception()),
++        pytest.raises(exception),
++    ):
++        official_budget.fits(CallToolResult(content=[TextContent(text="synthetic")]))
++
++
++@pytest.mark.anyio
++async def test_formal_result_retains_unicode_unknown_and_complete_citation(
++    official_budget: McpOutputBudget,
++) -> None:
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=ANSWER)),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, official_budget)) as client:
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is False
++            assert result.structured_content == ANSWER
++            assert official_budget.fits(result)
++
++
++@pytest.mark.anyio
++@pytest.mark.parametrize("oversized_reference", [False, True])
++async def test_oversized_atomic_result_has_hash_and_honest_reference_status(
++    official_budget: McpOutputBudget, oversized_reference: bool
++) -> None:
++    citation = {
++        "evidence_id": ID,
++        "revision_id": ID,
++        "quote": "中文证据" * (6000 if oversized_reference else 1),
++        "locator": "page 1",
++        "source_uri": "https://example.invalid/explicit-fixture",
++    }
++    answer = dict(ANSWER, answer_text=" x" * 6000, citations=[citation])
++    expected_hash = hashlib.sha256(
++        QAAnswer.model_validate_json(json.dumps(answer)).wire_json().encode()
++    ).hexdigest()
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=answer)),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, official_budget)) as client:
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is True
++            assert official_budget.fits(result)
++            error = json.loads(result.content[0].text)["error"]
++            assert error["result_sha256"] == expected_hash
++            assert error["complete"] is False
++            assert error["pagination"] == "not_configured"
++            if oversized_reference:
++                assert error["references_status"] == "unavailable_within_budget"
++                assert "citations" not in error
++            else:
++                assert error["references_status"] == "complete"
++                assert error["citations"] == [citation]
++
++
++@pytest.mark.parametrize(
++    "field,value",
++    [
++        ("answer_id", ID.replace("-", "")),
++        ("answer_id", "{" + ID + "}"),
++        ("answer_id", "urn:uuid:" + ID),
++        ("started_at", "2026-10-16 00:00:00Z"),
++        ("started_at", "2026-10-16T00:00:00+0800"),
++        ("started_at", "2026-10-16T00:00:00,123Z"),
++        ("started_at", "1760572800"),
++    ],
++)
++@pytest.mark.anyio
++async def test_fixed_sdk_wire_format_root_cause_is_rejected_through_mcp(
++    official_budget: McpOutputBudget, field: str, value: str
++) -> None:
++    answer = dict(ANSWER)
++    answer[field] = value
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=answer)),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, official_budget)) as client:
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is True
++            assert "backend_contract_error" in result.model_dump_json()
++
++
++def test_missing_stdio_tokenizer_reports_not_configured_without_stdout(tmp_path: Path) -> None:
++    environment = os.environ.copy()
++    environment.pop("DIANZI_MCP_ENCODING_CACHE_FILE", None)
++    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
++    result = subprocess.run(
++        [sys.executable, "-m", "ai_intel_client.mcp_stdio"],
++        env=environment,
++        capture_output=True,
++        timeout=10,
++        check=False,
++        cwd=tmp_path,
++    )
++    assert result.returncode == 3
++    assert result.stdout == b""
++    assert json.loads(result.stderr)["error"]["code"] == "not_configured"

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="2" time="4.340" timestamp="2026-10-16T06:30:08.297361+08:00" hostname="yin"><testcase classname="reports.runs.recovery_r07_default_entry_review1_20261016.probes.test_independent_idempotency_scope" name="test_two_authorized_public_actors_can_use_their_own_same_key" time="1.468"><failure message="AssertionError: idempotency_conflict&#10;assert 409 == 202&#10; +  where 409 = &lt;Response [409 Conflict]&gt;.status_code">execution_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_api_41cf444e332f4f4e84cebbe16ffc9556)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-782/test_two_authorized_public_act0')
+
+    def test_two_authorized_public_actors_can_use_their_own_same_key(execution_engine, tmp_path):
+        _, first_scope, _, event_id, _, _ = setup(execution_engine, tmp_path)
+        actor = str(uuid4())
+        second_scope = AccessScope.for_authenticated_user(actor, None, Role.SYSTEM_ADMIN)
+        with execution_engine.begin() as connection:
+            connection.execute(insert(users).values(user_id=actor, username='independent-public-admin-' + actor, password_hash='unusable synthetic hash', role='system_admin', tenant_id=None, created_at=NOW))
+            connection.execute(insert(auth_sessions).values(session_hash=hashlib.sha256(('synthetic-r07-session:' + actor).encode()).hexdigest(), user_id=actor, csrf_token='synthetic-csrf', issued_at=NOW, expires_at=NOW + timedelta(hours=1)))
+        with application_client(execution_engine, tmp_path, first_scope) as first:
+            response = enqueue(first, event_id)
+            assert response.status_code == 202
+            initial = response.json()
+        with application_client(execution_engine, tmp_path, second_scope) as second:
+            response = enqueue(second, event_id)
+&gt;           assert response.status_code == 202, response.json()['error']['code']
+E           AssertionError: idempotency_conflict
+E           assert 409 == 202
+E            +  where 409 = &lt;Response [409 Conflict]&gt;.status_code
+
+..\reports\runs\recovery_r07_default_entry_review1_20261016\probes\test_independent_idempotency_scope.py:52: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r07_default_entry_review1_20261016.probes.test_independent_idempotency_scope" name="test_same_actor_same_key_on_another_event_route_is_independent" time="1.751"><failure message="AssertionError: idempotency_conflict&#10;assert 409 == 202&#10; +  where 409 = &lt;Response [409 Conflict]&gt;.status_code">execution_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_api_3dcebaa47da643fb9ae8f30783d00717)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-782/test_same_actor_same_key_on_an0')
+
+    def test_same_actor_same_key_on_another_event_route_is_independent(execution_engine, tmp_path):
+        _, scope, _, first_event, _, _ = setup(execution_engine, tmp_path)
+        second_event = uuid4()
+        with Session(execution_engine) as session, session.begin():
+            revisions = EventRepository(session, scope).get_source_revisions(str(first_event))
+            EventRepository(session, scope).publish_events('independent-second-route-event', VisibilityScope(visibility='public'), (EventSubmission(event_id=Identifier(value=str(second_event)), event_type='security_risk', title='Independent second route', scope=VisibilityScope(visibility='public'), source_revision_ids=tuple(Identifier(value=value) for value in revisions)),), NOW)
+        with application_client(execution_engine, tmp_path, scope) as client:
+            first = enqueue(client, first_event)
+            assert first.status_code == 202
+            second = enqueue(client, second_event)
+&gt;           assert second.status_code == 202, second.json()['error']['code']
+E           AssertionError: idempotency_conflict
+E           assert 409 == 202
+E            +  where 409 = &lt;Response [409 Conflict]&gt;.status_code
+
+..\reports\runs\recovery_r07_default_entry_review1_20261016\probes\test_independent_idempotency_scope.py:66: AssertionError</failure></testcase></testsuite></testsuites>

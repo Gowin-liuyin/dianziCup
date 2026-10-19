@@ -751,3 +751,27 @@ Root独占公共App/schema/迁移/合同/locks/状态/文档/Git/秘密；R06固
 ### 2026-10-17T10:23:42+08:00 · 滚动并行与文件所有权
 
 真实快照8active（Root/Source/R16HTTP/R17UI/pluginports/readerfix/riskreview/publication；riskreview随后完成释放，新Source reviewer补位）。16宿主槽；不是16CPU/连接额度。Root公共App/schema/migrations/状态/Git/资源；R06 source c46a→全新review独立WT；R16 D:/wt/r16-change-http 5ff7唯一read_adapters及3新HTTP；R17 D:/wt/r17-change-history dd35仅features/changes及直属测试；plugin D:/wt/r18-plugin-ports唯一newports+tool_gateway/workflow_service两个seam；readerfix D:/wt/r18-qa-reader-fix1唯一reader/newgeneration_requests；publication D:/wt/r18-task-qa-publication仅新writer，不能改旧reader；risk原独审封8125singlecase绿色不扩accepted。CBM同固定cache串行≤45s/full双OS16/own0，PGRoot独占每label2+1/58ctl48child60outer/nonceexactcleanup。每新行为冻结后新非作者首次review，原reviewer仅定向复核，不自审/不push。
+
+
+## 2026-10-17T11:34:08.250+08:00 · 批次18滚动并行与 Root 集成
+
+Root0291 / codex/full-delivery-recovery；origin授权原URL，G-C仍in_progress/partial，无新阶段push。用户允许6–10滚动代理，宿主16slots；资源检查仍独占CBM/受控PG，并行开发不等于并发无限IO。
+
+| 工作包 | 唯一实现/审查 | 允许文件与当前边界 |
+|---|---|---|
+| R06 第三次启动归档排他 | r06_third_start_startup_diagnosis / 原独审 | af639 mutex候选、原99与并发反例；Root实际closure/install/start，未ready/6h |
+| R18 QA 支持见证 | r18_qa_reader_support_binding_fix / 原独审待新freeze | snapshot/helper/reader/workflow见证delta；保留原condition冲突oracle |
+| R18 publication M01 | 作者已封 a253/e35 / 原独审 d148 | 完整13cols+事务397离线限定关闭；reader前置待修，PG0 |
+| R16 模式与R17变化页面 | 作者14ce/UI dd35 / 独审1f957 |194+独立10及UI1分列；13PG prepared，AUTHlive×fixture仍invalid_response |
+| R18 plugin生产端口 | eea作者 / 新独审 |18PG packet prepared；Root0031 schema依赖另列；CBM错project名保原证据待更正 |
+| R10 图默认工厂 | r10_default_graph_consumer_implementation | 新default_graph_runtime及直属tests c554，policy96cf未审依赖；Root公共runtime入口 |
+| R10 共享policy | 原作者待namespace修 / 新r10_graph_policy_first_independent_review | fixed96cf四文件；164离线绿+独立namespace红，4PG setup updated_at缺口 |
+| R12 完整多轮组合 | r12_conversation_answer_runtime_implementation |3检索seam+新runtime+直属tests；event前过滤/真实两边路径，资产/标准缺口不伪闭合 |
+| Root 风险切片集成 | Root / 新批次review待freeze |10exact导入，140实际139pass1保全基线红，正式CR仅调整合法比较源 |
+
+新增内部CR见CR-R12_conversation_runtime_scope、CR-R18_qa_support_snapshot、CR-R18_root_risk_conservation_baseline。共享App/schema/迁移/locks/状态/Git/秘密始终Root唯一；子代理不push、不签accepted、不改金标。人工gold0/授权资产/CNNVD缺口不停止上述内部工作。
+
+
+### 2026-10-17T13:26:17.947+08:00 · 实际采集ready与新增默认路径集成
+
+Source actual runtime_start / worker+beat出生标识和alive核对完成，六小时未通过，观察deadline19:17:46+08。3代理普通Native释放，R12 postfreezeCBM唯一≤45秒。r16_r17_default_changes_integration独占独立WT已审14ce/dd35导入及api/app.py、frontend/App.tsx变化入口挂载；r18_default_risk_route_integration仅新public_risk_routes及直属tests，不能改App；Root风险导入保全CR待新freeze。r12_conversation_runtime_first_independent_review是新非作者，87a79615固定审，不修改业务。共享schema/迁移/locks/中央状态/Git/push/秘密仍Root唯一，数据库2target+1sampler有界Root独占，不提高计分/验收状态。

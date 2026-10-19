@@ -1,0 +1,37 @@
+frontend/src\App.tsx:6:import { readGraphSelection, readWorkspacePage, workspacePages, type WorkspacePage } from "./app/workspace-navigation";
+frontend/src\App.tsx:124:  const graphRoute = readGraphSelection(hash);
+frontend/src\app\workspace-graph-navigation.test.ts:2:import { readGraphSelection, readWorkspacePage } from "./workspace-navigation";
+frontend/src\app\workspace-graph-navigation.test.ts:7:    expect(readGraphSelection(`#graph/${id}`)).toEqual({ eventId: id.toLowerCase() });
+frontend/src\app\workspace-graph-navigation.test.ts:11:    expect(readGraphSelection(hash)).toBeNull();
+frontend/src\app\workspace-navigation.ts:36:export function readGraphSelection(hash: string): { eventId: string } | null {
+frontend/src\app\workspace-navigation.ts:48:  if (readGraphSelection(hash) !== null) return "graph";
+frontend/src\features\graph\graph-client.test.ts:15:    const result = await getEventGraph(graphFixtureEventId); expect(result.rule_version).toBe("r10-graph-1.1.0");
+frontend/src\features\graph\graph-client.ts:2:import { graphIdentifier, parseGraphSnapshot, type GraphSnapshot } from "./graph-contracts";
+frontend/src\features\graph\graph-client.ts:12:  const snapshot = parseGraphSnapshot(await fetchJson(`/v1/events/${id}/graph?${query}`, {}, signal));
+frontend/src\features\graph\graph-contracts.test.ts:3:import { parseGraphSnapshot } from "./graph-contracts";
+frontend/src\features\graph\graph-contracts.test.ts:8:    const result = parseGraphSnapshot(graphFixture());
+frontend/src\features\graph\graph-contracts.test.ts:14:    expect(parseGraphSnapshot({ ...graphFixture(), truncated: true, gaps: [{ relation_type: "related_paper", status: "unknown", reason: "truncated" }] }).gaps[0]?.status).toBe("unknown");
+frontend/src\features\graph\graph-contracts.test.ts:17:    const result = parseGraphSnapshot(graphFixture("r10-graph-1.1.0"));
+frontend/src\features\graph\graph-contracts.test.ts:18:    expect(result.schema_version).toBe(1); expect(result.rule_version).toBe("r10-graph-1.1.0"); expect(result.edges.every((edge) => edge.rule_or_model_version === "r10-graph-1.1.0")).toBe(true);
+frontend/src\features\graph\graph-contracts.test.ts:22:    const input = { ...snapshot, rule_version: "r10-graph-1.2.0", edges: snapshot.edges.map((edge) => ({ ...edge, rule_or_model_version: "r10-graph-1.2.0" })) };
+frontend/src\features\graph\graph-contracts.test.ts:23:    const result = parseGraphSnapshot(input);
+frontend/src\features\graph\graph-contracts.test.ts:25:    expect(result.rule_version).toBe("r10-graph-1.2.0");
+frontend/src\features\graph\graph-contracts.test.ts:26:    expect(result.edges[0]?.rule_or_model_version).toBe("r10-graph-1.2.0");
+frontend/src\features\graph\graph-contracts.test.ts:45:    ["unknown rule", { ...graphFixture(), rule_version: "r10-graph-1.3.0" }],
+frontend/src\features\graph\graph-contracts.test.ts:46:    ["unknown edge rule", { ...graphFixture(), edges: [{ ...graphFixture().edges[0], rule_or_model_version: "r10-graph-1.3.0" }] }],
+frontend/src\features\graph\graph-contracts.test.ts:48:    expect(() => parseGraphSnapshot(input)).toThrow(ApiProblem);
+frontend/src\features\graph\graph-contracts.ts:7:export type GraphRuleVersion = "r10-graph-1.0.0" | "r10-graph-1.1.0" | "r10-graph-1.2.0";
+frontend/src\features\graph\graph-contracts.ts:13:  rule_or_model_version: GraphRuleVersion; reason: string; status: "supported";
+frontend/src\features\graph\graph-contracts.ts:17:  schema_version: 1; event_id: string; business_version: number; rule_version: GraphRuleVersion;
+frontend/src\features\graph\graph-contracts.ts:57:function ruleVersion(value: unknown): GraphRuleVersion {
+frontend/src\features\graph\graph-contracts.ts:65:  const fields = record(value, ["id", "relation_type", "subject_id", "object_id", "scope", "source_revision_ids", "evidence_span_ids", "supporting_claim_ids", "rule_or_model_version", "reason", "status"]);
+frontend/src\features\graph\graph-contracts.ts:66:  return { id: graphIdentifier(fields.id), relation_type: enumeration(fields.relation_type, graphRelationKinds), subject_id: graphIdentifier(fields.subject_id), object_id: graphIdentifier(fields.object_id), scope: scope(fields.scope), source_revision_ids: identifiers(fields.source_revision_ids), evidence_span_ids: identifiers(fields.evidence_span_ids), supporting_claim_ids: identifiers(fields.supporting_claim_ids), rule_or_model_version: ruleVersion(fields.rule_or_model_version), reason: text(fields.reason, 2500), status: enumeration(fields.status, ["supported"]) };
+frontend/src\features\graph\graph-contracts.ts:74:export function parseGraphSnapshot(value: unknown): GraphSnapshot {
+frontend/src\features\graph\graph-contracts.ts:75:  const fields = record(value, ["schema_version", "event_id", "business_version", "rule_version", "nodes", "edges", "truncated", "gaps", "content_sha256"]);
+frontend/src\features\graph\graph-contracts.ts:94:  return { schema_version: 1, event_id: eventId, business_version: fields.business_version, rule_version: ruleVersion(fields.rule_version), nodes, edges, truncated: fields.truncated, gaps, content_sha256: hash };
+frontend/src\features\graph\graph-explorer-view.tsx:53:      <dl className="graph-metadata"><dt>规则 / 模型版本</dt><dd>{edge.rule_or_model_version}</dd><dt>可见范围</dt><dd>{edge.scope.visibility === "public" ? "公开" : "当前授权租户"}</dd><dt>业务版本</dt><dd>{snapshot.business_version}</dd></dl>
+frontend/src\features\graph\graph-explorer-view.tsx:144:    <details className="graph-provenance graph-snapshot-provenance"><summary>快照版本与内容标识</summary><dl className="graph-metadata"><dt>事件标识</dt><dd><code>{snapshot.event_id}</code></dd><dt>schema / 规则版本</dt><dd>{snapshot.schema_version} / {snapshot.rule_version}</dd><dt>内容 SHA256</dt><dd><code>{snapshot.content_sha256}</code></dd></dl><p className="graph-muted">内容标识由服务返回，用于追溯；它不单独证明来源真实性。</p></details>
+frontend/src\features\graph\graph.fixture.ts:1:import { graphRelationKinds, type GraphRuleVersion, type GraphSnapshot } from "./graph-contracts";
+frontend/src\features\graph\graph.fixture.ts:12:export function graphFixture(ruleVersion: GraphRuleVersion = "r10-graph-1.0.0"): GraphSnapshot {
+frontend/src\features\graph\graph.fixture.ts:15:    schema_version: 1, event_id: graphFixtureEventId, business_version: 3, rule_version: ruleVersion, truncated: false, content_sha256: "a".repeat(64), gaps: [],
+frontend/src\features\graph\graph.fixture.ts:26:      source_revision_ids: [graphFixtureRevisionId], evidence_span_ids: [graphFixtureEvidenceId], supporting_claim_ids: [fixtureGraphId(32)], rule_or_model_version: ruleVersion, reason: "合成 Fixture：来自当前支持断言；不代表真实情报或受影响资产。", status: "supported",

@@ -174,3 +174,18 @@ T55/T56完整候选材料和原验收在R24-A，新文档reviewer先试部署；
 - [CR-R07_structured_fact_proof_bridge](../decisions/CR-R07_structured_fact_proof_bridge.md)：结构化事实的原文支持读取，原卡最终验收不变，独审后生效。
 
 G4概要九职责更正依据原已批准CR-R01；四角色仅同条件基线，未改变评分/原金标/分母。R24提前材料仅partial，不越过R24-A→R23→R24-B。
+
+
+## 2026-10-17T13:02:29.467+08:00 · 批次18内部组合合同登记
+
+本批未通过G-C阶段门。新增内部CR：
+- [多轮问答事件范围与组合](../decisions/CR-R12_conversation_runtime_scope.md)；R12内部seam/default接线待独审，不改变原T30/T31/T35全部验收。
+- [QA事实快照见证](../decisions/CR-R18_qa_support_snapshot.md)；支持当时已有false/unknown与后来变化失效，原condition冲突/模型request/quote/ACL反例保留。
+- [风险源码保全实际基线](../decisions/CR-R18_root_risk_conservation_baseline.md)；仅原6个精确源码比较分清9aa与Root0291，PGexpired/Grade原oracle不改。
+
+共享图policy namespace/generation、客户端IO deadline及R06当前pin配对兼容/迁移/回滚补充见对应CR。Root只依据新冻结源和独审真实证据登记切片，整卡/阶段/盲测规则不因离线绿或collect升级。
+
+
+### 2026-10-17T13:41:23.022+08:00 · 独审根因修复与生产适配
+
+[CR-R12_failure_generation_audit](../decisions/CR-R12_failure_generation_audit.md)保留失败模型prepared预算审计，不改usage或费用事实；[CR-R14_production_role_transaction_ports](../decisions/CR-R14_production_role_transaction_ports.md)补既有九职责的必要caller-session seam，不加MAX23/原资源预算。新的源须独审，原卡/阶段门不升级。

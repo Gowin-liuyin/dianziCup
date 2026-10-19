@@ -22,3 +22,12 @@ helper 最终源码 5e39ee391fdcdfbd8ebf695645d748d9387aa286，物理与 Git 字
 ## 实际归档边界补充 · 2026-10-17T09:24:36+08:00
 
 首次新helper实际拒绝unknown_or_pending_runtime_artifact：已批准归档器在OPS建立pre_ready_history，但不变的helper只承认attempt_history。Root仅核对刚创建的精确nonce/6b86+f418/随机generation：plan与manifest原字节相同、17实际审计hash637de6一致、原pre_ready不存在且0诊断文件、control未动、所有层只有这一自有条目，严格realpath无redirect后将其整体保全到同OPS/attempt_history/phase_diagnostics_3438c30cdabf44b7989601d464b70f37。没有删除证据或改helper allowlist；原目录记录与首次真实拒绝留存。新fresh17必须重新实际运行；这是已授权项目内证据归档兼容修正，非调整预算/权限/观察门。由原独立迁移reviewer核本补充与实际收据，启动尚未发生。
+
+
+## 2026-10-17T13:02:29.465+08:00 · 当前 BAE 前驱到 af639/6b775 的精确配对
+
+Root第三失败实例实际oldtuple17关闭通过（20证据，native held ACK/own0）并保全归档12pre_ready原件；原required_file_absent及派生路径CRLF错误保留。新Rootde2a/0ba05包尚未安装，被独审核出OPS f418 configuration仍固定CORE6b与旧9e/37/810前驱，不能直接启动。
+
+批准OPS唯一configuration四literal迁移：CORE6b→af639，prepare中旧9e→BAE、37→6b、810→f418，恰各一次，其他函数规范这三inline常量后AST全同；OPS8/Core11/观察3字节保持，无selfOPSsha循环。SOURCE6b775、MATERIALe691分开；CORE仍af639。Root重派生pair_fix1 bindingf6429ab66a5aca152bc91b436e8c662684cd7f3ba0610b8421149bbb0bc4ff6a，manifest54dce48322ece3e37a3a6ef55a57a32d484545099ea5fdd9f38dd3bc88d126ae，只有run_binding/configuration改变及4binding源字段，实际旧包不改直到独审metadata放行。
+
+Ledger42/450、累计已关闭guardianCPU55.84375、ready15、六小时21600、shutdown900、原21:49:15截止及15:34:15 latest start、所有私有runtime字段不变。helper仅前驱/package顶层常量精确绑定，无函数逻辑变化；原source20/23与blocked包保留，不把metadata审查当actual17/资源七门/启动或6h通过。

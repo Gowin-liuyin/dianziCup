@@ -1,0 +1,2272 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ai-intel-backend",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/v1/auth/login": {
+      "post": {
+        "summary": "Auth Login",
+        "operationId": "auth_login_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/me": {
+      "get": {
+        "summary": "Auth Me",
+        "operationId": "auth_me_v1_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/csrf": {
+      "get": {
+        "summary": "Auth Csrf",
+        "operationId": "auth_csrf_v1_auth_csrf_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/logout": {
+      "post": {
+        "summary": "Auth Logout",
+        "operationId": "auth_logout_v1_auth_logout_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/health/live": {
+      "get": {
+        "summary": "Health Live",
+        "operationId": "health_live_v1_health_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Live V1 Health Live Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/health/ready": {
+      "get": {
+        "summary": "Health Ready",
+        "operationId": "health_ready_v1_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/events": {
+      "get": {
+        "summary": "List Events",
+        "operationId": "list_events_v1_events_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 500,
+              "default": "",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "product",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 500,
+              "default": "",
+              "title": "Product"
+            }
+          },
+          {
+            "name": "risk_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 100,
+              "default": "",
+              "title": "Risk Type"
+            }
+          },
+          {
+            "name": "updated_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated After"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2048
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/events/{event_id}": {
+      "get": {
+        "summary": "Event Detail",
+        "operationId": "event_detail_v1_events__event_id__get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evidence/{evidence_id}": {
+      "get": {
+        "summary": "Read Evidence",
+        "operationId": "read_evidence_v1_evidence__evidence_id__get",
+        "parameters": [
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evidence Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/documents": {
+      "get": {
+        "summary": "List Documents",
+        "operationId": "list_documents_v1_documents_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 500,
+              "default": "",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "document_kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "advisory",
+                    "article",
+                    "paper",
+                    "repository_record",
+                    "standard",
+                    "policy"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document Kind"
+            }
+          },
+          {
+            "name": "source_category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SourceCategory"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Category"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2048
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/documents/{document_id}": {
+      "get": {
+        "summary": "Document Detail",
+        "operationId": "document_detail_v1_documents__document_id__get",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "revision_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revision Id"
+            }
+          },
+          {
+            "name": "evidence_offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2000,
+              "minimum": 0,
+              "default": 0,
+              "title": "Evidence Offset"
+            }
+          },
+          {
+            "name": "evidence_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 100,
+              "title": "Evidence Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/documents/{document_id}/revisions": {
+      "get": {
+        "summary": "Document Revisions",
+        "operationId": "document_revisions_v1_documents__document_id__revisions_get",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100000,
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentRevisionListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sources/{source_kind}/collect": {
+      "post": {
+        "summary": "Collect Source",
+        "operationId": "collect_source_v1_sources__source_kind__collect_post",
+        "parameters": [
+          {
+            "name": "source_kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "nvd_ollama",
+                "vllm_vendor",
+                "osv_ollama",
+                "avid_community",
+                "ollama_releases",
+                "trailofbits_blog",
+                "arxiv_security",
+                "nist_ai_rmf",
+                "cac_generative_ai"
+              ],
+              "type": "string",
+              "title": "Source Kind"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceCollectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs/{job_id}": {
+      "get": {
+        "summary": "Source Job",
+        "operationId": "source_job_v1_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/questions": {
+      "post": {
+        "summary": "Ask Question",
+        "operationId": "ask_question_v1_questions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionAnswerResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/answers/{answer_id}": {
+      "get": {
+        "summary": "Get Answer",
+        "operationId": "get_answer_v1_answers__answer_id__get",
+        "parameters": [
+          {
+            "name": "answer_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Answer Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionAnswerResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AnswerClaimProjection": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Text"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "source_fact",
+              "rule_result",
+              "project_suggestion"
+            ],
+            "title": "Kind"
+          },
+          "support_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Support Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text",
+          "kind",
+          "support_ids"
+        ],
+        "title": "AnswerClaimProjection"
+      },
+      "CitationProjection": {
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Evidence Id"
+          },
+          "revision_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Revision Id"
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Quote"
+          },
+          "locator": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Locator"
+          },
+          "source_uri": {
+            "type": "string",
+            "maxLength": 2083,
+            "minLength": 1,
+            "format": "uri",
+            "title": "Source Uri"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "revision_id",
+          "quote",
+          "locator",
+          "source_uri"
+        ],
+        "title": "CitationProjection",
+        "description": "引用保留版本与定位；它的存在本身不证明支撑关系。"
+      },
+      "ClaimOrigin": {
+        "type": "string",
+        "enum": [
+          "source_explicit",
+          "structured_source",
+          "rule_derived",
+          "model_hypothesis",
+          "human_confirmed"
+        ],
+        "title": "ClaimOrigin",
+        "description": "论断来源等级: 区分原文明确、结构化来源、规则推导、模型假设与人工确认。"
+      },
+      "ClaimStatus": {
+        "type": "string",
+        "enum": [
+          "supported",
+          "disputed",
+          "unverified",
+          "superseded",
+          "withdrawn"
+        ],
+        "title": "ClaimStatus",
+        "description": "事实记录状态; 不与条件真假混用。"
+      },
+      "ClaimSummary": {
+        "properties": {
+          "claim_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Claim Id"
+          },
+          "predicate": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Predicate"
+          },
+          "display_value": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Display Value"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/ClaimOrigin"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ClaimStatus"
+          },
+          "source_revision_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Revision Id"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Evidence Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "claim_id",
+          "predicate",
+          "display_value",
+          "origin",
+          "status",
+          "source_revision_id",
+          "evidence_ids"
+        ],
+        "title": "ClaimSummary"
+      },
+      "DimensionStatus": {
+        "type": "string",
+        "enum": [
+          "available",
+          "not_found",
+          "not_applicable",
+          "conflict",
+          "blocked",
+          "failed",
+          "pending"
+        ],
+        "title": "DimensionStatus",
+        "description": "富化维度状态: not_applicable 不计缺失, not_found 计召回损失。"
+      },
+      "DocumentDetailResponse": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 2,
+            "title": "Schema Version",
+            "default": 2
+          },
+          "document": {
+            "$ref": "#/components/schemas/DocumentSummary"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceResponse"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Evidence"
+          },
+          "evidence_total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Evidence Total"
+          },
+          "next_evidence_offset": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Evidence Offset"
+          },
+          "license_identifier": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Identifier"
+          },
+          "license_uri": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2083,
+                "minLength": 1,
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Uri"
+          },
+          "source_notes": {
+            "items": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Source Notes"
+          },
+          "data_mode": {
+            "type": "string",
+            "enum": [
+              "live",
+              "fixture"
+            ],
+            "title": "Data Mode"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document",
+          "evidence",
+          "evidence_total",
+          "next_evidence_offset",
+          "license_identifier",
+          "license_uri",
+          "source_notes",
+          "data_mode"
+        ],
+        "title": "DocumentDetailResponse"
+      },
+      "DocumentListResponse": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 2,
+            "title": "Schema Version",
+            "default": 2
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentSummary"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2048,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "data_mode": {
+            "type": "string",
+            "enum": [
+              "live",
+              "fixture"
+            ],
+            "title": "Data Mode"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor",
+          "data_mode"
+        ],
+        "title": "DocumentListResponse"
+      },
+      "DocumentRevisionListResponse": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 2,
+            "title": "Schema Version",
+            "default": 2
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentSummary"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Items"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
+          },
+          "data_mode": {
+            "type": "string",
+            "enum": [
+              "live",
+              "fixture"
+            ],
+            "title": "Data Mode"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "next_offset",
+          "data_mode"
+        ],
+        "title": "DocumentRevisionListResponse"
+      },
+      "DocumentSummary": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          },
+          "source_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Id"
+          },
+          "revision_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Revision Id"
+          },
+          "source_name": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Source Name"
+          },
+          "source_category": {
+            "$ref": "#/components/schemas/SourceCategory"
+          },
+          "document_kind": {
+            "type": "string",
+            "enum": [
+              "advisory",
+              "article",
+              "paper",
+              "repository_record",
+              "standard",
+              "policy"
+            ],
+            "title": "Document Kind"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "canonical_uri": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2083,
+                "minLength": 1,
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Uri"
+          },
+          "revision_number": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Revision Number"
+          },
+          "is_current": {
+            "type": "boolean",
+            "title": "Is Current"
+          },
+          "source_published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Published At"
+          },
+          "source_modified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Modified At"
+          },
+          "first_observed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Observed At"
+          },
+          "ingested_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingested At"
+          },
+          "parse_status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "parsed",
+              "partial",
+              "failed",
+              "legacy_unverified"
+            ],
+            "title": "Parse Status"
+          },
+          "content_coverage": {
+            "type": "string",
+            "enum": [
+              "full_text",
+              "abstract",
+              "feed_excerpt",
+              "metadata",
+              "unknown"
+            ],
+            "title": "Content Coverage"
+          },
+          "published_at_raw": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At Raw"
+          },
+          "published_precision": {
+            "type": "string",
+            "enum": [
+              "instant",
+              "calendar_date",
+              "unknown"
+            ],
+            "title": "Published Precision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document_id",
+          "source_id",
+          "revision_id",
+          "source_name",
+          "source_category",
+          "document_kind",
+          "title",
+          "canonical_uri",
+          "revision_number",
+          "is_current",
+          "source_published_at",
+          "source_modified_at",
+          "first_observed_at",
+          "ingested_at",
+          "parse_status",
+          "content_coverage",
+          "published_at_raw",
+          "published_precision"
+        ],
+        "title": "DocumentSummary"
+      },
+      "EnrichmentProjection": {
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "cvss",
+              "epss",
+              "kev",
+              "cwe",
+              "atlas",
+              "versions",
+              "literature",
+              "poc",
+              "exposure"
+            ],
+            "title": "Dimension"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DimensionStatus"
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Claim Ids"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/CitationProjection"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Citations"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/FreshnessStatus"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "dimension",
+          "status",
+          "claim_ids",
+          "citations",
+          "freshness",
+          "observed_at",
+          "source_version",
+          "error_code"
+        ],
+        "title": "EnrichmentProjection",
+        "description": "九维公共响应，不泄露内部job/scope字段。"
+      },
+      "EventDetailResponse": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 2,
+            "title": "Schema Version",
+            "default": 2
+          },
+          "event": {
+            "$ref": "#/components/schemas/EventSummary"
+          },
+          "dimensions": {
+            "items": {
+              "$ref": "#/components/schemas/EnrichmentProjection"
+            },
+            "type": "array",
+            "maxItems": 9,
+            "title": "Dimensions"
+          },
+          "revisions": {
+            "items": {
+              "$ref": "#/components/schemas/RevisionSummary"
+            },
+            "type": "array",
+            "title": "Revisions"
+          },
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/ClaimSummary"
+            },
+            "type": "array",
+            "title": "Claims"
+          },
+          "data_mode": {
+            "type": "string",
+            "enum": [
+              "live",
+              "fixture"
+            ],
+            "title": "Data Mode"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "event",
+          "dimensions",
+          "revisions",
+          "claims",
+          "data_mode"
+        ],
+        "title": "EventDetailResponse"
+      },
+      "EventListResponse": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 2,
+            "title": "Schema Version",
+            "default": 2
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EventSummary"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2048,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "data_mode": {
+            "type": "string",
+            "enum": [
+              "live",
+              "fixture"
+            ],
+            "title": "Data Mode"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor",
+          "data_mode"
+        ],
+        "title": "EventListResponse"
+      },
+      "EventSummary": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Event Id"
+          },
+          "event_type": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Event Type"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "external_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "External Ids"
+          },
+          "primary_product_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Primary Product Ids"
+          },
+          "first_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "First Seen At"
+          },
+          "status": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Status"
+          },
+          "source_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Source Count"
+          },
+          "latest_revision_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Revision Id"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/FreshnessStatus"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "event_id",
+          "event_type",
+          "title",
+          "external_ids",
+          "primary_product_ids",
+          "first_seen_at",
+          "status",
+          "source_count",
+          "latest_revision_id",
+          "freshness"
+        ],
+        "title": "EventSummary",
+        "description": "列表显示保存的事件信息，不推导安全或已入侵结论。"
+      },
+      "EvidenceResponse": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 2,
+            "title": "Schema Version",
+            "default": 2
+          },
+          "span_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Span Id"
+          },
+          "revision_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Revision Id"
+          },
+          "block_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Id"
+          },
+          "start_offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Start Offset"
+          },
+          "end_offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "End Offset"
+          },
+          "quote_text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Quote Text"
+          },
+          "quote_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Quote Sha256"
+          },
+          "locator_kind": {
+            "type": "string",
+            "enum": [
+              "text",
+              "pdf_page",
+              "json_pointer",
+              "legacy_unverified"
+            ],
+            "title": "Locator Kind"
+          },
+          "page_number": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Number"
+          },
+          "json_pointer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Json Pointer"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          },
+          "source_uri": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2083,
+                "minLength": 1,
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Uri"
+          },
+          "source_published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Published At"
+          },
+          "source_modified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Modified At"
+          },
+          "first_observed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Observed At"
+          },
+          "ingested_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingested At"
+          },
+          "data_mode": {
+            "type": "string",
+            "enum": [
+              "live",
+              "fixture"
+            ],
+            "title": "Data Mode"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "span_id",
+          "revision_id",
+          "block_id",
+          "start_offset",
+          "end_offset",
+          "quote_text",
+          "quote_sha256",
+          "locator_kind",
+          "page_number",
+          "json_pointer",
+          "verified_at",
+          "source_uri",
+          "source_published_at",
+          "source_modified_at",
+          "first_observed_at",
+          "ingested_at",
+          "data_mode"
+        ],
+        "title": "EvidenceResponse",
+        "description": "不暴露对象存储路径；保留原文Unicode坐标与缺失时间。"
+      },
+      "FreshnessStatus": {
+        "type": "string",
+        "enum": [
+          "current",
+          "stale",
+          "unknown"
+        ],
+        "title": "FreshnessStatus",
+        "description": "时效状态: 缺观察时间不得填 current。"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "LoginRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Username"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1,
+            "format": "password",
+            "title": "Password",
+            "writeOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "description": "密码只以SecretStr承载；额外的租户或权限声明一律拒绝。"
+      },
+      "QuestionAnswerResponse": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "completed",
+            "title": "Kind",
+            "default": "completed"
+          },
+          "answer_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Answer Id"
+          },
+          "answer_text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Answer Text"
+          },
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/AnswerClaimProjection"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Claims"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/CitationProjection"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Citations"
+          },
+          "limitations": {
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Limitations"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/FreshnessStatus"
+          },
+          "data_mode": {
+            "type": "string",
+            "enum": [
+              "live",
+              "fixture"
+            ],
+            "title": "Data Mode"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Completed At"
+          },
+          "latency_milliseconds": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Latency Milliseconds"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "answer_id",
+          "answer_text",
+          "claims",
+          "citations",
+          "limitations",
+          "freshness",
+          "data_mode",
+          "started_at",
+          "completed_at",
+          "latency_milliseconds"
+        ],
+        "title": "QuestionAnswerResponse"
+      },
+      "QuestionRequest": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Question"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "asset_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Asset Ids",
+            "default": []
+          },
+          "event_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Event Ids",
+            "default": []
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "library",
+              "investigate"
+            ],
+            "title": "Mode"
+          },
+          "known_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Known At"
+          },
+          "valid_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "question",
+          "mode"
+        ],
+        "title": "QuestionRequest"
+      },
+      "RevisionSummary": {
+        "properties": {
+          "revision_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Revision Id"
+          },
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          },
+          "revision_number": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Revision Number"
+          },
+          "source_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Id"
+          },
+          "source_published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Published At"
+          },
+          "source_modified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Modified At"
+          },
+          "first_observed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Observed At"
+          },
+          "ingested_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingested At"
+          },
+          "parse_status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "parsed",
+              "partial",
+              "failed",
+              "legacy_unverified"
+            ],
+            "title": "Parse Status"
+          },
+          "document_kind": {
+            "type": "string",
+            "enum": [
+              "advisory",
+              "article",
+              "paper",
+              "repository_record",
+              "standard",
+              "policy"
+            ],
+            "title": "Document Kind"
+          },
+          "canonical_uri": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2083,
+                "minLength": 1,
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Uri"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "revision_id",
+          "document_id",
+          "revision_number",
+          "source_id",
+          "source_published_at",
+          "source_modified_at",
+          "first_observed_at",
+          "ingested_at",
+          "parse_status",
+          "document_kind",
+          "canonical_uri"
+        ],
+        "title": "RevisionSummary",
+        "description": "来源时间与入库时间分别保存，旧记录缺证据时保留null。"
+      },
+      "SourceCategory": {
+        "type": "string",
+        "enum": [
+          "structured_vulnerability",
+          "vendor_advisory",
+          "security_community",
+          "code_repository",
+          "technical_blog",
+          "academic_paper",
+          "technical_standard",
+          "policy_regulation"
+        ],
+        "title": "SourceCategory",
+        "description": "来源类别: 八类建设目标的分类依据。"
+      },
+      "SourceCollectionRequest": {
+        "properties": {
+          "window_end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Window End"
+          },
+          "stream_kind": {
+            "type": "string",
+            "enum": [
+              "live",
+              "backfill"
+            ],
+            "title": "Stream Kind",
+            "default": "backfill"
+          },
+          "max_pages": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Max Pages",
+            "default": 20
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "window_end"
+        ],
+        "title": "SourceCollectionRequest",
+        "description": "观察截止标识不是上游快照保证；重试同幂等键必须复用同一请求。"
+      },
+      "SourceJobResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "attempt_count": {
+            "type": "integer",
+            "title": "Attempt Count"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "result_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Ref"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "attempt_count",
+          "error_code",
+          "result_ref",
+          "created_at",
+          "finished_at"
+        ],
+        "title": "SourceJobResponse",
+        "description": "仅暴露内部 PG 标识与固定状态，不返回输入或任何秘密配置。"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

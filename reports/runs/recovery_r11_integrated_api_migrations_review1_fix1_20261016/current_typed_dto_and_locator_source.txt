@@ -1,0 +1,533 @@
+FILE backend/src/ai_intel/assets/sbom_inventory.py
+1:"""库存格式dispatcher与冻结声明序列化；历史读取不使用新代码重解析旧SBOM。"""
+2:
+3:import hashlib
+4:import ipaddress
+5:import re
+6:from collections.abc import Mapping
+7:from dataclasses import dataclass
+8:from datetime import datetime
+9:from urllib.parse import unquote, urlsplit
+10:
+11:from packageurl import PackageURL
+12:
+13:from ai_intel.assets.inventory_contracts import AssetSnapshotResponse
+14:from ai_intel.assets.manifest_parser import (
+15:    ManifestParseResult,
+16:    ManifestValidationError,
+17:    parse_manifest,
+18:)
+19:from ai_intel.assets.sbom_inventory_contracts import (
+20:    AssetSnapshotSbomResponse,
+21:    SbomRedactionResponse,
+22:)
+23:from ai_intel.assets.sbom_parser import SBOM_ADAPTER_VERSION, SbomParseResult, parse_sbom
+24:from ai_intel.domain.access import AccessScope
+25:
+26:
+27:class SbomProjectionValidationError(ValueError):
+28:    """冻结展示载荷的标记/引用不一致，不接受伪造的脱敏前缀声明。"""
+29:
+30:
+31:def _decoded_uri_text(value: str) -> str | None:
+32:    """最多四轮严格UTF-8解码；未消解/非法percent编码不能据此判为公开定位。"""
+33:    for _ in range(4):
+34:        if "%" not in value:
+35:            return value
+36:        if re.search(r"%(?![0-9a-fA-F]{2})", value):
+37:            return None
+38:        try:
+39:            value = unquote(value, encoding="utf-8", errors="strict")
+40:        except UnicodeDecodeError:
+41:            return None
+42:    return None if "%" in value else value
+43:
+44:
+45:def _safe_http_uri(value: str) -> bool:
+46:    """仅离线判断可展示URI；不解析DNS，userinfo/query/fragment不作为公开文档定位。"""
+47:    if (
+48:        not value.isascii()
+49:        or any(ord(char) <= 32 for char in value)
+50:        or any(char in "\\?#" for char in value)
+51:    ):
+52:        return False
+53:    try:
+54:        parsed = urlsplit(value)
+55:        host = parsed.hostname
+56:        if (
+57:            parsed.scheme.lower() not in {"http", "https"}
+58:            or not host
+59:            or parsed.username is not None
+60:            or parsed.password is not None
+61:            or parsed.query
+62:            or parsed.fragment
+63:            or "%" in parsed.netloc
+64:        ):
+65:            return False
+66:        if parsed.port is not None and not 1 <= parsed.port <= 65535:
+67:            return False
+68:        host = host.lower().rstrip(".")
+69:        address = None
+70:        try:
+71:            address = ipaddress.ip_address(host)
+72:        except ValueError:
+73:            if re.fullmatch(r"[0-9.]+", host):
+74:                return False
+75:        if address is not None:
+76:            if not address.is_global:
+77:                return False
+78:        elif (
+79:            "." not in host
+80:            or host in {"localhost", "localhost.localdomain"}
+81:            or host.endswith(
+82:                (".localhost", ".localdomain", ".local", ".internal", ".lan", ".home", ".intranet")
+83:            )
+84:            or len(host) > 253
+85:            or any(
+86:                not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+87:                for label in host.split(".")
+88:            )
+89:        ):
+90:            return False
+91:        path = _decoded_uri_text(parsed.path)
+92:        return path is not None and not any(ord(char) <= 32 or char in "\\:@?#%" for char in path)
+93:    except ValueError:
+94:        return False
+95:
+96:
+97:def _safe_purl_reference(value: str) -> bool:
+98:    try:
+99:        package = PackageURL.from_string(value)
+100:    except ValueError:
+101:        return False
+102:    if package.qualifiers or package.subpath:
+103:        return False
+104:    fields = (package.type, package.namespace or "", package.name, package.version or "")
+105:    return not any(
+106:        any(ord(char) <= 32 or char in "\\:%?#" for char in field) or "://" in field
+107:        for field in fields
+108:    ) and not any(char in "/@" for char in (package.version or ""))
+109:
+110:
+111:def _safe_reference(value: str) -> bool:
+112:    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._@+-]*", value):
+113:        return True
+114:    if re.fullmatch(r"DocumentRef-[A-Za-z0-9.+-]+:SPDXRef-[A-Za-z0-9.-]+", value):
+115:        return True
+116:    if re.fullmatch(r"urn:uuid:[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", value):
+117:        return True
+118:    cdx = re.fullmatch(
+119:        r"urn:cdx:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/[1-9][0-9]*#(.+)", value
+120:    )
+121:    if cdx is not None:
+122:        return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._@+-]*", cdx[1]))
+123:    if value.startswith("pkg:"):
+124:        return _safe_purl_reference(value)
+125:    return _safe_http_uri(value)
+126:
+127:
+128:def _source_locator_fields(value: str) -> list[str]:
+129:    """只接受JSON Pointer规范转义，避免不同拼写绕过精确服务器标记。"""
+130:    if not value.startswith("/") or re.search(r"~(?![01])", value):
+131:        raise SbomProjectionValidationError("invalid stored SBOM source locator")
+132:    return value.split("/")[1:]
+133:
+134:
+135:def _safe_source_field(value: str) -> bool:
+136:    decoded = _decoded_uri_text(value)
+137:    if decoded is None or any(ord(char) <= 31 or 127 <= ord(char) <= 159 for char in decoded):
+138:        return False
+139:    if decoded.startswith("pkg:"):
+140:        return _safe_purl_reference(decoded) and not any(
+141:            segment in {".", ".."} for segment in decoded.split("/")
+142:        )
+143:    return (
+144:        decoded.strip() not in {".", ".."}
+145:        and not any(char in "/\\" for char in decoded)
+146:        and not re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", decoded.lstrip())
+147:        and not re.search(r"[^\s:]+:[^\s]*@", decoded)
+148:    )
+149:
+150:
+151:def safe_sbom_snapshot(snapshot: AssetSnapshotResponse) -> AssetSnapshotResponse:
+152:    """仅隐藏SBOM中不可安全展示的PURL；组件身份、来源事实hash和旧JSON/CSV不变。"""
+153:    if snapshot.source_kind not in {"cyclonedx_json", "spdx_json"}:
+154:        return snapshot
+155:    return snapshot.model_copy(
+156:        update={
+157:            "components": tuple(
+158:                component
+159:                if component.purl is None or _safe_purl_reference(component.purl)
+160:                else component.model_copy(update={"purl": None})
+161:                for component in snapshot.components
+162:            )
+163:        }
+164:    )
+165:
+166:
+167:def safe_sbom_sidecar(
+168:    result: AssetSnapshotSbomResponse,
+169:    snapshot: AssetSnapshotResponse | None = None,
+170:) -> AssetSnapshotSbomResponse:
+171:    """源摘要不变；schema2已标位置的opaque引用可重放，其余客户端保留前缀不受信任。"""
+172:    old_redactions = {item.source_field_locator: item for item in result.redactions}
+173:    if len(old_redactions) != len(result.redactions) or (
+174:        result.schema_version == "r11-sbom-sidecar-1" and old_redactions
+175:    ):
+176:        raise SbomProjectionValidationError("invalid stored SBOM display markers")
+177:    unmapped_locators = set(result.unmapped_field_locators)
+178:    source_locators = [
+179:        *(item.source_field_locator for item in result.component_sources),
+180:        *(
+181:            field.source_field_locator
+182:            for item in result.component_sources
+183:            for field in item.field_sources
+184:        ),
+185:        *(
+186:            checksum.source_field_locator
+187:            for item in result.component_sources
+188:            for checksum in item.checksums
+189:        ),
+190:        *(item.source_field_locator for item in result.dependency_edges),
+191:        *(item.source_field_locator for item in result.completeness_declarations),
+192:        *(item.source_field_locator for item in result.external_documents),
+193:        *(item.checksum.source_field_locator for item in result.external_documents),
+194:    ]
+195:    for source_locator in source_locators:
+196:        if any(
+197:            not _safe_source_field(pointer_segment.replace("~1", "/").replace("~0", "~"))
+198:            for pointer_segment in _source_locator_fields(source_locator)
+199:        ):
+200:            raise SbomProjectionValidationError("invalid stored SBOM source locator")
+201:    for display_marker in result.redactions:
+202:        for pointer_segment in _source_locator_fields(display_marker.source_field_locator):
+203:            if (
+204:                display_marker.replacement_ref is None
+205:                and display_marker.source_field_locator in unmapped_locators
+206:                and re.fullmatch(r"redacted-field:[0-9a-f]{64}", pointer_segment)
+207:            ):
+208:                continue
+209:            if not _safe_source_field(pointer_segment.replace("~1", "/").replace("~0", "~")):
+210:                raise SbomProjectionValidationError("invalid stored SBOM display marker locator")
+211:    redactions = dict(old_redactions)
+212:    used_redactions: set[str] = set()
+213:    referenced_values: dict[str, str] = {}
+214:
+215:    def mark(locator: str, alias: str | None = None) -> None:
+216:        redactions[locator] = SbomRedactionResponse(
+217:            source_field_locator=locator,
+218:            reason="unsafe_uri_or_path",
+219:            replacement_ref=alias,
+220:        )
+221:        used_redactions.add(locator)
+222:
+223:    def reference(value: str, locator: str) -> str:
+224:        if locator in referenced_values and referenced_values[locator] != value:
+225:            raise SbomProjectionValidationError("inconsistent stored SBOM source reference")
+226:        referenced_values[locator] = value
+227:        if result.schema_version == "r11-sbom-sidecar-2" and locator in old_redactions:
+228:            marker = old_redactions[locator]
+229:            if (
+230:                not re.fullmatch(r"redacted-ref:[0-9a-f]{64}", value)
+231:                or marker.reason != "unsafe_uri_or_path"
+232:                or marker.replacement_ref != value
+233:            ):
+234:                raise SbomProjectionValidationError("unbound stored SBOM display reference")
+235:            used_redactions.add(locator)
+236:            return value
+237:        if _safe_reference(value):
+238:            return value
+239:        if result.schema_version == "r11-sbom-sidecar-2":
+240:            raise SbomProjectionValidationError("unbound stored SBOM display reference")
+241:        alias = "redacted-ref:" + hashlib.sha256(value.encode()).hexdigest()
+242:        mark(locator, alias)
+243:        return alias
+244:
+245:    def locator(value: str) -> str:
+246:        marker = old_redactions.get(value)
+247:        protected = [""]
+248:        changed = False
+249:        marked = False
+250:        for field in _source_locator_fields(value):
+251:            if (
+252:                result.schema_version == "r11-sbom-sidecar-2"
+253:                and marker is not None
+254:                and marker.replacement_ref is None
+255:                and re.fullmatch(r"redacted-field:[0-9a-f]{64}", field)
+256:            ):
+257:                marked = True
+258:                protected.append(field)
+259:                continue
+260:            original = field.replace("~1", "/").replace("~0", "~")
+261:            if not _safe_source_field(original):
+262:                if result.schema_version == "r11-sbom-sidecar-2":
+263:                    raise SbomProjectionValidationError("unbound stored SBOM source locator")
+264:                field = "redacted-field:" + hashlib.sha256(original.encode()).hexdigest()
+265:                changed = True
+266:            protected.append(field)
+267:        safe = "/".join(protected)
+268:        if changed:
+269:            mark(safe)
+270:        elif marked:
+271:            used_redactions.add(value)
+272:        return safe
+273:
+274:    components = tuple(
+275:        item.model_copy(
+276:            update={
+277:                "source_ref": None
+278:                if item.source_ref is None
+279:                else reference(
+280:                    item.source_ref,
+281:                    item.source_field_locator
+282:                    + ("/bom-ref" if result.source_format == "cyclonedx_json" else "/SPDXID"),
+283:                )
+284:            }
+285:        )
+286:        for item in result.component_sources
+287:    )
+288:    edges = tuple(
+289:        item.model_copy(
+290:            update={
+291:                "source_ref": reference(
+292:                    item.source_ref,
+293:                    item.source_field_locator.rsplit("/", 2)[0] + "/ref"
+294:                    if result.source_format == "cyclonedx_json"
+295:                    else item.source_field_locator + "/spdxElementId",
+296:                ),
+297:                "target_ref": reference(
+298:                    item.target_ref,
+299:                    item.source_field_locator
+300:                    if result.source_format == "cyclonedx_json"
+301:                    else item.source_field_locator + "/relatedSpdxElement",
+302:                ),
+303:            }
+304:        )
+305:        for item in result.dependency_edges
+306:    )
+307:    declarations = tuple(
+308:        item.model_copy(
+309:            update={
+310:                field: tuple(
+311:                    reference(value, f"{item.source_field_locator}/{field}/{index}")
+312:                    for index, value in enumerate(getattr(item, field))
+313:                )
+314:                for field in ("assemblies", "dependencies", "vulnerabilities")
+315:            }
+316:        )
+317:        for item in result.completeness_declarations
+318:    )
+319:    documents = []
+320:    for item in result.external_documents:
+321:        uri = item.document_uri
+322:        uri_locator = item.source_field_locator + "/spdxDocument"
+323:        if uri is None:
+324:            if (
+325:                uri_locator not in old_redactions
+326:                or old_redactions[uri_locator].replacement_ref is not None
+327:            ):
+328:                raise SbomProjectionValidationError("invalid stored SBOM document marker")
+329:            used_redactions.add(uri_locator)
+330:        elif uri is not None and not _safe_http_uri(uri):
+331:            if result.schema_version == "r11-sbom-sidecar-2":
+332:                raise SbomProjectionValidationError("unbound stored SBOM document URI")
+333:            mark(uri_locator)
+334:            uri = None
+335:        documents.append(item.model_copy(update={"document_uri": uri}))
+336:    if snapshot is not None:
+337:        hidden_purls = {
+338:            item.component_id
+339:            for item in snapshot.components
+340:            if item.purl is not None and not _safe_purl_reference(item.purl)
+341:        }
+342:        for component_source in result.component_sources:
+343:            for field in component_source.field_sources:
+344:                if field.field_name == "purl" and component_source.component_id in hidden_purls:
+345:                    mark(field.source_field_locator)
+346:    else:
+347:        for component_source in result.component_sources:
+348:            for field in component_source.field_sources:
+349:                marker = old_redactions.get(field.source_field_locator)
+350:                if (
+351:                    field.field_name == "purl"
+352:                    and marker is not None
+353:                    and marker.replacement_ref is None
+354:                ):
+355:                    used_redactions.add(field.source_field_locator)
+356:    unmapped = tuple(locator(value) for value in result.unmapped_field_locators)
+357:    if result.schema_version == "r11-sbom-sidecar-2" and set(old_redactions) != used_redactions:
+358:        raise SbomProjectionValidationError("unbound stored SBOM display marker")
+359:    return result.model_copy(
+360:        update={
+361:            "schema_version": "r11-sbom-sidecar-2",
+362:            "component_sources": components,
+363:            "dependency_edges": edges,
+364:            "completeness_declarations": declarations,
+365:            "external_documents": tuple(documents),
+366:            "unmapped_field_locators": unmapped,
+367:            "redactions": tuple(redactions[key] for key in sorted(redactions)),
+368:        }
+369:    )
+370:
+371:
+372:@dataclass(frozen=True)
+373:class InventoryParseResult:
+374:    manifest: ManifestParseResult
+375:    sbom: SbomParseResult | None
+376:
+377:    @property
+378:    def semantic_sha256(self) -> str:
+379:        if self.sbom is not None:
+380:            return self.sbom.combined_semantic_sha256
+381:        return self.manifest.snapshot.snapshot_sha256
+382:
+383:
+384:def parse_inventory_input(
+385:    raw_bytes: bytes,
+386:    *,
+387:    manifest_format: str,
+388:    scope: AccessScope,
+389:    authorized_asset_tenant_id: str,
+390:    asset_id: str,
+391:    snapshot_number: int,
+392:    source_version: str,
+393:    observed_at: datetime,
+394:    recorded_at: datetime,
+395:    csv_column_mapping: Mapping[str, str] | None = None,
+396:) -> InventoryParseResult:
+397:    """显式格式选择；SBOM拒绝CSV映射，未知格式仍由既有parser固定拒绝。"""
+398:    if manifest_format in {"cyclonedx_json", "spdx_json"}:
+399:        if csv_column_mapping is not None:
+400:            raise ManifestValidationError("unexpected_csv_mapping")
+401:        sbom = parse_sbom(
+402:            raw_bytes,
+403:            sbom_format=manifest_format,
+404:            scope=scope,
+405:            authorized_asset_tenant_id=authorized_asset_tenant_id,
+406:            asset_id=asset_id,
+407:            snapshot_number=snapshot_number,
+408:            source_version=source_version,
+409:            observed_at=observed_at,
+410:            recorded_at=recorded_at,
+411:        )
+412:        return InventoryParseResult(sbom.manifest, sbom)
+413:    return InventoryParseResult(
+414:        parse_manifest(
+415:            raw_bytes,
+416:            manifest_format=manifest_format,
+417:            scope=scope,
+418:            authorized_asset_tenant_id=authorized_asset_tenant_id,
+419:            asset_id=asset_id,
+420:            snapshot_number=snapshot_number,
+421:            source_version=source_version,
+422:            observed_at=observed_at,
+423:            recorded_at=recorded_at,
+424:            csv_column_mapping=csv_column_mapping,
+425:        ),
+426:        None,
+427:    )
+428:
+429:
+430:def freeze_sbom_sidecar(result: SbomParseResult) -> AssetSnapshotSbomResponse:
+431:    """身份只由认证候选取得，typed sidecar与版本/hash一次冻结。"""
+432:    snapshot = result.manifest.snapshot
+433:    return safe_sbom_sidecar(
+434:        AssetSnapshotSbomResponse.model_validate(
+435:            {
+436:                "schema_version": "r11-sbom-sidecar-1",
+437:                "snapshot_id": snapshot.snapshot_id,
+438:                "asset_id": snapshot.asset_id,
+439:                "tenant_id": snapshot.tenant_id,
+440:                "adapter_version": SBOM_ADAPTER_VERSION,
+441:                "source_format": snapshot.source_kind,
+442:                "spec_version": result.spec_version,
+443:                "projection_sha256": snapshot.snapshot_sha256,
+444:                "sidecar_sha256": result.sidecar_sha256,
+445:                "combined_semantic_sha256": result.combined_semantic_sha256,
+446:                "raw_sha256": result.raw_sha256,
+447:                "component_sources": result.component_sources,
+448:                "dependency_edges": result.dependency_edges,
+449:                "completeness_declarations": result.completeness_declarations,
+450:                "external_documents": result.external_documents,
+451:                "unmapped_field_locators": result.unmapped_field_locators,
+452:            }
+453:        ),
+454:        AssetSnapshotResponse.model_validate(snapshot),
+455:    )
+
+FILE backend/src/ai_intel/assets/sbom_inventory_contracts.py
+1:"""私有SBOM历史声明DTO；不回原文、opaque值或自行核验完整性的结论。"""
+2:
+3:from typing import Literal
+4:
+5:from pydantic import Field
+6:
+7:from ai_intel.assets.inventory_contracts import InventoryContract
+8:
+9:
+10:class SbomFieldSourceResponse(InventoryContract):
+11:    field_name: str
+12:    source_field_locator: str
+13:
+14:
+15:class SbomChecksumResponse(InventoryContract):
+16:    algorithm: str
+17:    checksum_value: str
+18:    source_field_locator: str
+19:
+20:
+21:class SbomComponentSourceResponse(InventoryContract):
+22:    component_id: str
+23:    source_ref: str | None
+24:    component_type: str | None
+25:    source_field_locator: str
+26:    field_sources: tuple[SbomFieldSourceResponse, ...]
+27:    checksums: tuple[SbomChecksumResponse, ...]
+28:
+29:
+30:class SbomDependencyEdgeResponse(InventoryContract):
+31:    source_ref: str
+32:    target_ref: str
+33:    relationship: str
+34:    source_field_locator: str
+35:
+36:
+37:class SbomCompletenessDeclarationResponse(InventoryContract):
+38:    aggregate: str
+39:    assemblies: tuple[str, ...]
+40:    dependencies: tuple[str, ...]
+41:    vulnerabilities: tuple[str, ...]
+42:    source_field_locator: str
+43:
+44:
+45:class SbomExternalDocumentResponse(InventoryContract):
+46:    document_ref: str
+47:    document_uri: str | None
+48:    checksum: SbomChecksumResponse
+49:    source_field_locator: str
+50:
+51:
+52:class SbomRedactionResponse(InventoryContract):
+53:    source_field_locator: str
+54:    reason: Literal["unsafe_uri_or_path"]
+55:    replacement_ref: str | None = Field(default=None, pattern="^redacted-ref:[0-9a-f]{64}$")
+56:
+57:
+58:class AssetSnapshotSbomResponse(InventoryContract):
+59:    schema_version: Literal["r11-sbom-sidecar-1", "r11-sbom-sidecar-2"]
+60:    snapshot_id: str
+61:    asset_id: str
+62:    tenant_id: str
+63:    adapter_version: Literal["r11-sbom-adapter-1"]
+64:    source_format: Literal["cyclonedx_json", "spdx_json"]
+65:    spec_version: Literal["1.5", "1.6", "1.7", "SPDX-2.3"]
+66:    projection_sha256: str = Field(pattern="^[0-9a-f]{64}$")
+67:    sidecar_sha256: str = Field(pattern="^[0-9a-f]{64}$")
+68:    combined_semantic_sha256: str = Field(pattern="^[0-9a-f]{64}$")
+69:    raw_sha256: str = Field(pattern="^[0-9a-f]{64}$")
+70:    component_sources: tuple[SbomComponentSourceResponse, ...]
+71:    dependency_edges: tuple[SbomDependencyEdgeResponse, ...]
+72:    completeness_declarations: tuple[SbomCompletenessDeclarationResponse, ...]
+73:    external_documents: tuple[SbomExternalDocumentResponse, ...]
+74:    unmapped_field_locators: tuple[str, ...]
+75:    redactions: tuple[SbomRedactionResponse, ...] = ()

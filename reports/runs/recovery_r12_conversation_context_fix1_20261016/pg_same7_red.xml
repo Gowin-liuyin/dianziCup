@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="5" skipped="0" tests="7" time="9.278" timestamp="2026-10-16T09:41:14.810876+08:00" hostname="yin"><testcase classname="reports.runs.recovery_r12_conversation_context_fix1_20261016.test_review_negative" name="test_missing_reference_without_successful_parent_requires_clarification" time="0.001"><failure message="AssertionError: unbound pronoun must clarify before retrieval&#10;assert None is not None&#10; +  where None = ResolvedQuestionContext(schema_version=1, conversation_id=UUID('00000000-0000-0000-0000-000000000001'), base_version=0...0cdbc64aed4a8b1ec11564afb47b5f5751', context_sha256='906563f8af541d8baa1b3315b266c1d1a0e372e0b437eaaaf6726bd2c86a70a0').clarification_code">def test_missing_reference_without_successful_parent_requires_clarification():
+        scope=AccessScope.for_authenticated_user('synthetic-owner','tenant-a',Role.ANALYST)
+        result=resolve_question_context(QuestionRequest(question='它的修复是什么？',mode='library'),
+            conversation_id=UUID('00000000-0000-0000-0000-000000000001'),base_version=0,scope=scope,
+            event_references=(),now=datetime.now(UTC))
+&gt;       assert result.clarification_code is not None, 'unbound pronoun must clarify before retrieval'
+E       AssertionError: unbound pronoun must clarify before retrieval
+E       assert None is not None
+E        +  where None = ResolvedQuestionContext(schema_version=1, conversation_id=UUID('00000000-0000-0000-0000-000000000001'), base_version=0...0cdbc64aed4a8b1ec11564afb47b5f5751', context_sha256='906563f8af541d8baa1b3315b266c1d1a0e372e0b437eaaaf6726bd2c86a70a0').clarification_code
+
+reports\runs\recovery_r12_conversation_context_fix1_20261016\test_review_negative.py:25: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r12_conversation_context_fix1_20261016.test_review_negative" name="test_pg_missing_reference_does_not_reserve_an_answer" time="1.378"><failure message="context_identity = (Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r12_ctx_fix1_20261016?options=-c+search_p...on=1), '[redacted test credential]', &lt;function context_identity.&lt;locals&gt;.login at 0x000001DB38787CE0&gt;)&#10;&#10;    def test_pg_missing_reference_does_not_reserve_an_answer(context_identity):&#10;        engine=context_identity[0]&#10;&gt;       with pytest.raises(ConversationFailure):&#10;             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;E       Failed: DID NOT RAISE &lt;class 'ai_intel.answering.conversation_contracts.ConversationFailure'&gt;&#10;&#10;reports\runs\recovery_r12_conversation_context_fix1_20261016\test_review_negative.py:31: Failed">context_identity = (Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r12_ctx_fix1_20261016?options=-c+search_p...on=1), '[redacted test credential]', &lt;function context_identity.&lt;locals&gt;.login at 0x000001DB38787CE0&gt;)
+
+    def test_pg_missing_reference_does_not_reserve_an_answer(context_identity):
+        engine=context_identity[0]
+&gt;       with pytest.raises(ConversationFailure):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE &lt;class 'ai_intel.answering.conversation_contracts.ConversationFailure'&gt;
+
+reports\runs\recovery_r12_conversation_context_fix1_20261016\test_review_negative.py:31: Failed</failure></testcase><testcase classname="reports.runs.recovery_r12_conversation_context_fix1_20261016.test_review_negative" name="test_pg_admission_rejection_commits_expired_history" time="1.209"><failure message="context_identity = (Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r12_ctx_fix1_20261016?options=-c+search_p...on=1), '[redacted test credential]', &lt;function context_identity.&lt;locals&gt;.login at 0x000001DB388C1440&gt;)&#10;&#10;    def test_pg_admission_rejection_commits_expired_history(context_identity):&#10;        engine,_auth,scope,token,_login=context_identity&#10;        turn=admit(context_identity)&#10;        with engine.begin() as connection:&#10;            trace=connection.scalar(select(grounded_answers.c.model_trace))&#10;            trace['reservation_expires_at']=(datetime.now(UTC)-timedelta(seconds=1)).isoformat()&#10;            connection.execute(update(grounded_answers).values(model_trace=trace))&#10;        with pytest.raises(ConversationFailure,match='conversation_version_conflict'):&#10;            admit(context_identity,key='stale-version-new-key',conversation=turn.conversation_id,version=0)&#10;        history=ConversationContextService(engine).read_history(scope,turn.turn_id,session_token=token)&#10;&gt;       assert [item.state for item in history]==['pending','expired'], 'rejected admission rolled back recovery'&#10;E       AssertionError: rejected admission rolled back recovery&#10;E       assert ['pending'] == ['pending', 'expired']&#10;E         &#10;E         Right contains one more item: 'expired'&#10;E         Use -v to get more diff&#10;&#10;reports\runs\recovery_r12_conversation_context_fix1_20261016\test_review_negative.py:47: AssertionError">context_identity = (Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r12_ctx_fix1_20261016?options=-c+search_p...on=1), '[redacted test credential]', &lt;function context_identity.&lt;locals&gt;.login at 0x000001DB388C1440&gt;)
+
+    def test_pg_admission_rejection_commits_expired_history(context_identity):
+        engine,_auth,scope,token,_login=context_identity
+        turn=admit(context_identity)
+        with engine.begin() as connection:
+            trace=connection.scalar(select(grounded_answers.c.model_trace))
+            trace['reservation_expires_at']=(datetime.now(UTC)-timedelta(seconds=1)).isoformat()
+            connection.execute(update(grounded_answers).values(model_trace=trace))
+        with pytest.raises(ConversationFailure,match='conversation_version_conflict'):
+            admit(context_identity,key='stale-version-new-key',conversation=turn.conversation_id,version=0)
+        history=ConversationContextService(engine).read_history(scope,turn.turn_id,session_token=token)
+&gt;       assert [item.state for item in history]==['pending','expired'], 'rejected admission rolled back recovery'
+E       AssertionError: rejected admission rolled back recovery
+E       assert ['pending'] == ['pending', 'expired']
+E         
+E         Right contains one more item: 'expired'
+E         Use -v to get more diff
+
+reports\runs\recovery_r12_conversation_context_fix1_20261016\test_review_negative.py:47: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r12_conversation_context_fix1_20261016.test_review_negative" name="test_pg_child_admission_verifies_saved_parent_hash" time="1.426"><failure message="context_identity = (Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r12_ctx_fix1_20261016?options=-c+search_p...on=1), '[redacted test credential]', &lt;function context_identity.&lt;locals&gt;.login at 0x000001DB387D37E0&gt;)&#10;&#10;    def test_pg_child_admission_verifies_saved_parent_hash(context_identity):&#10;        engine,_auth,scope,token,_login=context_identity&#10;        fact=seed_fact(engine,'S[redacted test credential fragment] current source.',cve='CVE-2026-10001')&#10;        first=admit(context_identity,event_ids=(UUID(fact['event_id']),))&#10;        service=ConversationContextService(engine)&#10;        record_[redacted test credential fragment]c_completion(service,engine,scope,token,first)&#10;        with engine.begin() as connection:&#10;            context=connection.scalar(select(qa_conversation_turns.c.resolved_context))&#10;            context['question']='Corrupt stored parent body; original digest unchanged.'&#10;            connection.execute(update(qa_conversation_turns).values(resolved_context=context))&#10;        with pytest.raises(ConversationFailure,match='context_integrity_unavailable'):&#10;            service.read_turn(scope,first.turn_id,session_token=token)&#10;&gt;       with pytest.raises(ConversationFailure,match='context_integrity_unavailable'):&#10;             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;E       Failed: DID NOT RAISE &lt;class 'ai_intel.answering.conversation_contracts.ConversationFailure'&gt;&#10;&#10;reports\runs\recovery_r12_conversation_context_fix1_20261016\test_review_negative.py:64: Failed">context_identity = (Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r12_ctx_fix1_20261016?options=-c+search_p...on=1), '[redacted test credential]', &lt;function context_identity.&lt;locals&gt;.login at 0x000001DB387D37E0&gt;)
+
+    def test_pg_child_admission_verifies_saved_parent_hash(context_identity):
+        engine,_auth,scope,token,_login=context_identity
+        fact=seed_fact(engine,'S[redacted test credential fragment] current source.',cve='CVE-2026-10001')
+        first=admit(context_identity,event_ids=(UUID(fact['event_id']),))
+        service=ConversationContextService(engine)
+        record_[redacted test credential fragment]c_completion(service,engine,scope,token,first)
+        with engine.begin() as connection:
+            context=connection.scalar(select(qa_conversation_turns.c.resolved_context))
+            context['question']='Corrupt stored parent body; original digest unchanged.'
+            connection.execute(update(qa_conversation_turns).values(resolved_context=context))
+        with pytest.raises(ConversationFailure,match='context_integrity_unavailable'):
+            service.read_turn(scope,first.turn_id,session_token=token)
+&gt;       with pytest.raises(ConversationFailure,match='context_integrity_unavailable'):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE &lt;class 'ai_intel.answering.conversation_contracts.ConversationFailure'&gt;
+
+reports\runs\recovery_r12_conversation_context_fix1_20261016\test_review_negative.py:64: Failed</failure></testcase><testcase classname="reports.runs.recovery_r12_conversation_context_fix1_20261016.test_review_negative" name="test_pg_owner_completed_turn_survives_current_event_inactive" time="1.281"><failure message="context_identity = (Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r12_ctx_fix1_20261016?options=-c+search_p...on=1), '[redacted test credential]', &lt;function context_identity.&lt;locals&gt;.login at 0x000001DB379D27A0&gt;)&#10;&#10;    def test_pg_owner_completed_turn_survives_current_event_inactive(context_identity):&#10;        engine,_auth,scope,token,_login=context_identity&#10;        fact=seed_fact(engine,'S[redacted test credential fragment] historical source.',cve='CVE-2026-10001')&#10;        first=admit(context_identity,event_ids=(UUID(fact['event_id']),))&#10;        service=ConversationContextService(engine)&#10;        record_[redacted test credential fragment]c_completion(service,engine,scope,token,first)&#10;        with engine.begin() as connection:&#10;            connection.execute(update(events).where(events.c.event_id==fact['event_id']).values(status='withdrawn'))&#10;&gt;       restored=service.read_turn(scope,first.turn_id,session_token=token)&#10;                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;&#10;reports\runs\recovery_r12_conversation_context_fix1_20261016\test_review_negative.py:77: &#10;_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _&#10;backend\src\ai_intel\answering\conversation_context.py:571: in read_turn&#10;    self._references(session, scope, turn.context.event_ids, turn.context.asset_ids)&#10;_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _&#10;&#10;session = &lt;sqlalchemy.orm.session.Session object at 0x000001DB387AEA50&gt;&#10;scope = AccessScope(user_id='6da61a49-f5e1-4f97-aaab-bd1c7e1cc3b3', tenant_id='tenant-a', role=&lt;Role.ANALYST: 'analyst'&gt;, permissions=frozenset({'read:asset', 'read:public'}), permission_version=1)&#10;event_ids = (UUID('67f527f8-d270-4b89-8016-f7dbc49e0d03'),), asset_ids = ()&#10;&#10;    @staticmethod&#10;    def _references(&#10;        session: Session,&#10;        scope: AccessScope,&#10;        event_ids: tuple[UUID, ...],&#10;        asset_ids: tuple[UUID, ...],&#10;        *,&#10;        lock_events: bool = True,&#10;    ) -&gt; tuple[tuple[EventReference, ...], tuple[AssetSnapshotReference, ...]]:&#10;        &quot;&quot;&quot;Bundle defers event locks to the shared source/document/event authority fence.&quot;&quot;&quot;&#10;        query = (&#10;            select(events)&#10;            .where(&#10;                events.c.event_id.in_(tuple(map(str, event_ids))),&#10;                visible_clause(scope, events),&#10;                events.c.status == &quot;active&quot;,&#10;            )&#10;            .order_by(events.c.event_id)&#10;        )&#10;        if lock_events:&#10;            query = query.with_for_update(read=True)&#10;        rows = session.execute(query).mappings().all()&#10;        if {row[&quot;event_id&quot;] for row in rows} != set(map(str, event_ids)):&#10;&gt;           raise CrossTenantAccessError(&quot;resource not found&quot;)&#10;E           ai_intel.domain.access.CrossTenantAccessError: resource not found&#10;&#10;backend\src\ai_intel\answering\conversation_context.py:282: CrossTenantAccessError">context_identity = (Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r12_ctx_fix1_20261016?options=-c+search_p...on=1), '[redacted test credential]', &lt;function context_identity.&lt;locals&gt;.login at 0x000001DB379D27A0&gt;)
+
+    def test_pg_owner_completed_turn_survives_current_event_inactive(context_identity):
+        engine,_auth,scope,token,_login=context_identity
+        fact=seed_fact(engine,'S[redacted test credential fragment] historical source.',cve='CVE-2026-10001')
+        first=admit(context_identity,event_ids=(UUID(fact['event_id']),))
+        service=ConversationContextService(engine)
+        record_[redacted test credential fragment]c_completion(service,engine,scope,token,first)
+        with engine.begin() as connection:
+            connection.execute(update(events).where(events.c.event_id==fact['event_id']).values(status='withdrawn'))
+&gt;       restored=service.read_turn(scope,first.turn_id,session_token=token)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+reports\runs\recovery_r12_conversation_context_fix1_20261016\test_review_negative.py:77: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+backend\src\ai_intel\answering\conversation_context.py:571: in read_turn
+    self._references(session, scope, turn.context.event_ids, turn.context.asset_ids)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+session = &lt;sqlalchemy.orm.session.Session object at 0x000001DB387AEA50&gt;
+scope = AccessScope(user_id='6da61a49-f5e1-4f97-aaab-bd1c7e1cc3b3', tenant_id='tenant-a', role=&lt;Role.ANALYST: 'analyst'&gt;, permissions=frozenset({'read:asset', 'read:public'}), permission_version=1)
+event_ids = (UUID('67f527f8-d270-4b89-8016-f7dbc49e0d03'),), asset_ids = ()
+
+    @staticmethod
+    def _references(
+        session: Session,
+        scope: AccessScope,
+        event_ids: tuple[UUID, ...],
+        asset_ids: tuple[UUID, ...],
+        *,
+        lock_events: bool = True,
+    ) -&gt; tuple[tuple[EventReference, ...], tuple[AssetSnapshotReference, ...]]:
+        """Bundle defers event locks to the shared source/document/event authority fence."""
+        query = (
+            select(events)
+            .where(
+                events.c.event_id.in_(tuple(map(str, event_ids))),
+                visible_clause(scope, events),
+                events.c.status == "active",
+            )
+            .order_by(events.c.event_id)
+        )
+        if lock_events:
+            query = query.with_for_update(read=True)
+        rows = session.execute(query).mappings().all()
+        if {row["event_id"] for row in rows} != set(map(str, event_ids)):
+&gt;           raise CrossTenantAccessError("resource not found")
+E           ai_intel.domain.access.CrossTenantAccessError: resource not found
+
+backend\src\ai_intel\answering\conversation_context.py:282: CrossTenantAccessError</failure></testcase><testcase classname="reports.runs.recovery_r12_conversation_context_fix1_20261016.test_review_negative" name="test_pg_own_same_tenant_owner_update_is_rejected" time="1.663" /><testcase classname="reports.runs.recovery_r12_conversation_context_fix1_20261016.test_review_negative" name="test_pg_nonce_change_body_keeps_original_answer_count" time="1.536" /></testsuite></testsuites>

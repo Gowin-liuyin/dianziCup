@@ -1,0 +1,59 @@
+frontend/src/api/client.ts:78:export async function fetchJson(path: string, options: RequestInit = {}, signal?: AbortSignal, acceptedStatuses: number[] = [], requestTimeoutMilliseconds = 10_000): Promise<unknown> {
+frontend/src/api/client.ts:83:  if (signal?.aborted) controller.abort();
+frontend/src/api/client.ts:99:    if (controller.signal.aborted) throw new ApiProblem(0, timedOut ? "request_timeout" : "request_canceled", timedOut);
+frontend/src/api/client.ts:121:  return parseCurrentUser(await fetchJson("/v1/auth/me", {}, signal));
+frontend/src/api/client.ts:125:  const value = await fetchJson("/v1/auth/me", {}, signal);
+frontend/src/api/client.ts:132:  const value = await fetchJson("/v1/auth/csrf", {}, signal);
+frontend/src/api/client.ts:138:  const value = await fetchJson("/v1/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
+frontend/src/api/client.ts:145:  const value = await fetchJson("/v1/auth/logout", { method: "POST", headers: { "X-CSRF-Token": csrfToken } });
+frontend/src/api/client.ts:150:  const value = await fetchJson("/v1/health/live", {}, signal);
+frontend/src/api/client.ts:155:  const value = await fetchJson("/v1/health/ready", {}, signal, [503]);
+frontend/src/App.tsx:11:import { SourceWorkspace } from "./features/sources/source-workspace";
+frontend/src/App.tsx:131:    if (generation !== healthGeneration.current || signal?.aborted) return;
+frontend/src/App.tsx:153:  const sessionScopeKey = state.kind === "authenticated" ? JSON.stringify([state.user.user_id, state.user.tenant_id, state.user.permission_version, state.user.data_mode, sessionGeneration]) : state.kind;
+frontend/src/App.tsx:194:          {page === "events" && <EventWorkspace key={sessionScopeKey} />}
+frontend/src/App.tsx:195:          {page === "sources" && <SourceWorkspace key={sessionScopeKey} />}
+frontend/src/App.tsx:196:          {page === "documents" && <DocumentWorkspace key={sessionScopeKey} />}
+frontend/src/App.tsx:197:          {page === "questions" && <QuestionWorkspace key={`${sessionScopeKey}:${hash}`} eventId={questionRoute?.eventId} />}
+frontend/src/app/auth-session.tsx:17:  isSessionCurrent: (expectedGeneration: number) => boolean;
+frontend/src/app/auth-session.tsx:39:      if (generation !== requestGeneration.current || signal?.aborted) return;
+frontend/src/app/auth-session.tsx:43:      if (generation !== requestGeneration.current || signal?.aborted) return;
+frontend/src/app/auth-session.tsx:98:  const isSessionCurrent = useCallback((expectedGeneration: number) => requestGeneration.current === expectedGeneration && csrfToken.current !== null, []);
+frontend/src/app/auth-session.tsx:101:    if (!isSessionCurrent(expectedGeneration)) return;
+frontend/src/app/auth-session.tsx:108:  }, [isSessionCurrent]);
+frontend/src/app/auth-session.tsx:110:  return <AuthContext.Provider value={{ state, error, actionPending, logoutUnconfirmed, sessionGeneration: requestGeneration.current, refreshSession, login, logout, expireSession, isSessionCurrent }}>{children}</AuthContext.Provider>;
+frontend/src/api/source-client.ts:1:import { ApiProblem, fetchJson, getCsrfToken } from "./client";
+frontend/src/api/source-client.ts:2:import { parseSourceJob, validateJobId, validateSourceSubmission, type SourceJob, type SourceSubmission } from "./source-contracts";
+frontend/src/api/source-client.ts:5:export async function collectSourcePage(submission: SourceSubmission, isCurrent: () => boolean, signal?: AbortSignal): Promise<SourceJob> {
+frontend/src/api/source-client.ts:6:  validateSourceSubmission(submission);
+frontend/src/api/source-client.ts:7:  const path = `/v1/sources/${submission.sourceKind}/collect`;
+frontend/src/api/source-client.ts:10:  if (signal?.aborted || !isCurrent()) throw new ApiProblem(0, "request_canceled", false);
+frontend/src/api/source-client.ts:12:  if (signal?.aborted || !isCurrent()) throw new ApiProblem(0, "request_canceled", false);
+frontend/src/api/source-client.ts:13:  const value = await fetchJson(path, { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": token, "Idempotency-Key": idempotencyKey }, body }, signal);
+frontend/src/api/source-client.ts:19:  const value = parseSourceJob(await fetchJson(`/v1/jobs/${id}`, {}, signal));
+frontend/src/api/source-contracts.ts:3:export const sourceKinds = ["nvd_ollama", "vllm_vendor", "osv_ollama", "avid_community", "ollama_releases", "trailofbits_blog", "arxiv_security", "nist_ai_rmf", "cac_generative_ai"] as const;
+frontend/src/api/source-contracts.ts:4:export type SourceKind = typeof sourceKinds[number];
+frontend/src/api/source-contracts.ts:5:export function isSourceKind(value: string): value is SourceKind { return sourceKinds.some((key) => key === value); }
+frontend/src/api/source-contracts.ts:8:export interface SourceSubmission { sourceKind: SourceKind; body: SourceCollectionRequest; idempotencyKey: string; }
+frontend/src/api/source-contracts.ts:30:export function validateSourceSubmission(value: SourceSubmission): void {
+frontend/src/api/source-contracts.ts:31:  if (!isSourceKind(value.sourceKind)) throw new ApiProblem(422, "validation_error", false);
+frontend/src/features/sources/source-workspace.tsx:3:import { collectSourcePage, getSourceJob } from "../../api/source-client";
+frontend/src/features/sources/source-workspace.tsx:4:import { isSourceKind, sourceKinds, validateSourceSubmission, type SourceJob, type SourceJobStatus, type SourceKind, type SourceSubmission } from "../../api/source-contracts";
+frontend/src/features/sources/source-workspace.tsx:44:function SourceAdminWorkspace() {
+frontend/src/features/sources/source-workspace.tsx:45:  const { sessionGeneration, isSessionCurrent, expireSession, state } = useAuthSession();
+frontend/src/features/sources/source-workspace.tsx:46:  const [sourceKind, setSourceKind] = useState<SourceKind>("nvd_ollama");
+frontend/src/features/sources/source-workspace.tsx:69:  async function runRequest(kind: "submit" | "lookup", frozen?: SourceSubmission) {
+frontend/src/features/sources/source-workspace.tsx:70:    if (inFlight.current || !isSessionCurrent(sessionGeneration)) return;
+frontend/src/features/sources/source-workspace.tsx:78:    const current = () => mounted.current && !controller.signal.aborted && isSessionCurrent(sessionGeneration);
+frontend/src/features/sources/source-workspace.tsx:80:      const result = kind === "submit" && frozen !== undefined ? await collectSourcePage(frozen, current, controller.signal) : await getSourceJob(jobId.trim(), controller.signal);
+frontend/src/features/sources/source-workspace.tsx:103:    const frozen: SourceSubmission = { sourceKind, body: { window_end: windowEnd, stream_kind: streamKind, max_pages: Number(maxPages) }, idempotencyKey: `source-ui-${crypto.randomUUID()}` };
+frontend/src/features/sources/source-workspace.tsx:104:    try { validateSourceSubmission(frozen); } catch (error: unknown) { setFailure({ error: publicProblem(error), submit: true }); return; }
+frontend/src/features/sources/source-workspace.tsx:107:    void runRequest("submit", frozen);
+frontend/src/features/sources/source-workspace.tsx:128:      {Object.entries(sourceCategoryLabels).map(([category, label]) => <section className="source-category-group" key={category}><h3>{label}</h3>{sourceKinds.filter((kind) => sourceCatalog[kind].category === category).map((kind) => <article key={kind} className={`source-catalog-row ${sourceKind === kind ? "source-selected" : ""}`}><div className="source-catalog-title"><strong>{sourceCatalog[kind].name}</strong><span className="source-verification">未验证</span></div><p>{sourceCatalog[kind].scope}</p><div className="source-catalog-action"><code>{kind}</code><button type="button" className="button secondary" disabled={locked} aria-pressed={sourceKind === kind} onClick={() => selectSource(kind, true)}>选择 {sourceCatalog[kind].name}</button></div></article>)}</section>)}
+frontend/src/features/sources/source-workspace.tsx:130:      <div className="source-selection-note"><strong>{sourceCatalog[sourceKind].name}</strong><p>{sourceCatalog[sourceKind].boundary}</p></div>
+frontend/src/features/sources/source-workspace.tsx:131:      <form className="source-form" onSubmit={submitCollection} aria-label="固定来源采集"><label htmlFor="source-kind">固定来源<select ref={sourceSelect} id="source-kind" disabled={locked} value={sourceKind} onChange={(event) => { if (isSourceKind(event.target.value)) selectSource(event.target.value); }}>{sourceKinds.map((kind) => <option value={kind} key={kind}>{sourceCatalog[kind].name}</option>)}</select></label><div className="source-form-row"><label htmlFor="source-stream">采集流<select id="source-stream" disabled={locked} value={streamKind} onChange={(event) => { if (event.target.value === "live" || event.target.value === "backfill") setStreamKind(event.target.value); }}><option value="live">实时流 / live</option><option value="backfill">回补流 / backfill</option></select></label><label htmlFor="source-max-pages">本轮页上限<input id="source-max-pages" type="number" min="1" max="20" step="1" disabled={locked} value={maxPages} onChange={(event) => setMaxPages(event.target.value)} required /></label></div><label htmlFor="source-window">观察窗口截止（含时区）<input id="source-window" value={windowEnd} onChange={(event) => setWindowEnd(event.target.value)} disabled={locked} required /></label><p className="source-boundary">窗口是本轮观察标识，不保证上游快照或完整时间过滤。202只表示PG受理，不表示来源采完。</p><button className="button" type="submit" disabled={locked}>{pending === "submit" ? "正在提交…" : "提交本轮采集"}</button></form>
+frontend/src/features/sources/source-workspace.tsx:132:      {submission !== null && <div className="source-frozen-request"><h3>{failure !== null ? "本轮状态未确认" : accepted ? "本轮已受理" : "本轮请求已冻结"}</h3><dl className="source-metadata"><dt>来源与流</dt><dd>{sourceCatalog[submission.sourceKind].name} / {submission.body.stream_kind}</dd><dt>固定窗口</dt><dd><SourceTime value={submission.body.window_end} /></dd><dt>页上限</dt><dd>{submission.body.max_pages}</dd><dt>幂等请求键</dt><dd><code>{submission.idempotencyKey}</code></dd></dl><p>重试保留相同来源、请求体、窗口和请求键。开始新一轮后，首次提交会生成新键；上一轮结果未知时请先原样重试。</p><div className="source-actions">{!accepted && <button className="button secondary" disabled={pending !== null} onClick={() => void runRequest("submit", submission)}>原样重试本轮</button>}<button className="button secondary" disabled={pending !== null} onClick={newRound}>开始新一轮</button></div></div>}
+frontend/src/features/sources/source-workspace.tsx:134:    <section className="panel source-query-panel" aria-labelledby="source-query-title"><div className="panel-heading"><div><p className="eyebrow">JOB / PG单页任务</p><h2 id="source-query-title">任务状态查询</h2></div><span className="small-note">手动刷新</span></div><form className="source-form" aria-label="查询单页任务" onSubmit={(event) => { event.preventDefault(); void runRequest("lookup"); }}><label htmlFor="source-job-id">任务标识<input id="source-job-id" placeholder="输入已保存的job UUID" value={jobId} onChange={(event) => setJobId(event.target.value)} disabled={pending !== null} required /></label><button className="button secondary" type="submit" disabled={pending !== null || !jobId.trim()}>{pending === "lookup" ? "正在查询…" : "查询 / 刷新任务"}</button><p className="source-boundary">保存任务标识可在返回本页后重新查询。此处没有任务历史、全来源计数或自动轮询。</p></form>
+frontend/src/features/sources/source-workspace.tsx:137:      {job !== null && <SourceJobDetails job={job} sourceName={submission !== null && job.job_id === acceptedJobId ? sourceCatalog[submission.sourceKind].name : null} checkedAt={checkedAt} />}
+frontend/src/features/sources/source-workspace.tsx:144:export function SourceWorkspace() {
+frontend/src/features/sources/source-workspace.tsx:148:  return <SourceAdminWorkspace key={`${state.user.user_id}-${state.user.permission_version}-${sessionGeneration}`} />;

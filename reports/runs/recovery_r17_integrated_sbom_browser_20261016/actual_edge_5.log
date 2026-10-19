@@ -1,0 +1,58 @@
+
+Running 6 tests using 1 worker
+
+  ok 1 e2e\r17_integrated_sbom_api.spec.ts:82:1 › R17 actual API 01: empty catalog, raw POST, typed sidecar and declaration navigation (6.1s)
+  x  2 e2e\r17_integrated_sbom_api.spec.ts:112:1 › R17 actual API 02: SPDX relations and public link keep private URI hidden (598ms)
+  ok 3 e2e\r17_integrated_sbom_api.spec.ts:128:1 › R17 actual API 03: three immutable snapshots, unknowns and stale pointer revalidation (3.9s)
+  ok 4 e2e\r17_integrated_sbom_api.spec.ts:158:1 › R17 actual API 04: database sidecar outage is partial 503 and recovers on retry (3.0s)
+  x  5 e2e\r17_integrated_sbom_api.spec.ts:177:1 › R17 actual API 05: real role and session revocation clear private DOM (1.0m)
+  ok 6 e2e\r17_integrated_sbom_api.spec.ts:203:1 › R17 actual API 06: 390px keyboard, declaration focus and reduced motion (2.3s)
+
+
+  1) e2e\r17_integrated_sbom_api.spec.ts:112:1 › R17 actual API 02: SPDX relations and public link keep private URI hidden 
+
+    Error: expect(received).not.toContain(expected) // indexOf
+
+    Expected substring: not "1e0538d6-639e-54f2-88f3-f4d9d9e30567"
+    Received string:        "{\"type\":\"urn:ai-intel:problem:not_found\",\"title\":\"not_found\",\"status\":404,\"detail\":\"requested resource is not available\",\"instance\":\"/v1/assets/07d41a5a-13c9-406a-abff-32738f48bb40/snapshots/1e0538d6-639e-54f2-88f3-f4d9d9e30567/sbom\",\"trace_id\":\"bb9b5f06-940c-4cfb-b1e1-9b3105b6a26b\",\"error\":{\"code\":\"not_found\",\"message\":\"requested resource is not available\",\"retryable\":false,\"details\":{}}}"
+
+      115 |   const foreign = await page.request.get(`/v1/assets/${firstCreated.assetId}/snapshots/${firstCreated.snapshotId}/sbom`);
+      116 |   expect(foreign.status()).toBe(404);
+    > 117 |   expect(await foreign.text()).not.toContain(firstCreated.snapshotId);
+          |                                    ^
+      118 |   await importThroughUi(page, spdxInput(), "spdx_json");
+      119 |   await expect(page.getByText("DESCRIBES", { exact: true })).toBeVisible();
+      120 |   await expect(page.getByText("pkg:pypi/synthetic-spdx@2.0", { exact: true })).toBeVisible();
+        at D:\wt\r17-integrated-sbom-browser\frontend\e2e\r17_integrated_sbom_api.spec.ts:117:36
+
+    Error Context: ..\reports\runs\recovery_r17_integrated_sbom_browser_20261016\actual_edge_5_artifacts\r17_integrated_sbom_api-R1-4b7bc-ink-keep-private-URI-hidden\error-context.md
+
+  2) e2e\r17_integrated_sbom_api.spec.ts:177:1 › R17 actual API 05: real role and session revocation clear private DOM 
+
+    Test timeout of 60000ms exceeded.
+
+    Error: page.waitForResponse: Test timeout of 60000ms exceeded.
+
+      179 |   await importThroughUi(page, cyclonedxInput(), "cyclonedx_json");
+      180 |   control("revoke-read", { username: actor(4).username });
+    > 181 |   const denied = page.waitForResponse((response) => new URL(response.url()).pathname === "/v1/assets");
+          |                       ^
+      182 |   await page.getByRole("button", { name: "刷新资产与快照", exact: true }).click();
+      183 |   expect((await denied).status()).toBe(403);
+      184 |   await expect(page.getByText("当前会话没有此项资产权限，请联系租户管理员。", { exact: true })).toBeVisible();
+        at D:\wt\r17-integrated-sbom-browser\frontend\e2e\r17_integrated_sbom_api.spec.ts:181:23
+
+    Error Context: ..\reports\runs\recovery_r17_integrated_sbom_browser_20261016\actual_edge_5_artifacts\r17_integrated_sbom_api-R1-640d3-evocation-clear-private-DOM\error-context.md
+
+  2 failed
+    e2e\r17_integrated_sbom_api.spec.ts:112:1 › R17 actual API 02: SPDX relations and public link keep private URI hidden 
+    e2e\r17_integrated_sbom_api.spec.ts:177:1 › R17 actual API 05: real role and session revocation clear private DOM 
+  4 passed (1.3m)
+[WebServer] (node:50600) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+(node:46496) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:44108) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:49368) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)

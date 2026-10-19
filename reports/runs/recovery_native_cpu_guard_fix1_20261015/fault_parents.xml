@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="2" time="1.710" timestamp="2026-10-15T21:41:24.921081+08:00" hostname="yin"><testcase classname="tests.unit.test_r20_native_cpu_guard" name="test_pdf_parent_rejects_result_missing_after_guard_hard_exit" time="0.611" /><testcase classname="tests.unit.test_r20_native_cpu_guard" name="test_semantic_parent_rejects_eof_after_guard_hard_exit" time="0.851"><failure message="NameError: name 'result' is not defined">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x00000247633415B0&gt;
+tmp_path = WindowsPath('D:/tmp/nativecpu-guard-fix1-20261015/pytest-temp-parents/test_semantic_parent_rejects_e0')
+
+    def test_semantic_parent_rejects_eof_after_guard_hard_exit(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -&gt; None:
+        if sys.platform != "win32":
+            return
+    
+        from ai_intel.infrastructure.models import semantic
+    
+        monkeypatch.setattr(semantic, "_semantic_worker", _hard_exit_guard_semantic_worker)
+        with pytest.raises(semantic.SemanticRuntimeError, match="exited without a result"):
+            semantic._run_worker(
+                semantic.LocalSemanticModels(tmp_path), semantic.E5_MODEL, "query", ("bounded",), None
+            )
+&gt;       assert b"UNBOUNDED_WORKER" not in result.stdout
+                                          ^^^^^^
+E       NameError: name 'result' is not defined
+
+tests\unit\test_r20_native_cpu_guard.py:226: NameError</failure></testcase></testsuite></testsuites>

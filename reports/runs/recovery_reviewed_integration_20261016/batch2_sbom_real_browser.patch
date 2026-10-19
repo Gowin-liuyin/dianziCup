@@ -1,0 +1,435 @@
+diff --git a/frontend/e2e/helpers/r17-sbom-inputs.ts b/frontend/e2e/helpers/r17-sbom-inputs.ts
+new file mode 100644
+index 00000000..dae97cac
+--- /dev/null
++++ b/frontend/e2e/helpers/r17-sbom-inputs.ts
+@@ -0,0 +1,28 @@
++/** Synthetic uploads exercise the real API without claiming real asset or source evidence. */
++export function cyclonedxInput(version: string | null = "1.0.0", dependency = true, componentCount = 2): Buffer {
++  return Buffer.from(" \n" + JSON.stringify({
++    bomFormat: "CycloneDX", specVersion: "1.6", version: 1,
++    components: [
++      { type: "library", name: "synthetic-root", "bom-ref": "root", purl: "pkg:npm/%40synthetic/root" + (version === null ? "" : `@${version}`), ...(version === null ? {} : { version }), hashes: [{ alg: "SHA-256", content: "a".repeat(64) }] },
++      { type: "library", name: "synthetic-child", "bom-ref": "child" },
++      ...Array.from({ length: componentCount - 2 }, (_, index) => ({ type: "library", name: `synthetic-extra-${index}`, "bom-ref": `extra-${index}` })),
++    ],
++    dependencies: [{ ref: "root", dependsOn: dependency ? ["child"] : [] }],
++    compositions: [{ aggregate: "unknown", assemblies: ["root"] }],
++    "file:///synthetic-private-location": "synthetic non-public payload",
++  }) + "\r\n", "utf8");
++}
++
++export function spdxInput(): Buffer {
++  return Buffer.from(JSON.stringify({
++    spdxVersion: "SPDX-2.3", SPDXID: "SPDXRef-DOCUMENT", name: "synthetic browser SPDX",
++    documentNamespace: "https://example.com/synthetic-browser", dataLicense: "CC0-1.0",
++    creationInfo: { created: "2026-10-16T00:00:00Z", creators: ["Tool: synthetic-browser"] },
++    packages: [{ SPDXID: "SPDXRef-A", name: "synthetic-spdx", versionInfo: "2.0", downloadLocation: "NOASSERTION", externalRefs: [{ referenceCategory: "PACKAGE-MANAGER", referenceType: "purl", referenceLocator: "pkg:pypi/synthetic-spdx@2.0" }] }],
++    relationships: [{ spdxElementId: "SPDXRef-DOCUMENT", relationshipType: "DESCRIBES", relatedSpdxElement: "SPDXRef-A" }],
++    externalDocumentRefs: [
++      { externalDocumentId: "DocumentRef-Public", spdxDocument: "https://example.com/synthetic.spdx.json", checksum: { algorithm: "SHA256", checksumValue: "b".repeat(64) } },
++      { externalDocumentId: "DocumentRef-Hidden", spdxDocument: "file:///synthetic-private-location", checksum: { algorithm: "SHA256", checksumValue: "c".repeat(64) } },
++    ],
++  }), "utf8");
++}
+diff --git a/frontend/e2e/helpers/r17_sbom_control.py b/frontend/e2e/helpers/r17_sbom_control.py
+new file mode 100644
+index 00000000..b9ed711e
+--- /dev/null
++++ b/frontend/e2e/helpers/r17_sbom_control.py
+@@ -0,0 +1,61 @@
++"""Finite actions against this browser run's owned synthetic PostgreSQL database."""
++
++import hashlib
++import json
++import os
++import sys
++import time
++from datetime import UTC, datetime
++
++from sqlalchemy import create_engine, select, text, update
++from sqlalchemy.engine import make_url
++from sqlalchemy.pool import NullPool
++
++from ai_intel.api.auth_state import auth_sessions
++from ai_intel.assets.inventory_models import asset_snapshots
++from ai_intel.knowledge.models import users
++
++
++def execute(action, payload):
++    configured = make_url(os.environ["TEST_DATABASE_URL"])
++    assert configured.database == "test_dianzi_r17_integrated_sbom_browser_20261016"
++    assert configured.host == "127.0.0.1" and configured.port == 25432
++    assert os.environ["DIANZI_TEST_RUN_ID"] == "r17_integrated_sbom_browser_20261016"
++    engine = create_engine(configured, hide_parameters=True, poolclass=NullPool, connect_args={"connect_timeout": 5, "options": "-c statement_timeout=5000 -c lock_timeout=3000"})
++    try:
++        with engine.begin() as connection:
++            if action == "verify-upload":
++                row = connection.execute(select(asset_snapshots).where(asset_snapshots.c.snapshot_id == payload["snapshot_id"])).mappings().one()
++                digest = hashlib.sha256(bytes(row["raw_input"])).hexdigest()
++                assert digest == payload["raw_sha256"]
++                return {"raw_sha256": digest, "snapshot_id": row["snapshot_id"], "snapshot_number": row["snapshot_number"], "migration": connection.scalar(text("SELECT version_num FROM alembic_version")), "public_schema": connection.scalar(text("SELECT current_schema()"))}
++            if action in {"revoke-read", "revoke-session"}:
++                actor = connection.execute(select(users).where(users.c.username == payload["username"])).mappings().one()
++                assert actor["username"].startswith("r17-synthetic-browser-")
++                if action == "revoke-read":
++                    connection.execute(update(users).where(users.c.user_id == actor["user_id"]).values(role="viewer"))
++                else:
++                    connection.execute(update(auth_sessions).where(auth_sessions.c.user_id == actor["user_id"]).values(revoked_at=datetime.now(UTC)))
++                return {"action": action, "actor_count": 1}
++            if action == "sidecar-unavailable":
++                connection.exec_driver_sql("ALTER TABLE asset_snapshot_sbom_sidecars RENAME TO r17_owned_unavailable_sbom_sidecars")
++                return {"action": action, "restoration": "required"}
++            if action == "sidecar-restore":
++                connection.exec_driver_sql("ALTER TABLE r17_owned_unavailable_sbom_sidecars RENAME TO asset_snapshot_sbom_sidecars")
++                return {"action": action, "restoration": "complete"}
++            if action == "sidecar-delay":
++                connection.exec_driver_sql("LOCK TABLE asset_snapshot_sbom_sidecars IN ACCESS EXCLUSIVE MODE")
++                print(json.dumps({"locked": True}), flush=True)
++                time.sleep(3)
++                return {"action": action, "restoration": "complete"}
++            raise ValueError("unsupported owned action")
++    finally:
++        engine.dispose()
++
++
++if __name__ == "__main__":
++    try:
++        print(json.dumps(execute(sys.argv[1], json.loads(sys.argv[2]))))
++    except Exception as failure:
++        print(json.dumps({"error_type": type(failure).__name__}), file=sys.stderr)
++        raise SystemExit(1) from None
+diff --git a/frontend/e2e/r17_integrated_sbom_api.spec.ts b/frontend/e2e/r17_integrated_sbom_api.spec.ts
+new file mode 100644
+index 00000000..fffdffe1
+--- /dev/null
++++ b/frontend/e2e/r17_integrated_sbom_api.spec.ts
+@@ -0,0 +1,248 @@
++import process from "node:process";
++import { createHash } from "node:crypto";
++import { execFileSync, spawn } from "node:child_process";
++import { writeFileSync } from "node:fs";
++import { expect, test, type Page, type TestInfo } from "@playwright/test";
++import { cyclonedxInput, spdxInput } from "./helpers/r17-sbom-inputs";
++
++const httpFlows = new WeakMap<Page, { path: string; method: string; status: number; observed_at: string }[]>();
++let firstCreated: { assetId: string; snapshotId: string } | null = null;
++test.beforeEach(async ({ page }) => {
++  const responses: { path: string; method: string; status: number; observed_at: string }[] = [];
++  httpFlows.set(page, responses);
++  page.on("response", (response) => {
++    const path = new URL(response.url()).pathname;
++    if (path.startsWith("/v1/")) responses.push({ path, method: response.request().method(), status: response.status(), observed_at: new Date().toISOString() });
++  });
++});
++
++function actor(index: number): { username: string; password: string } {
++  const accounts: unknown = JSON.parse(process.env.R17_BROWSER_ACCOUNTS ?? "null");
++  if (!Array.isArray(accounts)) throw new Error("isolated browser actors must be injected");
++  const account: unknown = accounts[index];
++  if (typeof account !== "object" || account === null || !("username" in account) || !("password" in account) || typeof account.username !== "string" || typeof account.password !== "string") throw new Error("isolated actor schema invalid");
++  return { username: account.username, password: account.password };
++}
++
++function control(action: string, payload: Record<string, string> = {}): unknown {
++  const output = execFileSync("D:/dianzi/backend/.venv/Scripts/python.exe", ["e2e/helpers/r17_sbom_control.py", action, JSON.stringify(payload)], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 10_000 });
++  return JSON.parse(output);
++}
++
++async function login(page: Page, index: number) {
++  const account = actor(index);
++  await page.goto("/#session");
++  await page.getByLabel("用户名", { exact: true }).fill(account.username);
++  await page.getByLabel("密码", { exact: true }).fill(account.password);
++  await page.getByRole("button", { name: "登录工作台", exact: true }).click();
++  await expect(page.getByRole("button", { name: "退出登录", exact: true })).toBeVisible();
++  await page.getByRole("link", { name: "资产自查", exact: true }).click();
++  await expect(page.getByText("合成 Fixture · 非真实资产", { exact: true })).toBeVisible();
++  const session = (await page.context().cookies()).find((cookie) => cookie.name === "ai_intel_session");
++  expect(session?.httpOnly).toBe(true);
++  expect(session?.sameSite).toBe("Strict");
++}
++
++async function record(page: Page, info: TestInfo, name: string) {
++  const screenshot = info.outputPath(name + ".png");
++  await page.screenshot({ path: screenshot, fullPage: true });
++  await page.screenshot({ path: info.outputPath(name + "-viewport.png") });
++  writeFileSync(info.outputPath(name + ".json"), JSON.stringify({ name, observed_at: new Date().toISOString(), url: page.url(), viewport: page.viewportSize(), screenshot, data_mode: "fixture", actual_api: true }, null, 2));
++}
++
++async function importThroughUi(page: Page, raw: Buffer, format: "cyclonedx_json" | "spdx_json", append = false) {
++  if ((await page.locator(".asset-import-panel").getAttribute("open")) === null) await page.locator(".asset-import-panel summary").click();
++  await page.getByLabel("清单格式", { exact: true }).selectOption(format);
++  await page.getByLabel("选择本地清单", { exact: true }).setInputFiles({ name: "synthetic-browser.json", mimeType: "application/json", buffer: raw });
++  if (append) await page.getByLabel("追加到当前所选资产（名称保持一致）", { exact: true }).check();
++  else await page.getByLabel("资产名称", { exact: true }).fill("Synthetic browser · 授权测试清单");
++  await page.getByLabel("输入来源版本", { exact: true }).fill("synthetic-browser-r17");
++  await page.getByLabel("实际观察时间（含时区）", { exact: true }).fill("2026-10-16T08:00:00+08:00");
++  const responsePromise = page.waitForResponse((response) => new URL(response.url()).pathname === "/v1/asset-imports" && response.request().method() === "POST");
++  await page.getByRole("button", { name: "提交授权清单", exact: true }).click();
++  const response = await responsePromise;
++  expect(response.status()).toBe(201);
++  const capturedBody = response.request().postDataBuffer();
++  if (capturedBody !== null) expect(capturedBody).toEqual(raw);
++  const created: unknown = await response.json();
++  if (typeof created !== "object" || created === null || !("asset_id" in created) || typeof created.asset_id !== "string" || !("snapshot" in created) || typeof created.snapshot !== "object" || created.snapshot === null || !("snapshot_id" in created.snapshot) || typeof created.snapshot.snapshot_id !== "string") throw new Error("actual import response invalid");
++  await expect(page.getByRole("heading", { name: "Synthetic browser · 授权测试清单", exact: true })).toBeVisible();
++  await expect(page.getByText("r11-sbom-adapter-1", { exact: true })).toBeVisible();
++  const rawSha = createHash("sha256").update(raw).digest("hex");
++  const verified = control("verify-upload", { snapshot_id: created.snapshot.snapshot_id, raw_sha256: rawSha });
++  expect(verified).toMatchObject({ raw_sha256: rawSha, snapshot_id: created.snapshot.snapshot_id, migration: "0022_sbom_sidecars", public_schema: "public" });
++  await expect(page.getByText(rawSha, { exact: true })).toBeVisible();
++  await expect(page.getByRole("button", { name: "刷新资产与快照", exact: true })).toBeEnabled();
++  writeFileSync(test.info().outputPath(`pg-upload-${created.snapshot.snapshot_id}.json`), JSON.stringify({ verified, expected_raw_sha256: rawSha, manifest_format: format, wire_body_available: capturedBody !== null }, null, 2));
++  writeFileSync(test.info().outputPath(`synthetic-upload-${created.snapshot.snapshot_id}.json`), raw);
++  return { assetId: created.asset_id, snapshotId: created.snapshot.snapshot_id, rawSha };
++}
++
++test.afterEach(async ({ page }, info) => {
++  await page.getByRole("link", { name: "会话与权限", exact: true }).click();
++  const logout = page.getByRole("button", { name: "退出登录", exact: true });
++  if (await logout.isVisible()) await logout.click();
++  writeFileSync(info.outputPath("actual-http-flow.json"), JSON.stringify(httpFlows.get(page), null, 2));
++});
++
++test("R17 actual API 01: empty catalog, raw POST, typed sidecar and declaration navigation", async ({ page }, info) => {
++  await login(page, 0);
++  await expect(page.getByRole("heading", { name: "尚无可见资产清单", exact: true })).toBeVisible();
++  await record(page, info, "empty-catalog");
++  const created = await importThroughUi(page, cyclonedxInput(), "cyclonedx_json");
++  firstCreated = created;
++  await expect(page.getByText("pkg:npm/%40synthetic/root@1.0.0", { exact: true })).toBeVisible();
++  await expect(page.getByText(created.rawSha, { exact: true })).toBeVisible();
++  await expect(page.locator(".sbom-source-heading").filter({ hasText: "synthetic-root" })).toBeVisible();
++  const navigation = page.getByRole("navigation", { name: "当前固定 SBOM 的声明导航" });
++  await expect(navigation.getByRole("button")).toHaveCount(6);
++  await navigation.getByRole("button", { name: "依赖与标准关系 1", exact: true }).focus();
++  await page.keyboard.press("Enter");
++  await expect(page.locator(`[id='sbom-${created.snapshotId}-relationships']`)).toBeFocused();
++  await expect(page.getByRole("table", { name: "SBOM 原始关系声明" }).getByText("dependsOn", { exact: true })).toBeVisible();
++  await expect(page.getByText("file:///synthetic-private-location", { exact: true })).toHaveCount(0);
++  await expect(page.locator(".sbom-panel").getByText(/redacted-field:/)).toHaveCount(2);
++  await expect(page.locator(".sbom-panel").getByText(/redacted-field:/).first()).toBeVisible();
++  const delay = spawn("D:/dianzi/backend/.venv/Scripts/python.exe", ["e2e/helpers/r17_sbom_control.py", "sidecar-delay", "{}"], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
++  const ended = new Promise<number | null>((resolve) => delay.once("exit", resolve));
++  await new Promise<void>((resolve, reject) => { delay.stdout.once("data", () => resolve()); delay.once("error", reject); });
++  await page.reload();
++  await expect(page.getByText("正在读取固定快照 SBOM 声明…", { exact: true })).toBeVisible();
++  await record(page, info, "actual-loading");
++  expect(await ended).toBe(0);
++  await expect(page.getByText(created.rawSha, { exact: true })).toBeVisible();
++  expect(await page.evaluate(() => localStorage.length + sessionStorage.length)).toBe(0);
++  await record(page, info, "cdx-declarations-desktop");
++});
++
++test("R17 actual API 02: SPDX relations and public link keep private URI hidden", async ({ page }, info) => {
++  await login(page, 1);
++  if (firstCreated === null) throw new Error("first synthetic tenant asset required for cross-tenant proof");
++  const foreign = await page.request.get(`/v1/assets/${firstCreated.assetId}/snapshots/${firstCreated.snapshotId}/sbom`);
++  expect(foreign.status()).toBe(404);
++  const foreignBody: unknown = await foreign.json();
++  expect(foreignBody).not.toHaveProperty("component_sources");
++  expect(foreignBody).not.toHaveProperty("tenant_id");
++  expect(JSON.stringify(foreignBody)).not.toContain("Synthetic browser");
++  writeFileSync(info.outputPath("actual-cross-tenant-rejection.json"), JSON.stringify({ status: foreign.status(), body: foreignBody }, null, 2));
++  await importThroughUi(page, spdxInput(), "spdx_json");
++  await expect(page.getByText("DESCRIBES", { exact: true })).toBeVisible();
++  await expect(page.getByText("pkg:pypi/synthetic-spdx@2.0", { exact: true })).toBeVisible();
++  await expect(page.getByRole("link", { name: "打开服务器提供的公开文档 ↗", exact: true })).toHaveAttribute("href", "https://example.com/synthetic.spdx.json");
++  await expect(page.getByText("原 URI 已隐藏 · 不恢复或点击不安全定位", { exact: true })).toBeVisible();
++  await expect(page.locator("a[href^='file:']")).toHaveCount(0);
++  await expect(page.getByText("file:///synthetic-private-location", { exact: true })).toHaveCount(0);
++  await record(page, info, "spdx-privacy");
++});
++
++test("R17 actual API 03: three immutable snapshots, unknowns and stale pointer revalidation", async ({ page }, info) => {
++  await login(page, 2);
++  const first = await importThroughUi(page, cyclonedxInput("1.0.0", false), "cyclonedx_json");
++  const me = await page.request.get("/v1/auth/me");
++  const identity: unknown = await me.json();
++  if (typeof identity !== "object" || identity === null || !("csrf_token" in identity) || typeof identity.csrf_token !== "string") throw new Error("actual CSRF identity missing");
++  const conflictingRaw = Buffer.from(cyclonedxInput("2.0.0", true).toString("utf8").replace("root@2.0.0", "root@1.0.0"));
++  const rejected = await page.request.post(`/v1/asset-imports?${new URLSearchParams({ asset_id: first.assetId, manifest_format: "cyclonedx_json", display_name: "Synthetic browser · 授权测试清单", source_version: "synthetic-browser-r17", observed_at: "2026-10-16T08:00:00+08:00" })}`, { data: conflictingRaw, headers: { Origin: new URL(page.url()).origin, "Content-Type": "application/json", "X-CSRF-Token": identity.csrf_token, "Idempotency-Key": "synthetic-conflicting-version" } });
++  expect(rejected.status()).toBe(422);
++  const second = await importThroughUi(page, cyclonedxInput("2.0.0", true), "cyclonedx_json", true);
++  const third = await importThroughUi(page, cyclonedxInput(null, false), "cyclonedx_json", true);
++  expect(new Set([first.snapshotId, second.snapshotId, third.snapshotId]).size).toBe(3);
++  await expect(page.getByRole("heading", { name: "快照 #3", exact: true })).toBeVisible();
++  await expect(page.getByText("版本未知", { exact: true }).first()).toBeVisible();
++  await expect(page.getByText("未知 · 当前响应未提供", { exact: true })).toBeVisible();
++  await page.getByRole("button", { name: /查看快照 #1 · 历史/ }).click();
++  await expect(page.getByText(first.rawSha, { exact: true })).toBeVisible();
++  await expect(page.getByText(/正在查看历史快照/)).toBeVisible();
++  await expect(page.getByRole("table", { name: "SBOM 原始关系声明" })).toHaveCount(0);
++  await record(page, info, "fixed-history");
++  await page.getByRole("button", { name: "查看当前快照", exact: true }).click();
++  await page.reload();
++  await expect(page.getByText(third.rawSha, { exact: true })).toBeVisible();
++  const fourthRaw = cyclonedxInput("3.0.0", true);
++  const fourth = await page.request.post(`/v1/asset-imports?${new URLSearchParams({ asset_id: first.assetId, manifest_format: "cyclonedx_json", display_name: "Synthetic browser · 授权测试清单", source_version: "synthetic-browser-r17", observed_at: "2026-10-16T08:00:00+08:00" })}`, { data: fourthRaw, headers: { Origin: new URL(page.url()).origin, "Content-Type": "application/json", "X-CSRF-Token": identity.csrf_token, "Idempotency-Key": "synthetic-stale-pointer" } });
++  expect(fourth.status()).toBe(201);
++  await page.getByRole("button", { name: "刷新历史", exact: true }).click();
++  await expect(page.getByRole("button", { name: /查看快照 #4 · 历史/ })).toBeVisible();
++  await expect(page.getByText(/历史页包含较新快照，当前指针需要复核/)).toBeVisible();
++  await expect(page.getByText("REVALIDATE / 当前指针待复核", { exact: true })).toBeVisible();
++  await record(page, info, "actual-stale-current-pointer");
++  await page.getByRole("button", { name: "刷新资产与快照", exact: true }).click();
++  await expect(page.getByRole("heading", { name: "快照 #4", exact: true })).toBeVisible();
++  await expect(page.getByText(createHash("sha256").update(fourthRaw).digest("hex"), { exact: true })).toBeVisible();
++  await expect(page.getByText(/历史页包含较新快照，当前指针需要复核/)).toHaveCount(0);
++  await page.getByRole("button", { name: /查看快照 #2 · 历史/ }).click();
++  await expect(page.getByText(second.rawSha, { exact: true })).toBeVisible();
++  await expect(page.getByText("dependsOn", { exact: true })).toBeVisible();
++  await expect(page.getByRole("button", { name: "导出证据包 / OpenVEX · 未就绪", exact: true })).toBeDisabled();
++  await expect(page.getByRole("button", { name: "查询授权外部观察 · 未就绪", exact: true })).toBeDisabled();
++});
++
++test("R17 actual API 04: database sidecar outage is partial 503 and recovers on retry", async ({ page }, info) => {
++  await login(page, 3);
++  const created = await importThroughUi(page, cyclonedxInput(), "cyclonedx_json");
++  control("sidecar-unavailable");
++  try {
++    const response = page.waitForResponse((value) => new URL(value.url()).pathname.endsWith("/sbom"));
++    await page.reload();
++    expect((await response).status()).toBe(503);
++    await expect(page.getByRole("heading", { name: "快照 #1", exact: true })).toBeVisible();
++    await expect(page.getByRole("table", { name: "资产组件声明" })).toBeVisible();
++    await expect(page.getByRole("button", { name: "重试固定 SBOM 声明", exact: true })).toBeVisible();
++    await expect(page.getByText(created.rawSha, { exact: true })).toHaveCount(0);
++    await record(page, info, "actual-503-partial");
++  } finally { control("sidecar-restore"); }
++  await page.getByRole("button", { name: "重试固定 SBOM 声明", exact: true }).click();
++  await expect(page.getByText(created.rawSha, { exact: true })).toBeVisible();
++  await record(page, info, "actual-503-recovery");
++});
++
++test("R17 actual API 05: real role and session revocation clear private DOM", async ({ page }, info) => {
++  await login(page, 4);
++  await importThroughUi(page, cyclonedxInput(), "cyclonedx_json");
++  control("revoke-read", { username: actor(4).username });
++  const denied = page.waitForResponse((response) => response.status() === 403 && new URL(response.url()).pathname.startsWith("/v1/assets"));
++  await page.getByRole("button", { name: "刷新资产与快照", exact: true }).click();
++  expect((await denied).status()).toBe(403);
++  await expect(page.getByText("当前会话没有此项资产权限，请联系租户管理员。", { exact: true })).toBeVisible();
++  await expect(page.getByRole("heading", { name: "当前授权资产", exact: true })).toHaveCount(0);
++  await expect(page.getByRole("heading", { name: "快照历史", exact: true })).toHaveCount(0);
++  await expect(page.getByLabel("选择本地清单", { exact: true })).toHaveCount(0);
++  await record(page, info, "actual-403-revocation");
++  await page.getByRole("link", { name: "会话与权限", exact: true }).click();
++  await page.getByRole("button", { name: "退出登录", exact: true }).click();
++  await login(page, 5);
++  await importThroughUi(page, cyclonedxInput(), "cyclonedx_json");
++  control("revoke-session", { username: actor(5).username });
++  const expired = page.waitForResponse((response) => response.status() === 401 && new URL(response.url()).pathname.startsWith("/v1/assets"));
++  await page.getByRole("button", { name: "刷新资产与快照", exact: true }).click();
++  expect((await expired).status()).toBe(401);
++  await expect(page.getByText("会话已失效，私有资产已清除", { exact: true })).toBeVisible();
++  await expect(page.getByLabel("选择本地清单", { exact: true })).toHaveCount(0);
++  expect(await page.evaluate(() => localStorage.length + sessionStorage.length)).toBe(0);
++  await record(page, info, "actual-401-revocation");
++});
++
++test("R17 actual API 06: 390px keyboard, declaration focus and reduced motion", async ({ page }, info) => {
++  await login(page, 6);
++  await importThroughUi(page, cyclonedxInput("1.0.0", true, 25), "cyclonedx_json");
++  await page.setViewportSize({ width: 390, height: 844 });
++  await page.emulateMedia({ reducedMotion: "reduce" });
++  const target = page.getByRole("navigation", { name: "当前固定 SBOM 的声明导航" }).getByRole("button", { name: "组件来源 25", exact: true });
++  await target.focus();
++  await page.keyboard.press("Enter");
++  await expect(page.locator(".sbom-declaration-section").first()).toBeFocused();
++  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
++  expect(await page.locator(".ambient-topology").evaluate((element) => getComputedStyle(element).animationName)).toBe("none");
++  const components = page.getByRole("table", { name: "资产组件声明" });
++  await expect(components.locator("tbody tr")).toHaveCount(20);
++  await page.getByRole("button", { name: "下一页组件", exact: true }).focus();
++  await page.keyboard.press("Enter");
++  await expect(components.locator("tbody tr")).toHaveCount(5);
++  await record(page, info, "actual-mobile-390");
++  await page.setViewportSize({ width: 1366, height: 900 });
++  await page.emulateMedia({ reducedMotion: "no-preference" });
++  const transform = await page.locator(".ambient-topology").evaluate((element) => getComputedStyle(element).transform);
++  await record(page, info, "ambient-frame-a");
++  await expect.poll(() => page.locator(".ambient-topology").evaluate((element) => getComputedStyle(element).transform)).not.toBe(transform);
++  await record(page, info, "ambient-frame-b");
++});
+diff --git a/frontend/src/features/assets/assets.css b/frontend/src/features/assets/assets.css
+index 2e481e0c..bf69d351 100644
+--- a/frontend/src/features/assets/assets.css
++++ b/frontend/src/features/assets/assets.css
+@@ -96,7 +96,14 @@
+ .sbom-panel { border-top: 2px solid var(--line); padding: 20px 0; min-width: 0; }
+ .sbom-panel > .eyebrow { margin: 0 0 8px; }
+ .sbom-panel code { overflow-wrap: anywhere; }
++.sbom-section-nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0; }
++.sbom-section-nav button { display: inline-flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px 10px; background: var(--field); color: var(--ink); border: 1px solid #405658; border-radius: 0; font-size: 12px; }
++.sbom-section-nav button:hover { border-color: var(--accent); background: var(--hover); }
++.sbom-declaration-count { color: var(--accent); font: 12px var(--mono); }
++.sbom-source-heading { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+ .sbom-declaration-section { border-top: 1px solid var(--line); padding: 18px 0; font-size: 13px; }
++.sbom-declaration-section { scroll-margin-top: 20px; }
++.sbom-declaration-section:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+ .sbom-declaration-section table { table-layout: fixed; min-width: 540px; }
+ .sbom-declaration-section :is(td, th) { overflow-wrap: anywhere; vertical-align: top; }
+ .sbom-row-list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 0; }
+diff --git a/frontend/src/features/assets/sbom-detail.tsx b/frontend/src/features/assets/sbom-detail.tsx
+index 30cf5d3c..77045f9d 100644
+--- a/frontend/src/features/assets/sbom-detail.tsx
++++ b/frontend/src/features/assets/sbom-detail.tsx
+@@ -14,22 +14,38 @@ function ReferenceList({ title, values }: { title: string; values: string[] }) {
+     {values.length > 20 && <div className="asset-pagination"><button className="button secondary" disabled={page === 0} onClick={() => setPage(page - 1)}>上一页 {title} 引用</button><span className="small-note">引用页 {page + 1} / {Math.ceil(values.length / 20)}</span><button className="button secondary" disabled={(page + 1) * 20 >= values.length} onClick={() => setPage(page + 1)}>下一页 {title} 引用</button></div>}
+   </div>;
+ }
+-function DeclarationRows({ items, title, children }: { items: number; title: string; children: (start: number, end: number) => ReactNode }) {
++function DeclarationRows({ items, title, sectionId, children }: { items: number; title: string; sectionId: string; children: (start: number, end: number) => ReactNode }) {
+   const [page, setPage] = useState(0);
+-  return <section className="sbom-declaration-section"><div className="asset-section-heading"><h4>{title}</h4><span className="small-note">{items} 项 · 每页 20 项</span></div>
++  return <section id={sectionId} tabIndex={-1} className="sbom-declaration-section"><div className="asset-section-heading"><h4>{title}</h4><span className="small-note">{items} 项 · 每页 20 项</span></div>
+     {items === 0 ? <p className="asset-unknown">该文档未提供这类声明；不能据此排除依赖或风险。</p> : children(page * 20, (page + 1) * 20)}
+     {items > 20 && <div className="asset-pagination"><button className="button secondary" disabled={page === 0} onClick={() => setPage(page - 1)}>上一页{title}</button><span className="small-note">页 {page + 1} / {Math.ceil(items / 20)}</span><button className="button secondary" disabled={(page + 1) * 20 >= items} onClick={() => setPage(page + 1)}>下一页{title}</button></div>}
+   </section>;
+ }
+-function SbomView({ sbom }: { sbom: SnapshotSbom }) {
++function SbomView({ sbom, snapshot }: { sbom: SnapshotSbom; snapshot: AssetSnapshot }) {
++  const componentNames = new Map(snapshot.components.map((component) => [component.component_id, component.display_name ?? component.package_name]));
++  const sections = [
++    { key: "components", title: "组件来源", items: sbom.component_sources.length },
++    { key: "relationships", title: "依赖与标准关系", items: sbom.dependency_edges.length },
++    { key: "completeness", title: "文档完整性声明", items: sbom.completeness_declarations.length },
++    { key: "documents", title: "外部文档声明", items: sbom.external_documents.length },
++    { key: "unmapped", title: "未映射字段位置", items: sbom.unmapped_field_locators.length },
++    { key: "redactions", title: "隐藏位置说明", items: sbom.redactions.length },
++  ];
++  const sectionId = (key: string) => `sbom-${sbom.snapshot_id}-${key}`;
++  function openSection(key: string) {
++    const section = document.getElementById(sectionId(key));
++    section?.focus({ preventScroll: true });
++    section?.scrollIntoView({ behavior: "instant", block: "start" });
++  }
+   return <>
++    <nav className="sbom-section-nav" aria-label="当前固定 SBOM 的声明导航">{sections.map((section) => <button type="button" key={section.key} aria-controls={sectionId(section.key)} onClick={() => openSection(section.key)}><span>{section.title}</span><span className="sbom-declaration-count">{section.items}</span></button>)}</nav>
+     <dl className="asset-metadata"><dt>来源格式 / 规范版本</dt><dd><code>{sbom.source_format} / {sbom.spec_version}</code></dd><dt>适配器版本</dt><dd><code>{sbom.adapter_version}</code></dd><dt>原文摘要</dt><dd><code>{sbom.raw_sha256}</code></dd><dt>组合声明摘要</dt><dd><code>{sbom.combined_semantic_sha256}</code></dd><dt>展示限制</dt><dd>{sbom.redactions.length} 个位置已隐藏；未恢复原 URI、路径或凭据。</dd></dl>
+-    <DeclarationRows items={sbom.component_sources.length} title="组件来源">{(start, end) => <ul className="sbom-row-list">{sbom.component_sources.slice(start, end).map((source) => <li key={source.component_id}><strong>{source.component_type ?? "组件类型未知"}</strong><Ref value={source.source_ref ?? "来源引用未声明"} /><code className="asset-locator">{source.component_id} · {source.source_field_locator}</code><details><summary>字段来源与校验摘要</summary><dl className="asset-component-identities">{source.field_sources.map((field, index) => <div key={index}><dt>{field.field_name}</dt><dd><code>{field.source_field_locator}</code></dd></div>)}</dl>{source.checksums.map((checksum, index) => <p key={index}><code>{checksum.algorithm}: {checksum.checksum_value}</code></p>)}<p className="small-note">checksum 是文档声明；没有对外部文件执行下载或核验。</p></details></li>)}</ul>}</DeclarationRows>
+-    <DeclarationRows items={sbom.dependency_edges.length} title="依赖与标准关系">{(start, end) => <div className="table-scroll"><table aria-label="SBOM 原始关系声明"><thead><tr><th scope="col">来源引用</th><th scope="col">声明关系</th><th scope="col">目标引用 / 字段位置</th></tr></thead><tbody>{sbom.dependency_edges.slice(start, end).map((edge, index) => <tr key={start + index}><td><Ref value={edge.source_ref} /></td><td><code>{edge.relationship}</code></td><td><Ref value={edge.target_ref} /><code className="asset-locator">{edge.source_field_locator}</code></td></tr>)}</tbody></table></div>}</DeclarationRows>
+-    <DeclarationRows items={sbom.completeness_declarations.length} title="文档完整性声明">{(start, end) => <ul className="sbom-row-list">{sbom.completeness_declarations.slice(start, end).map((declaration, index) => <li key={start + index}><strong><code>{declaration.aggregate}</code> · 输入声明</strong><code className="asset-locator">{declaration.source_field_locator}</code>{(["assemblies", "dependencies", "vulnerabilities"] as const).map((field) => <ReferenceList key={field} title={field} values={declaration[field]} />)}<p className="asset-unknown">此声明不证明授权资产安装范围完整，也不改变影响状态。</p></li>)}</ul>}</DeclarationRows>
+-    <DeclarationRows items={sbom.external_documents.length} title="外部文档声明">{(start, end) => <ul className="sbom-row-list">{sbom.external_documents.slice(start, end).map((document, index) => <li key={start + index}><Ref value={document.document_ref} />{document.document_uri === null ? <p className="asset-warning">原 URI 已隐藏 · 不恢复或点击不安全定位</p> : <a href={document.document_uri} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">打开服务器提供的公开文档 ↗</a>}<code className="asset-locator">{document.source_field_locator}</code><p className="small-note">{document.checksum.algorithm}: <code>{document.checksum.checksum_value}</code> · 仅声明，未下载核验</p></li>)}</ul>}</DeclarationRows>
+-    <DeclarationRows items={sbom.unmapped_field_locators.length} title="未映射字段位置">{(start, end) => <ul className="sbom-row-list">{sbom.unmapped_field_locators.slice(start, end).map((position, index) => <li key={start + index}><code>{position}</code></li>)}</ul>}</DeclarationRows>
+-    <DeclarationRows items={sbom.redactions.length} title="隐藏位置说明">{(start, end) => <ul className="sbom-row-list">{sbom.redactions.slice(start, end).map((marker) => <li key={marker.source_field_locator}><code>{marker.source_field_locator}</code><span className="asset-tag">URI / 路径展示限制</span>{marker.replacement_ref !== null && <Ref value={marker.replacement_ref} />}</li>)}</ul>}</DeclarationRows>
++    <DeclarationRows items={sbom.component_sources.length} title="组件来源" sectionId={sectionId("components")}>{(start, end) => <ul className="sbom-row-list">{sbom.component_sources.slice(start, end).map((source) => <li key={source.component_id}><div className="sbom-source-heading"><strong>{componentNames.get(source.component_id) ?? "组件名称未知"}</strong><span className="asset-tag">{source.component_type ?? "组件类型未知"}</span></div><Ref value={source.source_ref ?? "来源引用未声明"} /><code className="asset-locator">{source.component_id} · {source.source_field_locator}</code><details><summary>字段来源与校验摘要</summary><dl className="asset-component-identities">{source.field_sources.map((field, index) => <div key={index}><dt>{field.field_name}</dt><dd><code>{field.source_field_locator}</code></dd></div>)}</dl>{source.checksums.map((checksum, index) => <p key={index}><code>{checksum.algorithm}: {checksum.checksum_value}</code></p>)}<p className="small-note">checksum 是文档声明；没有对外部文件执行下载或核验。</p></details></li>)}</ul>}</DeclarationRows>
++    <DeclarationRows items={sbom.dependency_edges.length} title="依赖与标准关系" sectionId={sectionId("relationships")}>{(start, end) => <div className="table-scroll"><table aria-label="SBOM 原始关系声明"><thead><tr><th scope="col">来源引用</th><th scope="col">声明关系</th><th scope="col">目标引用 / 字段位置</th></tr></thead><tbody>{sbom.dependency_edges.slice(start, end).map((edge, index) => <tr key={start + index}><td><Ref value={edge.source_ref} /></td><td><code>{edge.relationship}</code></td><td><Ref value={edge.target_ref} /><code className="asset-locator">{edge.source_field_locator}</code></td></tr>)}</tbody></table></div>}</DeclarationRows>
++    <DeclarationRows items={sbom.completeness_declarations.length} title="文档完整性声明" sectionId={sectionId("completeness")}>{(start, end) => <ul className="sbom-row-list">{sbom.completeness_declarations.slice(start, end).map((declaration, index) => <li key={start + index}><strong><code>{declaration.aggregate}</code> · 输入声明</strong><code className="asset-locator">{declaration.source_field_locator}</code>{(["assemblies", "dependencies", "vulnerabilities"] as const).map((field) => <ReferenceList key={field} title={field} values={declaration[field]} />)}<p className="asset-unknown">此声明不证明授权资产安装范围完整，也不改变影响状态。</p></li>)}</ul>}</DeclarationRows>
++    <DeclarationRows items={sbom.external_documents.length} title="外部文档声明" sectionId={sectionId("documents")}>{(start, end) => <ul className="sbom-row-list">{sbom.external_documents.slice(start, end).map((document, index) => <li key={start + index}><Ref value={document.document_ref} />{document.document_uri === null ? <p className="asset-warning">原 URI 已隐藏 · 不恢复或点击不安全定位</p> : <a href={document.document_uri} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">打开服务器提供的公开文档 ↗</a>}<code className="asset-locator">{document.source_field_locator}</code><p className="small-note">{document.checksum.algorithm}: <code>{document.checksum.checksum_value}</code> · 仅声明，未下载核验</p></li>)}</ul>}</DeclarationRows>
++    <DeclarationRows items={sbom.unmapped_field_locators.length} title="未映射字段位置" sectionId={sectionId("unmapped")}>{(start, end) => <ul className="sbom-row-list">{sbom.unmapped_field_locators.slice(start, end).map((position, index) => <li key={start + index}><code>{position}</code></li>)}</ul>}</DeclarationRows>
++    <DeclarationRows items={sbom.redactions.length} title="隐藏位置说明" sectionId={sectionId("redactions")}>{(start, end) => <ul className="sbom-row-list">{sbom.redactions.slice(start, end).map((marker) => <li key={marker.source_field_locator}><code>{marker.source_field_locator}</code><span className="asset-tag">URI / 路径展示限制</span>{marker.replacement_ref !== null && <Ref value={marker.replacement_ref} />}</li>)}</ul>}</DeclarationRows>
+   </>;
+ }
+ 
+@@ -55,7 +71,7 @@ export function SbomDetail({ tenant, snapshot, isCurrent, onFailure }: { tenant:
+     {!supported ? <p className="asset-unknown">此快照为 {snapshot.source_kind}，没有 SBOM 声明接口；不能据此判断资产安全。</p> : <>
+       {result === null && error === null && <p role="status">正在读取固定快照 SBOM 声明…</p>}
+       {error?.status === 404 ? <p className="asset-warning">该快照的 SBOM 声明不可用或无权读取。当前清单仍可查看，声明与核验状态保持未知。</p> : error !== null && <AssetError error={error} onRetry={() => setRetry(retry + 1)} retryLabel="重试固定 SBOM 声明" />}
+-      {result !== null && <SbomView key={result.snapshot_id} sbom={result} />}
++      {result !== null && <SbomView key={result.snapshot_id} sbom={result} snapshot={snapshot} />}
+     </>}
+   </section>;
+ }

@@ -1,0 +1,58 @@
+.FF.                                                                     [100%]
+================================== FAILURES ===================================
+_ test_enabled_database_and_queue_errors_propagate_instead_of_zero[error0-RuntimeError-source polling database unavailable] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002223FB2ED20>
+error = SQLAlchemyError('fixture database failure')
+expected = <class 'RuntimeError'>
+message = 'source polling database unavailable'
+
+    @pytest.mark.parametrize('error,expected,message',[(SQLAlchemyError('fixture database failure'),RuntimeError,'source polling database unavailable'),(SourcePollingError('fixture corrupt queue'),SourcePollingError,'fixture corrupt queue')])
+    def test_enabled_database_and_queue_errors_propagate_instead_of_zero(monkeypatch,error,expected,message):
+        module=runtime(monkeypatch,True)
+        engine=MagicMock()
+        session=MagicMock()
+        monkeypatch.setattr(module,'build_engine',lambda settings:engine)
+        monkeypatch.setattr(module,'Session',lambda engine:session)
+        enqueue=MagicMock(side_effect=error)
+        monkeypatch.setattr(module,'enqueue_due_source_collections',enqueue)
+        with pytest.raises(expected,match=message):
+            module.celery_app.tasks['ai_intel.sources.poll_due'].run()
+        engine.dispose.assert_called_once()
+        assert enqueue.call_args.args[1].tenant_id is None
+        assert enqueue.call_args.args[1].role.value=='system_admin'
+>       assert session.begin.return_value.__exit__.call_args.args[0] is type(error)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'NoneType' object has no attribute 'args'
+
+..\reports\runs\recovery_r06_source_polling_review_1_20261015\test_review_runtime_errors.py:41: AttributeError
+_ test_enabled_database_and_queue_errors_propagate_instead_of_zero[error1-SourcePollingError-fixture corrupt queue] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002224163BAA0>
+error = SourcePollingError('fixture corrupt queue')
+expected = <class 'ai_intel.ingestion.source_polling.SourcePollingError'>
+message = 'fixture corrupt queue'
+
+    @pytest.mark.parametrize('error,expected,message',[(SQLAlchemyError('fixture database failure'),RuntimeError,'source polling database unavailable'),(SourcePollingError('fixture corrupt queue'),SourcePollingError,'fixture corrupt queue')])
+    def test_enabled_database_and_queue_errors_propagate_instead_of_zero(monkeypatch,error,expected,message):
+        module=runtime(monkeypatch,True)
+        engine=MagicMock()
+        session=MagicMock()
+        monkeypatch.setattr(module,'build_engine',lambda settings:engine)
+        monkeypatch.setattr(module,'Session',lambda engine:session)
+        enqueue=MagicMock(side_effect=error)
+        monkeypatch.setattr(module,'enqueue_due_source_collections',enqueue)
+        with pytest.raises(expected,match=message):
+            module.celery_app.tasks['ai_intel.sources.poll_due'].run()
+        engine.dispose.assert_called_once()
+        assert enqueue.call_args.args[1].tenant_id is None
+        assert enqueue.call_args.args[1].role.value=='system_admin'
+>       assert session.begin.return_value.__exit__.call_args.args[0] is type(error)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'NoneType' object has no attribute 'args'
+
+..\reports\runs\recovery_r06_source_polling_review_1_20261015\test_review_runtime_errors.py:41: AttributeError
+=========================== short test summary info ===========================
+FAILED ..\reports\runs\recovery_r06_source_polling_review_1_20261015\test_review_runtime_errors.py::test_enabled_database_and_queue_errors_propagate_instead_of_zero[error0-RuntimeError-source polling database unavailable]
+FAILED ..\reports\runs\recovery_r06_source_polling_review_1_20261015\test_review_runtime_errors.py::test_enabled_database_and_queue_errors_propagate_instead_of_zero[error1-SourcePollingError-fixture corrupt queue]
+2 failed, 2 passed in 1.88s

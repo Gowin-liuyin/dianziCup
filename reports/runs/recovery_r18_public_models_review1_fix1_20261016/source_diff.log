@@ -1,0 +1,40 @@
+diff --git a/sdk/python/ai_intel_client/models.py b/sdk/python/ai_intel_client/models.py
+index 01e32fec..32b48ca9 100644
+--- a/sdk/python/ai_intel_client/models.py
++++ b/sdk/python/ai_intel_client/models.py
+@@ -398,6 +398,10 @@ class RiskSummary(PublicRecord):
+         )
+         if (self.confirmation == "confirmed") != has_confirmed:
+             raise ValueError("risk confirmation disagrees with threshold findings")
++        if self.coverage == "complete" and self.confirmation in {"unknown", "conflict"}:
++            raise ValueError("unknown or conflicting confirmation cannot have complete coverage")
++        if self.confirmation == "none_confirmed" and self.coverage != "complete":
++            raise ValueError("no confirmed threshold finding requires a complete evaluated scope")
+         if self.coverage == "complete" and (
+             self.unknown_component_indices or self.freshness != "current"
+         ):
+@@ -430,6 +434,7 @@ class StackCheckEnvelope(PublicRecord):
+                 or not assessment.citations
+             ):
+                 raise ValueError("finding requires the same current supported assessment")
++        graded_indices = {finding.component_index for finding in summary.findings}
+         unknown_indices = {
+             index
+             for index, assessment in enumerate(assessments)
+@@ -438,8 +443,14 @@ class StackCheckEnvelope(PublicRecord):
+         }
+         if not unknown_indices.issubset(summary.unknown_component_indices):
+             raise ValueError("risk summary omits unknown or conflicting component results")
+-        if summary.coverage == "complete" and unknown_indices:
+-            raise ValueError("unknown assessments cannot have complete coverage")
++        missing_qualification = any(
++            assessment.assessment_id is None
++            or not assessment.citations
++            or (assessment.status == "supported_applicability" and index not in graded_indices)
++            for index, assessment in enumerate(assessments)
++        )
++        if summary.coverage == "complete" and (unknown_indices or missing_qualification):
++            raise ValueError("complete scope requires graded support or evidenced exclusion")
+         return self
+ 
+ 

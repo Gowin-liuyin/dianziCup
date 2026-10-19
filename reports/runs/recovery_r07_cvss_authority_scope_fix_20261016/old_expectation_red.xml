@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="5" skipped="0" tests="13" time="0.379" timestamp="2026-10-16T03:04:42.290885+08:00" hostname="yin"><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both[False-8.1-conflict]" time="0.003"><failure message="AssertionError: assert 'available' == 'conflict'&#10;  &#10;  - conflict&#10;  + available">score = 8.1, status = 'conflict', vendor_first = False
+
+    @pytest.mark.parametrize("score,status", [(8.1, "conflict"), (9.8, "available")])
+    @pytest.mark.parametrize("vendor_first", [False, True])
+    def test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both(score, status, vendor_first):
+        nvd, vendor = document(nvd_payload()), vendor_document(score=score)
+        sources = (vendor, nvd) if vendor_first else (nvd, vendor)
+        result = attempts(*sources)["cvss"]
+&gt;       assert result.status.value == status
+E       AssertionError: assert 'available' == 'conflict'
+E         
+E         - conflict
+E         + available
+
+tests\unit\test_r07_public_signals_fix1.py:35: AssertionError</failure></testcase><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both[False-9.8-available]" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both[True-8.1-conflict]" time="0.001"><failure message="AssertionError: assert 'available' == 'conflict'&#10;  &#10;  - conflict&#10;  + available">score = 8.1, status = 'conflict', vendor_first = True
+
+    @pytest.mark.parametrize("score,status", [(8.1, "conflict"), (9.8, "available")])
+    @pytest.mark.parametrize("vendor_first", [False, True])
+    def test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both(score, status, vendor_first):
+        nvd, vendor = document(nvd_payload()), vendor_document(score=score)
+        sources = (vendor, nvd) if vendor_first else (nvd, vendor)
+        result = attempts(*sources)["cvss"]
+&gt;       assert result.status.value == status
+E       AssertionError: assert 'available' == 'conflict'
+E         
+E         - conflict
+E         + available
+
+tests\unit\test_r07_public_signals_fix1.py:35: AssertionError</failure></testcase><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both[True-9.8-available]" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_same_cve_different_vector_conflicts_even_when_score_matches" time="0.001"><failure message="AssertionError: assert 'available' == 'conflict'&#10;  &#10;  - conflict&#10;  + available">def test_same_cve_different_vector_conflicts_even_when_score_matches():
+        vector = VECTOR.replace("AC:L", "AC:H")
+        result = attempts(document(nvd_payload()), vendor_document(score=9.8, vector=vector))["cvss"]
+&gt;       assert result.status.value == "conflict"
+E       AssertionError: assert 'available' == 'conflict'
+E         
+E         - conflict
+E         + available
+
+tests\unit\test_r07_public_signals_fix1.py:51: AssertionError</failure></testcase><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_two_supported_cves_are_not_collapsed_by_shared_ghsa" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_different_ghsa_aliases_of_same_supported_cve_still_conflict" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_ghsa_only_advisories_use_their_own_verified_identity[GHSA-2345-6789-cfgh-conflict]" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_ghsa_only_advisories_use_their_own_verified_identity[GHSA-3456-789c-fghj-available]" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_ghsa_only_advisory_is_not_assumed_to_match_only_context_cve" time="0.001" /><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_identifier_shaped_publisher_is_not_an_event_identity" time="0.001"><failure message="AssertionError: assert 'available' == 'conflict'&#10;  &#10;  - conflict&#10;  + available">def test_identifier_shaped_publisher_is_not_an_event_identity():
+        result = attempts(document(nvd_payload()), vendor_document(authority=OTHER_CVE))["cvss"]
+&gt;       assert result.status.value == "conflict"
+E       AssertionError: assert 'available' == 'conflict'
+E         
+E         - conflict
+E         + available
+
+tests\unit\test_r07_public_signals_fix1.py:81: AssertionError</failure></testcase><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_cvss_comparison_is_independent_of_evidence_order" time="0.001"><failure message="AssertionError: assert ('available' == 'conflict'&#10;  &#10;  - conflict&#10;  + available)">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002A67E9AC200&gt;
+
+    def test_cvss_comparison_is_independent_of_evidence_order(monkeypatch):
+        original = signals._evidence
+    
+        def reversed_evidence(source, fields):
+            return tuple(reversed(original(source, fields)))
+    
+        monkeypatch.setattr(signals, "_evidence", reversed_evidence)
+        result = attempts(document(nvd_payload()), vendor_document())["cvss"]
+&gt;       assert result.status.value == "conflict" and len(result.candidates) == 2
+E       AssertionError: assert ('available' == 'conflict'
+E         
+E         - conflict
+E         + available)
+
+tests\unit\test_r07_public_signals_fix1.py:93: AssertionError</failure></testcase><testcase classname="tests.unit.test_r07_public_signals_fix1" name="test_unsupported_vendor_cve_is_rejected_without_changing_supported_scope" time="0.001" /></testsuite></testsuites>

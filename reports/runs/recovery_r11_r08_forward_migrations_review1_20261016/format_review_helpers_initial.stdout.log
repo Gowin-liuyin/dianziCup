@@ -1,0 +1,585 @@
+unformatted: File would be reformatted
+   --> D:\wt\r11-r08-migrations-review1\reports\runs\recovery_r11_r08_forward_migrations_review1_20261016\audit_material.py:16:27
+    |
+15  | def blob(commit, path):
+    -     return subprocess.run(["git", "show", commit + ":" + path], cwd=ROOT,
+    -                           capture_output=True, check=True).stdout
+16  +     return subprocess.run(
+17  +         ["git", "show", commit + ":" + path], cwd=ROOT, capture_output=True, check=True
+18  +     ).stdout
+19  |
+--------------------------------------------------------------------------------
+37  |         assert checkout.replace(b"\r\n", b"\n") == git_bytes.replace(b"\r\n", b"\n")
+    -         verified.append({"path": entry["path"], "raw_size": len(raw),
+    -                          "git_size": len(git_bytes), "raw_sha256": sha(raw),
+    -                          "git_sha256": sha(git_bytes), "checkout_size": len(checkout),
+    -                          "checkout_sha256": sha(checkout), "git_equals_raw": git_bytes == raw})
+38  +         verified.append(
+39  +             {
+40  +                 "path": entry["path"],
+41  +                 "raw_size": len(raw),
+42  +                 "git_size": len(git_bytes),
+43  +                 "raw_sha256": sha(raw),
+44  +                 "git_sha256": sha(git_bytes),
+45  +                 "checkout_size": len(checkout),
+46  +                 "checkout_sha256": sha(checkout),
+47  +                 "git_equals_raw": git_bytes == raw,
+48  +             }
+49  +         )
+50  |     assert len(verified) == 132
+--------------------------------------------------------------------------------
+59  |         raw = (ROOT / entry["path"]).read_bytes()
+    -         upstream.append({"path": entry["path"], "upstream": entry["material_commit"],
+    -                          "blob_sha256": sha(code_bytes), "blob_size": len(code_bytes),
+    -                          "raw_size": len(raw), "raw_sha256": sha(raw)})
+60  +         upstream.append(
+61  +             {
+62  +                 "path": entry["path"],
+63  +                 "upstream": entry["material_commit"],
+64  +                 "blob_sha256": sha(code_bytes),
+65  +                 "blob_size": len(code_bytes),
+66  +                 "raw_size": len(raw),
+67  +                 "raw_sha256": sha(raw),
+68  +             }
+69  +         )
+70  |     assert len(upstream) == 8
+71  |     tests = []
+    -     for commit in ("bc8798cf5efc81e210a429884930ca545af43ad8", "a76374ca9200945441a83421050eceef00db47d8"):
+    -         paths = subprocess.run(["git", "ls-tree", "-r", "--name-only", commit, "backend/tests"],
+    -                                cwd=ROOT, capture_output=True, check=True).stdout.decode().splitlines()
+    -         selected = [path for path in paths if any(key in path for key in (
+    -             "test_t24_asset_inventory", "test_r11_inventory", "test_r11_manifest",
+    -             "test_r08_aggregate", "test_r08_cache_ttl"))]
+72  +     for commit in (
+73  +         "bc8798cf5efc81e210a429884930ca545af43ad8",
+74  +         "a76374ca9200945441a83421050eceef00db47d8",
+75  +     ):
+76  +         paths = (
+77  +             subprocess.run(
+78  +                 ["git", "ls-tree", "-r", "--name-only", commit, "backend/tests"],
+79  +                 cwd=ROOT,
+80  +                 capture_output=True,
+81  +                 check=True,
+82  +             )
+83  +             .stdout.decode()
+84  +             .splitlines()
+85  +         )
+86  +         selected = [
+87  +             path
+88  +             for path in paths
+89  +             if any(
+90  +                 key in path
+91  +                 for key in (
+92  +                     "test_t24_asset_inventory",
+93  +                     "test_r11_inventory",
+94  +                     "test_r11_manifest",
+95  +                     "test_r08_aggregate",
+96  +                     "test_r08_cache_ttl",
+97  +                 )
+98  +             )
+99  +         ]
+100 |         for path in selected:
+101 |             old = blob(commit, path)
+102 |             current = blob(MATERIAL, path)
+103 |             assert old == current
+    -             tests.append({"path": path, "upstream": commit, "blob_size": len(old),
+    -                           "blob_sha256": sha(old), "matches": True})
+    -     changed_source = subprocess.run(["git", "diff", "--name-only", CODE, MATERIAL, "backend", "contracts", "fixtures", "progress"],
+    -                                     cwd=ROOT, capture_output=True, check=True).stdout.decode().splitlines()
+104 +             tests.append(
+105 +                 {
+106 +                     "path": path,
+107 +                     "upstream": commit,
+108 +                     "blob_size": len(old),
+109 +                     "blob_sha256": sha(old),
+110 +                     "matches": True,
+111 +                 }
+112 +             )
+113 +     changed_source = (
+114 +         subprocess.run(
+115 +             [
+116 +                 "git",
+117 +                 "diff",
+118 +                 "--name-only",
+119 +                 CODE,
+120 +                 MATERIAL,
+121 +                 "backend",
+122 +                 "contracts",
+123 +                 "fixtures",
+124 +                 "progress",
+125 +             ],
+126 +             cwd=ROOT,
+127 +             capture_output=True,
+128 +             check=True,
+129 +         )
+130 +         .stdout.decode()
+131 +         .splitlines()
+132 +     )
+133 |     assert changed_source == []
+    -     author_receipts = json.loads("[" + ",".join((ROOT / AUTHOR_RUN / "commands.jsonl").read_text().splitlines()) + "]")
+134 +     author_receipts = json.loads(
+135 +         "[" + ",".join((ROOT / AUTHOR_RUN / "commands.jsonl").read_text().splitlines()) + "]"
+136 +     )
+137 |     reds = [entry for entry in author_receipts if entry["exit_code"] != 0]
+138 |     attributes = blob(MATERIAL, AUTHOR_RUN + "/.gitattributes").decode()
+139 |     assert "*.json -text whitespace=trailing-space,space-before-tab,cr-at-eol" in attributes
+140 |     assert "*.jsonl -text whitespace=trailing-space,space-before-tab,cr-at-eol" in attributes
+    -     record = {"observed_at": now(), "code_sha": CODE, "material_sha": MATERIAL,
+    -               "manifest_size": len(manifest_raw), "manifest_sha256": sha(manifest_raw),
+    -               "raw_count": len(verified), "raw_verified": verified, "upstream_sources": upstream,
+    -               "upstream_tests": tests, "material_backend_contract_fixture_progress_diff": changed_source,
+    -               "author_reds_preserved": reds, "author_local_attributes": attributes}
+141 +     record = {
+142 +         "observed_at": now(),
+143 +         "code_sha": CODE,
+144 +         "material_sha": MATERIAL,
+145 +         "manifest_size": len(manifest_raw),
+146 +         "manifest_sha256": sha(manifest_raw),
+147 +         "raw_count": len(verified),
+148 +         "raw_verified": verified,
+149 +         "upstream_sources": upstream,
+150 +         "upstream_tests": tests,
+151 +         "material_backend_contract_fixture_progress_diff": changed_source,
+152 +         "author_reds_preserved": reds,
+153 +         "author_local_attributes": attributes,
+154 +     }
+155 |     (RUN / "material_audit.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
+    -     print(json.dumps({"raw_count": len(verified), "upstream_source_count": len(upstream),
+    -                       "original_test_comparisons": len(tests), "author_red_count": len(reds)}))
+156 +     print(
+157 +         json.dumps(
+158 +             {
+159 +                 "raw_count": len(verified),
+160 +                 "upstream_source_count": len(upstream),
+161 +                 "original_test_comparisons": len(tests),
+162 +                 "author_red_count": len(reds),
+163 +             }
+164 +         )
+165 +     )
+166 |
+    |
+
+unformatted: File would be reformatted
+   --> D:\wt\r11-r08-migrations-review1\reports\runs\recovery_r11_r08_forward_migrations_review1_20261016\cbm_review.py:16:10
+    |
+15  |         label,
+    -         ["wsl.exe", "-d", "Ubuntu-22.04", "-u", "root", "--exec", CBM,
+    -          "cli", "--json", tool, *arguments],
+16  +         [
+17  +             "wsl.exe",
+18  +             "-d",
+19  +             "Ubuntu-22.04",
+20  +             "-u",
+21  +             "root",
+22  +             "--exec",
+23  +             CBM,
+24  +             "cli",
+25  +             "--json",
+26  +             tool,
+27  +             *arguments,
+28  +         ],
+29  |         cwd=ROOT,
+--------------------------------------------------------------------------------
+43  |     projects = {}
+    -     for name, source in (("src", ROOT / "backend/src"),
+    -                          ("assets", ROOT / "backend/src/ai_intel/assets")):
+44  +     for name, source in (
+45  +         ("src", ROOT / "backend/src"),
+46  +         ("assets", ROOT / "backend/src/ai_intel/assets"),
+47  +     ):
+48  |         target = temporary / name
+    -         shutil.copytree(source, target, ignore=shutil.ignore_patterns(
+    -             "__pycache__", ".codebase-memory", "*.pyc"))
+49  +         shutil.copytree(
+50  +             source,
+51  +             target,
+52  +             ignore=shutil.ignore_patterns("__pycache__", ".codebase-memory", "*.pyc"),
+53  +         )
+54  |         project = "r11r08_review1_20261016_" + name
+55  |         projects[name] = project
+    -         cbm(f"cbm_{name}_index", "index_repository", [
+    -             "--repo-path", linux_path(target), "--name", project,
+    -             "--mode", "fast", "--persistence", "false"])
+56  +         cbm(
+57  +             f"cbm_{name}_index",
+58  +             "index_repository",
+59  +             [
+60  +                 "--repo-path",
+61  +                 linux_path(target),
+62  +                 "--name",
+63  +                 project,
+64  +                 "--mode",
+65  +                 "fast",
+66  +                 "--persistence",
+67  +                 "false",
+68  +             ],
+69  +         )
+70  |         cbm(f"cbm_{name}_schema", "get_graph_schema", ["--project", project])
+    -         cbm(f"cbm_{name}_architecture", "get_architecture", [
+    -             "--project", project, "--format", "json"])
+71  +         cbm(
+72  +             f"cbm_{name}_architecture",
+73  +             "get_architecture",
+74  +             ["--project", project, "--format", "json"],
+75  +         )
+76  |     for key, symbol, module in (
+77  |         ("assets", "import_manifest", "inventory.InventoryService.import_manifest"),
+    -         ("assets", "save_observation", "aggregate_repository.PostgresAggregateRepository.save_observation"),
+    -         ("assets", "collect_provider_aggregate_observation", "aggregate_service.AggregateService.collect_provider_aggregate_observation"),
+78  +         (
+79  +             "assets",
+80  +             "save_observation",
+81  +             "aggregate_repository.PostgresAggregateRepository.save_observation",
+82  +         ),
+83  +         (
+84  +             "assets",
+85  +             "collect_provider_aggregate_observation",
+86  +             "aggregate_service.AggregateService.collect_provider_aggregate_observation",
+87  +         ),
+88  |         ("src", "run_migrations", "ai_intel.infrastructure.database.run_migrations"),
+89  |     ):
+90  |         project = projects[key]
+    -         cbm("cbm_search_" + symbol, "search_graph", ["--project", project, "--name-pattern", symbol])
+    -         cbm("cbm_trace_" + symbol, "trace_path", [
+    -             "--project", project, "--function-name", project + "." + module,
+    -             "--direction", "both", "--format", "json"])
+    -     (RUN / "cbm_source_copy.json").write_text(json.dumps({
+    -         "temporary": str(temporary), "projects": projects,
+    -         "excludes": ["__pycache__", ".codebase-memory", "*.pyc"],
+    -     }, indent=2), encoding="utf-8")
+91  +         cbm(
+92  +             "cbm_search_" + symbol, "search_graph", ["--project", project, "--name-pattern", symbol]
+93  +         )
+94  +         cbm(
+95  +             "cbm_trace_" + symbol,
+96  +             "trace_path",
+97  +             [
+98  +                 "--project",
+99  +                 project,
+100 +                 "--function-name",
+101 +                 project + "." + module,
+102 +                 "--direction",
+103 +                 "both",
+104 +                 "--format",
+105 +                 "json",
+106 +             ],
+107 +         )
+108 +     (RUN / "cbm_source_copy.json").write_text(
+109 +         json.dumps(
+110 +             {
+111 +                 "temporary": str(temporary),
+112 +                 "projects": projects,
+113 +                 "excludes": ["__pycache__", ".codebase-memory", "*.pyc"],
+114 +             },
+115 +             indent=2,
+116 +         ),
+117 +         encoding="utf-8",
+118 +     )
+119 |
+    |
+
+unformatted: File would be reformatted
+   --> D:\wt\r11-r08-migrations-review1\reports\runs\recovery_r11_r08_forward_migrations_review1_20261016\prepare_review_pg.py:22:23
+    |
+21  |     for table_name in table_names:
+    -         rows = sorted(connection.exec_driver_sql(
+    -             f'SELECT to_jsonb(record)::text FROM "{table_name}" record').scalars())
+22  +         rows = sorted(
+23  +             connection.exec_driver_sql(
+24  +                 f'SELECT to_jsonb(record)::text FROM "{table_name}" record'
+25  +             ).scalars()
+26  +         )
+27  |         payload = json.dumps(rows, ensure_ascii=True, separators=(",", ":")).encode()
+    -         records[table_name] = {"row_count": len(rows), "sha256": hashlib.sha256(payload).hexdigest()}
+28  +         records[table_name] = {
+29  +             "row_count": len(rows),
+30  +             "sha256": hashlib.sha256(payload).hexdigest(),
+31  +         }
+32  |     return records
+--------------------------------------------------------------------------------
+41  |     """)
+    -     connection.execute(text("""
+42  +     connection.execute(
+43  +         text("""
+44  |         INSERT INTO content_objects(content_hash,size_bytes,created_at)
+45  |         VALUES (:hash,:size,'2026-10-15T00:00:00Z')
+    -     """), {"hash": content_hash, "size": len(FIXTURE_TEXT.encode())})
+    -     connection.execute(text("""
+46  +     """),
+47  +         {"hash": content_hash, "size": len(FIXTURE_TEXT.encode())},
+48  +     )
+49  +     connection.execute(
+50  +         text("""
+51  |         INSERT INTO documents(document_id,source_id,kind,title,retrieved_at,content_hash,
+52  |                               visibility,schema_version)
+53  |         VALUES ('review-document','review-source','advisory','Independent synthetic retained document',
+54  |                 '2026-10-15T00:00:00Z',:hash,'public',1)
+    -     """), {"hash": content_hash})
+    -     connection.execute(text("""
+55  +     """),
+56  +         {"hash": content_hash},
+57  +     )
+58  +     connection.execute(
+59  +         text("""
+60  |         INSERT INTO document_revisions(revision_id,document_id,revision_number,content_hash,
+61  |                 created_at,is_current,visibility,parser_version,parse_status,canonical_uri)
+62  |         VALUES ('review-revision','review-document',1,:hash,'2026-10-15T00:00:00Z',true,
+63  |                 'public','independent-fixture-1','parsed','https://example.invalid/retained')
+    -     """), {"hash": content_hash})
+    -     connection.execute(text("""
+64  +     """),
+65  +         {"hash": content_hash},
+66  +     )
+67  +     connection.execute(
+68  +         text("""
+69  |         INSERT INTO text_blocks(block_id,revision_id,ordinal,start_offset,end_offset,
+70  |                                 text_sha256,block_text,block_type)
+71  |         VALUES ('review-block','review-revision',1,0,:end,:hash,:quote,'paragraph')
+    -     """), {"hash": content_hash, "end": len(FIXTURE_TEXT), "quote": FIXTURE_TEXT})
+    -     connection.execute(text("""
+72  +     """),
+73  +         {"hash": content_hash, "end": len(FIXTURE_TEXT), "quote": FIXTURE_TEXT},
+74  +     )
+75  +     connection.execute(
+76  +         text("""
+77  |         INSERT INTO evidence(evidence_id,revision_id,start_offset,end_offset,locator,quote,
+--------------------------------------------------------------------------------
+81  |                 '2026-10-15T00:00:00Z','unicode-codepoint-v1')
+    -     """), {"hash": content_hash, "end": len(FIXTURE_TEXT), "quote": FIXTURE_TEXT})
+82  +     """),
+83  +         {"hash": content_hash, "end": len(FIXTURE_TEXT), "quote": FIXTURE_TEXT},
+84  +     )
+85  |     connection.exec_driver_sql("""
+--------------------------------------------------------------------------------
+146 |                 assert before == after
+    -             receipts.append({"database": url.database, "started_at": started, "finished_at": now(),
+    -                              "exit_code": 0, "postgresql_version": connection.scalar(text("SHOW server_version")),
+    -                              "from_revision": "empty" if suffix == "fresh" else "0016_source_response_receipts",
+    -                              "to_revision": HEAD, "method": "ordinary run_migrations/Alembic upgrade head",
+    -                              "metadata_create_all": "forbidden", "old_tables_unchanged": 37 if suffix == "hist" else None})
+147 +             receipts.append(
+148 +                 {
+149 +                     "database": url.database,
+150 +                     "started_at": started,
+151 +                     "finished_at": now(),
+152 +                     "exit_code": 0,
+153 +                     "postgresql_version": connection.scalar(text("SHOW server_version")),
+154 +                     "from_revision": "empty"
+155 +                     if suffix == "fresh"
+156 +                     else "0016_source_response_receipts",
+157 +                     "to_revision": HEAD,
+158 +                     "method": "ordinary run_migrations/Alembic upgrade head",
+159 +                     "metadata_create_all": "forbidden",
+160 +                     "old_tables_unchanged": 37 if suffix == "hist" else None,
+161 +                 }
+162 +             )
+163 |         engine.dispose()
+--------------------------------------------------------------------------------
+173 |         print("sqlstate=" + str(getattr(getattr(failure, "orig", None), "sqlstate", None)))
+    -         print("ddl_diagnostic=" + str(getattr(getattr(getattr(failure, "orig", None), "diag", None), "message_primary", None)))
+174 +         print(
+175 +             "ddl_diagnostic="
+176 +             + str(
+177 +                 getattr(
+178 +                     getattr(getattr(failure, "orig", None), "diag", None), "message_primary", None
+179 +                 )
+180 +             )
+181 +         )
+182 |         raise SystemExit(2) from None
+    |
+
+unformatted: File would be reformatted
+   --> D:\wt\r11-r08-migrations-review1\reports\runs\recovery_r11_r08_forward_migrations_review1_20261016\review_runner.py:26:23
+    |
+25  |         [
+    -             "wsl.exe", "-d", "Ubuntu-22.04", "-u", "root", "--exec", "cat",
+26  +             "wsl.exe",
+27  +             "-d",
+28  +             "Ubuntu-22.04",
+29  +             "-u",
+30  +             "root",
+31  +             "--exec",
+32  +             "cat",
+33  |             "/tmp/dianzi-docker-static-r01-20261014/runtime/test-services/connection.json",
+--------------------------------------------------------------------------------
+89  |     receipt = {
+    -         "label": label, "argv": [str(item) for item in argv],
+    -         "cwd": str(cwd or ROOT / "backend"), "started_at": started,
+    -         "finished_at": now(), "exit_code": result.returncode,
+90  +         "label": label,
+91  +         "argv": [str(item) for item in argv],
+92  +         "cwd": str(cwd or ROOT / "backend"),
+93  +         "started_at": started,
+94  +         "finished_at": now(),
+95  +         "exit_code": result.returncode,
+96  |     }
+--------------------------------------------------------------------------------
+107 |     if mode == "pg":
+    -         environment["TEST_DATABASE_URL"] = approved_test_url().set(
+    -             database=DATABASE_PREFIX + "_fresh"
+    -         ).render_as_string(hide_password=False)
+108 +         environment["TEST_DATABASE_URL"] = (
+109 +             approved_test_url()
+110 +             .set(database=DATABASE_PREFIX + "_fresh")
+111 +             .render_as_string(hide_password=False)
+112 +         )
+113 |         environment["DIANZI_ENV"] = "test"
+    |
+
+unformatted: File would be reformatted
+   --> D:\wt\r11-r08-migrations-review1\reports\runs\recovery_r11_r08_forward_migrations_review1_20261016\test_review_negatives.py:58:54
+    |
+57  |         connection.exec_driver_sql(f'CREATE SCHEMA "{schema}"')
+    -     isolated = migrated_engine.url.update_query_dict({
+    -         "options": f"-c search_path={schema} -c statement_timeout=15000 -c lock_timeout=5000"
+    -     })
+58  +     isolated = migrated_engine.url.update_query_dict(
+59  +         {"options": f"-c search_path={schema} -c statement_timeout=15000 -c lock_timeout=5000"}
+60  +     )
+61  |     run_migrations(isolated.render_as_string(hide_password=False))
+--------------------------------------------------------------------------------
+81  |
+    -         original = subprocess.run(["git", "show", "281371b072a696d972aa3c38519b8646393c98e2:" + filename],
+    -                                   cwd=ROOT, capture_output=True, check=True).stdout
+    -         current = subprocess.run(["git", "show", "99fec14d1a64f9c5adaa5beb294e804da3e1d18d:" + filename],
+    -                                  cwd=ROOT, capture_output=True, check=True).stdout
+82  +         original = subprocess.run(
+83  +             ["git", "show", "281371b072a696d972aa3c38519b8646393c98e2:" + filename],
+84  +             cwd=ROOT,
+85  +             capture_output=True,
+86  +             check=True,
+87  +         ).stdout
+88  +         current = subprocess.run(
+89  +             ["git", "show", "99fec14d1a64f9c5adaa5beb294e804da3e1d18d:" + filename],
+90  +             cwd=ROOT,
+91  +             capture_output=True,
+92  +             check=True,
+93  +         ).stdout
+94  |         assert original == current
+--------------------------------------------------------------------------------
+106 |     field = "input_context" if target == "workflow" else "result_payload"
+    -     check = "ck_enrichment_workflow_initialized" if target == "workflow" else "ck_enrichment_step_result"
+107 +     check = (
+108 +         "ck_enrichment_workflow_initialized"
+109 +         if target == "workflow"
+110 +         else "ck_enrichment_step_result"
+111 +     )
+112 |     with migrated_engine.connect() as connection:
+--------------------------------------------------------------------------------
+128 |         assert connection.scalar(select(assets.c.current_snapshot_id).where(selector)) is None
+    -         connection.execute(update(assets).where(selector).values(current_snapshot_id=stored.snapshot.snapshot_id))
+129 +         connection.execute(
+130 +             update(assets).where(selector).values(current_snapshot_id=stored.snapshot.snapshot_id)
+131 +         )
+132 |     with pytest.raises(IntegrityError) as rejected, migrated_engine.begin() as connection:
+--------------------------------------------------------------------------------
+136 |     with migrated_engine.connect() as connection:
+    -         assert connection.scalar(select(assets.c.current_snapshot_id).where(selector)) == stored.snapshot.snapshot_id
+137 +         assert (
+138 +             connection.scalar(select(assets.c.current_snapshot_id).where(selector))
+139 +             == stored.snapshot.snapshot_id
+140 +         )
+141 |
+--------------------------------------------------------------------------------
+146 |     with pytest.raises(IntegrityError) as rejected, migrated_engine.begin() as connection:
+    -         connection.execute(update(assets).where(assets.c.asset_id == stored.asset_id).values(current_snapshot_id=None))
+147 +         connection.execute(
+148 +             update(assets)
+149 +             .where(assets.c.asset_id == stored.asset_id)
+150 +             .values(current_snapshot_id=None)
+151 +         )
+152 |         connection.exec_driver_sql("SET CONSTRAINTS asset_current_snapshot_required IMMEDIATE")
+--------------------------------------------------------------------------------
+159 |     with migrated_engine.connect() as connection:
+    -         snapshot = dict(connection.execute(select(asset_snapshots).where(
+    -             asset_snapshots.c.snapshot_id == stored.snapshot.snapshot_id)).mappings().one())
+160 +         snapshot = dict(
+161 +             connection.execute(
+162 +                 select(asset_snapshots).where(
+163 +                     asset_snapshots.c.snapshot_id == stored.snapshot.snapshot_id
+164 +                 )
+165 +             )
+166 +             .mappings()
+167 +             .one()
+168 +         )
+169 |     snapshot.update(snapshot_id=str(uuid4()), snapshot_number=2, canonical_payload=None)
+--------------------------------------------------------------------------------
+180 |     repository = PostgresAggregateRepository(migrated_engine)
+    -     stored = repository.save_observation(total_result("hunter", "ollama", 11, now, "fixture"),
+    -                                          scope, policy, recorded_at=now)
+181 +     stored = repository.save_observation(
+182 +         total_result("hunter", "ollama", 11, now, "fixture"), scope, policy, recorded_at=now
+183 +     )
+184 |     with migrated_engine.connect() as connection:
+    -         row = dict(connection.execute(select(aggregate_observations).where(
+    -             aggregate_observations.c.observation_id == stored.observation_id)).mappings().one())
+185 +         row = dict(
+186 +             connection.execute(
+187 +                 select(aggregate_observations).where(
+188 +                     aggregate_observations.c.observation_id == stored.observation_id
+189 +                 )
+190 +             )
+191 +             .mappings()
+192 +             .one()
+193 +         )
+194 |     canonical = json.dumps(row["canonical_json"], sort_keys=True, separators=(",", ":"))
+195 |     assert hashlib.sha256(canonical.encode()).hexdigest() == row["payload_sha256"]
+    -     row.update(observation_id=uuid4(), payload_sha256="0" * 64,
+    -                recorded_at=now.replace(hour=1))
+196 +     row.update(observation_id=uuid4(), payload_sha256="0" * 64, recorded_at=now.replace(hour=1))
+197 |     with migrated_engine.begin() as connection:
+198 |         connection.execute(insert(aggregate_observations).values(**row))
+199 |     with pytest.raises(AggregatePersistenceError, match="aggregate storage integrity failed"):
+200 |         repository.read_latest("hunter", "ollama", scope, policy, now=now.replace(hour=2))
+    -     (RUN / "negative_hash_boundary.json").write_text(json.dumps({
+    -         "test_mode": "synthetic fixture", "database_domain_accepts": "64 lowercase hex shape",
+    -         "repository_read": "fails closed on canonical JSON/hash mismatch",
+    -         "provider_calls": 0, "fee_status": "unknown",
+    -     }, indent=2), encoding="utf-8")
+201 +     (RUN / "negative_hash_boundary.json").write_text(
+202 +         json.dumps(
+203 +             {
+204 +                 "test_mode": "synthetic fixture",
+205 +                 "database_domain_accepts": "64 lowercase hex shape",
+206 +                 "repository_read": "fails closed on canonical JSON/hash mismatch",
+207 +                 "provider_calls": 0,
+208 +                 "fee_status": "unknown",
+209 +             },
+210 +             indent=2,
+211 +         ),
+212 +         encoding="utf-8",
+213 +     )
+    |
+
+unformatted: File would be reformatted
+  --> D:\wt\r11-r08-migrations-review1\reports\runs\recovery_r11_r08_forward_migrations_review1_20261016\test_review_schema.py:23:49
+   |
+22 | )
+   - test_repeated_upgrade_head_is_non_destructive = ORIGINAL.test_repeated_upgrade_head_is_non_destructive
+23 + test_repeated_upgrade_head_is_non_destructive = (
+24 +     ORIGINAL.test_repeated_upgrade_head_is_non_destructive
+25 + )
+26 |
+--------------------------------------------------------------------------------
+46 |     for table_name in (
+   -         "sources", "documents", "document_revisions", "content_objects", "text_blocks",
+   -         "evidence", "claims", "claim_evidence", "users", "events", "job_runs",
+   -         "job_payloads", "outbox_events", "source_cursors",
+47 +         "sources",
+48 +         "documents",
+49 +         "document_revisions",
+50 +         "content_objects",
+51 +         "text_blocks",
+52 +         "evidence",
+53 +         "claims",
+54 +         "claim_evidence",
+55 +         "users",
+56 +         "events",
+57 +         "job_runs",
+58 +         "job_payloads",
+59 +         "outbox_events",
+60 +         "source_cursors",
+61 |     ):
+   |
+
+6 files would be reformatted

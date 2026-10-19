@@ -1,0 +1,637 @@
+....................F...F...................................             [100%]
+================================== FAILURES ===================================
+_ test_turn_history_freezes_full_row_but_conversation_and_answer_lifecycle_work _
+self = <sqlalchemy.engine.base.Connection object at 0x000001F8AE940650>
+dialect = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGDialect_psycopg object at 0x000001F8ADE5A2A0>
+constructor = <bound method DefaultExecutionContext._init_compiled of <class 'sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGExecutionContext_psycopg'>>
+statement = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGCompiler_psycopg object at 0x000001F8AE940D10>
+parameters = [{'turn': '[redacted test credential]'}]
+execution_options = immutabledict({})
+args = (<sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGCompiler_psycopg object at 0x000001F8AE940D10>, [{'turn': '[redacted test credential fragment][redacted test credential fragment]...at 0x000001F8AE9406E0>, [BindParameter('true', None, type_=NullType()), BindParameter('turn', None, type_=NullType())])
+kw = {'cache_hit': <CacheStats.CACHE_MISS: 1>, 'param_dict': None}
+conn = <sqlalchemy.pool.base._ConnectionFairy object at 0x000001F8AE8FDB50>
+
+    def _execute_context(
+        self,
+        dialect: Dialect,
+        constructor: Callable[..., ExecutionContext],
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+        execution_options: _ExecuteOptions,
+        *args: Any,
+        **kw: Any,
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """Create an :class:`.ExecutionContext` and execute, returning
+        a :class:`_engine.CursorResult`."""
+    
+        if execution_options:
+            yp = execution_options.get("yield_per", None)
+            if yp:
+                execution_options = execution_options.union(
+                    {"stream_results": True, "max_row_buffer": yp}
+                )
+        try:
+            conn = self._dbapi_connection
+            if conn is None:
+                conn = self._revalidate_connection()
+    
+>           context = constructor(
+                dialect, self, conn, execution_options, *args, **kw
+            )
+
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1791: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py:1658: in _init_compiled
+    compiled.construct_params(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGCompiler_psycopg object at 0x000001F8AE940D10>
+params = {'turn': '[redacted test credential]'}
+extracted_parameters = [BindParameter('true', None, type_=NullType()), BindParameter('turn', None, type_=NullType())]
+escape_names = False, _group_number = 0, _check = True, _no_postcompile = False
+_collected_params = None
+
+    def construct_params(
+        self,
+        params: Optional[_CoreSingleExecuteParams] = None,
+        extracted_parameters: Optional[Sequence[BindParameter[Any]]] = None,
+        escape_names: bool = True,
+        _group_number: Optional[int] = None,
+        _check: bool = True,
+        _no_postcompile: bool = False,
+        _collected_params: _CoreSingleExecuteParams | None = None,
+    ) -> _MutableCoreSingleExecuteParams:
+        """return a dictionary of bind parameter keys and values"""
+        if _collected_params is not None:
+            assert not self._collect_params
+        elif self._collect_params:
+            _collected_params = self._collected_params
+    
+        if _collected_params:
+            if not params:
+                params = _collected_params
+            else:
+                params = {**_collected_params, **params}
+    
+        if self._render_postcompile and not _no_postcompile:
+            assert self._post_compile_expanded_state is not None
+            if not params:
+                return dict(self._post_compile_expanded_state.parameters)
+            else:
+                raise exc.InvalidRequestError(
+                    "can't construct new parameters when render_postcompile "
+                    "is used; the statement is hard-linked to the original "
+                    "parameters.  Use construct_expanded_state to generate a "
+                    "new statement and parameters."
+                )
+    
+        has_escaped_names = escape_names and bool(self.escaped_bind_names)
+    
+        if extracted_parameters:
+            # related the bound parameters collected in the original cache key
+            # to those collected in the incoming cache key.  They will not have
+            # matching names but they will line up positionally in the same
+            # way.   The parameters present in self.bind_names may be clones of
+            # these original cache key params in the case of DML but the .key
+            # will be guaranteed to match.
+            if self.cache_key is None:
+                raise exc.CompileError(
+                    "This compiled object has no original cache key; "
+                    "can't pass extracted_parameters to construct_params"
+                )
+            else:
+                orig_extracted = self.cache_key[1]
+    
+            ckbm_tuple = self._cache_key_bind_match
+            assert ckbm_tuple is not None
+            ckbm, _ = ckbm_tuple
+            resolved_extracted = {
+                bind: extracted
+                for b, extracted in zip(orig_extracted, extracted_parameters)
+                for bind in ckbm[b]
+            }
+        else:
+            resolved_extracted = None
+    
+        if params:
+            pd = {}
+            for bindparam, name in self.bind_names.items():
+                escaped_name = (
+                    self.escaped_bind_names.get(name, name)
+                    if has_escaped_names
+                    else name
+                )
+    
+                if bindparam.key in params:
+                    pd[escaped_name] = params[bindparam.key]
+                elif name in params:
+                    pd[escaped_name] = params[name]
+    
+                elif _check and bindparam.required:
+                    if _group_number:
+                        raise exc.InvalidRequestError(
+                            "A value is required for bind parameter %r, "
+                            "in parameter group %d"
+                            % (bindparam.key, _group_number),
+                            code="cd3x",
+                        )
+                    else:
+>                       raise exc.InvalidRequestError(
+                            "A value is required for bind parameter %r"
+                            % bindparam.key,
+                            code="cd3x",
+                        )
+E                       sqlalchemy.exc.InvalidRequestError: A value is required for bind parameter 'true' (Background on this error at: https://sqlalche.me/e/21/cd3x)
+
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\sql\compiler.py:2007: InvalidRequestError
+
+The above exception was the direct cause of the following exception:
+
+database = OwnedDatabase(engine=Engine([redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]_r01:***[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]92a9), url... 'page_number', 'json_pointer'), 'users': ('user_id', 'username', 'password_hash', 'tenant_id', 'role', 'created_at')})
+
+    def test_turn_history_freezes_full_row_but_conversation_and_answer_lifecycle_work(
+        database: OwnedDatabase,
+    ) -> None:
+        with database.engine.begin() as connection:
+            conversation_id = insert_conversation(connection)
+            answer_id = insert_answer(connection)
+            turn_id = insert_turn(connection, conversation_id, answer_id)
+            connection.execute(
+                text(
+                    "UPDATE qa_conversations SET active_turn_id=:turn,version=1 "
+                    "WHERE conversation_id=:id"
+                ),
+                {"turn": turn_id, "id": conversation_id},
+            )
+            connection.execute(
+                text(
+                    'UPDATE grounded_answers SET response=\'{"status":"terminal"}\' '
+                    "WHERE answer_id=:answer"
+                ),
+                {"answer": answer_id},
+            )
+            connection.execute(
+                text(
+                    "UPDATE qa_conversations SET status='revoked',revoked_at=:now,updated_at=:now,"
+                    "version=2 WHERE conversation_id=:id"
+                ),
+                {"now": NOW, "id": conversation_id},
+            )
+        statements = tuple(
+            (sql, {"turn": turn_id})
+            for sql in (
+                "UPDATE qa_conversation_turns SET resolved_context='{\"tampered\":true}' "
+                "WHERE turn_id=:turn",
+                "DELETE FROM qa_conversation_turns WHERE turn_id=:turn",
+            )
+        )
+>       assert concurrent_codes(database.engine, statements) == ["23514", "23514"]
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_recovery[redacted test credential fragment]_migrations_0023_0026_pg.py:805: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_recovery[redacted test credential fragment]_migrations_0023_0026_pg.py:681: in concurrent_codes
+    return sorted(executor.map(execute, statements))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\concurrent\futures\_base.py:619: in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\concurrent\futures\_base.py:317: in _result_or_cancel
+    return fut.result(timeout)
+           ^^^^^^^^^^^^^^^^^^^
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\concurrent\futures\thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\integration\test_recovery[redacted test credential fragment]_migrations_0023_0026_pg.py:675: in execute
+    connection.execute(text(statement[0]), statement[1])
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1797: in _execute_context
+    self._handle_dbapi_exception(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1791: in _execute_context
+    context = constructor(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py:1658: in _init_compiled
+    compiled.construct_params(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGCompiler_psycopg object at 0x000001F8AE940D10>
+params = {'turn': '[redacted test credential]'}
+extracted_parameters = [BindParameter('true', None, type_=NullType()), BindParameter('turn', None, type_=NullType())]
+escape_names = False, _group_number = 0, _check = True, _no_postcompile = False
+_collected_params = None
+
+    def construct_params(
+        self,
+        params: Optional[_CoreSingleExecuteParams] = None,
+        extracted_parameters: Optional[Sequence[BindParameter[Any]]] = None,
+        escape_names: bool = True,
+        _group_number: Optional[int] = None,
+        _check: bool = True,
+        _no_postcompile: bool = False,
+        _collected_params: _CoreSingleExecuteParams | None = None,
+    ) -> _MutableCoreSingleExecuteParams:
+        """return a dictionary of bind parameter keys and values"""
+        if _collected_params is not None:
+            assert not self._collect_params
+        elif self._collect_params:
+            _collected_params = self._collected_params
+    
+        if _collected_params:
+            if not params:
+                params = _collected_params
+            else:
+                params = {**_collected_params, **params}
+    
+        if self._render_postcompile and not _no_postcompile:
+            assert self._post_compile_expanded_state is not None
+            if not params:
+                return dict(self._post_compile_expanded_state.parameters)
+            else:
+                raise exc.InvalidRequestError(
+                    "can't construct new parameters when render_postcompile "
+                    "is used; the statement is hard-linked to the original "
+                    "parameters.  Use construct_expanded_state to generate a "
+                    "new statement and parameters."
+                )
+    
+        has_escaped_names = escape_names and bool(self.escaped_bind_names)
+    
+        if extracted_parameters:
+            # related the bound parameters collected in the original cache key
+            # to those collected in the incoming cache key.  They will not have
+            # matching names but they will line up positionally in the same
+            # way.   The parameters present in self.bind_names may be clones of
+            # these original cache key params in the case of DML but the .key
+            # will be guaranteed to match.
+            if self.cache_key is None:
+                raise exc.CompileError(
+                    "This compiled object has no original cache key; "
+                    "can't pass extracted_parameters to construct_params"
+                )
+            else:
+                orig_extracted = self.cache_key[1]
+    
+            ckbm_tuple = self._cache_key_bind_match
+            assert ckbm_tuple is not None
+            ckbm, _ = ckbm_tuple
+            resolved_extracted = {
+                bind: extracted
+                for b, extracted in zip(orig_extracted, extracted_parameters)
+                for bind in ckbm[b]
+            }
+        else:
+            resolved_extracted = None
+    
+        if params:
+            pd = {}
+            for bindparam, name in self.bind_names.items():
+                escaped_name = (
+                    self.escaped_bind_names.get(name, name)
+                    if has_escaped_names
+                    else name
+                )
+    
+                if bindparam.key in params:
+                    pd[escaped_name] = params[bindparam.key]
+                elif name in params:
+                    pd[escaped_name] = params[name]
+    
+                elif _check and bindparam.required:
+                    if _group_number:
+                        raise exc.InvalidRequestError(
+                            "A value is required for bind parameter %r, "
+                            "in parameter group %d"
+                            % (bindparam.key, _group_number),
+                            code="cd3x",
+                        )
+                    else:
+>                       raise exc.InvalidRequestError(
+                            "A value is required for bind parameter %r"
+                            % bindparam.key,
+                            code="cd3x",
+                        )
+E                       sqlalchemy.exc.StatementError: (sqlalchemy.exc.InvalidRequestError) A value is required for bind parameter 'true'
+E                       [SQL: UPDATE qa_conversation_turns SET resolved_context='{"tampered"%(true)s}' WHERE turn_id=%(turn)s]
+E                       [SQL parameters hidden due to hide_parameters=True]
+E                       (Background on this error at: https://sqlalche.me/e/21/cd3x)
+
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\sql\compiler.py:2007: StatementError
+____ test_batch_size_limit_and_state_checks_allow_real_mutable_watermarks _____
+self = <sqlalchemy.engine.base.Connection object at 0x000001F8AED0D190>
+dialect = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGDialect_psycopg object at 0x000001F8ADE5A2A0>
+constructor = <bound method DefaultExecutionContext._init_compiled of <class 'sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGExecutionContext_psycopg'>>
+statement = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGCompiler_psycopg object at 0x000001F8AED0CAD0>
+parameters = [{'now': datetime.datetime(2026, 10, 16, 2, 1, tzinfo=datetime.timezone.utc)}]
+execution_options = immutabledict({})
+args = (<sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGCompiler_psycopg object at 0x000001F8AED0CAD0>, [{'now': datetime.datetime(...ect at 0x000001F8AED0CCB0>, [BindParameter('1', None, type_=NullType()), BindParameter('now', None, type_=NullType())])
+kw = {'cache_hit': <CacheStats.CACHE_MISS: 1>, 'param_dict': None}
+conn = <sqlalchemy.pool.base._ConnectionFairy object at 0x000001F8AEFCAC30>
+
+    def _execute_context(
+        self,
+        dialect: Dialect,
+        constructor: Callable[..., ExecutionContext],
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+        execution_options: _ExecuteOptions,
+        *args: Any,
+        **kw: Any,
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """Create an :class:`.ExecutionContext` and execute, returning
+        a :class:`_engine.CursorResult`."""
+    
+        if execution_options:
+            yp = execution_options.get("yield_per", None)
+            if yp:
+                execution_options = execution_options.union(
+                    {"stream_results": True, "max_row_buffer": yp}
+                )
+        try:
+            conn = self._dbapi_connection
+            if conn is None:
+                conn = self._revalidate_connection()
+    
+>           context = constructor(
+                dialect, self, conn, execution_options, *args, **kw
+            )
+
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1791: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py:1658: in _init_compiled
+    compiled.construct_params(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGCompiler_psycopg object at 0x000001F8AED0CAD0>
+params = {'now': datetime.datetime(2026, 10, 16, 2, 1, tzinfo=datetime.timezone.utc)}
+extracted_parameters = [BindParameter('1', None, type_=NullType()), BindParameter('now', None, type_=NullType())]
+escape_names = False, _group_number = 0, _check = True, _no_postcompile = False
+_collected_params = None
+
+    def construct_params(
+        self,
+        params: Optional[_CoreSingleExecuteParams] = None,
+        extracted_parameters: Optional[Sequence[BindParameter[Any]]] = None,
+        escape_names: bool = True,
+        _group_number: Optional[int] = None,
+        _check: bool = True,
+        _no_postcompile: bool = False,
+        _collected_params: _CoreSingleExecuteParams | None = None,
+    ) -> _MutableCoreSingleExecuteParams:
+        """return a dictionary of bind parameter keys and values"""
+        if _collected_params is not None:
+            assert not self._collect_params
+        elif self._collect_params:
+            _collected_params = self._collected_params
+    
+        if _collected_params:
+            if not params:
+                params = _collected_params
+            else:
+                params = {**_collected_params, **params}
+    
+        if self._render_postcompile and not _no_postcompile:
+            assert self._post_compile_expanded_state is not None
+            if not params:
+                return dict(self._post_compile_expanded_state.parameters)
+            else:
+                raise exc.InvalidRequestError(
+                    "can't construct new parameters when render_postcompile "
+                    "is used; the statement is hard-linked to the original "
+                    "parameters.  Use construct_expanded_state to generate a "
+                    "new statement and parameters."
+                )
+    
+        has_escaped_names = escape_names and bool(self.escaped_bind_names)
+    
+        if extracted_parameters:
+            # related the bound parameters collected in the original cache key
+            # to those collected in the incoming cache key.  They will not have
+            # matching names but they will line up positionally in the same
+            # way.   The parameters present in self.bind_names may be clones of
+            # these original cache key params in the case of DML but the .key
+            # will be guaranteed to match.
+            if self.cache_key is None:
+                raise exc.CompileError(
+                    "This compiled object has no original cache key; "
+                    "can't pass extracted_parameters to construct_params"
+                )
+            else:
+                orig_extracted = self.cache_key[1]
+    
+            ckbm_tuple = self._cache_key_bind_match
+            assert ckbm_tuple is not None
+            ckbm, _ = ckbm_tuple
+            resolved_extracted = {
+                bind: extracted
+                for b, extracted in zip(orig_extracted, extracted_parameters)
+                for bind in ckbm[b]
+            }
+        else:
+            resolved_extracted = None
+    
+        if params:
+            pd = {}
+            for bindparam, name in self.bind_names.items():
+                escaped_name = (
+                    self.escaped_bind_names.get(name, name)
+                    if has_escaped_names
+                    else name
+                )
+    
+                if bindparam.key in params:
+                    pd[escaped_name] = params[bindparam.key]
+                elif name in params:
+                    pd[escaped_name] = params[name]
+    
+                elif _check and bindparam.required:
+                    if _group_number:
+                        raise exc.InvalidRequestError(
+                            "A value is required for bind parameter %r, "
+                            "in parameter group %d"
+                            % (bindparam.key, _group_number),
+                            code="cd3x",
+                        )
+                    else:
+>                       raise exc.InvalidRequestError(
+                            "A value is required for bind parameter %r"
+                            % bindparam.key,
+                            code="cd3x",
+                        )
+E                       sqlalchemy.exc.InvalidRequestError: A value is required for bind parameter '1' (Background on this error at: https://sqlalche.me/e/21/cd3x)
+
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\sql\compiler.py:2007: InvalidRequestError
+
+The above exception was the direct cause of the following exception:
+
+database = OwnedDatabase(engine=Engine([redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]_r01:***[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]92a9), url... 'page_number', 'json_pointer'), 'users': ('user_id', 'username', 'password_hash', 'tenant_id', 'role', 'created_at')})
+
+    def test_batch_size_limit_and_state_checks_allow_real_mutable_watermarks(
+        database: OwnedDatabase,
+    ) -> None:
+        oversized = b"x" * (8388608 + 1)
+        parameters = {
+            **batch_parameters(database),
+            "payload": oversized,
+            "digest": hashlib.sha256(oversized).hexdigest(),
+            "sequence": 3,
+        }
+        expect_rejection(database.engine, BATCH_INSERT, parameters, "23514")
+        with database.engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO graph_projection_state VALUES('n','public','g','partition',"
+                    "'partition',"
+                    "NULL,'{}',:now,:now)"
+                ),
+                {"now": NOW},
+            )
+>           connection.execute(
+                text(
+                    "UPDATE graph_projection_state SET body='{\"watermark\":1}',updated_at=:now "
+                    "WHERE namespace='n'"
+                ),
+                {"now": NOW + timedelta(minutes=1)},
+            )
+
+tests\integration\test_recovery[redacted test credential fragment]_migrations_0023_0026_pg.py:924: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1797: in _execute_context
+    self._handle_dbapi_exception(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py:1791: in _execute_context
+    context = constructor(
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py:1658: in _init_compiled
+    compiled.construct_params(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGCompiler_psycopg object at 0x000001F8AED0CAD0>
+params = {'now': datetime.datetime(2026, 10, 16, 2, 1, tzinfo=datetime.timezone.utc)}
+extracted_parameters = [BindParameter('1', None, type_=NullType()), BindParameter('now', None, type_=NullType())]
+escape_names = False, _group_number = 0, _check = True, _no_postcompile = False
+_collected_params = None
+
+    def construct_params(
+        self,
+        params: Optional[_CoreSingleExecuteParams] = None,
+        extracted_parameters: Optional[Sequence[BindParameter[Any]]] = None,
+        escape_names: bool = True,
+        _group_number: Optional[int] = None,
+        _check: bool = True,
+        _no_postcompile: bool = False,
+        _collected_params: _CoreSingleExecuteParams | None = None,
+    ) -> _MutableCoreSingleExecuteParams:
+        """return a dictionary of bind parameter keys and values"""
+        if _collected_params is not None:
+            assert not self._collect_params
+        elif self._collect_params:
+            _collected_params = self._collected_params
+    
+        if _collected_params:
+            if not params:
+                params = _collected_params
+            else:
+                params = {**_collected_params, **params}
+    
+        if self._render_postcompile and not _no_postcompile:
+            assert self._post_compile_expanded_state is not None
+            if not params:
+                return dict(self._post_compile_expanded_state.parameters)
+            else:
+                raise exc.InvalidRequestError(
+                    "can't construct new parameters when render_postcompile "
+                    "is used; the statement is hard-linked to the original "
+                    "parameters.  Use construct_expanded_state to generate a "
+                    "new statement and parameters."
+                )
+    
+        has_escaped_names = escape_names and bool(self.escaped_bind_names)
+    
+        if extracted_parameters:
+            # related the bound parameters collected in the original cache key
+            # to those collected in the incoming cache key.  They will not have
+            # matching names but they will line up positionally in the same
+            # way.   The parameters present in self.bind_names may be clones of
+            # these original cache key params in the case of DML but the .key
+            # will be guaranteed to match.
+            if self.cache_key is None:
+                raise exc.CompileError(
+                    "This compiled object has no original cache key; "
+                    "can't pass extracted_parameters to construct_params"
+                )
+            else:
+                orig_extracted = self.cache_key[1]
+    
+            ckbm_tuple = self._cache_key_bind_match
+            assert ckbm_tuple is not None
+            ckbm, _ = ckbm_tuple
+            resolved_extracted = {
+                bind: extracted
+                for b, extracted in zip(orig_extracted, extracted_parameters)
+                for bind in ckbm[b]
+            }
+        else:
+            resolved_extracted = None
+    
+        if params:
+            pd = {}
+            for bindparam, name in self.bind_names.items():
+                escaped_name = (
+                    self.escaped_bind_names.get(name, name)
+                    if has_escaped_names
+                    else name
+                )
+    
+                if bindparam.key in params:
+                    pd[escaped_name] = params[bindparam.key]
+                elif name in params:
+                    pd[escaped_name] = params[name]
+    
+                elif _check and bindparam.required:
+                    if _group_number:
+                        raise exc.InvalidRequestError(
+                            "A value is required for bind parameter %r, "
+                            "in parameter group %d"
+                            % (bindparam.key, _group_number),
+                            code="cd3x",
+                        )
+                    else:
+>                       raise exc.InvalidRequestError(
+                            "A value is required for bind parameter %r"
+                            % bindparam.key,
+                            code="cd3x",
+                        )
+E                       sqlalchemy.exc.StatementError: (sqlalchemy.exc.InvalidRequestError) A value is required for bind parameter '1'
+E                       [SQL: UPDATE graph_projection_state SET body='{"watermark"%(1)s}',updated_at=%(now)s WHERE namespace='n']
+E                       [SQL parameters hidden due to hide_parameters=True]
+E                       (Background on this error at: https://sqlalche.me/e/21/cd3x)
+
+D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\sql\compiler.py:2007: StatementError
+============================== warnings summary ===============================
+tests/integration/test_recovery_forward_migrations_0023_0026_pg.py::test_every_0022_history_row_and_raw_hash_survives_each_forward_revision
+  D:\wt\r07-r12-r10-r18-migrations\backend\tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:301: SAWarning: Did not recognize type 'vector' of column 'embedding'
+    column["name"] for column in inspector.get_columns(table, schema=database_name)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\r07-r12-r10-r18-migrations\reports\runs\recovery_forward_migrations_0023_0026_20261016\pg_1.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_recovery_forward_migrations_0023_0026_pg.py::test_turn_history_freezes_full_row_but_conversation_and_answer_lifecycle_work
+FAILED tests/integration/test_recovery_forward_migrations_0023_0026_pg.py::test_batch_size_limit_and_state_checks_allow_real_mutable_watermarks
+2 failed, 58 passed, 1 warning in 24.66s

@@ -1,0 +1,31 @@
+backend/src/ai_intel/knowledge/event_linking.py:32:    save_change_publication,
+backend/src/ai_intel/knowledge/event_linking.py:283:            return save_change_publication(
+backend/src/ai_intel/knowledge/event_linking.py:394:            return save_change_publication(
+backend/src/ai_intel/knowledge/event_linking.py:494:            return save_change_publication(
+backend/src/ai_intel/knowledge/persistence.py:31:from ai_intel.infrastructure.outbox import IdempotencyConflictError
+backend/src/ai_intel/knowledge/persistence.py:38:    outbox_events,
+backend/src/ai_intel/knowledge/persistence.py:51:from ai_intel.knowledge.revisions import bump_scope_epoch
+backend/src/ai_intel/knowledge/persistence.py:156:    outbox_id: str
+backend/src/ai_intel/knowledge/persistence.py:212:        outbox_id=str(row["outbox_id"]),
+backend/src/ai_intel/knowledge/persistence.py:249:def save_change_publication(
+backend/src/ai_intel/knowledge/persistence.py:260:    """事实与事件共用真实change/epoch/jobs/outbox收据写入; 调用方持scope锁及事务。"""
+backend/src/ai_intel/knowledge/persistence.py:262:    epoch = bump_scope_epoch(session, scope_key, created_at)
+backend/src/ai_intel/knowledge/persistence.py:263:    change_id, job_id, outbox_id, receipt_id = (str(uuid4()) for _ in range(4))
+backend/src/ai_intel/knowledge/persistence.py:292:        outbox_events.insert().values(
+backend/src/ai_intel/knowledge/persistence.py:293:            event_id=outbox_id,
+backend/src/ai_intel/knowledge/persistence.py:309:            outbox_id=outbox_id,
+backend/src/ai_intel/knowledge/persistence.py:322:        outbox_id,
+backend/src/ai_intel/knowledge/persistence.py:469:        """业务发布与epoch/change/jobs/outbox同事务; 失败保存点回滚不占幂等键。"""
+backend/src/ai_intel/knowledge/persistence.py:510:            return save_change_publication(
+backend/src/ai_intel/knowledge/revisions.py:25:    scope_epochs,
+backend/src/ai_intel/knowledge/revisions.py:463:def bump_scope_epoch(session: Session, scope_key: str, updated_at: datetime) -> int:
+backend/src/ai_intel/knowledge/revisions.py:465:    statement = insert(scope_epochs).values(scope_key=scope_key, epoch=1, updated_at=updated_at)
+backend/src/ai_intel/knowledge/revisions.py:467:        index_elements=[scope_epochs.c.scope_key],
+backend/src/ai_intel/knowledge/revisions.py:468:        set_={"epoch": scope_epochs.c.epoch + 1, "updated_at": updated_at},
+backend/src/ai_intel/knowledge/revisions.py:469:    ).returning(scope_epochs.c.epoch)
+backend/src/ai_intel/ingestion/catalog_documents.py:23:from ai_intel.knowledge.models import document_revisions, documents, scope_epochs
+backend/src/ai_intel/ingestion/catalog_documents.py:155:def persist_catalog_documents(
+backend/src/ai_intel/ingestion/catalog_documents.py:166:    """仅写同一公开源；整页savepoint与cursor/outbox由调用方事务共同提交。"""
+backend/src/ai_intel/ingestion/catalog_documents.py:287:                insert(scope_epochs)
+backend/src/ai_intel/ingestion/catalog_documents.py:290:                    index_elements=[scope_epochs.c.scope_key],
+backend/src/ai_intel/ingestion/catalog_documents.py:291:                    set_={"epoch": scope_epochs.c.epoch + 1, "updated_at": ingested_at},

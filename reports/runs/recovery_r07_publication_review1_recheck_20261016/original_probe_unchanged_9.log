@@ -1,0 +1,81 @@
+........F                                                                [100%]
+================================== FAILURES ===================================
+____ test_source_revision_and_publication_share_non_deadlocking_lock_order ____
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_pub_review2_20261016?options=-c+search_path%3Dtest_r06_catalog_3e443726904b45a7a574b56542a49152+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-682/test_source_revision_and_publi0')
+
+    def test_source_revision_and_publication_share_non_deadlocking_lock_order(catalog_engine, tmp_path):
+        store, loaded = loaded_inputs(catalog_engine, tmp_path)
+        attempts = enrich_structured_fields(loaded.context, loaded.documents)
+        body = json.loads(source_response("nvd_ollama")[0])
+        body["vulnerabilities"][0]["cve"]["descriptions"][0]["value"] += " Synthetic review revision."
+        response = SourceResponse("nvd_ollama", json.dumps(body).encode(),
+            "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=ollama&resultsPerPage=20&startIndex=0",
+            loaded.documents[0].observed_at + timedelta(seconds=1))
+        writer_locked = Event()
+        publisher_locked = Event()
+    
+        def synchronize(connection, cursor, statement, parameters, context, executemany):
+            actor = connection.info.get("review_actor")
+            if actor == "writer" and "SELECT documents." in statement and "FOR UPDATE" in statement and not writer_locked.is_set():
+                writer_locked.set()
+                assert publisher_locked.wait(10), "publisher did not acquire scope lock"
+            if actor == "publisher" and "pg_advisory_xact_lock" in statement:
+                publisher_locked.set()
+    
+        def invoke(actor):
+            try:
+                with Session(catalog_engine) as session, session.begin():
+                    session.connection().info["review_actor"] = actor
+                    if actor == "writer":
+                        persist_source_response(session, store, ADMIN, response, ingested_at=response.observed_at)
+                    else:
+                        publish_enrichment_attempts(session, ADMIN, loaded, attempts, request_id=uuid4(), recorded_at=response.observed_at)
+                return {"actor": actor, "outcome": "completed", "sqlstate": None}
+            except Exception as failure:
+                cause = getattr(failure, "orig", None)
+                return {"actor": actor, "outcome": type(failure).__name__, "sqlstate": getattr(cause, "sqlstate", None)}
+    
+        event.listen(catalog_engine, "after_cursor_execute", synchronize)
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                writer = pool.submit(invoke, "writer")
+                assert writer_locked.wait(10), "writer did not acquire document lock"
+                publisher = pool.submit(invoke, "publisher")
+                outcomes = [writer.result(timeout=25), publisher.result(timeout=25)]
+        finally:
+            event.remove(catalog_engine, "after_cursor_execute", synchronize)
+        (RAW / ("concurrent_source_publication_outcomes" + RUN_SUFFIX + ".json")).write_text(json.dumps(outcomes, indent=2), encoding="utf-8")
+        assert all(outcome["sqlstate"] != "40P01" for outcome in outcomes), outcomes
+>       assert {outcome["outcome"] for outcome in outcomes} <= {"completed", "EnrichmentPublicationError"}, outcomes
+E       AssertionError: [{'actor': 'writer', 'outcome': 'AssertionError', 'sqlstate': None}, {'actor': 'publisher', 'outcome': 'OperationalError', 'sqlstate': '55P03'}]
+E       assert {'AssertionEr...ationalError'} <= {'EnrichmentP..., 'completed'}
+E         
+E         Extra items in the left set:
+E         'OperationalError'
+E         'AssertionError'
+
+..\reports\runs\recovery_r07_publication_review1_recheck_20261016\test_original_probe_unchanged.py:224: AssertionError
+============================== warnings summary ===============================
+tests\integration\test_r06_catalog_documents_pg.py:32
+  D:\wt\r07-pub-recheck1\backend\tests\integration\test_r06_catalog_documents_pg.py:32: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+tests\integration\test_r06_source_worker_pg.py:43
+  D:\wt\r07-pub-recheck1\backend\tests\integration\test_r06_source_worker_pg.py:43: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+tests\integration\test_r07_enrichment_inputs_pg.py:18
+  D:\wt\r07-pub-recheck1\backend\tests\integration\test_r07_enrichment_inputs_pg.py:18: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+..\reports\runs\recovery_r07_publication_review1_recheck_20261016\test_original_probe_unchanged.py:38
+  D:\wt\r07-pub-recheck1\reports\runs\recovery_r07_publication_review1_recheck_20261016\test_original_probe_unchanged.py:38: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\r07-pub-recheck1\reports\runs\recovery_r07_publication_review1_recheck_20261016\original_probe_unchanged_9.xml -
+=========================== short test summary info ===========================
+FAILED ..\reports\runs\recovery_r07_publication_review1_recheck_20261016\test_original_probe_unchanged.py::test_source_revision_and_publication_share_non_deadlocking_lock_order
+1 failed, 8 passed, 4 warnings in 27.09s

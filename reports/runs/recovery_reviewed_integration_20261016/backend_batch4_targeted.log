@@ -1,0 +1,125 @@
+........................................................................ [ 25%]
+........................................................................ [ 51%]
+........................................................................ [ 77%]
+..............................F.........EEEEEE...............            [100%]
+=================================== ERRORS ====================================
+_ ERROR at setup of test_audit_tenant_isolation_and_unknown_user_system_admin_only _
+
+    @pytest.fixture()
+    def isolated_test_database_url() -> str:
+        """缺少隔离资源记错误/blocked，不通过 skip 隐藏缺测。"""
+        from scripts.dev import TestEnvironmentError, require_isolated_test_database
+    
+        try:
+            return require_isolated_test_database()
+        except TestEnvironmentError as blocked:
+>           raise pytest.UsageError(f"blocked: {blocked}") from None
+E           _pytest.config.exceptions.UsageError: blocked: DIANZI_TEST_RUN_ID must be a lowercase test identifier
+
+tests\conftest.py:176: UsageError
+_ ERROR at setup of test_audit_keyset_pagination_is_bounded_stable_and_has_no_secrets _
+
+    @pytest.fixture()
+    def isolated_test_database_url() -> str:
+        """缺少隔离资源记错误/blocked，不通过 skip 隐藏缺测。"""
+        from scripts.dev import TestEnvironmentError, require_isolated_test_database
+    
+        try:
+            return require_isolated_test_database()
+        except TestEnvironmentError as blocked:
+>           raise pytest.UsageError(f"blocked: {blocked}") from None
+E           _pytest.config.exceptions.UsageError: blocked: DIANZI_TEST_RUN_ID must be a lowercase test identifier
+
+tests\conftest.py:176: UsageError
+_ ERROR at setup of test_pg_csrf_non_ascii_and_origin_rejections_preserve_session _
+
+    @pytest.fixture()
+    def isolated_test_database_url() -> str:
+        """缺少隔离资源记错误/blocked，不通过 skip 隐藏缺测。"""
+        from scripts.dev import TestEnvironmentError, require_isolated_test_database
+    
+        try:
+            return require_isolated_test_database()
+        except TestEnvironmentError as blocked:
+>           raise pytest.UsageError(f"blocked: {blocked}") from None
+E           _pytest.config.exceptions.UsageError: blocked: DIANZI_TEST_RUN_ID must be a lowercase test identifier
+
+tests\conftest.py:176: UsageError
+_ ERROR at setup of test_pg_failure_http_is_fixed_503_without_memory_fallback _
+
+    @pytest.fixture()
+    def isolated_test_database_url() -> str:
+        """缺少隔离资源记错误/blocked，不通过 skip 隐藏缺测。"""
+        from scripts.dev import TestEnvironmentError, require_isolated_test_database
+    
+        try:
+            return require_isolated_test_database()
+        except TestEnvironmentError as blocked:
+>           raise pytest.UsageError(f"blocked: {blocked}") from None
+E           _pytest.config.exceptions.UsageError: blocked: DIANZI_TEST_RUN_ID must be a lowercase test identifier
+
+tests\conftest.py:176: UsageError
+______ ERROR at setup of test_logout_audit_failure_rolls_back_revocation ______
+
+    @pytest.fixture()
+    def isolated_test_database_url() -> str:
+        """缺少隔离资源记错误/blocked，不通过 skip 隐藏缺测。"""
+        from scripts.dev import TestEnvironmentError, require_isolated_test_database
+    
+        try:
+            return require_isolated_test_database()
+        except TestEnvironmentError as blocked:
+>           raise pytest.UsageError(f"blocked: {blocked}") from None
+E           _pytest.config.exceptions.UsageError: blocked: DIANZI_TEST_RUN_ID must be a lowercase test identifier
+
+tests\conftest.py:176: UsageError
+_______ ERROR at setup of test_me_current_scope_and_forged_identity_422 _______
+
+    @pytest.fixture()
+    def isolated_test_database_url() -> str:
+        """缺少隔离资源记错误/blocked，不通过 skip 隐藏缺测。"""
+        from scripts.dev import TestEnvironmentError, require_isolated_test_database
+    
+        try:
+            return require_isolated_test_database()
+        except TestEnvironmentError as blocked:
+>           raise pytest.UsageError(f"blocked: {blocked}") from None
+E           _pytest.config.exceptions.UsageError: blocked: DIANZI_TEST_RUN_ID must be a lowercase test identifier
+
+tests\conftest.py:176: UsageError
+================================== FAILURES ===================================
+____________ test_audit_and_sources_carry_no_secret_values_t06_c06 ____________
+
+    def test_audit_and_sources_carry_no_secret_values_t06_c06() -> None:
+        """T06-C06: 审计事件与源码/日志扫描无密码、cookie、token 或真实密钥值。"""
+        service = build_service()
+        service.create_precreated_user("analyst-a", "Str0ng-Passphrase!", "tenant-alpha", Role.ANALYST)
+        session_token, _ = service.login("analyst-a", "Str0ng-Passphrase!", ALLOWED_ORIGIN, "client-1")
+        service.logout(session_token)
+        for event in service.audit_events():
+            serialized = str(event).lower()
+            assert "str0ng-passphrase!" not in serialized
+            assert session_token not in str(event)
+            assert "trace_id" in event
+        with pytest.raises(AuditEventError):
+            service._append_audit("manual_probe", {"password": "should-not-be-logged"})
+        classifications = load_fixture_classifications(
+            REPO_ROOT, REPO_ROOT / "reports/security/recovery_fixture_false_positives.json"
+        )
+        findings = scan_repository(REPO_ROOT, classifications)
+        rejected = [finding for finding in findings if finding.category not in SAFE_CATEGORIES]
+>       assert not rejected, rejected
+E       AssertionError: [ScanFinding(path='frontend/src/features/assets/asset-client.test.ts', pattern_id='original_secret_pattern', category=...asset-sbom-client.test.ts', pattern_id='original_secret_value_pattern', category='unclassified_credential_shape'), ...]
+E       assert not [ScanFinding(path='frontend/src/features/assets/asset-client.test.ts', pattern_id='original_secret_pattern', category=...asset-sbom-client.test.ts', pattern_id='original_secret_value_pattern', category='unclassified_credential_shape'), ...]
+
+tests\security\test_t06_authentication_and_scope.py:162: AssertionError
+- generated xml file: D:\dianzi\reports\runs\recovery_reviewed_integration_20261016\backend_batch4_targeted.xml -
+=========================== short test summary info ===========================
+FAILED tests/security/test_t06_authentication_and_scope.py::test_audit_and_sources_carry_no_secret_values_t06_c06
+ERROR tests/security/test_r02_auth_state_boundaries.py::test_audit_tenant_isolation_and_unknown_user_system_admin_only
+ERROR tests/security/test_r02_auth_state_boundaries.py::test_audit_keyset_pagination_is_bounded_stable_and_has_no_secrets
+ERROR tests/security/test_r02_auth_state_boundaries.py::test_pg_csrf_non_ascii_and_origin_rejections_preserve_session
+ERROR tests/security/test_r02_auth_state_boundaries.py::test_pg_failure_http_is_fixed_503_without_memory_fallback
+ERROR tests/security/test_r02_auth_state_boundaries.py::test_logout_audit_failure_rolls_back_revocation
+ERROR tests/security/test_r02_auth_state_boundaries.py::test_me_current_scope_and_forged_identity_422
+1 failed, 270 passed, 6 errors in 111.38s (0:01:51)

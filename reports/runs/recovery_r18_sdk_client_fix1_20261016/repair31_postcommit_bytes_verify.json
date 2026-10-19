@@ -1,0 +1,12 @@
+{
+  "command": [
+    "D:/dianzi/backend/.venv/Scripts/python.exe",
+    "-c",
+    "import hashlib,json,pathlib,subprocess\nfrom datetime import datetime\nfrom zoneinfo import ZoneInfo\nroot=pathlib.Path.cwd();run=root/'reports/runs/recovery_r18_sdk_client_fix1_20261016';proof=json.loads((run/'renormalize_once_green_proof.json').read_bytes())\ndef git(*args):return subprocess.run(['git',*args],cwd=root,capture_output=True,check=True,timeout=30).stdout\nhead=git('rev-parse','HEAD').decode().strip();changed=git('diff-tree','--no-commit-id','--name-only','-r',head).decode().splitlines();assert sorted(changed)==sorted(proof['staged_paths']) and len(changed)==31\ngit('diff','--cached','--quiet');git('diff','--exit-code','6d85742b0114cc5e304e88b2aa930755ccce9bc9','--','sdk/python')\nfiles=[]\nfor e in proof['files']:\n    raw=(root/e['path']).read_bytes();blob=git('show','HEAD:'+e['path']);assert hashlib.sha256(raw).hexdigest()==e['raw_sha256'];assert hashlib.sha256(blob).hexdigest()==e['index_blob_sha256'];files.append({'path':e['path'],'raw_sha256':e['raw_sha256'],'git_blob_sha256':hashlib.sha256(blob).hexdigest(),'byte_mode':e['byte_mode']})\nrecord={'observed_at':datetime.now(ZoneInfo('Asia/Shanghai')).isoformat(timespec='seconds'),'source_sha':proof['source_sha'],'raw_checkpoint_sha':head,'tree':git('rev-parse','HEAD^{tree}').decode().strip(),'exact_changed_31':True,'all_110_raw_and_git_blobs_match':True,'source_diff_exit':0,'empty_staging':True,'files':files}\np=run/'repair31_postcommit_bytes_proof.json';assert not p.exists();p.write_text(json.dumps(record,indent=2)+'\\n',encoding='utf-8');print(json.dumps({k:v for k,v in record.items() if k!='files'}));print(hashlib.sha256(p.read_bytes()).hexdigest())"
+  ],
+  "cwd": "D:\\wt\\r18-sdk-client-fix1",
+  "started_at": "2026-10-16T09:14:07+08:00",
+  "finished_at": "2026-10-16T09:14:14+08:00",
+  "exit_code": 1,
+  "log_path": "repair31_postcommit_bytes_verify.log"
+}

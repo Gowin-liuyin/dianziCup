@@ -1,0 +1,33 @@
+..................................F........                              [100%]
+================================== FAILURES ===================================
+____ test_partial_actual_evaluation_can_include_unknown_and_smaller_count _____
+
+    def test_partial_actual_evaluation_can_include_unknown_and_smaller_count() -> None:
+        payload = copy.deepcopy(STACK)
+        payload['result']['results'][0].update(status='insufficient_evidence',reason_code='missing_version')
+        payload['risk_summary'].update(confirmation='unknown',coverage='partial',evaluated_components=1,
+                                       unknown_component_indices=[0],findings=[])
+        parsed = parse_public('StackCheckEnvelope',payload)
+        assert parsed.risk_summary.evaluated_components == 1
+        payload['result']['results'].append(copy.deepcopy(ASSESSMENT))
+>       assert parse_public('StackCheckEnvelope',payload).risk_summary.evaluated_components == 1
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+reports\runs\recovery_r18_public_extension_models_fix1_20261016\inputs\test_independent_models.py:129: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+name = 'StackCheckEnvelope'
+value = {'result': {'kind': 'completed', 'limitations': [], 'results': [{'assessment_id': 'fa349f76-0b1d-47ca-a128-4655f6ac8a4...]}, 'risk_summary': {'confirmation': 'unknown', 'coverage': 'partial', 'evaluated_components': 1, 'findings': [], ...}}
+
+    def parse_public(name: str, value: object) -> PublicRecord:
+>       return getattr(public_client,name).model_validate_json(json.dumps(value))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for StackCheckEnvelope
+E         Value error, risk summary omits unknown or conflicting component results [type=value_error]
+E           For further information visit https://errors.pydantic.dev/2.13/v/value_error
+
+reports\runs\recovery_r18_public_extension_models_fix1_20261016\inputs\test_independent_models.py:53: ValidationError
+- generated xml file: D:\wt\r18-public-models-fix1\reports\runs\recovery_r18_public_extension_models_fix1_20261016\reviewer_probes.xml -
+=========================== short test summary info ===========================
+FAILED reports/runs/recovery_r18_public_extension_models_fix1_20261016/inputs/test_independent_models.py::test_partial_actual_evaluation_can_include_unknown_and_smaller_count
+1 failed, 42 passed in 1.44s

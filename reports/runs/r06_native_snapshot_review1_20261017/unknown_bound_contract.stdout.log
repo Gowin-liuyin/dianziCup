@@ -1,0 +1,110 @@
+FFFF                                                                     [100%]
+================================== FAILURES ===================================
+________ test_unknown_descendant_birth_is_the_explicit_ownership_error ________
+
+    def test_unknown_descendant_birth_is_the_explicit_ownership_error():
+        actor, kernel = actor_fixture()
+        with pytest.raises(ACTOR.OwnershipError):
+>           actor.bind_descendant(22, {"created": None}, BIRTH)
+
+reports\runs\r06_native_snapshot_review1_20261017\test_review_unknown_bound_birth.py:60: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+reports\runs\recovery_r06_activation_prep_20261016\candidate\core\windows_actor.py:230: in bind_descendant
+    expected = _snapshot_ticks(str(row["created"]))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+value = 'None'
+
+    def _snapshot_ticks(value: str) -> int:
+>       difference = datetime.fromisoformat(value) - datetime(1601, 1, 1, tzinfo=UTC)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       ValueError: Invalid isoformat string: 'None'
+
+reports\runs\recovery_r06_activation_prep_20261016\candidate\core\windows_actor.py:159: ValueError
+______ test_unknown_initial_actor_birth_is_the_explicit_ownership_error _______
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002133186F830>
+
+    def test_unknown_initial_actor_birth_is_the_explicit_ownership_error(monkeypatch):
+        actor, kernel = actor_fixture()
+        monkeypatch.setattr(ACTOR, "process_tree", lambda: {11: {"parent": 7, "created": None}})
+        with pytest.raises(ACTOR.OwnershipError):
+>           actor.kill_owned_tree()
+
+reports\runs\r06_native_snapshot_review1_20261017\test_review_unknown_bound_birth.py:68: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+reports\runs\recovery_r06_activation_prep_20261016\candidate\core\windows_actor.py:256: in kill_owned_tree
+    and _snapshot_ticks(str(tree[self.pid]["created"])) // 10 != self.creation_ticks // 10
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+value = 'None'
+
+    def _snapshot_ticks(value: str) -> int:
+>       difference = datetime.fromisoformat(value) - datetime(1601, 1, 1, tzinfo=UTC)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       ValueError: Invalid isoformat string: 'None'
+
+reports\runs\recovery_r06_activation_prep_20261016\candidate\core\windows_actor.py:159: ValueError
+_ test_remaining_unknown_bound_pid_refuses_even_with_live_snapshot_parent[actor] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002133186EB10>
+bound_role = 'actor'
+
+    @pytest.mark.parametrize("bound_role", ["actor", "descendant"])
+    def test_remaining_unknown_bound_pid_refuses_even_with_live_snapshot_parent(monkeypatch, bound_role):
+        actor, kernel = actor_fixture()
+        initial = {11: {"parent": 7, "created": CREATED}}
+        if bound_role == "descendant":
+            initial[22] = {"parent": 11, "created": CREATED}
+            actor.bind_descendant = lambda *_: (122, BIRTH)
+        remaining = {
+            0: {"parent": 0, "created": None},
+            2: {"parent": 0, "created": CREATED},
+            7: {"parent": 2, "created": CREATED},
+            11: {"parent": 7, "created": None if bound_role == "actor" else CREATED},
+        }
+        if bound_role == "descendant":
+            remaining[22] = {"parent": 7, "created": None}
+        snapshots = iter([initial, remaining])
+        monkeypatch.setattr(ACTOR, "process_tree", lambda: next(snapshots))
+>       with pytest.raises(ACTOR.OwnershipError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'review_unknown_bound_actor.OwnershipError'>
+
+reports\runs\r06_native_snapshot_review1_20261017\test_review_unknown_bound_birth.py:89: Failed
+_ test_remaining_unknown_bound_pid_refuses_even_with_live_snapshot_parent[descendant] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002133186DF70>
+bound_role = 'descendant'
+
+    @pytest.mark.parametrize("bound_role", ["actor", "descendant"])
+    def test_remaining_unknown_bound_pid_refuses_even_with_live_snapshot_parent(monkeypatch, bound_role):
+        actor, kernel = actor_fixture()
+        initial = {11: {"parent": 7, "created": CREATED}}
+        if bound_role == "descendant":
+            initial[22] = {"parent": 11, "created": CREATED}
+            actor.bind_descendant = lambda *_: (122, BIRTH)
+        remaining = {
+            0: {"parent": 0, "created": None},
+            2: {"parent": 0, "created": CREATED},
+            7: {"parent": 2, "created": CREATED},
+            11: {"parent": 7, "created": None if bound_role == "actor" else CREATED},
+        }
+        if bound_role == "descendant":
+            remaining[22] = {"parent": 7, "created": None}
+        snapshots = iter([initial, remaining])
+        monkeypatch.setattr(ACTOR, "process_tree", lambda: next(snapshots))
+>       with pytest.raises(ACTOR.OwnershipError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'review_unknown_bound_actor.OwnershipError'>
+
+reports\runs\r06_native_snapshot_review1_20261017\test_review_unknown_bound_birth.py:89: Failed
+- generated xml file: D:\wt\r06-native-review1\codex\r06-native-review1\reports\runs\r06_native_snapshot_review1_20261017\unknown_bound_contract.xml -
+=========================== short test summary info ===========================
+FAILED reports/runs/r06_native_snapshot_review1_20261017/test_review_unknown_bound_birth.py::test_unknown_descendant_birth_is_the_explicit_ownership_error
+FAILED reports/runs/r06_native_snapshot_review1_20261017/test_review_unknown_bound_birth.py::test_unknown_initial_actor_birth_is_the_explicit_ownership_error
+FAILED reports/runs/r06_native_snapshot_review1_20261017/test_review_unknown_bound_birth.py::test_remaining_unknown_bound_pid_refuses_even_with_live_snapshot_parent[actor]
+FAILED reports/runs/r06_native_snapshot_review1_20261017/test_review_unknown_bound_birth.py::test_remaining_unknown_bound_pid_refuses_even_with_live_snapshot_parent[descendant]
+4 failed in 0.29s

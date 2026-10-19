@@ -1,0 +1,127 @@
+............F...F................................................F...... [ 97%]
+..                                                                       [100%]
+================================== FAILURES ===================================
+_ test_core_only_approved_constants_change_and_ten_original_guards_are_exact __
+
+    def test_core_only_approved_constants_change_and_ten_original_guards_are_exact() -> (
+        None
+    ):
+        approved = {
+            "PRODUCT_ROOT",
+            "PRODUCT_SHA",
+            "SCHEMA",
+            "CORE_SOURCE_RELATIVE",
+            "OPERATIONS_SOURCE_RELATIVE",
+            "TOOL_ROOT",
+            "OPERATIONS_ROOT",
+            "CORE_ROOT",
+            "DATABASE",
+            "CONTROL_MARKER_OWNER",
+            "TOOL_SHA",
+            "OBSERVER_SHA",
+            "OBSERVER_RELATIVE",
+        }
+        original = PREPARATION / "reviewed_sources/core"
+        candidate = CANDIDATE / "core"
+        assert {path.name for path in candidate.glob("*.py")} == {
+            path.name for path in original.glob("*.py")
+        }
+        assert len(list(candidate.glob("*.py"))) == 11
+        for path in original.glob("*.py"):
+            actual = (candidate / path.name).read_bytes()
+            if path.name == "run_binding.py":
+                assert without_lifecycle(
+                    actual, approved, {"verify_live_binding", "require_start_window"}
+                ) == without_lifecycle(
+                    expected_nonce_marker_source(path.read_bytes()),
+                    approved,
+                    {"verify_live_binding", "require_start_window"},
+                )
+            elif path.name == "controlled_supervise.py":
+                assert without_lifecycle(
+                    actual, set(), {"main", "producers_acknowledged"}
+                ) == without_lifecycle(
+                    path.read_bytes(), set(), {"main", "producers_acknowledged"}
+                )
+            else:
+>               assert actual == path.read_bytes()
+E               assert b'"""Bind an ...ndle = None\n' == b'"""Bind an ...ndle = None\n'
+E                 
+E                 At index 145 diff: b'n' != b'j'
+E                 Use -v to get more diff
+
+reports\runs\recovery_r06_activation_database_fix5_20261017\test_candidate_binding.py:122: AssertionError
+___ test_ops_controller_observers_and_authorization_guards_remain_original ____
+
+    def test_ops_controller_observers_and_authorization_guards_remain_original() -> None:
+        configuration = CANDIDATE / "ops/configuration.py"
+        original_configuration = PREPARATION / "reviewed_sources/ops/configuration.py"
+        approved = {
+            "PRODUCT",
+            "PRODUCT_SHA",
+            "SOURCE_SCHEMA",
+            "CORE_SOURCE_SHA",
+            "OPS",
+            "DEPLOY",
+            "CORE",
+            "SOURCE_DATABASE",
+            "TOOL_SHA",
+            "OBSERVER_SHA",
+        }
+        functions = {
+            "write_runtime_gate",
+            "read_launch_state",
+            "validate_launch_state",
+            "prepare_launch",
+            "require_archive_path",
+        }
+        assert without_lifecycle(
+            configuration.read_bytes(), approved, functions
+        ) == without_lifecycle(original_configuration.read_bytes(), approved, functions)
+        original = PREPARATION / "reviewed_sources/ops"
+        changed = {
+            "configuration.py",
+            "launch.ps1",
+            "minio_segment.py",
+            "windows_preflight.ps1",
+            "guardian.py",
+        }
+        for path in original.iterdir():
+            if path.is_file() and path.name not in changed:
+>               assert (CANDIDATE / "ops" / path.name).read_bytes() == path.read_bytes()
+E               assert b'"""Check fi...) from None\n' == b'"""Check fi...) from None\n'
+E                 
+E                 At index 187 diff: b'y' != b'u'
+E                 Use -v to get more diff
+
+reports\runs\recovery_r06_activation_database_fix5_20261017\test_candidate_binding.py:240: AssertionError
+___ test_control_logic_is_exact_fix3_outside_approved_product_and_core_pins ___
+
+    def test_control_logic_is_exact_fix3_outside_approved_product_and_core_pins():
+        for path in (CANDIDATE / "core").glob("*.py"):
+            original = git("show", BASE + ":" + path.relative_to(ROOT).as_posix())
+            if path.name == "run_binding.py":
+                original = replace_exact(original, OLD_PRODUCT, PRODUCT_SHA, 1)
+                original = replace_exact(
+                    original,
+                    "r06-product-f3-runtime-20261017",
+                    "r06-product-912-runtime-20261017",
+                    1,
+                )
+            original = original.replace(
+                b"test_dianzi_r06_f3_20261017_c965d51749df",
+                b"test_dianzi_r06_912_20261017_f15191e6ea74",
+            )
+>           assert path.read_bytes() == original
+E           assert b'"""Own the ...) from None\n' == b'"""Own the ...) from None\n'
+E             
+E             At index 2391 diff: b'(' != b'g'
+E             Use -v to get more diff
+
+reports\runs\recovery_r06_activation_database_fix5_20261017\test_product_binding.py:70: AssertionError
+- generated xml file: D:\wt\r06-native-review1\codex\r06-native-review1\reports\runs\r06_native_snapshot_review1_20261017\offline_original74.xml -
+=========================== short test summary info ===========================
+FAILED reports/runs/recovery_r06_activation_database_fix5_20261017/test_candidate_binding.py::test_core_only_approved_constants_change_and_ten_original_guards_are_exact
+FAILED reports/runs/recovery_r06_activation_database_fix5_20261017/test_candidate_binding.py::test_ops_controller_observers_and_authorization_guards_remain_original
+FAILED reports/runs/recovery_r06_activation_database_fix5_20261017/test_product_binding.py::test_control_logic_is_exact_fix3_outside_approved_product_and_core_pins
+3 failed, 71 passed in 6.79s

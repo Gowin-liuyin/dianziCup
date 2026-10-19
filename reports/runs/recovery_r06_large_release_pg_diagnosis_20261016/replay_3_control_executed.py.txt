@@ -1,0 +1,130 @@
+"""Bounded, offline R06 diagnosis; private connections never enter argv or logs."""
+
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+RUN = Path(__file__).resolve().parent
+PYTHON = Path("D:/dianzi/backend/.venv/Scripts/python.exe")
+SHA = "8a1b04d48346d8550f0326a77f003246a0ebbab5"
+CBM = "/tmp/dianzi-cbm-audit-20261014/portable/codebase-memory-mcp"
+CACHE = "/tmp/dianzi-cbm-r06-large-release-diag-20261016"
+PROJECT = "r06_large_release_diag_8a_20261016"
+CONNECTION = "/tmp/dianzi-docker-static-r01-20261014/runtime/test-services/connection.json"
+
+
+def now():
+    return datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="milliseconds")
+
+
+def write(name, value):
+    (RUN / name).write_text(json.dumps(value, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
+
+
+def command(label, argv, timeout=60):
+    started, wall = now(), time.monotonic()
+    try:
+        result = subprocess.run(argv, cwd=ROOT, capture_output=True, timeout=timeout)
+        code, stdout, stderr = result.returncode, result.stdout, result.stderr
+    except subprocess.TimeoutExpired as error:
+        code, stdout, stderr = 124, error.stdout or b"", error.stderr or b""
+    (RUN / (label + ".stdout.log")).write_bytes(stdout)
+    (RUN / (label + ".stderr.log")).write_bytes(stderr)
+    record = {"label": label, "started_at": started, "ended_at": now(), "wall_seconds": time.monotonic() - wall,
+              "argv": argv, "cwd": str(ROOT), "exit_code": code, "reviewed_sha": SHA}
+    with (RUN / "commands.jsonl").open("a", encoding="utf-8") as output:
+        output.write(json.dumps(record, ensure_ascii=False) + "\n")
+    print(json.dumps({"label": label, "exit_code": code}), flush=True)
+    return code
+
+
+def load_url():
+    from sqlalchemy.engine import make_url
+    result = subprocess.run(["wsl.exe", "-d", "Ubuntu-22.04", "-u", "root", "--exec", "cat", CONNECTION], capture_output=True, check=True)
+    url = make_url(json.loads(result.stdout)["TEST_DATABASE_URL"])
+    assert url.host in {"127.0.0.1", "localhost"} and url.port == 25432
+    return url.set(drivername="postgresql+psycopg")
+
+
+def snapshot():
+    from sqlalchemy import create_engine, text
+    url = load_url().set(database="test_dianzi_r06_catalog_live_8a_20261016")
+    engine = create_engine(url, hide_parameters=True, connect_args={"connect_timeout": 3, "options": "-c statement_timeout=3000 -c default_transaction_read_only=on", "application_name": "r06_release_diag_readonly"})
+    source = "8355ad4b-0a90-58ed-aa70-c7d0abdbd86c"
+    with engine.connect() as connection:
+        connection.execute(text("SET TRANSACTION READ ONLY"))
+        assert connection.scalar(text("select current_database()")) == url.database
+        assert connection.scalar(text("select version_num from alembic_version")) == "0016_source_response_receipts"
+        receipt = {"observed_at": now(), "database": url.database, "transaction_read_only": connection.scalar(text("show transaction_read_only"))}
+        receipt["job"] = dict(connection.execute(text("select job_id,status,attempt_count,started_at,finished_at,lease_expires_at,error_code from job_runs where job_id='5e3d6b02-67d2-4193-89cf-f1a1e4460c59'")).mappings().one())
+        receipt["source_counts"] = dict(connection.execute(text("select (select count(*) from documents where source_id=:source) documents,(select count(*) from document_revisions r join documents d using(document_id) where d.source_id=:source) revisions,(select count(*) from source_page_receipts where source_id=:source) page_receipts,(select count(*) from source_response_receipts where source_id=:source) response_receipts,(select count(*) from fetch_attempts where source_id=:source) fetch_attempts"), {"source": source}).mappings().one())
+        receipt["cursor_metadata"] = [dict(row) for row in connection.execute(text("select stream_kind,generation,last_successful_page,lease_owner,lease_expires_at,window_start,window_end,(cursor_json='{}'::jsonb) cursor_empty from source_cursors where source_id=:source"), {"source": source}).mappings()]
+        receipt["active_sessions"] = [dict(row) for row in connection.execute(text("select pid,application_name,state,xact_start,query_start,wait_event_type,wait_event,pg_blocking_pids(pid) blocking_pids from pg_stat_activity where datname=current_database() and pid<>pg_backend_pid()")).mappings()]
+        receipt["locks"] = [dict(row) for row in connection.execute(text("select locktype,mode,granted,count(*) quantity from pg_locks where pid in(select pid from pg_stat_activity where datname=current_database() and pid<>pg_backend_pid()) group by locktype,mode,granted")).mappings()]
+    engine.dispose()
+    write("original_pg_readonly_snapshot.json", receipt)
+    print(json.dumps({"snapshot": "saved", "documents": receipt["source_counts"]["documents"], "active_sessions": len(receipt["active_sessions"])}))
+
+
+def replay(number):
+    from sqlalchemy import create_engine, text
+    from uuid import uuid4
+    identity = RUN / ("replay_" + number + "_identity.json")
+    assert not identity.exists()
+    existing = list(RUN.glob("replay_*_identity.json"))
+    assert len(existing) < 4
+    executions = list(RUN.glob("replay_*_execution_start.json"))
+    assert len(executions) < 2
+    previous_wall = sum(json.loads(path.read_text())["wall_seconds"] for path in RUN.glob("replay_*_command.json"))
+    assert previous_wall < 120
+    database = "test_dianzi_r06_catalog_release_diag_" + uuid4().hex[:12]
+    url = load_url()
+    admin = create_engine(url, hide_parameters=True, isolation_level="AUTOCOMMIT")
+    with admin.connect() as connection:
+        connection.execute(text('CREATE DATABASE "' + database + '"'))
+    admin.dispose()
+    write(identity.name, {"created_at": now(), "database": database, "purpose": "real original bytes, explicit offline fixture gateway; not live", "forward_target": "0016_source_response_receipts"})
+    env = {key: value for key, value in os.environ.items() if key.upper() in {"PATH", "SYSTEMROOT", "TEMP", "TMP", "USERPROFILE", "COMSPEC", "LOCALAPPDATA", "WINDIR"}}
+    env["DIAG_DATABASE_URL"] = url.set(database=database).render_as_string(hide_password=False)
+    env["DIAG_REPLAY_NUMBER"] = number
+    env["PYTHONPATH"] = str(ROOT / "backend/src")
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    started, wall = now(), time.monotonic()
+    with (RUN / ("replay_" + number + ".stdout.log")).open("xb") as stdout, (RUN / ("replay_" + number + ".stderr.log")).open("xb") as stderr:
+        child = subprocess.Popen([str(PYTHON), "-B", str(RUN / "replay.py")], cwd=ROOT / "backend", env=env, stdout=stdout, stderr=stderr, creationflags=0x08000000)
+        try:
+            code = child.wait(timeout=min(120, 240 - previous_wall))
+            timed_out = False
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.wait(timeout=5)
+            code, timed_out = 124, True
+    record = {"label": "replay_" + number, "started_at": started, "ended_at": now(), "wall_seconds": time.monotonic() - wall,
+              "argv": [str(PYTHON), "-B", str(RUN / "replay.py")], "cwd": str(ROOT / "backend"), "exit_code": code,
+              "pid": child.pid, "terminated_and_waited": child.poll() is not None, "timeout": timed_out, "database": database, "reviewed_sha": SHA}
+    write("replay_" + number + "_command.json", record)
+    print(json.dumps(record), flush=True)
+
+
+assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() == SHA
+mode = sys.argv[1] if __name__ == "__main__" else None
+if mode == "cbm":
+    prefix = ["wsl.exe", "-d", "Ubuntu-22.04", "-u", "root", "--exec", "env", "CBM_CACHE_DIR=" + CACHE, CBM, "cli", "--json"]
+    command("cbm_version", ["wsl.exe", "-d", "Ubuntu-22.04", "-u", "root", "--exec", CBM, "--version"])
+    command("cbm_index", prefix + ["index_repository", "--repo-path", "/mnt/d/wt/r06-release-pg-diagnosis/backend/src", "--name", PROJECT, "--mode", "fast", "--persistence", "false"])
+    command("cbm_schema", prefix + ["get_graph_schema", "--project", PROJECT])
+    for function in ["build_source_page_handler", "normalize_catalog_page", "persist_catalog_documents", "persist_source_response", "save_document_revision", "attach_evidence_span", "register_response_content", "commit_page", "execute_job", "ensure_source_registration"]:
+        command("cbm_trace_" + function, prefix + ["trace_path", "--function-name", function, "--project", PROJECT, "--direction", "both", "--depth", "2", "--limit", "150", "--max-output-tokens", "6000", "--include-evidence", "true"])
+elif mode == "snapshot":
+    snapshot()
+elif mode == "replay":
+    replay(sys.argv[2])
+elif mode is not None:
+    raise SystemExit(2)

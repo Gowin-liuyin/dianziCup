@@ -1,0 +1,48 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_ test_full_recorded_nvd_budget_failure_is_retained_without_wire_or_losing_other_dimensions _
+execution_engine = Engine([redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]_r01:***[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]16?options=-c+search_path%3Dtest_r07[redacted test credential fragment]_fix1_469da933a9c6460cbf2584b57bba804c+-c+statement_timeout%3D15000+-c+lock_timeout%3D3000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-950/test_full_recorded_nvd_budget_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024CE6742480>
+
+    def test_full_recorded_nvd_budget_failure_is_retained_without_wire_or_losing_other_dimensions(
+        execution_engine, tmp_path, monkeypatch
+    ):
+        from tests.unit.test_r07_single_model_dimension import prepared_transport
+    
+        policy = EnrichmentExecutionPolicy(
+            generation_enabled=True,
+            generation_provider="openai",
+            approved_model="fixture-model",
+            data_mode="fixture",
+        )
+        service, scope, session_hash, _, _, receipt = setup(execution_engine, tmp_path, policy=policy)
+        calls = []
+    
+        def factory():
+            client, wire = prepared_transport(monkeypatch)
+            client.limits = GenerationLimits(total_timeout_seconds=20.0, max_calls=1)
+            calls.append(wire)
+            return client
+    
+        service.generation_client_factory = factory
+        assert run(service, receipt.parent_job_id) == "succeeded"
+        with Session(execution_engine) as session:
+            snapshot = session.scalar(select(enrichment_workflows.c.input_context))
+        block_count = sum(len(document["blocks"]) for document in snapshot["documents"])
+        assert block_count > 50
+        for row in children(service):
+            if row["dimension"] is not None:
+                outcome = run(service, row["job_id"])
+                if row["dimension"] in {"atlas", "versions", "literature", "poc"}:
+>                   assert outcome == "failed"
+E                   AssertionError: assert 'partial' == 'failed'
+E                     
+E                     - failed
+E                     + partial
+
+tests\integration\test_r07_job_execution_pg.py:528: AssertionError
+- generated xml file: D:\wt\r07-input-audit-review1-fix1\reports\runs\recovery_r07_input_audit_review1_fix1_20261016\baseline_nvd.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r07_job_execution_pg.py::test_full_recorded_nvd_budget_failure_is_retained_without_wire_or_losing_other_dimensions
+1 failed in 2.50s

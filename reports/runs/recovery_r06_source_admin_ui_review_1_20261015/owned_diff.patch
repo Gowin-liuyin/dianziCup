@@ -1,0 +1,542 @@
+diff --git a/docs/design/recovery/R06-source-admin.md b/docs/design/recovery/R06-source-admin.md
+new file mode 100644
+index 0000000..24f0a8e
+--- /dev/null
++++ b/docs/design/recovery/R06-source-admin.md
+@@ -0,0 +1,17 @@
++# R06 来源管理 UI 扩展
++
++作者 r06_document_workspace；基线0a45185ae3ffb73a6d186b98421e26a52f78bfc6；本切片awaiting_review，整R06/R17仍partial。新隔离WT D:/wt/r06-source-admin-ui，分支codex/r06-source-admin-ui。
++
++已读AGENTS、执行图、R06/R17、03/05/08、新CR-R06_source_collection_catalog及CATALOG_SOURCES。采用Ponytail5.2 full，复用既有黑绿tokens、低亮动态背景、Cookie/CSRF/幂等/source job页面；不重做App、全局配置或认证，不增依赖。用户ui-design.md仅参考视觉分层/类别/任务进度，不把外部9类源或指标占位指令当内部合同。
++
++设计判读为既有安全情报产品的来源管理切片，保留暗色黑绿、原导航、原输入顺序与访问控制。design-taste-frontend明确不用于dense product/admin，本次仅参考其保留品牌、单一主题、可读性与状态审计；redesign-existing-projects按已有React/native CSS扫描后作局部改进。不套用营销页的图片、hero、随机数据或新设计库要求。DESIGN_VARIANCE维持既有，MOTION_INTENSITY维持低亮背景（本切片无新增动画），VISUAL_DENSITY按原产品界面。
++
++固定九key映射八类别：NVD与OSV同结构化漏洞，vLLM厂商公告，AVID社区，Ollama发布记录，Trail of Bits研究文章，arXiv论文，NIST标准，网信办政策。目录静态登记范围，逐条标「未验证」；不请求GET/sources，不展示开启/在线覆盖统计。真实状态只来自明确提交单源POST与随后手动GET/job；尚未查询保持未知。
++
++设计：桌面左侧按类别分组的平面来源目录，右侧保留提交和PG任务查询。每行名称、固定key、来源范围与未验证，选择按钮仅选中并将焦点移至表单；提交仍由既有单源按钮明确触发。选中上下文先解释发布记录未研判、RSS片段/论文摘要与全文不同、标准自愿框架与政策适用判断尚未执行。390px单列，点击来源后定位提交表单，长key/说明可换行；不增动画，背景pointer-events:none与reduced-motion保留。
++
++SourceKind闭合值扩9；请求体仍window_end/stream_kind/max_pages，响应仍原SourceJob。client本身不需改。任意key/URL/自报tenant继续在发送前拒绝。SourceCategory类型复用现有八值；元数据与主控CATALOG_SOURCES逐key测试对齐。
++
++前置行为：原两源、live默认5页、原样重试同body/key、显式新轮次新key、CSRF晚到不POST均保留。切源与新轮次清旧job/查询时间；提交在途或请求冻结期间不能切源。管理员权限拒绝403清本页管理状态，CSRF403保持原样重试，401清身份；429/503解释失败/未确认，partial不等于来源采完。未知UUID查得job不推断其来源；本轮提交返回相同job_id时才标对应来源。查询时间是前端实际取得快照时刻，独立于PG任务时间；API未给freshness/TTL，不自行计算过期阈值，明确「未提供时效标记，请手动刷新」。
++
++检查先定义闭合key/八类一致性与九POST负例，再做界面。单元验证管理员/无权/权限撤回、403/429/503/partial、重试、切源清空、CSRF/任务晚到、查询时效语义；全前端回归、strict/type/lint/build；1366/390/keyboard/reduced-motion与旧四来源fixture browser。新worker未完成时仅fixture/contract，不签live或完整评分项。
+diff --git a/frontend/e2e/r06_source_admin_fixture.spec.ts b/frontend/e2e/r06_source_admin_fixture.spec.ts
+new file mode 100644
+index 0000000..fc972ff
+--- /dev/null
++++ b/frontend/e2e/r06_source_admin_fixture.spec.ts
+@@ -0,0 +1,137 @@
++import { expect, test, type Page } from "@playwright/test";
++
++const keys = ["nvd_ollama", "vllm_vendor", "osv_ollama", "avid_community", "ollama_releases", "trailofbits_blog", "arxiv_security", "nist_ai_rmf", "cac_generative_ai"];
++const jobId = "00000000-0000-4000-8000-000000000001";
++const fixtureJob = { job_id: jobId, status: "succeeded", attempt_count: 1, error_code: null, result_ref: null, created_at: "2026-10-15T06:00:00Z", finished_at: "2026-10-15T06:00:01Z" };
++
++/** 全部/v1请求隔离拦截；本测试不连接实际来源、PG或产品账号。 */
++async function installFixture(page: Page, options: { rateLimitLast?: boolean; delayedLookup?: boolean } = {}) {
++  const writes: { path: string; body: string; key: string }[] = [];
++  const calls: string[] = [];
++  let signedIn = true;
++  let lookupStatus = 200;
++  let limited = false;
++  let releaseLookup = () => {};
++  let settleLookup = () => {};
++  const barrier = new Promise<void>((resolve) => { releaseLookup = resolve; });
++  const settled = new Promise<void>((resolve) => { settleLookup = resolve; });
++  await page.route("**/v1/**", async (route) => {
++    const request = route.request(); const path = new URL(request.url()).pathname; calls.push(path);
++    let body: unknown; let status = 200;
++    if (path === "/v1/auth/me") {
++      status = signedIn ? 200 : 401;
++      body = signedIn ? { user_id: "isolated-source-catalog-admin", tenant_id: null, role: "system_admin", permissions: ["read:public"], permission_version: 1, data_mode: "fixture", csrf_token: "isolated-source-catalog-csrf" } : { error: { code: "unauthenticated" } };
++    } else if (path === "/v1/auth/csrf") body = { csrf_token: "isolated-source-catalog-csrf", header_name: "X-CSRF-Token" };
++    else if (path === "/v1/auth/logout") { signedIn = false; status = 204; }
++    else if (path === "/v1/auth/login") { signedIn = true; body = { user_id: "isolated-source-catalog-admin", csrf_token: "isolated-source-catalog-csrf", expires_at: "2099-01-01T00:00:00Z" }; }
++    else if (path === "/v1/health/live") body = { status: "live" };
++    else if (path === "/v1/health/ready") body = { status: "ready", reason: "isolated fixture", dependencies: {} };
++    else if (keys.some((key) => path === `/v1/sources/${key}/collect`)) {
++      writes.push({ path, body: request.postData() ?? "", key: request.headers()["idempotency-key"] ?? "" });
++      expect(request.method()).toBe("POST"); expect(request.headers()["x-csrf-token"]).toBe("isolated-source-catalog-csrf");
++      if (options.rateLimitLast && path === "/v1/sources/cac_generative_ai/collect" && !limited) { limited = true; status = 429; body = { error: { code: "rate_limited" } }; }
++      else { status = 202; body = fixtureJob; }
++    } else if (path === `/v1/jobs/${jobId}`) {
++      if (options.delayedLookup) await barrier;
++      status = lookupStatus;
++      body = status === 200 ? { ...fixtureJob, status: "partial", error_code: "source_page_limit_reached" } : { error: { code: "isolated_failure" } };
++    } else throw new Error(`Unexpected isolated catalog route: ${path}`);
++    try { await route.fulfill(status === 204 ? { status } : { status, json: body }); }
++    finally { if (path === `/v1/jobs/${jobId}` && options.delayedLookup) settleLookup(); }
++  });
++  return { calls, writes, lookupStatus: (status: number) => { lookupStatus = status; }, releaseLookup, settled };
++}
++
++for (const width of [1366, 390]) {
++  test(`nine-source catalog isolated Fixture ${width}px keyboard requests, unknown freshness and cleared snapshots`, async ({ page }, testInfo) => {
++    await page.setViewportSize({ width, height: 900 }); await page.emulateMedia({ reducedMotion: "reduce" });
++    const fixture = await installFixture(page, { rateLimitLast: true }); await page.goto("/#sources");
++    await expect(page.getByRole("heading", { name: "固定来源目录", exact: true })).toBeVisible();
++    expect(await page.locator(".source-category-group").count()).toBe(8);
++    expect(await page.getByText("未验证", { exact: true }).count()).toBe(9);
++    expect(fixture.calls.some((path) => path.startsWith("/v1/sources/") || path.startsWith("/v1/jobs/") || path === "/v1/auth/csrf")).toBe(false);
++    expect(await page.locator(".ambient-backdrop").evaluate((element) => getComputedStyle(element).pointerEvents)).toBe("none");
++    expect(await page.getByTestId("ambient-motion").evaluate((element) => getComputedStyle(element).animationName)).toBe("none");
++    await page.screenshot({ path: testInfo.outputPath(`catalog-fixture-initial-${width}.png`), fullPage: true });
++    for (const key of keys) {
++      const row = page.locator(".source-catalog-row").filter({ has: page.locator("code", { hasText: key }) });
++      await row.getByRole("button").focus(); await page.keyboard.press("Enter");
++      await expect(page.getByRole("combobox", { name: "固定来源", exact: true })).toBeFocused();
++      expect(await page.getByRole("combobox", { name: "固定来源", exact: true }).evaluate((element) => getComputedStyle(element).outlineWidth)).toBe("2px");
++      await expect(page.getByRole("combobox", { name: "固定来源", exact: true })).toHaveValue(key);
++      expect(fixture.writes.filter((write) => write.path === `/v1/sources/${key}/collect`)).toHaveLength(0);
++      await page.getByRole("button", { name: "提交本轮采集", exact: true }).focus(); await page.keyboard.press("Enter");
++      if (key === "cac_generative_ai") {
++        await expect(page.getByText(/请求过于频繁/)).toBeVisible();
++        await expect(page.getByRole("heading", { name: "本轮已受理", exact: true })).toHaveCount(0);
++        await page.getByRole("button", { name: "原样重试本轮", exact: true }).click();
++        await expect(page.getByRole("heading", { name: "本轮已受理", exact: true })).toBeVisible();
++        expect(fixture.writes.at(-2)).toEqual(fixture.writes.at(-1));
++      }
++      await expect(page.getByRole("heading", { name: "本轮已受理", exact: true })).toBeVisible();
++      const write = fixture.writes.at(-1); expect(write?.path).toBe(`/v1/sources/${key}/collect`);
++      expect(Object.keys(JSON.parse(write?.body ?? "{}"))).toEqual(["window_end", "stream_kind", "max_pages"]);
++      await expect(row.getByRole("button")).toBeDisabled();
++      await page.getByRole("button", { name: "开始新一轮", exact: true }).click();
++      await expect(page.getByRole("article", { name: "当前单页任务", exact: true })).toHaveCount(0);
++      await expect(page.getByRole("heading", { name: "本轮已受理", exact: true })).toHaveCount(0);
++      await expect(page.getByLabel("任务标识", { exact: true })).toHaveValue("");
++    }
++    expect(fixture.writes).toHaveLength(10);
++    expect(fixture.calls.filter((path) => path.startsWith("/v1/jobs/"))).toHaveLength(0);
++    await page.getByLabel("任务标识", { exact: true }).fill(jobId);
++    await page.getByRole("button", { name: "查询 / 刷新任务", exact: true }).click();
++    await expect(page.getByRole("heading", { name: "部分完成", exact: true })).toBeVisible();
++    await expect(page.getByText("未知 / 仅按任务标识查询", { exact: true })).toBeVisible();
++    await expect(page.getByText(/服务未提供时效标记/)).toBeVisible();
++    fixture.lookupStatus(503); await page.getByRole("button", { name: "查询 / 刷新任务", exact: true }).click();
++    await expect(page.getByText(/本次未取得PG任务状态/)).toBeVisible();
++    await expect(page.locator(".source-job-details time")).toHaveCount(0);
++    fixture.lookupStatus(200); await page.getByRole("button", { name: "查询 / 刷新任务", exact: true }).click();
++    await expect(page.getByRole("heading", { name: "部分完成", exact: true })).toBeVisible();
++    await page.evaluate(() => window.scrollTo(0, 0));
++    await page.screenshot({ path: testInfo.outputPath(`catalog-fixture-partial-${width}.png`), fullPage: true });
++    await page.getByRole("combobox", { name: "固定来源", exact: true }).selectOption("nist_ai_rmf");
++    await expect(page.getByRole("article", { name: "当前单页任务", exact: true })).toHaveCount(0);
++    expect(await page.locator(".source-job-details time").count()).toBe(0);
++    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
++    expect(await page.locator(".source-catalog p, .source-catalog code, .source-selection-note p, .source-metadata dd").evaluateAll((elements) => elements.every((element) => {
++      const range = document.createRange(); range.selectNodeContents(element);
++      return [...range.getClientRects()].every((bounds) => bounds.left >= 0 && bounds.right <= window.innerWidth);
++    }))).toBe(true);
++    await testInfo.attach("fixture-observation", { body: JSON.stringify({ mode: "isolated fixture only", sourceKeys: keys, writes: fixture.writes.length, manualLookups: 3, reducedMotion: true }), contentType: "application/json" });
++  });
++}
++
++test("source catalog fixture permission revoked after acceptance clears every management resource", async ({ page }) => {
++  const fixture = await installFixture(page); await page.goto("/#sources");
++  await page.getByRole("button", { name: "提交本轮采集", exact: true }).click();
++  await expect(page.getByRole("heading", { name: "本轮已受理", exact: true })).toBeVisible();
++  fixture.lookupStatus(403); await page.getByRole("button", { name: "查询 / 刷新任务", exact: true }).click();
++  await expect(page.getByRole("heading", { name: "没有来源调度权限", exact: true })).toBeVisible();
++  await expect(page.getByRole("heading", { name: "固定来源目录", exact: true })).toHaveCount(0);
++  await expect(page.getByRole("heading", { name: "本轮已受理", exact: true })).toHaveCount(0);
++  await expect(page.getByText(jobId, { exact: true })).toHaveCount(0);
++  expect(await page.locator(".source-job-details time").count()).toBe(0);
++});
++
++test("source catalog fixture late lookup after logout cannot restore success or time in a new session", async ({ page }) => {
++  const fixture = await installFixture(page, { delayedLookup: true }); await page.goto("/#sources");
++  await page.getByRole("button", { name: "提交本轮采集", exact: true }).click();
++  await expect(page.getByRole("heading", { name: "本轮已受理", exact: true })).toBeVisible();
++  await page.getByRole("button", { name: "查询 / 刷新任务", exact: true }).click();
++  await expect(page.getByText("正在读取指定任务的PG状态…", { exact: true })).toBeVisible();
++  await page.getByRole("link", { name: "会话与权限", exact: true }).click();
++  await page.getByRole("button", { name: "退出登录", exact: true }).click();
++  await expect(page.getByRole("button", { name: "登录工作台" })).toBeEnabled();
++  fixture.releaseLookup(); await fixture.settled;
++  await page.getByLabel("用户名", { exact: true }).fill("isolated-fixture-only");
++  await page.getByLabel("密码", { exact: true }).fill("isolated-fixture-only");
++  await page.getByRole("button", { name: "登录工作台" }).click();
++  await expect(page.getByRole("button", { name: "退出登录", exact: true })).toBeVisible();
++  await page.getByRole("link", { name: "来源监测", exact: true }).click();
++  await expect(page.getByRole("heading", { name: "尚未查询任务", exact: true })).toBeVisible();
++  await expect(page.getByRole("heading", { name: "本轮已受理", exact: true })).toHaveCount(0);
++  await expect(page.getByRole("article", { name: "当前单页任务", exact: true })).toHaveCount(0);
++  expect(await page.locator(".source-job-details time").count()).toBe(0);
++});
+diff --git a/frontend/src/api/source-catalog.test.ts b/frontend/src/api/source-catalog.test.ts
+new file mode 100644
+index 0000000..ab24b7e
+--- /dev/null
++++ b/frontend/src/api/source-catalog.test.ts
+@@ -0,0 +1,37 @@
++import { readFileSync } from "node:fs";
++import { resolve } from "node:path";
++import { describe, expect, it, afterEach, vi } from "vitest";
++import { collectSourcePage } from "./source-client";
++import { isSourceKind, sourceKinds, type SourceSubmission } from "./source-contracts";
++import { sourceCatalog } from "../features/sources/source-catalog";
++
++const expectedKeys = ["nvd_ollama", "vllm_vendor", "osv_ollama", "avid_community", "ollama_releases", "trailofbits_blog", "arxiv_security", "nist_ai_rmf", "cac_generative_ai"];
++const jobId = "00000000-0000-4000-8000-000000000001";
++const body = { window_end: "2026-10-15T06:00:00Z", stream_kind: "live", max_pages: 5 };
++function json(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status }); }
++afterEach(() => vi.unstubAllGlobals());
++describe("frozen nine-source catalog boundary — isolated transport fixtures", () => {
++  it("matches nine backend keys and eight source categories", () => {
++    const source = readFileSync(resolve(process.cwd(), "../backend/src/ai_intel/ingestion/source_catalog.py"), "utf8");
++    const catalogText = source.slice(source.indexOf("CATALOG_SOURCES:"), source.indexOf("HEX_SHA ="));
++    const backend = [...catalogText.matchAll(/"([a-z_]+)": _source\(\s*"[a-z_]+",\s*"[^"]+",\s*SourceCategory\.([A-Z_]+),\s*"https:[^"]+",\s*"([a-z_]+)"/g)].map((match) => ({ key: match[1], category: match[2]?.toLowerCase(), contentScope: match[3] }));
++    expect(sourceKinds).toEqual(expectedKeys); expect(Object.keys(sourceCatalog)).toEqual(expectedKeys);
++    expect(backend.map((entry) => entry.key)).toEqual(expectedKeys);
++    for (const entry of backend) { expect(entry.key).toBeTruthy(); const key = sourceKinds.find((key) => key === entry.key); expect(key).toBeDefined(); if (key) { expect(sourceCatalog[key].category).toBe(entry.category); expect(sourceCatalog[key].contentScope).toBe(entry.contentScope); } }
++    expect(new Set(Object.values(sourceCatalog).map((source) => source.category)).size).toBe(8);
++  });
++  it.each(expectedKeys)("writes only the approved key %s with unchanged request and CSRF", async (key) => {
++    expect(isSourceKind(key)).toBe(true); if (!isSourceKind(key)) throw new Error("catalog test key absent");
++    const calls: { path: string; options: RequestInit }[] = [];
++    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options: RequestInit = {}) => {
++      calls.push({ path: String(input), options });
++      return String(input) === "/v1/auth/csrf" ? json({ csrf_token: "isolated-csrf", header_name: "X-CSRF-Token" }) : json({ job_id: jobId, status: "queued", attempt_count: 0, error_code: null, result_ref: null, created_at: "2026-10-15T06:00:00Z", finished_at: null }, 202);
++    }));
++    const submission: SourceSubmission = { sourceKind: key, body: { ...body, stream_kind: "live" }, idempotencyKey: "isolated-nine-source" };
++    await collectSourcePage(submission, () => true);
++    const write = calls[1]; expect(write?.path).toBe(`/v1/sources/${key}/collect`);
++    expect(write?.options.body).toBe(JSON.stringify(body)); expect(write?.options.credentials).toBe("include");
++    expect(new Headers(write?.options.headers).get("X-CSRF-Token")).toBe("isolated-csrf");
++  });
++  it.each(["../sources", "https://example.test", "nvd_ollama?tenant=other", "constructor", "__proto__", "unknown_source"])("rejects unregistered source input %s", (key) => expect(isSourceKind(key)).toBe(false));
++});
+diff --git a/frontend/src/api/source-contracts.ts b/frontend/src/api/source-contracts.ts
+index 5173a3a..8187f51 100644
+--- a/frontend/src/api/source-contracts.ts
++++ b/frontend/src/api/source-contracts.ts
+@@ -1,6 +1,8 @@
+ import { ApiProblem } from "./client";
+ 
+-export type SourceKind = "nvd_ollama" | "vllm_vendor";
++export const sourceKinds = ["nvd_ollama", "vllm_vendor", "osv_ollama", "avid_community", "ollama_releases", "trailofbits_blog", "arxiv_security", "nist_ai_rmf", "cac_generative_ai"] as const;
++export type SourceKind = typeof sourceKinds[number];
++export function isSourceKind(value: string): value is SourceKind { return sourceKinds.some((key) => key === value); }
+ export type SourceJobStatus = "queued" | "running" | "retry_wait" | "succeeded" | "partial" | "failed" | "blocked" | "cancelled" | "waiting_approval";
+ export interface SourceCollectionRequest { window_end: string; stream_kind: "live" | "backfill"; max_pages: number; }
+ export interface SourceSubmission { sourceKind: SourceKind; body: SourceCollectionRequest; idempotencyKey: string; }
+@@ -26,7 +28,7 @@ export function validateJobId(value: string): string {
+ 
+ /** 写入固定字段并限制来源、窗口和页数；验证失败不会触发CSRF或网络请求。 */
+ export function validateSourceSubmission(value: SourceSubmission): void {
+-  if (value.sourceKind !== "nvd_ollama" && value.sourceKind !== "vllm_vendor") throw new ApiProblem(422, "validation_error", false);
++  if (!isSourceKind(value.sourceKind)) throw new ApiProblem(422, "validation_error", false);
+   const body = value.body;
+   if (Object.keys(body).length !== 3 || !Object.keys(body).every((key) => ["window_end", "stream_kind", "max_pages"].includes(key))) throw new ApiProblem(422, "validation_error", false);
+   if (!timestamp(body.window_end) || body.window_end.length > 64 || Date.parse(body.window_end) > Date.now()) throw new ApiProblem(422, "validation_error", false);
+diff --git a/frontend/src/features/sources/source-admin-catalog.test.tsx b/frontend/src/features/sources/source-admin-catalog.test.tsx
+new file mode 100644
+index 0000000..83179db
+--- /dev/null
++++ b/frontend/src/features/sources/source-admin-catalog.test.tsx
+@@ -0,0 +1,128 @@
++import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
++import { afterEach, describe, expect, it, vi } from "vitest";
++import { AuthProvider, useAuthSession } from "../../app/auth-session";
++import { sourceKinds } from "../../api/source-contracts";
++import { sourceCatalog } from "./source-catalog";
++import { SourceWorkspace } from "./source-workspace";
++
++const jobId = "00000000-0000-4000-8000-000000000001";
++const admin = { user_id: "catalog-fixture-admin", tenant_id: null, role: "system_admin", permissions: ["read:public"], permission_version: 1, data_mode: "fixture", csrf_token: "isolated-catalog-csrf" };
++const job = { job_id: jobId, status: "succeeded", attempt_count: 1, error_code: null, result_ref: null, created_at: "2026-10-15T06:00:00Z", finished_at: "2026-10-15T06:00:01Z" };
++function response(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status }); }
++function deferredResponse() { let release: (response: Response) => void = () => { throw new Error("isolated barrier not initialized"); }; const promise = new Promise<Response>((resolve) => { release = resolve; }); return { promise, release }; }
++function FixtureSession() {
++  const session = useAuthSession();
++  return <><button onClick={() => void session.logout()}>隔离退出</button><button onClick={() => void session.refreshSession()}>隔离刷新会话</button><SourceWorkspace /></>;
++}
++function installFixture(options: { lookup?: () => Response | Promise<Response>; write?: () => Response | Promise<Response> } = {}) {
++  const calls: { path: string; init: RequestInit }[] = [];
++  let role = "system_admin";
++  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
++    const path = String(input); calls.push({ path, init });
++    if (path === "/v1/auth/me") return response({ ...admin, role });
++    if (path === "/v1/auth/csrf") return response({ csrf_token: admin.csrf_token, header_name: "X-CSRF-Token" });
++    if (path === "/v1/auth/logout") return response({ logged_out: true });
++    if (path.endsWith("/collect")) return options.write ? options.write() : response(job, 202);
++    if (path === `/v1/jobs/${jobId}`) return options.lookup ? options.lookup() : response(job);
++    throw new Error("Unexpected isolated catalog request");
++  }));
++  render(<AuthProvider><FixtureSession /></AuthProvider>);
++  return { calls, revoke: () => { role = "analyst"; } };
++}
++async function ready() { await screen.findByRole("heading", { name: "固定来源目录" }); }
++function query() { fireEvent.change(screen.getByLabelText("任务标识"), { target: { value: jobId } }); fireEvent.click(screen.getByRole("button", { name: "查询 / 刷新任务" })); }
++afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
++
++describe("source catalog UI — isolated fixture only", () => {
++  it("starts with unknown catalog and no job snapshots or automatic management calls", async () => {
++    const fixture = installFixture(); await ready();
++    expect(screen.getAllByText("未验证", { exact: true })).toHaveLength(9);
++    expect(document.querySelectorAll(".source-category-group")).toHaveLength(8);
++    expect(screen.getByRole("heading", { name: "尚未查询任务" })).toBeTruthy();
++    expect(document.querySelectorAll(".source-job-details time")).toHaveLength(0);
++    expect(fixture.calls.filter((call) => call.path.startsWith("/v1/sources/") || call.path.startsWith("/v1/jobs/") || call.path === "/v1/auth/csrf")).toHaveLength(0);
++  });
++  it.each(sourceKinds)("selects %s without collection, then submits exactly the selected source", async (key) => {
++    const fixture = installFixture(); await ready();
++    fireEvent.click(screen.getByRole("button", { name: `选择 ${sourceCatalog[key].name}` }));
++    expect(screen.getByLabelText("固定来源").getAttribute("id")).toBe("source-kind");
++    expect(document.activeElement).toBe(screen.getByLabelText("固定来源"));
++    expect(screen.getByDisplayValue(sourceCatalog[key].name)).toBeTruthy();
++    expect(fixture.calls.filter((call) => call.path.endsWith("/collect"))).toHaveLength(0);
++    fireEvent.click(screen.getByRole("button", { name: "提交本轮采集" }));
++    await screen.findByRole("heading", { name: "本轮已受理" });
++    const writes = fixture.calls.filter((call) => call.path.endsWith("/collect"));
++    expect(writes).toHaveLength(1); expect(writes[0]?.path).toBe(`/v1/sources/${key}/collect`);
++    expect(JSON.parse(String(writes[0]?.init.body))).toMatchObject({ stream_kind: "live", max_pages: 5 });
++    expect(screen.getByRole("button", { name: `选择 ${sourceCatalog[key].name}` }).hasAttribute("disabled")).toBe(true);
++  });
++  it("does not infer manual job source and clears its success and receive timestamp on source change", async () => {
++    installFixture(); await ready(); query();
++    await screen.findByRole("heading", { name: "本页处理完成" });
++    expect(screen.getByText("未知 / 仅按任务标识查询")).toBeTruthy();
++    expect(screen.getByText(/服务未提供时效标记/)).toBeTruthy();
++    expect(document.querySelectorAll(".source-job-details time")).toHaveLength(3);
++    fireEvent.change(screen.getByLabelText("固定来源"), { target: { value: "cac_generative_ai" } });
++    expect(screen.queryByRole("article", { name: "当前单页任务" })).toBeNull();
++    expect(screen.queryByText("本轮已受理")).toBeNull();
++    expect(screen.getByLabelText("任务标识").getAttribute("value")).toBe("");
++    expect(document.querySelectorAll(".source-job-details time")).toHaveLength(0);
++  });
++  it("clears accepted job and timer before a new source round", async () => {
++    installFixture(); await ready(); fireEvent.click(screen.getByRole("button", { name: "提交本轮采集" }));
++    await screen.findByRole("heading", { name: "本轮已受理" });
++    fireEvent.click(screen.getByRole("button", { name: "开始新一轮" }));
++    fireEvent.click(screen.getByRole("button", { name: "选择 NIST · AI RMF 1.0" }));
++    expect(screen.queryByRole("heading", { name: "本轮已受理" })).toBeNull();
++    expect(screen.queryByRole("article", { name: "当前单页任务" })).toBeNull();
++    expect(document.querySelectorAll(".source-job-details time")).toHaveLength(0);
++    expect(screen.getByLabelText("任务标识").getAttribute("value")).toBe("");
++  });
++  it.each([429, 503])("clears prior success during HTTP %s lookup and keeps unknown separate from zero", async (status) => {
++    let fail = false;
++    installFixture({ lookup: () => fail ? response({ error: { code: "isolated_failure" } }, status) : response(job) });
++    await ready(); query(); await screen.findByRole("heading", { name: "本页处理完成" });
++    fail = true; query(); await screen.findByRole("alert");
++    expect(screen.queryByRole("article", { name: "当前单页任务" })).toBeNull();
++    expect(document.querySelectorAll(".source-job-details time")).toHaveLength(0);
++    expect(screen.queryByText("0个任务")).toBeNull();
++    expect(screen.queryByRole("heading", { name: "尚未查询任务" })).toBeNull();
++  });
++  it("retains the same request identity after a 429 submission", async () => {
++    let writes = 0;
++    const fixture = installFixture({ write: () => ++writes === 1 ? response({ error: { code: "isolated_limit" } }, 429) : response(job, 202) });
++    await ready(); fireEvent.click(screen.getByRole("button", { name: "提交本轮采集" }));
++    await screen.findByText(/请求过于频繁/);
++    expect(screen.queryByRole("heading", { name: "本轮已受理" })).toBeNull();
++    fireEvent.click(screen.getByRole("button", { name: "原样重试本轮" }));
++    await screen.findByRole("heading", { name: "本轮已受理" });
++    const posts = fixture.calls.filter((call) => call.path.endsWith("/collect"));
++    expect(posts[1]?.init.body).toBe(posts[0]?.init.body);
++    expect(new Headers(posts[1]?.init.headers).get("Idempotency-Key")).toBe(new Headers(posts[0]?.init.headers).get("Idempotency-Key"));
++  });
++  it("clears the entire management view when the server revokes access", async () => {
++    let denied = false;
++    installFixture({ lookup: () => denied ? response({ error: { code: "permission_denied" } }, 403) : response(job) });
++    await ready(); fireEvent.click(screen.getByRole("button", { name: "提交本轮采集" }));
++    await screen.findByRole("heading", { name: "本轮已受理" });
++    denied = true; query(); await screen.findByRole("heading", { name: "没有来源调度权限" });
++    expect(screen.queryByRole("heading", { name: "固定来源目录" })).toBeNull();
++    expect(screen.queryByRole("heading", { name: "本轮已受理" })).toBeNull();
++    expect(screen.queryByText(jobId)).toBeNull();
++    expect(document.querySelectorAll(".source-job-details time")).toHaveLength(0);
++  });
++  it.each(["logout", "role-revocation"])("fences a late lookup after %s, then starts without old success or timestamps", async (action) => {
++    const late = deferredResponse(); const fixture = installFixture({ lookup: () => late.promise });
++    await ready(); fireEvent.click(screen.getByRole("button", { name: "提交本轮采集" }));
++    await screen.findByRole("heading", { name: "本轮已受理" }); query();
++    await screen.findByText("正在读取指定任务的PG状态…");
++    if (action === "role-revocation") { fixture.revoke(); fireEvent.click(screen.getByRole("button", { name: "隔离刷新会话" })); }
++    else fireEvent.click(screen.getByRole("button", { name: "隔离退出" }));
++    await screen.findByRole("heading", { name: "没有来源调度权限" });
++    await act(async () => { late.release(response(job)); await late.promise; });
++    await waitFor(() => expect(screen.queryByRole("article", { name: "当前单页任务" })).toBeNull());
++    expect(screen.queryByRole("heading", { name: "本轮已受理" })).toBeNull();
++    expect(document.querySelectorAll(".source-job-details time")).toHaveLength(0);
++    expect(fixture.calls.filter((call) => call.path.startsWith("/v1/jobs/"))).toHaveLength(1);
++  });
++});
+diff --git a/frontend/src/features/sources/source-catalog.ts b/frontend/src/features/sources/source-catalog.ts
+new file mode 100644
+index 0000000..bb01151
+--- /dev/null
++++ b/frontend/src/features/sources/source-catalog.ts
+@@ -0,0 +1,18 @@
++import type { SourceKind } from "../../api/source-contracts";
++import type { SourceCategory } from "../../api/document-contracts";
++
++export const sourceCategoryLabels: Record<SourceCategory, string> = { structured_vulnerability: "结构化漏洞", vendor_advisory: "厂商公告", security_community: "安全社区", code_repository: "代码仓库", technical_blog: "技术博客", academic_paper: "学术论文", technical_standard: "技术标准", policy_regulation: "政策法规" };
++interface SourceDefinition { name: string; category: SourceCategory; contentScope: string; scope: string; boundary: string; }
++
++/** 冻结公开来源目录的中文投影；登记范围不表示启用、在线、已抓取或风险确认。 */
++export const sourceCatalog: Record<SourceKind, SourceDefinition> = {
++  nvd_ollama: { name: "NVD · Ollama", category: "structured_vulnerability", contentScope: "product_vulnerability", scope: "固定 Ollama 关键词的漏洞记录。", boundary: "关键词结果不代表全生态覆盖；每个任务处理一页。" },
++  vllm_vendor: { name: "vLLM · 厂商公告", category: "vendor_advisory", contentScope: "vendor_advisory", scope: "vLLM 官方仓库公开安全公告。", boundary: "服务端处理分页游标；适用版本与资产影响仍需研判。" },
++  osv_ollama: { name: "OSV · Ollama Go 包", category: "structured_vulnerability", contentScope: "package_vulnerability", scope: "固定 Go 包 github.com/ollama/ollama 的漏洞记录。", boundary: "包记录不等于当前运行资产受影响。" },
++  avid_community: { name: "AVID · AI 社区报告", category: "security_community", contentScope: "community_report", scope: "AVID 固定公开仓库的 AI 风险报告。", boundary: "社区来源主张仍需原文与证据核验。" },
++  ollama_releases: { name: "Ollama · 发布记录", category: "code_repository", contentScope: "release_metadata_not_confirmed_vulnerability", scope: "Ollama 官方仓库的发布元数据。", boundary: "发布记录尚未研判，不作为已确认漏洞。" },
++  trailofbits_blog: { name: "Trail of Bits · 研究文章", category: "technical_blog", contentScope: "research_article", scope: "固定研究博客的 RSS 发现与片段。", boundary: "片段不等于全文，正文覆盖以保存版本为准。" },
++  arxiv_security: { name: "arXiv · AI 安全论文", category: "academic_paper", contentScope: "paper_metadata_full_text_separate", scope: "固定 AI 安全检索的论文元数据与摘要。", boundary: "摘要与全文分开，研究主张不等于确认风险。" },
++  nist_ai_rmf: { name: "NIST · AI RMF 1.0", category: "technical_standard", contentScope: "voluntary_framework", scope: "NIST AI RMF 1.0 原文框架。", boundary: "自愿框架，不表示已完成合规或资产影响核查。" },
++  cac_generative_ai: { name: "网信办 · 生成式人工智能办法", category: "policy_regulation", contentScope: "official_policy_no_applicability_assessment", scope: "生成式人工智能服务管理办法官方资料。", boundary: "适用范围与义务以原文为准，尚未作适用判断。" },
++};
+diff --git a/frontend/src/features/sources/source-workspace.tsx b/frontend/src/features/sources/source-workspace.tsx
+index 41b444e..777b04f 100644
+--- a/frontend/src/features/sources/source-workspace.tsx
++++ b/frontend/src/features/sources/source-workspace.tsx
+@@ -1,13 +1,13 @@
+ import { useEffect, useRef, useState, type FormEvent } from "react";
+ import { ApiProblem, publicProblem } from "../../api/client";
+ import { collectSourcePage, getSourceJob } from "../../api/source-client";
+-import { validateSourceSubmission, type SourceJob, type SourceJobStatus, type SourceKind, type SourceSubmission } from "../../api/source-contracts";
++import { isSourceKind, sourceKinds, validateSourceSubmission, type SourceJob, type SourceJobStatus, type SourceKind, type SourceSubmission } from "../../api/source-contracts";
++import { sourceCatalog, sourceCategoryLabels } from "./source-catalog";
+ import { useAuthSession } from "../../app/auth-session";
+ import { formatShanghaiTimestamp } from "../../app/date-time";
+ import { EmptyState, ErrorPanel } from "../../components/status";
+ import "./sources.css";
+ 
+-const sourceNames: Record<SourceKind, string> = { nvd_ollama: "NVD · Ollama", vllm_vendor: "vLLM · 厂商公告" };
+ const jobStates: Record<SourceJobStatus, { label: string; description: string }> = {
+   queued: { label: "已排队", description: "PG已保存本页任务，等待worker执行；尚不能判断来源已采集。" },
+   running: { label: "本页处理中", description: "服务端记录本页正在处理。此页面没有自动轮询，请手动刷新核对。" },
+@@ -31,13 +31,14 @@ function failureMessage(error: ApiProblem, submit: boolean): string {
+   if (error.status === 404) return "任务不存在或当前会话不可查看。没有展示旧任务或历史数量。";
+   if (error.status === 409) return "幂等键与已保存请求冲突。请核对任务记录；不要通过自动更换请求键绕过冲突。";
+   if (error.status === 422) return submit ? "请求未通过校验，请检查带时区的过去窗口、固定来源与1至20页范围。" : "任务标识未通过校验，请输入完整UUID后重新查询。";
++  if (error.status === 429) return "请求过于频繁，本次状态尚未确认。请稍后原样重试提交，或手动刷新已有任务；不会自动更换请求键。";
+   if (submit) return "提交结果未确认。请求可能已入队；请保留本轮窗口和请求键原样重试，不要把网络错误当作未提交。";
+   return "本次未取得PG任务状态，不能判断任务为空或已完成。恢复服务后手动刷新。";
+ }
+ 
+-function SourceJobDetails({ job }: { job: SourceJob }) {
++function SourceJobDetails({ job, sourceName, checkedAt }: { job: SourceJob; sourceName: string | null; checkedAt: string | null }) {
+   const state = jobStates[job.status];
+-  return <article className="source-job-details" aria-label="当前单页任务"><div className="source-job-state"><span className={`source-job-mark source-state-${job.status}`} aria-hidden="true" /><div><h3>{state.label}</h3><p>{state.description}</p></div></div><dl className="source-metadata"><dt>任务标识</dt><dd><code>{job.job_id}</code></dd><dt>执行尝试</dt><dd>{job.attempt_count} 次</dd><dt>创建时间</dt><dd><SourceTime value={job.created_at} /></dd><dt>结束时间</dt><dd><SourceTime value={job.finished_at} /></dd><dt>安全错误码</dt><dd><code>{job.error_code ?? "未返回错误码"}</code></dd><dt>内部结果引用</dt><dd><code>{job.result_ref ?? "尚无结果引用"}</code></dd></dl></article>;
++  return <article className="source-job-details" aria-label="当前单页任务"><div className="source-job-state"><span className={`source-job-mark source-state-${job.status}`} aria-hidden="true" /><div><h3>{state.label}</h3><p>{state.description}</p></div></div><dl className="source-metadata"><dt>任务标识</dt><dd><code>{job.job_id}</code></dd><dt>执行尝试</dt><dd>{job.attempt_count} 次</dd><dt>创建时间</dt><dd><SourceTime value={job.created_at} /></dd><dt>结束时间</dt><dd><SourceTime value={job.finished_at} /></dd><dt>安全错误码</dt><dd><code>{job.error_code ?? "未返回错误码"}</code></dd><dt>内部结果引用</dt><dd><code>{job.result_ref ?? "尚无结果引用"}</code></dd><dt>来源关联</dt><dd>{sourceName ?? "未知 / 仅按任务标识查询"}</dd><dt>本页取得快照</dt><dd><SourceTime value={checkedAt} /></dd><dt>状态时效</dt><dd>服务未提供时效标记；此为本次查询快照，请手动刷新。</dd></dl></article>;
+ }
+ 
+ function SourceAdminWorkspace() {
+@@ -52,6 +53,10 @@ function SourceAdminWorkspace() {
+   const [failure, setFailure] = useState<{ error: ApiProblem; submit: boolean } | null>(null);
+   const [job, setJob] = useState<SourceJob | null>(null);
+   const [jobId, setJobId] = useState("");
++  const [acceptedJobId, setAcceptedJobId] = useState<string | null>(null);
++  const [checkedAt, setCheckedAt] = useState<string | null>(null);
++  const [accessDenied, setAccessDenied] = useState(false);
++  const sourceSelect = useRef<HTMLSelectElement>(null);
+   const active = useRef<AbortController | null>(null);
+   const inFlight = useRef(false);
+   const mounted = useRef(true);
+@@ -68,18 +73,24 @@ function SourceAdminWorkspace() {
+     inFlight.current = true;
+     setPending(kind);
+     setJob(null);
++    setCheckedAt(null);
+     setFailure(null);
+     const current = () => mounted.current && !controller.signal.aborted && isSessionCurrent(sessionGeneration);
+     try {
+       const result = kind === "submit" && frozen !== undefined ? await collectSourcePage(frozen, current, controller.signal) : await getSourceJob(jobId.trim(), controller.signal);
+       if (!current()) return;
+       setJob(result);
++      setCheckedAt(new Date().toISOString());
+       setJobId(result.job_id);
+-      if (kind === "submit") setAccepted(true);
++      if (kind === "submit") { setAccepted(true); setAcceptedJobId(result.job_id); }
+     } catch (error: unknown) {
+       if (!current()) return;
+       const problem = publicProblem(error);
+       setFailure({ error: problem, submit: kind === "submit" });
++      if (problem.status === 403 && problem.code !== "csrf_rejected") {
++        controller.abort(); inFlight.current = false; setPending(null); setAccessDenied(true);
++        setSubmission(null); setAccepted(false); setAcceptedJobId(null); setJobId("");
++      }
+       if (problem.status === 401) expireSession(sessionGeneration);
+     } finally {
+       if (current()) { inFlight.current = false; setPending(null); }
+@@ -101,22 +112,31 @@ function SourceAdminWorkspace() {
+     setSubmission(null);
+     setAccepted(false);
+     setFailure(null);
++    setJob(null); setJobId(""); setAcceptedJobId(null); setCheckedAt(null);
+     setWindowEnd(formatShanghaiTimestamp(new Date().toISOString()));
+   }
+ 
+   const locked = submission !== null || pending !== null;
+-  return <div className="source-workspace"><div className="source-scope-note"><span className="eyebrow">FIXED SOURCES / 有界调度</span><p>仅管理两个固定公开来源。任务状态读取PG，不代表整个来源覆盖、持续在线或监控总量。</p><span className="source-mode">{state.kind === "authenticated" && state.user.data_mode === "fixture" ? "合成 / Fixture" : "真实 / Live"} · 模式来自当前会话</span></div>
+-    <div className="source-workspace-grid"><section className="panel source-submit-panel" aria-labelledby="source-submit-title"><div className="panel-heading"><div><p className="eyebrow">COLLECT / 固定来源</p><h2 id="source-submit-title">提交采集轮次</h2></div></div>
+-      <div className="source-catalog"><div><strong>NVD · Ollama</strong><p>固定Ollama关键词；每个任务处理一页。</p><code>nvd_ollama</code></div><div><strong>vLLM · 厂商公告</strong><p>固定官方仓库公开公告；服务端处理分页游标。</p><code>vllm_vendor</code></div></div>
+-      <form className="source-form" onSubmit={submitCollection} aria-label="固定来源采集"><label htmlFor="source-kind">固定来源<select id="source-kind" disabled={locked} value={sourceKind} onChange={(event) => { if (event.target.value === "nvd_ollama" || event.target.value === "vllm_vendor") setSourceKind(event.target.value); }}><option value="nvd_ollama">NVD · Ollama</option><option value="vllm_vendor">vLLM · 厂商公告</option></select></label><div className="source-form-row"><label htmlFor="source-stream">采集流<select id="source-stream" disabled={locked} value={streamKind} onChange={(event) => { if (event.target.value === "live" || event.target.value === "backfill") setStreamKind(event.target.value); }}><option value="live">实时流 / live</option><option value="backfill">回补流 / backfill</option></select></label><label htmlFor="source-max-pages">本轮页上限<input id="source-max-pages" type="number" min="1" max="20" step="1" disabled={locked} value={maxPages} onChange={(event) => setMaxPages(event.target.value)} required /></label></div><label htmlFor="source-window">观察窗口截止（含时区）<input id="source-window" value={windowEnd} onChange={(event) => setWindowEnd(event.target.value)} disabled={locked} required /></label><p className="source-boundary">窗口是本轮观察标识，不保证上游快照或完整时间过滤。202只表示PG受理，不表示来源采完。</p><button className="button" type="submit" disabled={locked}>{pending === "submit" ? "正在提交…" : "提交本轮采集"}</button></form>
+-      {submission !== null && <div className="source-frozen-request"><h3>{accepted ? "本轮已受理" : "本轮请求已冻结"}</h3><dl className="source-metadata"><dt>来源与流</dt><dd>{sourceNames[submission.sourceKind]} / {submission.body.stream_kind}</dd><dt>固定窗口</dt><dd><SourceTime value={submission.body.window_end} /></dd><dt>页上限</dt><dd>{submission.body.max_pages}</dd><dt>幂等请求键</dt><dd><code>{submission.idempotencyKey}</code></dd></dl><p>重试保留相同来源、请求体、窗口和请求键。开始新一轮后，首次提交会生成新键；上一轮结果未知时请先原样重试。</p><div className="source-actions">{!accepted && <button className="button secondary" disabled={pending !== null} onClick={() => void runRequest("submit", submission)}>原样重试本轮</button>}<button className="button secondary" disabled={pending !== null} onClick={newRound}>开始新一轮</button></div></div>}
++  function selectSource(kind: SourceKind, focus = false) {
++    if (locked || inFlight.current) return;
++    setSourceKind(kind); setJob(null); setJobId(""); setAcceptedJobId(null); setCheckedAt(null); setFailure(null);
++    if (focus) { sourceSelect.current?.focus(); sourceSelect.current?.scrollIntoView?.({ block: "center", behavior: "instant" }); }
++  }
++  if (accessDenied && failure !== null) return <section className="panel source-access-panel"><EmptyState title="没有来源调度权限" description="服务端已拒绝本次管理操作。本页已清除请求和任务快照，请重新核对会话权限。" /><ErrorPanel error={failure.error} message={failureMessage(failure.error, failure.submit)} /><a className="button secondary" href="#session">核对会话与权限</a></section>;
++  return <div className="source-workspace"><div className="source-scope-note"><span className="eyebrow">FIXED SOURCES / 有界调度</span><p>九个固定来源归入八类。目录仅说明登记范围，未验证接通或启用；任务状态读取PG，不代表持续在线或全部采完。</p><span className="source-mode">{state.kind === "authenticated" && state.user.data_mode === "fixture" ? "合成 / Fixture" : "真实 / Live"} · 模式来自当前会话</span></div>
++    <div className="source-workspace-grid"><section className="panel source-catalog-panel" aria-labelledby="source-catalog-title"><div className="panel-heading"><div><p className="eyebrow">CATALOG / 登记范围</p><h2 id="source-catalog-title">固定来源目录</h2></div><span className="small-note">接通状态未验证</span></div><div className="source-catalog">
++      {Object.entries(sourceCategoryLabels).map(([category, label]) => <section className="source-category-group" key={category}><h3>{label}</h3>{sourceKinds.filter((kind) => sourceCatalog[kind].category === category).map((kind) => <article key={kind} className={`source-catalog-row ${sourceKind === kind ? "source-selected" : ""}`}><div className="source-catalog-title"><strong>{sourceCatalog[kind].name}</strong><span className="source-verification">未验证</span></div><p>{sourceCatalog[kind].scope}</p><div className="source-catalog-action"><code>{kind}</code><button type="button" className="button secondary" disabled={locked} aria-pressed={sourceKind === kind} onClick={() => selectSource(kind, true)}>选择 {sourceCatalog[kind].name}</button></div></article>)}</section>)}
++    </div></section><div className="source-control-column"><section className="panel source-submit-panel" aria-labelledby="source-submit-title"><div className="panel-heading"><div><p className="eyebrow">COLLECT / 单源提交</p><h2 id="source-submit-title">提交采集轮次</h2></div></div>
++      <div className="source-selection-note"><strong>{sourceCatalog[sourceKind].name}</strong><p>{sourceCatalog[sourceKind].boundary}</p></div>
++      <form className="source-form" onSubmit={submitCollection} aria-label="固定来源采集"><label htmlFor="source-kind">固定来源<select ref={sourceSelect} id="source-kind" disabled={locked} value={sourceKind} onChange={(event) => { if (isSourceKind(event.target.value)) selectSource(event.target.value); }}>{sourceKinds.map((kind) => <option value={kind} key={kind}>{sourceCatalog[kind].name}</option>)}</select></label><div className="source-form-row"><label htmlFor="source-stream">采集流<select id="source-stream" disabled={locked} value={streamKind} onChange={(event) => { if (event.target.value === "live" || event.target.value === "backfill") setStreamKind(event.target.value); }}><option value="live">实时流 / live</option><option value="backfill">回补流 / backfill</option></select></label><label htmlFor="source-max-pages">本轮页上限<input id="source-max-pages" type="number" min="1" max="20" step="1" disabled={locked} value={maxPages} onChange={(event) => setMaxPages(event.target.value)} required /></label></div><label htmlFor="source-window">观察窗口截止（含时区）<input id="source-window" value={windowEnd} onChange={(event) => setWindowEnd(event.target.value)} disabled={locked} required /></label><p className="source-boundary">窗口是本轮观察标识，不保证上游快照或完整时间过滤。202只表示PG受理，不表示来源采完。</p><button className="button" type="submit" disabled={locked}>{pending === "submit" ? "正在提交…" : "提交本轮采集"}</button></form>
++      {submission !== null && <div className="source-frozen-request"><h3>{failure !== null ? "本轮状态未确认" : accepted ? "本轮已受理" : "本轮请求已冻结"}</h3><dl className="source-metadata"><dt>来源与流</dt><dd>{sourceCatalog[submission.sourceKind].name} / {submission.body.stream_kind}</dd><dt>固定窗口</dt><dd><SourceTime value={submission.body.window_end} /></dd><dt>页上限</dt><dd>{submission.body.max_pages}</dd><dt>幂等请求键</dt><dd><code>{submission.idempotencyKey}</code></dd></dl><p>重试保留相同来源、请求体、窗口和请求键。开始新一轮后，首次提交会生成新键；上一轮结果未知时请先原样重试。</p><div className="source-actions">{!accepted && <button className="button secondary" disabled={pending !== null} onClick={() => void runRequest("submit", submission)}>原样重试本轮</button>}<button className="button secondary" disabled={pending !== null} onClick={newRound}>开始新一轮</button></div></div>}
+     </section>
+     <section className="panel source-query-panel" aria-labelledby="source-query-title"><div className="panel-heading"><div><p className="eyebrow">JOB / PG单页任务</p><h2 id="source-query-title">任务状态查询</h2></div><span className="small-note">手动刷新</span></div><form className="source-form" aria-label="查询单页任务" onSubmit={(event) => { event.preventDefault(); void runRequest("lookup"); }}><label htmlFor="source-job-id">任务标识<input id="source-job-id" placeholder="输入已保存的job UUID" value={jobId} onChange={(event) => setJobId(event.target.value)} disabled={pending !== null} required /></label><button className="button secondary" type="submit" disabled={pending !== null || !jobId.trim()}>{pending === "lookup" ? "正在查询…" : "查询 / 刷新任务"}</button><p className="source-boundary">保存任务标识可在返回本页后重新查询。此处没有任务历史、全来源计数或自动轮询。</p></form>
+       {pending !== null && <p className="source-loading" role="status">{pending === "submit" ? "正在提交固定来源任务，等待PG回执…" : "正在读取指定任务的PG状态…"}</p>}
+       {failure !== null && <ErrorPanel error={failure.error} message={failureMessage(failure.error, failure.submit)} />}
+-      {job !== null && <SourceJobDetails job={job} />}
++      {job !== null && <SourceJobDetails job={job} sourceName={submission !== null && job.job_id === acceptedJobId ? sourceCatalog[submission.sourceKind].name : null} checkedAt={checkedAt} />}
+       {job === null && pending === null && failure === null && <EmptyState title="尚未查询任务" description="提交一轮取得任务标识，或输入已有标识查询。尚未查询不等于没有任务。" />}
+-    </section></div>
++    </section></div></div>
+   </div>;
+ }
+ 
+diff --git a/frontend/src/features/sources/sources.css b/frontend/src/features/sources/sources.css
+index cc668af..6fa47c3 100644
+--- a/frontend/src/features/sources/sources.css
++++ b/frontend/src/features/sources/sources.css
+@@ -2,14 +2,23 @@
+ .source-scope-note { border-left: 2px solid var(--accent); padding: 0 0 0 16px; margin-bottom: 24px; }
+ .source-scope-note p { margin: 8px 0; font-size: 13px; color: var(--muted); }
+ .source-mode { color: var(--accent); font-size: 12px; }
+-.source-workspace-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
++.source-workspace-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 20px; align-items: start; }
+ .source-workspace-grid > section { min-width: 0; }
+-.source-catalog { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); }
+-.source-catalog > div { padding: 20px; }
+-.source-catalog > div + div { border-left: 1px solid var(--line); }
++.source-control-column { display: grid; min-width: 0; gap: 20px; }
++.source-catalog { display: grid; }
++.source-category-group > h3 { margin: 0; padding: 12px 20px; color: var(--muted); background: #0e1619; font-size: 11px; font-weight: 500; border-bottom: 1px solid var(--line); }
++.source-catalog-row { padding: 16px 20px; border-bottom: 1px solid var(--line); border-left: 2px solid transparent; min-width: 0; }
++.source-catalog-row:last-child { border-bottom: 0; }
++.source-catalog-row.source-selected { border-left-color: var(--accent); background: #142722; }
++.source-catalog-title, .source-catalog-action { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; align-items: center; }
++.source-catalog-action .button { min-height: 40px; font-size: 11px; padding: 8px 10px; }
++.source-verification { color: var(--muted); font-size: 11px; }
+ .source-catalog strong { font-size: 13px; }
+ .source-catalog p { color: var(--muted); font-size: 12px; margin: 10px 0; }
+-.source-catalog code { font-size: 11px; color: var(--accent); }
++.source-catalog code { font-size: 10px; color: var(--accent); }
++.source-selection-note { padding: 20px 20px 0; }
++.source-selection-note strong { color: var(--accent); font-size: 14px; }
++.source-selection-note p { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+ .source-form { padding: 20px; display: grid; gap: 16px; }
+ .source-form label { display: grid; gap: 8px; min-width: 0; font-size: 12px; color: var(--muted); }
+ .source-form input, .source-form select { width: 100%; min-width: 0; margin: 0; min-height: 42px; padding: 10px 12px; border: 1px solid #405658; background: var(--field); color: var(--ink); font-size: 13px; }
+@@ -36,4 +45,4 @@
+ .source-access-panel { padding-bottom: 24px; }
+ .source-access-panel > .button { margin-left: 24px; }
+ @media (max-width: 1100px) { .source-workspace-grid { grid-template-columns: minmax(0, 1fr); } }
+-@media (max-width: 640px) { .source-catalog { grid-template-columns: minmax(0, 1fr); } .source-catalog > div + div { border-left: 0; border-top: 1px solid var(--line); } .source-form, .source-catalog > div, .source-frozen-request, .source-job-details { padding: 18px 16px; } .source-form-row { gap: 12px; } .source-metadata { grid-template-columns: 75px minmax(0, 1fr); gap: 12px; } }
++@media (max-width: 640px) { .source-form, .source-catalog-row, .source-frozen-request, .source-job-details { padding: 18px 16px; } .source-category-group > h3 { padding: 12px 16px; } .source-selection-note { padding: 18px 16px 0; } .source-form-row { gap: 12px; } .source-metadata { grid-template-columns: 75px minmax(0, 1fr); gap: 12px; } }

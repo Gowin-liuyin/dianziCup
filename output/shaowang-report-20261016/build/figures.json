@@ -1,0 +1,302 @@
+[
+  {
+    "id": "F-01",
+    "location": "概述（缩略版）+ 2.1",
+    "title": "哨望总体架构",
+    "purpose": "六层分工 + 四项横切能力，变化快的部分被隔离在采集层",
+    "elements": "自下而上：数据源层（9 类，标 tier 与轮询频率）、采集层（Connector×N、自有仓库 webhook）、知识层（PG+pgvector、Neo4j、OpenSearch、MinIO、Redis/NATS）、智能体编排层（Orchestrator + 8 角色）、服务层（intel-core、GraphRAG）、接入层（Web、MCP 7 工具、OpenAPI、CLI、Agent Plugins）；右侧竖排四个横切框",
+    "layout": "通栏；概述用同图缩小或简化版（≤12 cm）",
+    "old": "r01.png",
+    "source": "D3.1"
+  },
+  {
+    "id": "F-02",
+    "location": "1.3",
+    "title": "监测—富化—问答闭环",
+    "purpose": "三大功能如何首尾相接，并由评估与开放把结果送到用户手上",
+    "elements": "环形三段（监测/富化/问答）+ 中心“知识图谱与事实库”+ 外圈“版本自查、MCP 开放、Critic 校验、时效可观测”",
+    "layout": "半栏",
+    "old": "新绘",
+    "source": "D1.1、D3.2"
+  },
+  {
+    "id": "F-03",
+    "location": "2.2.1",
+    "title": "端到端数据流与阶段时间戳",
+    "purpose": "六阶段流水线，五个时间戳把时延拆成可定位的几段",
+    "elements": "采集→归一→富化→校验→存储→服务，下方时间轴标 source_published_at、first_seen_at、normalized_at、enriched_at、queryable_at，括号标“采集时延”“处理时延”“端到端 ≤6 h 目标（待测）”",
+    "layout": "通栏横向",
+    "old": "r04.png（竖向，需改横向）",
+    "source": "D3.2、D2.8"
+  },
+  {
+    "id": "F-04",
+    "location": "2.2.2",
+    "title": "一条新公告从发布到可问答的时序",
+    "purpose": "智能体间的交接顺序；第三方轮询与演示注入两条触发路径",
+    "elements": "泳道：厂商仓库、Orchestrator、Collector、Triage、Enricher、Critic、GraphWriter、Assessor、编码智能体；注释框“演示时改由注入接口/自有仓库 webhook 触发”",
+    "layout": "通栏时序图",
+    "old": "r08.png",
+    "source": "D3.2、D5.3"
+  },
+  {
+    "id": "F-05",
+    "location": "2.2.3",
+    "title": "查询请求的处理路径",
+    "purpose": "读路径与写路径分离；鉴权、限流、审计、异步分流、合规过滤、裁剪的顺序",
+    "elements": "编码智能体 → /mcp → intel-core（凭据/scope/限流/审计）→ 耗时估计菱形（≤60 s 同步 / >60 s TaskHandle）→ 版本求解或 QA+Critic → 合规过滤 → ≤8k tokens 裁剪 → 返回",
+    "layout": "通栏",
+    "old": "新绘",
+    "source": "D3.3、D3.4"
+  },
+  {
+    "id": "F-06",
+    "location": "2.3.1",
+    "title": "九个智能体的协作关系",
+    "purpose": "Critic 位于所有对外产出的必经路径；死信回到 Orchestrator",
+    "elements": "9 个角色节点；主链路 Collector→Triage→Enricher→Critic→GraphWriter→Assessor；QA 与 Reporter 经 Critic 输出；虚线：失败→DLQ→Orchestrator",
+    "layout": "通栏",
+    "old": "r07.png",
+    "source": "D4.1、D4.2"
+  },
+  {
+    "id": "F-07",
+    "location": "2.3.2",
+    "title": "任务状态机",
+    "purpose": "对外五种状态，内部 retrying 与死信对外显示为 running",
+    "elements": "queued、running、succeeded、failed、expired；内部虚框 retrying、DLQ；边上标“429/5xx/超时”“>6 次”“每 15 min 重放”“4xx（非 429）”",
+    "layout": "半栏",
+    "old": "r09.png",
+    "source": "D4.3"
+  },
+  {
+    "id": "F-08",
+    "location": "2.3.3",
+    "title": "Critic 校验闭环",
+    "purpose": "三项检查与三种结论",
+    "elements": "输入（Enricher/Assessor/QA/Reporter）→ 引用可回溯？→ 置信度 ≥0.6？→ 无利用代码/IP？→ pass / partial（标注 unsupported_claims）/ reject（重检索或重富化）；角标“LLM 产出 20% 抽检，金标集回归”",
+    "layout": "半栏",
+    "old": "r11.png",
+    "source": "D4.4"
+  },
+  {
+    "id": "F-09",
+    "location": "2.4.1",
+    "title": "九类数据源与三级可信度",
+    "purpose": "来源按可信度分层，权重 1.0/0.7/0.4",
+    "elements": "三层同心或三栏：一级（NVD、GHSA reviewed、OSV、KEV、EPSS、ATLAS、CNNVD、CNVD、厂商公告、标准法规）、二级（huntr、AVID、GHSA unreviewed、测绘平台“仅暴露面”）、三级（arXiv、RSS）；CNVD 标“加分项·人工导入”",
+    "layout": "通栏",
+    "old": "r12.png",
+    "source": "D5.1"
+  },
+  {
+    "id": "F-10",
+    "location": "2.4.2",
+    "title": "各来源采集节奏与目标时延",
+    "purpose": "分级轮询的阶梯，6 h 口径只含漏洞类首次发现",
+    "elements": "横向阶梯或水平条：事件 ≤1 min → 5 min → 10 min → 15 min → 1 h → 6 h → 1 d → 1 周；每级列来源名与目标 P95；用括号框出“计入 6 h 指标”的五类",
+    "layout": "通栏",
+    "old": "r14.png",
+    "source": "D5.2"
+  },
+  {
+    "id": "F-11",
+    "location": "2.4.3",
+    "title": "去重与合并的三层处理",
+    "purpose": "幂等、别名合并、相似候选三层；双 CVE 不合并",
+    "elements": "三级漏斗：①(source, external_id) 幂等 ②别名并查集→vuln_uid（优先级 CVE>GHSA>OSV>huntr>SW）③purl+SimHash≥0.9+±3 天→Critic 复核；旁支“别名指向两个 CVE→DUPLICATE_OF 候选”",
+    "layout": "半栏",
+    "old": "新绘",
+    "source": "D5.4"
+  },
+  {
+    "id": "F-12",
+    "location": "2.5.1",
+    "title": "九维富化画像",
+    "purpose": "一条原始情报如何被补全为 9 个维度，哪些是规则、哪些是弱关联、哪些有合规约束",
+    "elements": "中心“漏洞实体”卡片，9 个维度格子（3×3），每格写来源与方法；用颜色区分“规则/确定性”“LLM 弱关联须 Critic”“合规约束（仅链接/仅计数）”",
+    "layout": "通栏",
+    "old": "新绘（不用雷达图）",
+    "source": "D6.1"
+  },
+  {
+    "id": "F-13",
+    "location": "2.5.1 或 4.6.2",
+    "title": "暴露面计数的语法校准",
+    "purpose": "宽口径会严重高估，收窄并抽样校准后才可用",
+    "elements": "漏斗：宽口径 823 690（仅上限）→ 收窄 172 411（全球）→ 51 612（国内）；侧框“50 条抽样命中 44 条，精确率 88% ≥80%，verified”；脚注“Quake，2026-10-15；只取计数，不含任何资产明细；文献对照：Talos 经 Shodan 识别 1139 个”",
+    "layout": "半栏",
+    "old": "新绘",
+    "source": "D18.2"
+  },
+  {
+    "id": "F-14",
+    "location": "2.5.2",
+    "title": "六类自动关联",
+    "purpose": "规则边与 LLM 边的区分，每条边带理由与置信度",
+    "elements": "以 Vulnerability 为中心的子图：Advisory（DESCRIBES）、Component（AFFECTS{range,fixed}）、AtlasTechnique（MAPS_TO）、Paper/Article（DISCUSSED_IN）、PocRef（HAS_POC_REF）、CWE、RiskCategory→Regulation（GOVERNED_BY）；实线=规则、点划线=LLM；挑两条边挂理由气泡",
+    "layout": "通栏",
+    "old": "r17.png",
+    "source": "D6.3"
+  },
+  {
+    "id": "F-15",
+    "location": "2.5.3",
+    "title": "多源冲突的逐字段裁决",
+    "purpose": "先特例后三级比较，落选值留痕",
+    "elements": "决策流：字段候选 → 四个特例菱形（KEV 专属、一级撤回、一级区间互斥取并集、双 CVE 不合并）→ 等级 → 置信度 → 更新时间 → 写主值 + provenance；旁路“落选值→conflicts[]”；右下示例 CVSS 10.0 vs 9.8",
+    "layout": "通栏",
+    "old": "r18.png",
+    "source": "D6.4"
+  },
+  {
+    "id": "F-16",
+    "location": "2.5.4",
+    "title": "版本自查流程",
+    "purpose": "三种输入、OSV 语义求解、三种结果、三种入口",
+    "elements": "依赖文件/清单 → purl 解析 → 区间求解（introduced/fixed/last_affected/limit）→ 受影响 / 未发现已知影响 / 组件未收录（+分歧提示）→ Web、check_stack、shaowang check（退出码 1 接 CI）",
+    "layout": "通栏",
+    "old": "r20.png",
+    "source": "D6.5"
+  },
+  {
+    "id": "F-17",
+    "location": "2.6.1",
+    "title": "三路混合检索与 GraphRAG 问答流程",
+    "purpose": "三路召回、RRF、重排、多跳、生成、Critic",
+    "elements": "问题 → 规划器 → BM25 / 向量 top-50 / 图扩展 1–2 跳 → RRF（k=60）→ 重排 → 8–12 证据块 → 生成（逐句 [n]）→ Critic → 答案；fail 回到规划器",
+    "layout": "通栏（横向）",
+    "old": "r21.png（竖向，建议改横向）",
+    "source": "D7.1–D7.3"
+  },
+  {
+    "id": "F-18",
+    "location": "2.6.2",
+    "title": "多跳问答的推理链示例",
+    "purpose": "让读者看到“显式多跳”具体长什么样",
+    "elements": "4 个步骤卡片串联：①AFFECTS→vllm ②HAS_POC_REF ③近 90 天 ④MAPS_TO→ATLAS；每张卡写子问题、检索方式、命中数（命中数写“n”占位，不写假数字）",
+    "layout": "通栏",
+    "old": "新绘",
+    "source": "D7.2"
+  },
+  {
+    "id": "F-19",
+    "location": "2.7.1 / 2.7.3",
+    "title": "MCP 与插件生态全景",
+    "purpose": "内层数据面插件、外层智能体面工具，一个仓库覆盖多家编码智能体",
+    "elements": "左：三类扩展点 → shaowang-sdk → 签名索引 → intel-core；右：MCP/OpenAPI/CLI → Agent Plugins 包 → Claude Code、Codex、Cursor、Gemini CLI（Kimi 等标“待核实”）",
+    "layout": "通栏",
+    "old": "r24.png",
+    "source": "D8、D9.3"
+  },
+  {
+    "id": "F-20",
+    "location": "2.7.3",
+    "title": "插件生命周期",
+    "purpose": "校验、审批、沙箱、降级、禁用",
+    "elements": "状态图：Discovered→Validated→Installed→Loaded→Running⇄Degraded→Disabled；Upgrading（MINOR 热升级/MAJOR 重审）",
+    "layout": "半栏",
+    "old": "r26.png",
+    "source": "D9.6"
+  },
+  {
+    "id": "F-21",
+    "location": "2.7.3",
+    "title": "公开 Schema 与 OSV / STIX 2.1 / CSAF 2.0 的对应",
+    "purpose": "数据可无损进出其他平台",
+    "elements": "左列 8 类 Schema，右三列标准，用连线或矩阵点表示字段映射（取 D9.2 中 6–8 行）",
+    "layout": "通栏",
+    "old": "新绘",
+    "source": "D9.1、D9.2"
+  },
+  {
+    "id": "F-22",
+    "location": "2.8",
+    "title": "技术栈分层",
+    "purpose": "每层选了什么、备选是什么",
+    "elements": "分层条：采集、消息调度、编排、模型、存储、检索、后端、MCP、前端、可观测、部署；每层主选 + 灰色备选",
+    "layout": "通栏",
+    "old": "新绘",
+    "source": "D10"
+  },
+  {
+    "id": "F-23",
+    "location": "3.1.1",
+    "title": "docker compose 单机部署结构",
+    "purpose": "应用、数据、可观测三组容器与交互",
+    "elements": "三个分组框；容器名与端点（/api/v1、/mcp）；不写任何 IP",
+    "layout": "通栏",
+    "old": "r03.png",
+    "source": "D3.5"
+  },
+  {
+    "id": "F-24",
+    "location": "3.1.2",
+    "title": "知识图谱数据模型",
+    "purpose": "11 类节点、边名与边属性",
+    "elements": "实体关系图；边属性框：reason、confidence、method、created_by_agent",
+    "layout": "通栏",
+    "old": "r05.png",
+    "source": "D11.2、D2.7"
+  },
+  {
+    "id": "F-25",
+    "location": "3.1.3",
+    "title": "失败重试、死信重放与熔断降级",
+    "purpose": "错误分类处理与降级通道",
+    "elements": "请求 → 错误类型菱形（429/5xx/超时 → 退避 1 s 起 ×2 上限 5 min ±20%，≤6 次；4xx 非 429 → 直接死信+告警）→ DLQ（15 min 重放）；连续 3 周期失败 → degraded → 降级通道表（NVD→cvelistV5 等）",
+    "layout": "半栏或通栏",
+    "old": "r29.png",
+    "source": "D12.1、D12.2"
+  },
+  {
+    "id": "F-26",
+    "location": "3.1.5",
+    "title": "对外合规边界",
+    "purpose": "什么能给、什么不给",
+    "elements": "左“提供”：计数与分布、PoC 链接与标题、修复版本与缓解；右“不提供（禁止框）”：IP/主机明细、利用代码、执行能力、主动扫描；中间“只读服务层 + Critic + 输出过滤”",
+    "layout": "通栏",
+    "old": "r30.png",
+    "source": "D13"
+  },
+  {
+    "id": "F-27",
+    "location": "4.2.1",
+    "title": "时效统计的时间戳定义",
+    "purpose": "指标口径",
+    "elements": "时间轴五点 + 区间标注；“只统计漏洞类首次发现；日更源单列；DEMO 不计；只精确到日按零点计”",
+    "layout": "通栏",
+    "old": "r15.png",
+    "source": "D2.8、D16.3"
+  },
+  {
+    "id": "F-28",
+    "location": "4.2.2",
+    "title": "各来源时延分布箱线图",
+    "purpose": "实测结果",
+    "elements": "由实测 CSV 用脚本生成（不是 PPT 手绘）；6 h 红色阈值线；【图待补】",
+    "layout": "通栏",
+    "old": "无（待补）",
+    "source": "D16.3"
+  },
+  {
+    "id": "F-29",
+    "location": "第五章开头",
+    "title": "七项创新点总览",
+    "purpose": "7 条创新点与对应评分项",
+    "elements": "7 张等宽卡片或 7 格环：编号、标题、一句话做法、评分标签",
+    "layout": "通栏",
+    "old": "新绘",
+    "source": "D17"
+  },
+  {
+    "id": "F-30",
+    "location": "4.1",
+    "title": "评测体系总览",
+    "purpose": "四类测试问题 + 兼容性，各自数据集、对照与指标",
+    "elements": "五列：时效 / 富化 / 问答 / 自愈 / 兼容；每列写数据集（时间戳、200 金标、100 题、6 场景、4 客户端）、对照设置、指标、目标值（待测）",
+    "layout": "通栏",
+    "old": "新绘",
+    "source": "D16"
+  }
+]

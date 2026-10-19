@@ -1,0 +1,133 @@
+D:\wt\r11-sbom-inventory-review1-fix1\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa
+..FFF.....F                                                              [100%]
+================================== FAILURES ===================================
+_______________ test_encoded_uri_pointer_is_never_disclosed[5] ________________
+sbom_engine = Engine([redacted test credential fragment]ql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_sbom_review_fix1_new_20261016_071205)
+sbom_api = (<function sbom_api.<locals>.login at 0x0000020CF13877E0>, <ai_intel.api.authentication.AuthenticationSessionService object at 0x0000020CF1396000>)
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x0000020CF125BA60>
+encoding_depth = 5
+
+    @pytest.mark.parametrize("encoding_depth", [1, 4, 5, 8])
+    def test_encoded_uri_pointer_is_never_disclosed(sbom_engine, sbom_api, register_sensitive_failure_value, encoding_depth):
+        private = "[redacted test credential fragment]ql://[redacted test credential fragment]c_user:[redacted test credential fragment][redacted test credential fragment]rd@[redacted test credential fragment][redacted test credential fragment]ate"
+        key = private
+        for _ in range(encoding_depth):
+            key = quote(key, safe="")
+        register_sensitive_failure_value(SecretStr(key))
+        register_sensitive_failure_value(SecretStr(private))
+        login, _ = sbom_api
+        client, headers, _ = login()
+        document = resource.spdx_document()
+        document[key] = "[redacted test credential fragment]c opaque"
+        raw = resource.raw_document(document)
+        created = resource.upload(client, headers, raw, manifest_format="spdx_json")
+        assert created.status_code == 201
+        asset_id = created.json()["asset_id"]
+        snapshot_id = created.json()["snapshot"]["snapshot_id"]
+        response = client.get(f"/api/assets/{asset_id}/snapshots/{snapshot_id}/sbom")
+        assert response.status_code == 200
+>       assert key not in response.text
+E       assert '[redacted test credential fragment]ql%...[redacted test credential fragment]vate' not in '{"schema_ve...actions":[]}'
+E         
+E         '[redacted test credential fragment][redacted test credential fragment]52...[redacted test credential fragment][redacted test credential fragment]ate' is contained here:
+E           cation","/[redacted test credential]"],"redactions":[]}
+
+..\reports\runs\recovery_r11_sbom_inventory_review1_fix1_20261016\test_fix1_probes.py:55: AssertionError
+_______________ test_encoded_uri_pointer_is_never_disclosed[8] ________________
+sbom_engine = Engine([redacted test credential fragment]ql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_sbom_review_fix1_new_20261016_071205)
+sbom_api = (<function sbom_api.<locals>.login at 0x0000020CF1439DA0>, <ai_intel.api.authentication.AuthenticationSessionService object at 0x0000020CF13B4770>)
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x0000020CF13FB600>
+encoding_depth = 8
+
+    @pytest.mark.parametrize("encoding_depth", [1, 4, 5, 8])
+    def test_encoded_uri_pointer_is_never_disclosed(sbom_engine, sbom_api, register_sensitive_failure_value, encoding_depth):
+        private = "[redacted test credential fragment]ql://[redacted test credential fragment]c_user:[redacted test credential fragment][redacted test credential fragment]rd@[redacted test credential fragment][redacted test credential fragment]ate"
+        key = private
+        for _ in range(encoding_depth):
+            key = quote(key, safe="")
+        register_sensitive_failure_value(SecretStr(key))
+        register_sensitive_failure_value(SecretStr(private))
+        login, _ = sbom_api
+        client, headers, _ = login()
+        document = resource.spdx_document()
+        document[key] = "[redacted test credential fragment]c opaque"
+        raw = resource.raw_document(document)
+        created = resource.upload(client, headers, raw, manifest_format="spdx_json")
+        assert created.status_code == 201
+        asset_id = created.json()["asset_id"]
+        snapshot_id = created.json()["snapshot"]["snapshot_id"]
+        response = client.get(f"/api/assets/{asset_id}/snapshots/{snapshot_id}/sbom")
+        assert response.status_code == 200
+>       assert key not in response.text
+E       assert '[redacted test credential fragment]ql%...[redacted test credential fragment]vate' not in '{"schema_ve...actions":[]}'
+E         
+E         '[redacted test credential fragment][redacted test credential fragment]52...[redacted test credential fragment][redacted test credential fragment]ate' is contained here:
+E           cation","/[redacted test credential]"],"redactions":[]}
+
+..\reports\runs\recovery_r11_sbom_inventory_review1_fix1_20261016\test_fix1_probes.py:55: AssertionError
+___ test_conflicting_or_unbound_v2_metadata_is_503[reused_locator_conflict] ___
+sbom_engine = Engine([redacted review value])
+sbom_api = (<function sbom_api.<locals>.login at 0x0000020CF144D1C0>, <ai_intel.api.authentication.AuthenticationSessionService object at 0x0000020CF14508C0>)
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x0000020CF1439EE0>
+corruption = 'reused_locator_conflict'
+
+    @pytest.mark.parametrize("corruption", ["reused_locator_conflict", "extra", "no_marker", "duplicate"])
+    def test_conflicting_or_unbound_v2_metadata_is_503(sbom_engine, sbom_api, register_sensitive_failure_value, corruption):
+        private = "[redacted test credential]"
+        register_sensitive_failure_value(SecretStr(private))
+        login, _ = sbom_api
+        client, headers, account = login()
+        value = resource.document()
+        value["components"][0]["bom-ref"] = private
+        value["dependencies"] = [{"ref": private, "dependsOn": ["b", private]}]
+        value["compositions"][0]["assemblies"] = [private]
+        created = resource.upload(client, headers, resource.raw_document(value))
+        assert created.status_code == 201
+        snapshot, sidecar = cloned_history(sbom_engine, created.json())
+        body = sidecar["canonical_payload"]
+        if corruption == "reused_locator_conflict":
+            body["dependency_edges"][1]["source_ref"] = "public-ref"
+        elif corruption == "extra":
+            body["redactions"].append({"source_field_locator": "/extra", "reason": "unsafe_uri_or_path", "replacement_ref": None})
+        elif corruption == "no_marker":
+            body["redactions"] = []
+        else:
+            body["redactions"].append(dict(body["redactions"][0]))
+        with sbom_engine.begin() as connection:
+            connection.execute(insert(asset_snapshots).values(snapshot))
+            connection.execute(insert(asset_snapshot_sbom_sidecars).values(sidecar))
+        response = client.get(f"/api/assets/{sidecar['asset_id']}/snapshots/{sidecar['snapshot_id']}/sbom")
+>       assert response.status_code == 503
+E       assert 200 == 503
+E        +  where 200 = <Response [200 OK]>.status_code
+
+..\reports\runs\recovery_r11_sbom_inventory_review1_fix1_20261016\test_fix1_probes.py:105: AssertionError
+____ test_purl_marker_without_context_and_double_projection_are_consistent ____
+sbom_engine = Engine([redacted review value])
+sbom_api = (<function sbom_api.<locals>.login at 0x0000020CF1519C60>, <ai_intel.api.authentication.AuthenticationSessionService object at 0x0000020CF1478BF0>)
+
+    def test_purl_marker_without_context_and_double_projection_are_consistent(sbom_engine, sbom_api):
+        login, _ = sbom_api
+        client, headers, _ = login()
+        value = resource.document()
+        value["components"][0]["purl"] = "[redacted review value]"
+        created = resource.upload(client, headers, resource.raw_document(value))
+>       assert created.status_code == 201
+E       assert 422 == 201
+E        +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+
+..\reports\runs\recovery_r11_sbom_inventory_review1_fix1_20261016\test_fix1_probes.py:151: AssertionError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\_pytest\config\__init__.py:1290
+  D:\wt\r11-sbom-inventory-review1-fix1\backend\.venv\Lib\site-packages\_pytest\config\__init__.py:1290: PytestAssertRewriteWarning: Module already imported so cannot be rewritten; anyio
+    self._mark_plugins_for_rewrite(hook, disable_autoload)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\r11-sbom-inventory-review1-fix1\reports\runs\recovery_r11_sbom_inventory_review1_fix1_20261016\pg_new.xml -
+=========================== short test summary info ===========================
+FAILED ..\reports\runs\recovery_r11_sbom_inventory_review1_fix1_20261016\test_fix1_probes.py::test_encoded_uri_pointer_is_never_disclosed[5]
+FAILED ..\reports\runs\recovery_r11_sbom_inventory_review1_fix1_20261016\test_fix1_probes.py::test_encoded_uri_pointer_is_never_disclosed[8]
+FAILED ..\reports\runs\recovery_r11_sbom_inventory_review1_fix1_20261016\test_fix1_probes.py::test_conflicting_or_unbound_v2_metadata_is_503[reused_locator_conflict]
+FAILED ..\reports\runs\recovery_r11_sbom_inventory_review1_fix1_20261016\test_fix1_probes.py::test_purl_marker_without_context_and_double_projection_are_consistent
+4 failed, 7 passed, 1 warning in 4.68s

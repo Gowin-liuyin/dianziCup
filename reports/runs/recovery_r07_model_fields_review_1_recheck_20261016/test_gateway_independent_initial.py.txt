@@ -1,0 +1,129 @@
+"""Observe the real codec, gateway and transport with an offline synthetic connection."""
+
+import json
+from uuid import UUID
+
+import pytest
+from pydantic import SecretStr
+from test_independent_model_fields import make_documents, proposals
+
+from ai_intel.domain.enums import DimensionStatus
+from ai_intel.enrichment.contracts import EnrichmentContext
+from ai_intel.enrichment.model_fields import generate_model_field_attempts
+from ai_intel.infrastructure import http_transport
+from ai_intel.infrastructure.models.generation import GenerationClient, GenerationLimits
+
+
+def invoke(monkeypatch, provider, failure, policy=None):
+    documents = make_documents()
+    outputs = proposals(documents)
+    model = "deepseek-flash" if provider.startswith("deepseek") else "independent-offline-model"
+    client = GenerationClient(provider, model, SecretStr("independent-offline-placeholder"), limits=GenerationLimits(max_calls=2, total_timeout_seconds=2.0))
+    wire_calls = []
+    closed = []
+    resolutions = []
+    generation_requests = []
+    original_generate = GenerationClient.generate
+
+    def observed_generate(self, request, schema, **kwargs):
+        generation_requests.append(request)
+        return original_generate(self, request, schema, **kwargs)
+
+    class Response:
+        def __init__(self, body, status):
+            self.body = body
+            self.status = status
+            self.position = 0
+
+        def getheaders(self):
+            return [("Content-Type", "application/json"), ("Content-Length", str(len(self.body))), ("Location", "https://example.invalid/redirect")]
+
+        def read(self, size):
+            value = self.body[self.position:self.position + size]
+            self.position += len(value)
+            return value
+
+        def close(self):
+            closed.append("response")
+
+    class Connection:
+        def __init__(self, hostname, port, address, deadline, tls_context):
+            self.hostname = hostname
+            self.port = port
+            self.address = address
+            self.deadline = deadline
+
+        def request(self, method, path, body, headers):
+            request = json.loads(body)
+            user = request["messages"][0]["content"][0]["text"] if provider.endswith("anthropic") else request["messages"][1]["content"]
+            dimension = json.loads(user)["question"].split()[1]
+            maximum = request.get("max_tokens", request.get("max_completion_tokens"))
+            wire_calls.append({"dimension": dimension, "method": method, "hostname": self.hostname, "path": path, "address": self.address, "maximum": maximum})
+            if failure == "timeout":
+                raise TimeoutError("synthetic offline deadline")
+            if failure == "network":
+                raise OSError("synthetic offline connection error")
+            raw = "not json" if failure == "format" else json.dumps(outputs[dimension])
+            if provider.endswith("anthropic"):
+                wire = {"id": "offline-independent-call", "type": "message", "role": "assistant", "model": model, "stop_reason": "end_turn", "content": [{"type": "text", "text": raw}], "usage": {"input_tokens": 3, "output_tokens": 1}}
+            else:
+                wire = {"id": "offline-independent-call", "object": "chat.completion", "model": model, "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": raw}}], "usage": {"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4}}
+            status = 503 if failure == "server" else 302 if failure == "redirect" else 200
+            self.response = Response(json.dumps(wire).encode(), status)
+
+        def getresponse(self):
+            return self.response
+
+        def check_deadline(self):
+            self.deadline.remaining_seconds()
+
+        def expire(self):
+            closed.append("expired")
+
+        def close(self):
+            closed.append("connection")
+
+        def abort(self):
+            closed.append("abort")
+
+    def resolve(hostname, deadline):
+        resolutions.append(hostname)
+        return ["8.8.8.8", "1.1.1.1"]
+
+    monkeypatch.setattr(GenerationClient, "generate", observed_generate)
+    monkeypatch.setattr(http_transport, "_PinnedConnection", Connection)
+    monkeypatch.setattr(client._gateway, "_resolve_addresses", resolve)
+    context = EnrichmentContext(event_id=UUID(int=9011), expected_event_version=1, revision_ids=tuple(document.revision_id for document in documents), rule_version="independent-offline-1")
+    policy = {"budget_authorized": True, "content_is_private": False, "egress_granted": False, "total_output_token_budget": 7, **(policy or {})}
+    result = generate_model_field_attempts(context, documents, client, **policy)
+    return result, wire_calls, resolutions, generation_requests, closed
+
+
+@pytest.mark.parametrize("provider", ["openai", "anthropic", "deepseek_openai", "deepseek_anthropic"])
+@pytest.mark.parametrize("failure", ["success", "format", "server", "redirect", "network", "timeout"])
+def test_four_call_limit_through_real_transport(monkeypatch, provider, failure):
+    result, calls, resolutions, requests, closed = invoke(monkeypatch, provider, failure)
+    assert [call["dimension"] for call in calls] == ["atlas", "versions", "literature", "poc"]
+    assert len(resolutions) == 4
+    assert all(call["method"] == "POST" and call["address"] == "8.8.8.8" for call in calls)
+    assert all(request.allow_format_repair is False for request in requests)
+    assert all(call["maximum"] == 1 for call in calls)
+    assert sum(call["maximum"] for call in calls) <= 7
+    assert len(result.model_attempts) == 4
+    assert all(item.fee == "unknown" for item in result.model_attempts)
+    assert "expired" not in closed
+    if failure == "success":
+        assert all(attempt.candidates and attempt.status == DimensionStatus.PENDING for attempt in result.attempts)
+    else:
+        assert all(not attempt.candidates for attempt in result.attempts)
+        expected = {"format": "model_format_invalid", "server": "model_retryable_unavailable", "redirect": "model_network_failure", "network": "model_network_failure", "timeout": "model_network_timeout"}[failure]
+        assert all(attempt.error_code == expected for attempt in result.attempts)
+
+
+@pytest.mark.parametrize("provider", ["openai", "anthropic", "deepseek_openai", "deepseek_anthropic"])
+@pytest.mark.parametrize("policy", [{"budget_authorized": False}, {"content_is_private": True}])
+def test_denial_makes_zero_dns_or_http_calls(monkeypatch, provider, policy):
+    result, calls, resolutions, requests, closed = invoke(monkeypatch, provider, "success", policy)
+    assert calls == resolutions == requests == closed == []
+    assert result.model_attempts == ()
+    assert all(attempt.status == DimensionStatus.BLOCKED for attempt in result.attempts)

@@ -1,0 +1,1940 @@
+diff --git a/backend/src/ai_intel/recommendations/contracts.py b/backend/src/ai_intel/recommendations/contracts.py
+new file mode 100644
+index 00000000..89d43c4f
+--- /dev/null
++++ b/backend/src/ai_intel/recommendations/contracts.py
+@@ -0,0 +1,213 @@
++"""Internal R15 candidates over server-authorized snapshots; these DTOs grant no access."""
++
++from __future__ import annotations
++
++from typing import Annotated, Literal
++
++from pydantic import Field, model_validator
++
++from ai_intel.api.knowledge_contracts import CitationProjection
++from ai_intel.assessment.conditions import ConditionContract, EvidenceReference, Label
++from ai_intel.assessment.persistence_contracts import AssessmentReceipt
++from ai_intel.domain.enums import AssessmentStatus, ClaimOrigin, ClaimStatus, FreshnessStatus
++from ai_intel.domain.values import UtcTimestamp
++
++POLICY_VERSION: Literal["r15-recommendation-policy-1"] = "r15-recommendation-policy-1"
++MAX_INPUT_EVENTS = 2000
++MAX_CANDIDATES = 200
++Priority = Annotated[int, Field(strict=True, ge=0, le=3)]
++CandidateKind = Literal[
++    "supported_risk", "prioritize_verification", "excluded_with_evidence", "intelligence_update"
++]
++ReportStopReason = Literal["disabled", "no_items_in_window", "complete", "item_budget"]
++
++
++class RecommendationSubscription(ConditionContract):
++    subscription_id: Label
++    tenant_id: Label
++    user_id: Label
++    enabled: bool = Field(strict=True)
++    product_keys: tuple[Label, ...] = Field(default=(), max_length=100)
++    asset_ids: tuple[Label, ...] = Field(default=(), max_length=100)
++    risk_topics: tuple[Label, ...] = Field(default=(), max_length=100)
++    maximum_priority_bucket: Priority = 3
++
++    @model_validator(mode="after")
++    def require_explicit_interests(self) -> RecommendationSubscription:
++        if not (self.product_keys or self.asset_ids or self.risk_topics):
++            raise ValueError("subscription_requires_explicit_interest")
++        for values in (self.product_keys, self.asset_ids, self.risk_topics):
++            if len(values) != len(set(values)):
++                raise ValueError("duplicate_subscription_interest")
++        return self
++
++
++class SelectorEvidence(ConditionContract):
++    """PG caller verified the exact selector/claim/citation support, beyond quote existence."""
++
++    selector_kind: Literal["product", "risk_topic", "consequence"]
++    selector_value: Label
++    claim_id: Label
++    claim_status: ClaimStatus
++    claim_origin: ClaimOrigin
++    support_kind: Literal["supports", "refutes", "context"]
++    validation_status: Literal["validated", "unverified"]
++    citations: tuple[CitationProjection, ...] = Field(min_length=1, max_length=8)
++
++    @model_validator(mode="after")
++    def bound_citation_size(self) -> SelectorEvidence:
++        if any(len(citation.quote) > 2000 for citation in self.citations):
++            raise ValueError("selector_quote_budget_exceeded")
++        return self
++
++
++class RecommendationEventInput(ConditionContract):
++    """As-of state and current state are distinct; observed_at is first material observation.
++
++    material_version must include changed assessments/rules/assets as well as event facts.
++    A historical caller must supply receipts valid at cutoff, never relabel current receipts.
++    """
++
++    event_id: Label
++    material_version: Label
++    observed_at: UtcTimestamp
++    source_changed_at: UtcTimestamp | None = None
++    valid_from: UtcTimestamp
++    valid_until: UtcTimestamp | None = None
++    status_at_cutoff: ClaimStatus
++    freshness_at_cutoff: FreshnessStatus
++    current_status: ClaimStatus
++    current_freshness: FreshnessStatus
++    current_state_checked_at: UtcTimestamp
++    selectors: tuple[SelectorEvidence, ...] = Field(default=(), max_length=32)
++    assessments: tuple[AssessmentReceipt, ...] = Field(default=(), max_length=20)
++
++    @model_validator(mode="after")
++    def require_valid_interval(self) -> RecommendationEventInput:
++        if self.valid_until is not None and self.valid_until <= self.valid_from:
++            raise ValueError("event_valid_interval_inverted")
++        if self.current_state_checked_at < self.observed_at:
++            raise ValueError("current_check_precedes_observation")
++        return self
++
++
++class RecommendationKey(ConditionContract):
++    subscription_id: Label
++    event_id: Label
++    material_version: Label
++
++
++class RecommendationReason(ConditionContract):
++    code: Literal["product_match", "risk_topic_match", "asset_assessment", "high_consequence"]
++    matched_key: Label
++    claim_id: Label | None = None
++    citations: tuple[CitationProjection, ...] = ()
++    assessment_id: Label | None = None
++
++    @model_validator(mode="after")
++    def require_reason_support(self) -> RecommendationReason:
++        if self.code == "asset_assessment":
++            if self.assessment_id is None or self.claim_id is not None or self.citations:
++                raise ValueError("asset_reason_requires_receipt_reference")
++        elif self.claim_id is None or not self.citations or self.assessment_id is not None:
++            raise ValueError("selector_reason_requires_claim_and_citations")
++        return self
++
++
++class AssessmentReference(ConditionContract):
++    """Original receipt result and evidence, retained without reevaluation."""
++
++    assessment_id: Label
++    asset_id: Label
++    asset_snapshot_id: Label
++    rule_id: Label
++    rule_version: int = Field(strict=True, ge=1)
++    status: AssessmentStatus
++    knowledge_epoch: int | None
++    scope_epoch_map: dict[str, int | None]
++    input_digest: str
++    evidence: tuple[EvidenceReference, ...]
++    missing_requirements: tuple[str, ...]
++    conflicts: tuple[str, ...]
++    limitations: tuple[str, ...]
++
++
++class RecommendationCandidate(ConditionContract):
++    key: RecommendationKey
++    tenant_id: Label
++    user_id: Label
++    policy_version: Literal["r15-recommendation-policy-1"] = POLICY_VERSION
++    kind: CandidateKind
++    priority_bucket: Priority
++    reasons: tuple[RecommendationReason, ...]
++    assessments: tuple[AssessmentReference, ...]
++    observed_at: UtcTimestamp
++    source_changed_at: UtcTimestamp | None
++    valid_from: UtcTimestamp
++    valid_until: UtcTimestamp | None
++    validity_as_of: UtcTimestamp
++    freshness_at_cutoff: FreshnessStatus
++    current_status: ClaimStatus
++    current_freshness: FreshnessStatus
++    current_state_checked_at: UtcTimestamp
++    limitations: tuple[str, ...]
++
++
++class RecommendationBatch(ConditionContract):
++    subscription: RecommendationSubscription
++    cutoff_at: UtcTimestamp
++    candidates: tuple[RecommendationCandidate, ...] = Field(max_length=MAX_CANDIDATES)
++    eligible_count: int = Field(strict=True, ge=0, le=MAX_INPUT_EVENTS)
++    partial: bool = Field(strict=True)
++    continuation_keys: tuple[RecommendationKey, ...] = Field(max_length=MAX_INPUT_EVENTS)
++    stop_reason: Literal["disabled", "no_supported_subscription_match", "complete", "item_budget"]
++
++    @model_validator(mode="after")
++    def require_explicit_completeness(self) -> RecommendationBatch:
++        if self.partial != bool(self.continuation_keys) or self.eligible_count != (
++            len(self.candidates) + len(self.continuation_keys)
++        ):
++            raise ValueError("batch_completeness_mismatch")
++        keys = tuple(candidate.key for candidate in self.candidates) + self.continuation_keys
++        identities = {(key.subscription_id, key.event_id, key.material_version) for key in keys}
++        if len(identities) != len(keys) or any(
++            key.subscription_id != self.subscription.subscription_id for key in keys
++        ):
++            raise ValueError("batch_key_binding_mismatch")
++        expected_reason = (
++            "disabled"
++            if not self.subscription.enabled
++            else (
++                "item_budget"
++                if self.partial
++                else ("complete" if self.candidates else "no_supported_subscription_match")
++            )
++        )
++        if self.stop_reason != expected_reason or (
++            not self.subscription.enabled and self.eligible_count
++        ):
++            raise ValueError("batch_stop_reason_mismatch")
++        return self
++
++
++class ReportCandidate(ConditionContract):
++    """An immutable report proposal, not a persisted report or a statement of current truth."""
++
++    policy_version: Literal["r15-recommendation-policy-1"] = POLICY_VERSION
++    subscription_id: Label
++    tenant_id: Label
++    user_id: Label
++    frequency: Literal["day", "week"]
++    window_start: UtcTimestamp
++    cutoff_at: UtcTimestamp
++    generated_at: UtcTimestamp
++    temporal_mode: Literal["as_of_cutoff"] = "as_of_cutoff"
++    window_basis: Literal["first_material_observed_at"] = "first_material_observed_at"
++    supported_risks: tuple[RecommendationCandidate, ...]
++    verification_items: tuple[RecommendationCandidate, ...]
++    excluded_items: tuple[RecommendationCandidate, ...]
++    intelligence_updates: tuple[RecommendationCandidate, ...]
++    partial: bool = Field(strict=True)
++    continuation_keys: tuple[RecommendationKey, ...]
++    stop_reason: ReportStopReason
++    limitations: tuple[str, ...]
+diff --git a/backend/src/ai_intel/recommendations/policy.py b/backend/src/ai_intel/recommendations/policy.py
+new file mode 100644
+index 00000000..fb08d03f
+--- /dev/null
++++ b/backend/src/ai_intel/recommendations/policy.py
+@@ -0,0 +1,345 @@
++"""Deterministic recommendations; storage, authentication and PG checks belong to callers."""
++
++from __future__ import annotations
++
++from datetime import datetime
++from uuid import UUID
++
++from pydantic import TypeAdapter
++
++from ai_intel.api.knowledge_contracts import CitationProjection
++from ai_intel.assessment.conditions import EvidenceReference
++from ai_intel.assessment.persistence_contracts import AssessmentReceipt
++from ai_intel.domain.enums import AssessmentStatus, ClaimOrigin, ClaimStatus, FreshnessStatus
++from ai_intel.domain.values import UtcTimestamp
++from ai_intel.recommendations.contracts import (
++    MAX_CANDIDATES,
++    MAX_INPUT_EVENTS,
++    AssessmentReference,
++    CandidateKind,
++    RecommendationBatch,
++    RecommendationCandidate,
++    RecommendationEventInput,
++    RecommendationKey,
++    RecommendationReason,
++    RecommendationSubscription,
++    SelectorEvidence,
++)
++
++
++def require_item_budget(value: int) -> None:
++    if type(value) is not int or not 1 <= value <= MAX_CANDIDATES:
++        raise ValueError("item_budget_out_of_bounds")
++
++
++def _supported(selector: SelectorEvidence) -> bool:
++    return (
++        selector.claim_status == ClaimStatus.SUPPORTED
++        and selector.claim_origin != ClaimOrigin.MODEL_HYPOTHESIS
++        and selector.support_kind == "supports"
++        and selector.validation_status == "validated"
++    )
++
++
++def _assessment_reference(receipt: AssessmentReceipt) -> AssessmentReference:
++    snapshot = receipt.prepared.asset_snapshot
++    rule = receipt.prepared.inputs.rule
++    result = receipt.rule_result
++    if (
++        (receipt.tenant_id, receipt.asset_id, receipt.asset_snapshot_id)
++        != (snapshot.tenant_id, snapshot.asset_id, snapshot.snapshot_id)
++        or (receipt.event_id, receipt.rule_id, receipt.rule_version)
++        != (rule.event_id, rule.rule_id, rule.version)
++        or receipt.prepared.scope_watch.tenant_id != receipt.tenant_id
++        or not receipt.prepared.asset_active
++        or receipt.prepared.asset_current_snapshot_id != receipt.asset_snapshot_id
++        or (result is None and receipt.status != AssessmentStatus.INSUFFICIENT_EVIDENCE)
++        or (
++            result is not None
++            and (
++                result.status != receipt.status
++                or (result.rule_id, result.rule_version, result.asset_snapshot_id)
++                != (receipt.rule_id, receipt.rule_version, receipt.asset_snapshot_id)
++            )
++        )
++    ):
++        raise ValueError("assessment_receipt_binding_mismatch")
++    nodes_by_evidence: dict[str, set[str]] = {}
++    pending_nodes = [result.evaluation_tree] if result is not None else []
++    while pending_nodes:
++        node = pending_nodes.pop()
++        for evidence_id in node.evidence_ids:
++            nodes_by_evidence.setdefault(evidence_id, set()).add(node.node_id)
++        pending_nodes.extend(node.child_results)
++    evidence_by_id: dict[str, EvidenceReference] = {}
++    for support in receipt.prepared.inputs.supports:
++        span = support.evidence
++        if span.evidence_id not in nodes_by_evidence:
++            continue
++        if (
++            support.binding.evidence_id != span.evidence_id
++            or support.binding.node_id not in nodes_by_evidence[span.evidence_id]
++            or span.validation_status != "validated"
++            or support.semantic_status not in {"supports", "refutes"}
++            or span.support_kind != support.semantic_status
++        ):
++            raise ValueError("assessment_evidence_binding_mismatch")
++        previous = evidence_by_id.get(span.evidence_id)
++        if previous is not None and previous != span:
++            raise ValueError("assessment_evidence_identity_mismatch")
++        evidence_by_id[span.evidence_id] = span
++    if nodes_by_evidence.keys() != evidence_by_id.keys():
++        raise ValueError("assessment_evidence_binding_mismatch")
++    evidence = tuple(evidence_by_id[key] for key in sorted(evidence_by_id))
++    if (
++        receipt.status
++        in {
++            AssessmentStatus.SUPPORTED_APPLICABILITY,
++            AssessmentStatus.EXCLUDED_WITH_EVIDENCE,
++        }
++        and not evidence
++    ):
++        raise ValueError("definitive_assessment_requires_evidence")
++    if any(
++        span.scope.visibility == "tenant" and span.scope.tenant_id != receipt.tenant_id
++        for span in evidence
++    ):
++        raise ValueError("assessment_evidence_tenant_mismatch")
++    return AssessmentReference(
++        assessment_id=receipt.assessment_id,
++        asset_id=receipt.asset_id,
++        asset_snapshot_id=receipt.asset_snapshot_id,
++        rule_id=receipt.rule_id,
++        rule_version=receipt.rule_version,
++        status=receipt.status,
++        knowledge_epoch=receipt.knowledge_epoch,
++        scope_epoch_map=dict(receipt.scope_epoch_map),
++        input_digest=receipt.input_digest,
++        evidence=evidence,
++        missing_requirements=receipt.missing_requirements,
++        conflicts=receipt.conflicts,
++        limitations=receipt.limitations,
++    )
++
++
++def candidate_order(candidate: RecommendationCandidate) -> tuple[int, int, float, str, str]:
++    """High-consequence unresolved conditions precede supported risks in the same bucket."""
++    kind_order = {
++        "prioritize_verification": 0,
++        "supported_risk": 1,
++        "intelligence_update": 2,
++        "excluded_with_evidence": 3,
++    }
++    return (
++        candidate.priority_bucket,
++        kind_order[candidate.kind],
++        -candidate.observed_at.timestamp(),
++        candidate.key.event_id,
++        candidate.key.material_version,
++    )
++
++
++def _candidate(
++    subscription: RecommendationSubscription, event: RecommendationEventInput, cutoff: datetime
++) -> RecommendationCandidate | None:
++    if event.current_state_checked_at < cutoff:
++        raise ValueError("current_state_check_precedes_cutoff")
++    if event.current_state_checked_at == cutoff and (
++        event.status_at_cutoff != event.current_status
++        or event.freshness_at_cutoff != event.current_freshness
++    ):
++        raise ValueError("as_of_state_conflicts_with_current_state")
++    if (
++        event.observed_at > cutoff
++        or event.valid_from > cutoff
++        or (event.valid_until is not None and event.valid_until <= cutoff)
++        or event.status_at_cutoff in {ClaimStatus.WITHDRAWN, ClaimStatus.SUPERSEDED}
++        or event.freshness_at_cutoff != FreshnessStatus.CURRENT
++    ):
++        return None
++    reasons: list[RecommendationReason] = []
++    high_consequence = False
++    for selector in event.selectors:
++        if not _supported(selector):
++            continue
++        if selector.selector_kind == "consequence" and selector.selector_value == "high":
++            high_consequence = True
++        elif (
++            selector.selector_kind == "product"
++            and selector.selector_value in subscription.product_keys
++        ) or (
++            selector.selector_kind == "risk_topic"
++            and selector.selector_value in subscription.risk_topics
++        ):
++            reasons.append(
++                RecommendationReason(
++                    code="product_match"
++                    if selector.selector_kind == "product"
++                    else "risk_topic_match",
++                    matched_key=selector.selector_value,
++                    claim_id=selector.claim_id,
++                    citations=selector.citations,
++                )
++            )
++    assessments: list[AssessmentReference] = []
++    for receipt in event.assessments:
++        if receipt.tenant_id != subscription.tenant_id or receipt.event_id != event.event_id:
++            raise ValueError("assessment_scope_mismatch")
++        if receipt.asset_id not in subscription.asset_ids:
++            continue
++        if receipt.freshness != FreshnessStatus.CURRENT or receipt.created_at > cutoff:
++            continue
++        reference = _assessment_reference(receipt)
++        assessments.append(reference)
++        reasons.append(
++            RecommendationReason(
++                code="asset_assessment",
++                matched_key=receipt.asset_id,
++                assessment_id=receipt.assessment_id,
++            )
++        )
++    if not reasons:
++        return None
++    if high_consequence:
++        for selector in event.selectors:
++            if _supported(selector) and (selector.selector_kind, selector.selector_value) == (
++                "consequence",
++                "high",
++            ):
++                reasons.append(
++                    RecommendationReason(
++                        code="high_consequence",
++                        matched_key="high",
++                        claim_id=selector.claim_id,
++                        citations=selector.citations,
++                    )
++                )
++    states = {reference.status for reference in assessments}
++    unresolved = (
++        bool(
++            states & {AssessmentStatus.INSUFFICIENT_EVIDENCE, AssessmentStatus.CONFLICTING_EVIDENCE}
++        )
++        or event.status_at_cutoff != ClaimStatus.SUPPORTED
++    )
++    kind: CandidateKind
++    if unresolved:
++        kind = "prioritize_verification"
++        priority = 0 if high_consequence else 2
++    elif AssessmentStatus.SUPPORTED_APPLICABILITY in states:
++        kind = "supported_risk"
++        priority = 0 if high_consequence else 1
++    elif states and states == {AssessmentStatus.EXCLUDED_WITH_EVIDENCE}:
++        kind = "excluded_with_evidence"
++        priority = 3
++    else:
++        kind = "intelligence_update"
++        priority = 0 if high_consequence else 3
++    if priority > subscription.maximum_priority_bucket:
++        return None
++    return RecommendationCandidate(
++        key=RecommendationKey(
++            subscription_id=subscription.subscription_id,
++            event_id=event.event_id,
++            material_version=event.material_version,
++        ),
++        tenant_id=subscription.tenant_id,
++        user_id=subscription.user_id,
++        kind=kind,
++        priority_bucket=priority,
++        reasons=tuple(
++            sorted(
++                reasons,
++                key=lambda item: (
++                    item.code,
++                    item.matched_key,
++                    item.claim_id or item.assessment_id or "",
++                ),
++            )
++        ),
++        assessments=tuple(sorted(assessments, key=lambda item: item.assessment_id)),
++        observed_at=event.observed_at,
++        source_changed_at=event.source_changed_at,
++        valid_from=event.valid_from,
++        valid_until=event.valid_until,
++        validity_as_of=cutoff,
++        freshness_at_cutoff=event.freshness_at_cutoff,
++        current_status=event.current_status,
++        current_freshness=event.current_freshness,
++        current_state_checked_at=event.current_state_checked_at,
++        limitations=("project_priority_rule_not_exploit_confirmation",)
++        + (("unresolved_evidence_requires_verification",) if unresolved else ()),
++    )
++
++
++def generate_recommendation_candidates(
++    subscription: RecommendationSubscription,
++    events: tuple[RecommendationEventInput, ...],
++    *,
++    cutoff_at: datetime,
++    existing_keys: tuple[RecommendationKey, ...] = (),
++    max_candidates: int = MAX_CANDIDATES,
++) -> RecommendationBatch:
++    """Caller must enforce PG authorization and as-of validity before calling and before commit.
++
++    This function does not persist deduplication or check subscription revocation races.
++    """
++    require_item_budget(max_candidates)
++    cutoff = TypeAdapter(UtcTimestamp).validate_python(cutoff_at)
++    subscription = RecommendationSubscription.model_validate(subscription.model_dump(mode="python"))
++    if len(events) > MAX_INPUT_EVENTS or len(existing_keys) > MAX_INPUT_EVENTS:
++        raise ValueError("input_event_budget_exceeded")
++    if not subscription.enabled:
++        return RecommendationBatch(
++            subscription=subscription,
++            cutoff_at=cutoff,
++            candidates=(),
++            eligible_count=0,
++            partial=False,
++            continuation_keys=(),
++            stop_reason="disabled",
++        )
++    seen = {(key.subscription_id, key.event_id, key.material_version) for key in existing_keys}
++    versions: dict[tuple[str, str], RecommendationEventInput] = {}
++    citations_by_id: dict[UUID, CitationProjection] = {}
++    active_events: set[str] = set()
++    candidates: list[RecommendationCandidate] = []
++    for item in events:
++        event = RecommendationEventInput.model_validate(item.model_dump(mode="python"))
++        for selector in event.selectors:
++            for citation in selector.citations:
++                previous_citation = citations_by_id.get(citation.evidence_id)
++                if previous_citation is not None and previous_citation != citation:
++                    raise ValueError("selector_evidence_identity_mismatch")
++                citations_by_id[citation.evidence_id] = citation
++        version_key = (event.event_id, event.material_version)
++        previous = versions.get(version_key)
++        if previous is not None:
++            if previous != event:
++                raise ValueError("material_version_collision")
++            continue
++        versions[version_key] = event
++        candidate = _candidate(subscription, event, cutoff)
++        if candidate is not None:
++            if event.event_id in active_events:
++                raise ValueError("ambiguous_active_material_versions")
++            active_events.add(event.event_id)
++            if (
++                candidate.key.subscription_id,
++                candidate.key.event_id,
++                candidate.key.material_version,
++            ) not in seen:
++                candidates.append(candidate)
++    candidates.sort(key=candidate_order)
++    selected = tuple(candidates[:max_candidates])
++    continuation = tuple(candidate.key for candidate in candidates[max_candidates:])
++    return RecommendationBatch(
++        subscription=subscription,
++        cutoff_at=cutoff,
++        candidates=selected,
++        eligible_count=len(candidates),
++        partial=bool(continuation),
++        continuation_keys=continuation,
++        stop_reason="item_budget"
++        if continuation
++        else ("complete" if candidates else "no_supported_subscription_match"),
++    )
+diff --git a/backend/src/ai_intel/recommendations/report_builder.py b/backend/src/ai_intel/recommendations/report_builder.py
+new file mode 100644
+index 00000000..72300ae4
+--- /dev/null
++++ b/backend/src/ai_intel/recommendations/report_builder.py
+@@ -0,0 +1,92 @@
++"""Daily/weekly proposals preserve the selected cutoff and first observation window."""
++
++from datetime import datetime, timedelta
++from typing import Literal
++
++from pydantic import TypeAdapter
++
++from ai_intel.domain.enums import ClaimStatus, FreshnessStatus
++from ai_intel.domain.values import UtcTimestamp
++from ai_intel.recommendations.contracts import (
++    MAX_CANDIDATES,
++    RecommendationBatch,
++    ReportCandidate,
++    ReportStopReason,
++)
++from ai_intel.recommendations.policy import candidate_order, require_item_budget
++
++
++def build_report_candidate(
++    batch: RecommendationBatch,
++    *,
++    frequency: Literal["day", "week"],
++    cutoff_at: datetime,
++    generated_at: datetime,
++    max_items: int = MAX_CANDIDATES,
++) -> ReportCandidate:
++    """Window is (cutoff - 1/7 days, cutoff]; older source dates never hide late observations.
++
++    Historical reports retain validity_as_of and separate current_status metadata.
++    The caller must freeze/select historical PG facts; no present state is backdated here.
++    """
++    require_item_budget(max_items)
++    cutoff = TypeAdapter(UtcTimestamp).validate_python(cutoff_at)
++    generated = TypeAdapter(UtcTimestamp).validate_python(generated_at)
++    batch = RecommendationBatch.model_validate(batch.model_dump(mode="python"))
++    if frequency not in {"day", "week"}:
++        raise ValueError("unsupported_report_frequency")
++    if cutoff != batch.cutoff_at or generated < cutoff:
++        raise ValueError("report_cutoff_mismatch")
++    window_start = cutoff - timedelta(days=1 if frequency == "day" else 7)
++    items = []
++    for candidate in batch.candidates:
++        if (
++            candidate.tenant_id != batch.subscription.tenant_id
++            or candidate.user_id != batch.subscription.user_id
++            or candidate.key.subscription_id != batch.subscription.subscription_id
++            or candidate.validity_as_of != cutoff
++            or candidate.observed_at > cutoff
++            or candidate.valid_from > cutoff
++            or (candidate.valid_until is not None and candidate.valid_until <= cutoff)
++            or candidate.freshness_at_cutoff != FreshnessStatus.CURRENT
++            or candidate.current_state_checked_at > generated
++            or (
++                candidate.current_state_checked_at == cutoff
++                and candidate.current_status in {ClaimStatus.WITHDRAWN, ClaimStatus.SUPERSEDED}
++            )
++        ):
++            raise ValueError("report_candidate_scope_mismatch")
++        if window_start < candidate.observed_at <= cutoff:
++            items.append(candidate)
++    items.sort(key=candidate_order)
++    selected = items[:max_items] if batch.subscription.enabled else []
++    continuation = tuple(item.key for item in items[max_items:]) + batch.continuation_keys
++    partial = bool(continuation) or batch.partial
++    stop_reason: ReportStopReason = (
++        "disabled"
++        if not batch.subscription.enabled
++        else ("item_budget" if partial else ("complete" if selected else "no_items_in_window"))
++    )
++    return ReportCandidate(
++        subscription_id=batch.subscription.subscription_id,
++        tenant_id=batch.subscription.tenant_id,
++        user_id=batch.subscription.user_id,
++        frequency=frequency,
++        window_start=window_start,
++        cutoff_at=cutoff,
++        generated_at=generated,
++        supported_risks=tuple(item for item in selected if item.kind == "supported_risk"),
++        verification_items=tuple(
++            item for item in selected if item.kind == "prioritize_verification"
++        ),
++        excluded_items=tuple(item for item in selected if item.kind == "excluded_with_evidence"),
++        intelligence_updates=tuple(item for item in selected if item.kind == "intelligence_update"),
++        partial=partial,
++        continuation_keys=continuation,
++        stop_reason=stop_reason,
++        limitations=(
++            "candidate_only_requires_pg_authorization_and_final_validity_check",
++            "window_uses_first_material_observation_not_source_publication",
++            "historical_validity_is_not_current_validity",
++        ),
++    )
+diff --git a/backend/tests/contract/test_r15_recommendation_contracts.py b/backend/tests/contract/test_r15_recommendation_contracts.py
+new file mode 100644
+index 00000000..e651f99b
+--- /dev/null
++++ b/backend/tests/contract/test_r15_recommendation_contracts.py
+@@ -0,0 +1,166 @@
++"""R15 internal candidate serialization contract; no public API or PG isolation claim."""
++
++from datetime import UTC, datetime
++from uuid import UUID
++
++import pytest
++from pydantic import ValidationError
++
++from ai_intel.recommendations.contracts import (
++    RecommendationBatch,
++    RecommendationEventInput,
++    RecommendationReason,
++    RecommendationSubscription,
++    ReportCandidate,
++    SelectorEvidence,
++)
++from ai_intel.recommendations.policy import generate_recommendation_candidates
++from ai_intel.recommendations.report_builder import build_report_candidate
++
++CUTOFF = datetime(2026, 10, 16, 0, tzinfo=UTC)
++
++
++def fixture_subscription():
++    return RecommendationSubscription(
++        subscription_id="fixture-sub",
++        user_id="fixture-user",
++        tenant_id="fixture-tenant",
++        enabled=True,
++        risk_topics=("prompt_injection",),
++    )
++
++
++def fixture_event():
++    quote = "The described risk mechanism is prompt_injection."
++    return RecommendationEventInput(
++        event_id="fixture-event",
++        material_version="fixture-version",
++        observed_at=CUTOFF,
++        valid_from=CUTOFF,
++        status_at_cutoff="supported",
++        freshness_at_cutoff="current",
++        current_status="supported",
++        current_freshness="current",
++        current_state_checked_at=CUTOFF,
++        selectors=(
++            SelectorEvidence(
++                selector_kind="risk_topic",
++                selector_value="prompt_injection",
++                claim_id="fixture-claim",
++                claim_status="supported",
++                claim_origin="source_explicit",
++                support_kind="supports",
++                validation_status="validated",
++                citations=(
++                    dict(
++                        evidence_id=UUID(int=1),
++                        revision_id=UUID(int=2),
++                        quote=quote,
++                        locator=f"text[0:{len(quote)}]",
++                        source_uri="https://fixture.example/evidence",
++                    ),
++                ),
++            ),
++        ),
++    )
++
++
++def test_internal_report_roundtrip_preserves_identity_evidence_and_time_basis():
++    batch = generate_recommendation_candidates(
++        fixture_subscription(), (fixture_event(),), cutoff_at=CUTOFF
++    )
++    report = build_report_candidate(batch, frequency="day", cutoff_at=CUTOFF, generated_at=CUTOFF)
++    restored = ReportCandidate.model_validate_json(report.model_dump_json())
++    assert restored == report
++    payload = restored.model_dump(mode="json")
++    assert payload["policy_version"] == "r15-recommendation-policy-1"
++    assert payload["temporal_mode"] == "as_of_cutoff"
++    assert payload["window_basis"] == "first_material_observed_at"
++    assert payload["intelligence_updates"][0]["reasons"][0]["citations"][0]["revision_id"] == str(
++        UUID(int=2)
++    )
++
++
++@pytest.mark.parametrize(
++    "updates",
++    [
++        dict(enabled=1),
++        dict(maximum_priority_bucket=True),
++        dict(maximum_priority_bucket=-1),
++        dict(product_keys=("p", "p")),
++        dict(risk_topics=()),
++        dict(authorization="admin"),
++    ],
++)
++def test_subscription_rejects_ambiguous_fields_and_empty_interest(updates):
++    payload = fixture_subscription().model_dump(mode="python")
++    payload.update(updates)
++    with pytest.raises(ValidationError):
++        RecommendationSubscription.model_validate(payload)
++
++
++@pytest.mark.parametrize(
++    "updates",
++    [
++        dict(observed_at="2026-10-16T00:00:00"),
++        dict(valid_until=CUTOFF),
++        dict(tenant_id="request-tenant"),
++        dict(status_at_cutoff="safe"),
++        dict(freshness_at_cutoff="live"),
++    ],
++)
++def test_event_contract_rejects_naive_time_inverted_interval_and_auth_claims(updates):
++    payload = fixture_event().model_dump(mode="python")
++    payload.update(updates)
++    with pytest.raises(ValidationError):
++        RecommendationEventInput.model_validate(payload)
++
++
++def test_unbounded_quote_or_missing_selector_citation_is_rejected():
++    payload = fixture_event().selectors[0].model_dump(mode="python")
++    for citations in ((), ({**payload["citations"][0], "quote": "x" * 2001},)):
++        with pytest.raises(ValidationError):
++            SelectorEvidence.model_validate({**payload, "citations": citations})
++
++
++def test_internal_contract_exposes_original_assessment_receipt_type():
++    schema = RecommendationEventInput.model_json_schema()
++    assert schema["properties"]["assessments"]["items"]["$ref"] == "#/$defs/AssessmentReceipt"
++    assert schema["$defs"]["AssessmentReceipt"]["properties"]["status"]["$ref"] == (
++        "#/$defs/AssessmentStatus"
++    )
++    assert schema["$defs"]["AssessmentStatus"]["enum"] == [
++        "supported_applicability",
++        "excluded_with_evidence",
++        "insufficient_evidence",
++        "conflicting_evidence",
++    ]
++
++
++@pytest.mark.parametrize(
++    "updates", [dict(eligible_count=2), dict(partial=True), dict(stop_reason="item_budget")]
++)
++def test_batch_contract_cannot_hide_partial_output_or_fabricate_complete_count(updates):
++    batch = generate_recommendation_candidates(
++        fixture_subscription(), (fixture_event(),), cutoff_at=CUTOFF
++    )
++    with pytest.raises(ValidationError):
++        RecommendationBatch.model_validate({**batch.model_dump(mode="python"), **updates})
++
++
++@pytest.mark.parametrize(
++    "payload",
++    [
++        dict(code="product_match", matched_key="product"),
++        dict(code="asset_assessment", matched_key="asset", claim_id="claim"),
++        dict(
++            code="high_consequence",
++            matched_key="high",
++            claim_id="claim",
++            assessment_id="assessment",
++        ),
++    ],
++)
++def test_reason_contract_requires_the_right_support_object(payload):
++    with pytest.raises(ValidationError):
++        RecommendationReason.model_validate(payload)
+diff --git a/backend/tests/unit/test_r15_composite_receipt_policy.py b/backend/tests/unit/test_r15_composite_receipt_policy.py
+new file mode 100644
+index 00000000..a610e2f2
+--- /dev/null
++++ b/backend/tests/unit/test_r15_composite_receipt_policy.py
+@@ -0,0 +1,360 @@
++"""Synthetic fixed snapshots through real R11 evaluation/binding; PG and live remain not_run."""
++
++import hashlib
++import json
++from pathlib import Path
++
++import pytest
++from test_r15_recommendation_policy import (
++    CUTOFF,
++    fixture_event,
++    fixture_receipt,
++    fixture_selector,
++    fixture_subscription,
++)
++
++from ai_intel.assessment.assessment_service import _bind_source_evidence, build_scope_watch
++from ai_intel.assessment.conditions import condition_digest, parse_condition_tree
++from ai_intel.assessment.persistence_contracts import AssessmentReceipt
++from ai_intel.assessment.rules import evaluate_rule
++from ai_intel.domain.access import AccessScope, Role
++from ai_intel.domain.enums import AssessmentStatus
++from ai_intel.recommendations.policy import generate_recommendation_candidates
++
++REVIEW_INPUTS = Path(__file__).resolve().parents[3] / (
++    "reports/runs/recovery_r15_policy_fix1_20261016"
++)
++
++
++def evaluated_receipt(kind="all_of", configuration=True, *, nested=False):
++    """Use evaluate_rule and the identical source binder called by AssessmentService.commit."""
++    base = fixture_receipt()
++    component = dict(
++        node_id="component", kind="component_matches", ecosystem="PyPI", package_key="alpha"
++    )
++    configuration_leaf = dict(
++        node_id="configuration",
++        kind="configuration_equals",
++        field="trust_remote_code",
++        expected=True,
++    )
++    inner = dict(node_id="inner", kind=kind, children=[component, configuration_leaf])
++    tree = parse_condition_tree(
++        dict(node_id="outer", kind="all_of", children=[inner]) if nested else inner
++    )
++    rule = base.prepared.inputs.rule.model_copy(update={"condition_ast": tree})
++    snapshot_payload = base.prepared.asset_snapshot.model_dump(mode="python")
++    snapshot_payload.update(
++        components=(
++            dict(
++                component_id="fixed-component",
++                ecosystem="PyPI",
++                package_name="alpha",
++                display_name="Alpha",
++                purl=None,
++                version="1.0",
++                version_scheme="pep440",
++                image_digest=None,
++                dependency_path=None,
++                source_field_locator="/components/0",
++            ),
++        ),
++        configuration=tuple(
++            dict(
++                name="trust_remote_code",
++                value=value,
++                source_field_locator=f"/configuration/{index}",
++            )
++            for index, value in enumerate(
++                configuration if isinstance(configuration, tuple) else (configuration,)
++            )
++        ),
++    )
++    snapshot = type(base.prepared.asset_snapshot).model_validate(snapshot_payload)
++    original = base.prepared.inputs.supports[0]
++    supports = []
++    for node_payload, quote in (
++        (component, "Affected deployments include the Alpha package."),
++        (configuration_leaf, "Affected deployments require trust_remote_code to be enabled."),
++    ):
++        node = parse_condition_tree(node_payload)
++        evidence = original.evidence.model_copy(
++            update={
++                "evidence_id": f"fixed-{node.node_id}",
++                "block_id": f"fixed-block-{node.node_id}",
++                "quote_text": quote,
++                "end_offset": len(quote),
++                "quote_sha256": hashlib.sha256(quote.encode()).hexdigest(),
++            }
++        )
++        supports.append(
++            original.model_copy(
++                update={
++                    "binding": original.binding.model_copy(
++                        update={
++                            "node_id": node.node_id,
++                            "claim_id": f"fixed-claim-{node.node_id}",
++                            "evidence_id": evidence.evidence_id,
++                        }
++                    ),
++                    "evidence": evidence,
++                    "condition_sha256": condition_digest(node),
++                }
++            )
++        )
++    rule = rule.model_copy(
++        update={
++            "supporting_claim_ids": tuple(support.binding.claim_id for support in supports),
++            "source_span_ids": tuple(support.evidence.evidence_id for support in supports),
++        }
++    )
++    inputs = base.prepared.inputs.model_copy(update={"rule": rule, "supports": tuple(supports)})
++    result = evaluate_rule(
++        rule,
++        snapshot,
++        access_scope=AccessScope.for_authenticated_user(
++            "fixture-user", "fixture-tenant", Role.ANALYST
++        ),
++    )
++    result = result.model_copy(
++        update={"evaluation_tree": _bind_source_evidence(result.evaluation_tree, inputs)}
++    )
++    prepared = base.prepared.model_copy(
++        update={
++            "inputs": inputs,
++            "asset_snapshot": snapshot,
++            "scope_watch": build_scope_watch(inputs, snapshot),
++        }
++    )
++    return AssessmentReceipt.model_validate(
++        {
++            **base.model_dump(mode="python"),
++            "prepared": prepared,
++            "rule_result": result,
++            "status": result.status,
++            "missing_requirements": result.evaluation_tree.missing_requirements,
++            "conflicts": result.evaluation_tree.observed_conflict_ids,
++            "limitations": result.limitations,
++        }
++    )
++
++
++def recommend_receipt(receipt):
++    return generate_recommendation_candidates(
++        fixture_subscription(asset_ids=(receipt.asset_id,)),
++        (fixture_event(assessments=(receipt,)),),
++        cutoff_at=CUTOFF,
++    ).candidates[0]
++
++
++@pytest.mark.parametrize(
++    "name,status,kind",
++    [
++        ("supported", AssessmentStatus.SUPPORTED_APPLICABILITY, "supported_risk"),
++        ("excluded", AssessmentStatus.EXCLUDED_WITH_EVIDENCE, "excluded_with_evidence"),
++        ("unknown", AssessmentStatus.INSUFFICIENT_EVIDENCE, "prioritize_verification"),
++    ],
++)
++def test_original_reviewer_receipt_bytes_are_reused_without_altering_status_or_hash(
++    name, status, kind
++):
++    path = REVIEW_INPUTS / f"business_receipt_{name}.json"
++    original = path.read_bytes()
++    payload = json.loads(original)
++    assert payload["data_mode"] == "fixture"
++    assert payload["pg_authentication_and_commit"] == "not_run"
++    receipt = AssessmentReceipt.model_validate(payload["receipt"])
++    before = receipt.model_dump(mode="json")
++    candidate = recommend_receipt(receipt)
++    assert candidate.kind == kind and candidate.assessments[0].status == status
++    assert {item.evidence_id for item in candidate.assessments[0].evidence} == {
++        "review-component-evidence",
++        "review-configuration-evidence",
++    }
++    assert candidate.assessments[0].input_digest == receipt.input_digest
++    assert receipt.model_dump(mode="json") == before and path.read_bytes() == original
++
++
++@pytest.mark.parametrize(
++    "kind,configuration,nested,status",
++    [
++        ("all_of", True, False, AssessmentStatus.SUPPORTED_APPLICABILITY),
++        ("all_of", False, False, AssessmentStatus.EXCLUDED_WITH_EVIDENCE),
++        ("all_of", None, True, AssessmentStatus.INSUFFICIENT_EVIDENCE),
++        ("all_of", (True, False), True, AssessmentStatus.CONFLICTING_EVIDENCE),
++        ("any_of", None, True, AssessmentStatus.SUPPORTED_APPLICABILITY),
++        ("any_of", (True, False), True, AssessmentStatus.SUPPORTED_APPLICABILITY),
++    ],
++)
++def test_business_tree_supported_excluded_unknown_conflict_and_nondecisive_conflicts(
++    kind,
++    configuration,
++    nested,
++    status,
++):
++    receipt = evaluated_receipt(kind, configuration, nested=nested)
++    assert receipt.status == status
++    assert receipt.rule_result.evaluation_tree.evidence_ids == ()
++    candidate = recommend_receipt(receipt)
++    reference = candidate.assessments[0]
++    assert reference.status == status
++    assert reference.evidence == tuple(
++        sorted(
++            (support.evidence for support in receipt.prepared.inputs.supports),
++            key=lambda item: item.evidence_id,
++        )
++    )
++    assert reference.conflicts == receipt.conflicts
++    assert reference.missing_requirements == receipt.missing_requirements
++    if isinstance(configuration, tuple):
++        assert reference.conflicts
++
++
++def test_duplicate_tree_and_checked_support_reference_retains_one_unchanged_object():
++    receipt = evaluated_receipt(configuration=None, nested=True)
++    inputs = receipt.prepared.inputs
++    repeated = receipt.model_copy(
++        update={
++            "prepared": receipt.prepared.model_copy(
++                update={
++                    "inputs": inputs.model_copy(
++                        update={"supports": (*inputs.supports, inputs.supports[0])}
++                    )
++                }
++            )
++        }
++    )
++    reference = recommend_receipt(repeated).assessments[0]
++    assert len(reference.evidence) == 2
++    assert reference.evidence[0] == inputs.supports[0].evidence
++
++
++def test_same_evidence_identity_with_conflicting_quote_is_rejected():
++    receipt = evaluated_receipt(configuration=None)
++    inputs = receipt.prepared.inputs
++    support = inputs.supports[0]
++    quote = "A different immutable source passage."
++    changed = support.model_copy(
++        update={
++            "evidence": support.evidence.model_copy(
++                update={
++                    "quote_text": quote,
++                    "end_offset": len(quote),
++                    "quote_sha256": hashlib.sha256(quote.encode()).hexdigest(),
++                }
++            )
++        }
++    )
++    receipt = receipt.model_copy(
++        update={
++            "prepared": receipt.prepared.model_copy(
++                update={
++                    "inputs": inputs.model_copy(update={"supports": (*inputs.supports, changed)})
++                }
++            )
++        }
++    )
++    with pytest.raises(ValueError, match=r"^assessment_evidence_identity_mismatch$"):
++        recommend_receipt(receipt)
++
++
++@pytest.mark.parametrize("change", ["wrong_node", "wrong_id", "unverified", "pending", "context"])
++def test_child_support_must_retain_its_validated_node_and_evidence_binding(change):
++    receipt = evaluated_receipt(configuration=None)
++    inputs = receipt.prepared.inputs
++    support = inputs.supports[0]
++    changed = {
++        "wrong_node": support.model_copy(
++            update={"binding": support.binding.model_copy(update={"node_id": "not-in-tree"})}
++        ),
++        "wrong_id": support.model_copy(
++            update={
++                "binding": support.binding.model_copy(update={"evidence_id": "not-the-bound-span"})
++            }
++        ),
++        "unverified": support.model_copy(
++            update={
++                "evidence": support.evidence.model_copy(update={"validation_status": "unverified"})
++            }
++        ),
++        "pending": support.model_copy(update={"semantic_status": "pending"}),
++        "context": support.model_copy(
++            update={"evidence": support.evidence.model_copy(update={"support_kind": "context"})}
++        ),
++    }[change]
++    receipt = receipt.model_copy(
++        update={
++            "prepared": receipt.prepared.model_copy(
++                update={
++                    "inputs": inputs.model_copy(update={"supports": (changed, inputs.supports[1])})
++                }
++            )
++        }
++    )
++    with pytest.raises(ValueError, match=r"^assessment_evidence_binding_mismatch$"):
++        recommend_receipt(receipt)
++
++
++def test_refuting_child_evidence_is_retained_instead_of_becoming_missing():
++    receipt = evaluated_receipt(configuration=None)
++    inputs = receipt.prepared.inputs
++    first, second = inputs.supports
++    refuting = second.model_copy(
++        update={
++            "semantic_status": "refutes",
++            "evidence": second.evidence.model_copy(update={"support_kind": "refutes"}),
++        }
++    )
++    receipt = receipt.model_copy(
++        update={
++            "prepared": receipt.prepared.model_copy(
++                update={"inputs": inputs.model_copy(update={"supports": (first, refuting)})}
++            )
++        }
++    )
++    candidate = recommend_receipt(receipt)
++    assert candidate.kind == "prioritize_verification"
++    assert candidate.assessments[0].evidence[1].support_kind == "refutes"
++    assert candidate.assessments[0].status == AssessmentStatus.INSUFFICIENT_EVIDENCE
++
++
++def test_selector_fixtures_keep_independent_revision_span_and_consistent_payloads():
++    selectors = (
++        fixture_selector(),
++        fixture_selector(value="PyPI:beta"),
++        fixture_selector("risk_topic", "prompt_injection"),
++        fixture_selector("consequence", "high"),
++        fixture_selector(),
++    )
++    by_identity = {}
++    revisions = set()
++    for selector in selectors:
++        for citation in selector.citations:
++            previous = by_identity.setdefault(citation.evidence_id, citation)
++            assert previous == citation
++            assert citation.locator == f"text[0:{len(citation.quote)}]"
++            revisions.add(citation.revision_id)
++    assert len(by_identity) == len(revisions) == 4
++
++
++def test_conflicting_immutable_selector_payloads_across_events_are_rejected():
++    alpha = fixture_selector()
++    beta = fixture_selector(value="PyPI:beta")
++    beta = beta.model_copy(
++        update={
++            "citations": (
++                beta.citations[0].model_copy(
++                    update={"evidence_id": alpha.citations[0].evidence_id}
++                ),
++            )
++        }
++    )
++    with pytest.raises(ValueError, match=r"^selector_evidence_identity_mismatch$"):
++        generate_recommendation_candidates(
++            fixture_subscription(),
++            (
++                fixture_event(selectors=(alpha,)),
++                fixture_event(event_id="beta", selectors=(beta,)),
++            ),
++            cutoff_at=CUTOFF,
++        )
+diff --git a/backend/tests/unit/test_r15_recommendation_policy.py b/backend/tests/unit/test_r15_recommendation_policy.py
+new file mode 100644
+index 00000000..fdcea2ba
+--- /dev/null
++++ b/backend/tests/unit/test_r15_recommendation_policy.py
+@@ -0,0 +1,728 @@
++"""Explicit synthetic R15 policy fixtures; no PostgreSQL authorization is simulated."""
++
++import hashlib
++from datetime import UTC, datetime, timedelta
++from uuid import NAMESPACE_URL, uuid5
++
++import pytest
++from pydantic import ValidationError
++
++from ai_intel.api.knowledge_contracts import CitationProjection
++from ai_intel.assessment.conditions import parse_condition_tree
++from ai_intel.assessment.persistence_contracts import AssessmentReceipt
++from ai_intel.assessment.rules import ConditionRule, RuleValidationResult
++from ai_intel.domain.enums import AssessmentStatus, ClaimStatus, FreshnessStatus
++from ai_intel.recommendations.contracts import (
++    MAX_CANDIDATES,
++    MAX_INPUT_EVENTS,
++    RecommendationEventInput,
++    RecommendationSubscription,
++    SelectorEvidence,
++)
++from ai_intel.recommendations.policy import generate_recommendation_candidates
++from ai_intel.recommendations.report_builder import build_report_candidate
++
++CUTOFF = datetime(2026, 10, 16, 0, tzinfo=UTC)
++
++
++def fixture_subscription(**updates):
++    payload = dict(
++        subscription_id="fixture-subscription",
++        tenant_id="fixture-tenant",
++        user_id="fixture-user",
++        enabled=True,
++        product_keys=("PyPI:alpha",),
++    )
++    payload.update(updates)
++    return RecommendationSubscription.model_validate(payload)
++
++
++def fixture_selector(kind="product", value="PyPI:alpha", **updates):
++    quote = {
++        "product": f"Product {value} is affected under the stated conditions.",
++        "risk_topic": f"The described risk mechanism is {value}.",
++        "consequence": f"The stated consequence category is {value}.",
++    }[kind]
++    revision_id = uuid5(NAMESPACE_URL, f"fixture-selector-revision:{kind}:{value}")
++    payload = dict(
++        selector_kind=kind,
++        selector_value=value,
++        claim_id="fixture-claim",
++        claim_status="supported",
++        claim_origin="source_explicit",
++        support_kind="supports",
++        validation_status="validated",
++        citations=(
++            CitationProjection(
++                evidence_id=uuid5(NAMESPACE_URL, f"fixture-selector-evidence:{kind}:{value}"),
++                revision_id=revision_id,
++                quote=quote,
++                locator=f"text[0:{len(quote)}]",
++                source_uri=f"https://fixture.example/advisory/{revision_id}",
++            ),
++        ),
++    )
++    payload.update(updates)
++    return SelectorEvidence.model_validate(payload)
++
++
++def fixture_event(**updates):
++    payload = dict(
++        event_id="fixture-event",
++        material_version="fixture-material-1",
++        observed_at=CUTOFF - timedelta(hours=1),
++        valid_from=CUTOFF - timedelta(days=30),
++        status_at_cutoff="supported",
++        freshness_at_cutoff="current",
++        current_status="supported",
++        current_freshness="current",
++        current_state_checked_at=CUTOFF,
++        selectors=(fixture_selector(),),
++    )
++    payload.update(updates)
++    return RecommendationEventInput.model_validate(payload)
++
++
++def fixture_receipt(status=AssessmentStatus.INSUFFICIENT_EVIDENCE, **updates):
++    event_id = updates.get("event_id", "fixture-event")
++    quote = {
++        AssessmentStatus.SUPPORTED_APPLICABILITY: "Alpha version 1 is affected.",
++        AssessmentStatus.EXCLUDED_WITH_EVIDENCE: (
++            "Alpha version 1 is excluded from the affected scope."
++        ),
++        AssessmentStatus.INSUFFICIENT_EVIDENCE: (
++            "Affected deployments require a missing configuration condition."
++        ),
++        AssessmentStatus.CONFLICTING_EVIDENCE: "Sources disagree on the affected scope of Alpha.",
++    }[status]
++    evidence = dict(
++        evidence_id="fixture-evidence",
++        source_id="fixture-source",
++        document_id="fixture-doc",
++        revision_id="fixture-revision",
++        block_id="fixture-block",
++        start_offset=0,
++        end_offset=len(quote),
++        quote_text=quote,
++        quote_sha256=hashlib.sha256(quote.encode()).hexdigest(),
++        scope=dict(visibility="public", tenant_id=None),
++        support_kind="supports",
++        validation_status="validated",
++    )
++    rule = ConditionRule(
++        rule_id="fixture-rule",
++        version=1,
++        event_id=event_id,
++        rule_kind="software_applicability",
++        condition_ast=parse_condition_tree(
++            dict(
++                node_id="component",
++                kind="component_matches",
++                ecosystem="PyPI",
++                package_key="alpha",
++            )
++        ),
++        supporting_claim_ids=("fixture-claim",),
++        source_span_ids=("fixture-evidence",),
++        scope=dict(visibility="public", tenant_id=None),
++        status="published",
++        published_at=CUTOFF - timedelta(days=1),
++    )
++    validation = RuleValidationResult(
++        rule_id=rule.rule_id,
++        rule_version=1,
++        schema_version="r11-condition-1",
++        policy_version="fixture-policy",
++        condition_sha256="a" * 64,
++        eligible=True,
++        automatic_publication_eligible=False,
++        resulting_status="published",
++        missing_requirements=(),
++        conflicts=(),
++        pending_review=(),
++        supporting_claim_ids=rule.supporting_claim_ids,
++        source_span_ids=rule.source_span_ids,
++        source_revision_ids=("fixture-revision",),
++        source_supports=(),
++        scope=rule.scope,
++    )
++    missing = (
++        ("configuration.authentication_required",)
++        if status == (AssessmentStatus.INSUFFICIENT_EVIDENCE)
++        else ()
++    )
++    conflicts = ("fixture-conflict",) if status == AssessmentStatus.CONFLICTING_EVIDENCE else ()
++    tree_value = {
++        AssessmentStatus.SUPPORTED_APPLICABILITY: "true",
++        AssessmentStatus.EXCLUDED_WITH_EVIDENCE: "false",
++        AssessmentStatus.CONFLICTING_EVIDENCE: "conflict",
++        AssessmentStatus.INSUFFICIENT_EVIDENCE: "unknown",
++    }[status]
++    payload = dict(
++        assessment_id="fixture-assessment",
++        tenant_id="fixture-tenant",
++        asset_id="fixture-asset",
++        asset_snapshot_id="fixture-snapshot",
++        event_id="fixture-event",
++        rule_id="fixture-rule",
++        rule_version=1,
++        knowledge_epoch=4,
++        scope_epoch_map={"public": 4},
++        status=status,
++        freshness="current",
++        missing_requirements=missing,
++        conflicts=conflicts,
++        limitations=("fixture_scope",),
++        exposure_result="not_evaluated",
++        input_digest="d" * 64,
++        created_at=CUTOFF - timedelta(minutes=30),
++        rule_result=dict(
++            rule_id="fixture-rule",
++            rule_version=1,
++            rule_kind="software_applicability",
++            asset_snapshot_id="fixture-snapshot",
++            condition_sha256="a" * 64,
++            status=status,
++            limitations=("fixture_scope",),
++            evaluation_tree=dict(
++                node_id="component",
++                value=tree_value,
++                reason_code="fixture-condition-result",
++                evidence_ids=("fixture-evidence",),
++                missing_requirements=missing,
++                observed_conflict_ids=conflicts,
++            ),
++        ),
++        prepared=dict(
++            preparation_receipt_id="fixture-preparation",
++            actor_user_id="fixture-user",
++            actor_role="analyst",
++            permission_version=1,
++            asset_active=True,
++            asset_current_snapshot_id="fixture-snapshot",
++            asset_fingerprint="f" * 64,
++            input_digest="d" * 64,
++            asset_snapshot=dict(
++                schema_version="r11-asset-candidate-1",
++                snapshot_id="fixture-snapshot",
++                asset_id="fixture-asset",
++                tenant_id="fixture-tenant",
++                snapshot_number=1,
++                observed_at=CUTOFF - timedelta(days=1),
++                recorded_at=CUTOFF - timedelta(days=1),
++                source_kind="fixture",
++                inventory_completeness="unknown",
++                declared_scope=(),
++                components=(),
++                configuration=(),
++                tool_permissions=None,
++                input_channels=None,
++                network_exposure=None,
++                snapshot_sha256="b" * 64,
++            ),
++            inputs=dict(
++                rule=rule,
++                author_user_id="fixture-author",
++                event_version=1,
++                event_status="active",
++                sources=(),
++                active_revision_ids=("fixture-revision",),
++                scope_epoch_map={"public": 4},
++                validation=validation,
++                input_digest="c" * 64,
++                supports=(
++                    dict(
++                        binding=dict(
++                            node_id="component",
++                            claim_id="fixture-claim",
++                            evidence_id="fixture-evidence",
++                        ),
++                        condition_sha256="a" * 64,
++                        claim_fingerprint="a" * 64,
++                        source_fingerprint="a" * 64,
++                        review_fingerprint="a" * 64,
++                        input_digest="a" * 64,
++                        evidence=evidence,
++                        semantic_status="supports",
++                        range_completeness_confirmed=False,
++                    ),
++                ),
++            ),
++            scope_watch=dict(
++                tenant_id="fixture-tenant",
++                event_ids=(event_id,),
++                package_keys=("PyPI:alpha",),
++                rule_id="fixture-rule",
++                rule_version=1,
++                rule_kind="software_applicability",
++                scope_epoch_map={"public": 4},
++                selected_rule_ids=("fixture-rule",),
++                no_published_rule=False,
++            ),
++        ),
++    )
++    payload.update(updates)
++    return AssessmentReceipt.model_validate(payload)
++
++
++def test_t39_c01_two_users_have_distinct_evidence_supported_interests():
++    events = (
++        fixture_event(),
++        fixture_event(event_id="fixture-beta", selectors=(fixture_selector(value="PyPI:beta"),)),
++    )
++    alpha = generate_recommendation_candidates(fixture_subscription(), events, cutoff_at=CUTOFF)
++    beta = generate_recommendation_candidates(
++        fixture_subscription(
++            subscription_id="fixture-beta-sub",
++            user_id="fixture-beta-user",
++            product_keys=("PyPI:beta",),
++        ),
++        events,
++        cutoff_at=CUTOFF,
++    )
++    assert [item.key.event_id for item in alpha.candidates] == ["fixture-event"]
++    assert [item.key.event_id for item in beta.candidates] == ["fixture-beta"]
++    assert alpha.candidates[0].reasons[0].matched_key == "PyPI:alpha"
++    assert beta.candidates[0].reasons[0].citations[0].revision_id == (
++        events[1].selectors[0].citations[0].revision_id
++    )
++    assert "PyPI:beta" in beta.candidates[0].reasons[0].citations[0].quote
++    assert "PyPI:alpha" in alpha.candidates[0].reasons[0].citations[0].quote
++    assert alpha.candidates[0].kind == "intelligence_update"
++
++
++def test_t39_c02_repeated_poll_and_persisted_key_do_not_repeat_material_version():
++    subscription = fixture_subscription()
++    first = generate_recommendation_candidates(
++        subscription, (fixture_event(),) * 2, cutoff_at=CUTOFF
++    )
++    assert len(first.candidates) == 1
++    replay = generate_recommendation_candidates(
++        subscription, (fixture_event(),), cutoff_at=CUTOFF, existing_keys=(first.candidates[0].key,)
++    )
++    assert replay.candidates == ()
++    revised = generate_recommendation_candidates(
++        subscription,
++        (fixture_event(material_version="fixture-material-2"),),
++        cutoff_at=CUTOFF,
++        existing_keys=(first.candidates[0].key,),
++    )
++    assert revised.candidates[0].key.material_version == "fixture-material-2"
++
++
++def test_material_version_collision_is_rejected_instead_of_order_dependent_winner():
++    with pytest.raises(ValueError, match="material_version_collision"):
++        generate_recommendation_candidates(
++            fixture_subscription(),
++            (
++                fixture_event(),
++                fixture_event(selectors=(fixture_selector(value="PyPI:beta"),)),
++            ),
++            cutoff_at=CUTOFF,
++        )
++
++
++def test_two_active_material_versions_for_one_event_are_rejected():
++    with pytest.raises(ValueError, match="ambiguous_active_material_versions"):
++        generate_recommendation_candidates(
++            fixture_subscription(),
++            (fixture_event(), fixture_event(material_version="fixture-material-2")),
++            cutoff_at=CUTOFF,
++        )
++
++
++def test_only_latest_as_of_material_version_is_used_when_old_validity_has_ended():
++    batch = generate_recommendation_candidates(
++        fixture_subscription(),
++        (fixture_event(valid_until=CUTOFF), fixture_event(material_version="fixture-material-2")),
++        cutoff_at=CUTOFF,
++    )
++    assert [item.key.material_version for item in batch.candidates] == ["fixture-material-2"]
++
++
++def test_t39_c03_exclusion_retains_original_receipt_and_does_not_claim_supported_risk():
++    event = fixture_event(assessments=(fixture_receipt(AssessmentStatus.EXCLUDED_WITH_EVIDENCE),))
++    batch = generate_recommendation_candidates(
++        fixture_subscription(asset_ids=("fixture-asset",)), (event,), cutoff_at=CUTOFF
++    )
++    candidate = batch.candidates[0]
++    assert candidate.kind == "excluded_with_evidence"
++    assert candidate.assessments[0].status == AssessmentStatus.EXCLUDED_WITH_EVIDENCE
++    assert candidate.assessments[0].evidence[0].quote_text == (
++        "Alpha version 1 is excluded from the affected scope."
++    )
++    assert candidate.assessments[0].rule_version == 1
++
++
++@pytest.mark.parametrize(
++    "status", [AssessmentStatus.INSUFFICIENT_EVIDENCE, AssessmentStatus.CONFLICTING_EVIDENCE]
++)
++def test_t39_c04_high_consequence_unknown_or_conflict_is_priority_verification(status):
++    event = fixture_event(
++        selectors=(fixture_selector(), fixture_selector("consequence", "high")),
++        assessments=(fixture_receipt(status),),
++    )
++    batch = generate_recommendation_candidates(
++        fixture_subscription(asset_ids=("fixture-asset",)), (event,), cutoff_at=CUTOFF
++    )
++    item = batch.candidates[0]
++    assert (item.kind, item.priority_bucket) == ("prioritize_verification", 0)
++    assert item.assessments[0].status == status
++    assert item.assessments[0].asset_snapshot_id == "fixture-snapshot"
++    assert "unresolved_evidence_requires_verification" in item.limitations
++    report = build_report_candidate(batch, frequency="day", cutoff_at=CUTOFF, generated_at=CUTOFF)
++    assert report.verification_items == (item,) and report.supported_risks == ()
++
++
++def test_supported_risk_has_receipt_evidence_and_separate_report_section():
++    batch = generate_recommendation_candidates(
++        fixture_subscription(asset_ids=("fixture-asset",)),
++        (fixture_event(assessments=(fixture_receipt(AssessmentStatus.SUPPORTED_APPLICABILITY),)),),
++        cutoff_at=CUTOFF,
++    )
++    assert batch.candidates[0].kind == "supported_risk"
++    assert batch.candidates[0].assessments[0].knowledge_epoch == 4
++    report = build_report_candidate(batch, frequency="day", cutoff_at=CUTOFF, generated_at=CUTOFF)
++    assert len(report.supported_risks) == 1 and report.verification_items == ()
++
++
++def test_asset_interest_uses_existing_unknown_receipt_without_needing_product_selector():
++    subscription = fixture_subscription(product_keys=(), asset_ids=("fixture-asset",))
++    batch = generate_recommendation_candidates(
++        subscription,
++        (fixture_event(selectors=(), assessments=(fixture_receipt(),)),),
++        cutoff_at=CUTOFF,
++    )
++    assert batch.candidates[0].kind == "prioritize_verification"
++    assert batch.candidates[0].reasons[0].assessment_id == "fixture-assessment"
++
++
++def test_unknown_unsupported_rule_receipt_preserves_missing_requirements():
++    batch = generate_recommendation_candidates(
++        fixture_subscription(product_keys=(), asset_ids=("fixture-asset",)),
++        (
++            fixture_event(
++                selectors=(),
++                assessments=(
++                    fixture_receipt(rule_result=None, missing_requirements=("unsupported_rule",)),
++                ),
++            ),
++        ),
++        cutoff_at=CUTOFF,
++    )
++    reference = batch.candidates[0].assessments[0]
++    assert reference.status == AssessmentStatus.INSUFFICIENT_EVIDENCE
++    assert reference.missing_requirements == ("unsupported_rule",) and reference.evidence == ()
++
++
++def test_high_consequence_unknown_precedes_high_consequence_supported_risk():
++    selectors = (fixture_selector(), fixture_selector("consequence", "high"))
++    batch = generate_recommendation_candidates(
++        fixture_subscription(asset_ids=("fixture-asset",), maximum_priority_bucket=0),
++        (
++            fixture_event(selectors=selectors, assessments=(fixture_receipt(),)),
++            fixture_event(
++                event_id="supported-event",
++                selectors=selectors,
++                assessments=(
++                    fixture_receipt(
++                        AssessmentStatus.SUPPORTED_APPLICABILITY, event_id="supported-event"
++                    ),
++                ),
++            ),
++        ),
++        cutoff_at=CUTOFF,
++    )
++    assert [item.kind for item in batch.candidates] == ["prioritize_verification", "supported_risk"]
++    assert [item.priority_bucket for item in batch.candidates] == [0, 0]
++
++
++def test_unverified_high_consequence_claim_does_not_invent_urgency():
++    batch = generate_recommendation_candidates(
++        fixture_subscription(asset_ids=("fixture-asset",)),
++        (
++            fixture_event(
++                selectors=(
++                    fixture_selector(),
++                    fixture_selector("consequence", "high", claim_status="unverified"),
++                ),
++                assessments=(fixture_receipt(),),
++            ),
++        ),
++        cutoff_at=CUTOFF,
++    )
++    assert batch.candidates[0].kind == "prioritize_verification"
++    assert batch.candidates[0].priority_bucket == 2
++    assert all(reason.code != "high_consequence" for reason in batch.candidates[0].reasons)
++
++
++def test_event_conflict_is_verification_even_when_product_relation_is_supported():
++    batch = generate_recommendation_candidates(
++        fixture_subscription(),
++        (fixture_event(status_at_cutoff="disputed", current_status="disputed"),),
++        cutoff_at=CUTOFF,
++    )
++    assert batch.candidates[0].kind == "prioritize_verification"
++
++
++def test_t39_c05_disabled_subscription_has_explicit_stop_and_does_not_mutate_other_user():
++    enabled = fixture_subscription()
++    disabled = fixture_subscription(enabled=False)
++    stopped = generate_recommendation_candidates(disabled, (fixture_event(),), cutoff_at=CUTOFF)
++    assert stopped.stop_reason == "disabled" and stopped.candidates == ()
++    report = build_report_candidate(stopped, frequency="day", cutoff_at=CUTOFF, generated_at=CUTOFF)
++    assert report.stop_reason == "disabled" and not report.partial
++    assert generate_recommendation_candidates(
++        enabled, (fixture_event(),), cutoff_at=CUTOFF
++    ).candidates
++
++
++def test_t39_c06_mismatched_tenant_receipt_is_rejected_as_input_consistency_only():
++    with pytest.raises(ValueError, match="assessment_scope_mismatch"):
++        generate_recommendation_candidates(
++            fixture_subscription(),
++            (fixture_event(assessments=(fixture_receipt(tenant_id="other-tenant"),)),),
++            cutoff_at=CUTOFF,
++        )
++
++
++@pytest.mark.parametrize(
++    "updates",
++    [
++        dict(claim_status="unverified"),
++        dict(claim_status="disputed"),
++        dict(support_kind="context"),
++        dict(support_kind="refutes"),
++        dict(validation_status="unverified"),
++        dict(claim_origin="model_hypothesis"),
++    ],
++)
++def test_citation_existence_does_not_prove_selector_match(updates):
++    batch = generate_recommendation_candidates(
++        fixture_subscription(),
++        (fixture_event(selectors=(fixture_selector(**updates),)),),
++        cutoff_at=CUTOFF,
++    )
++    assert batch.candidates == () and batch.stop_reason == "no_supported_subscription_match"
++
++
++def test_explicit_risk_topic_subscription_matches_verified_topic_only():
++    subscription = fixture_subscription(product_keys=(), risk_topics=("prompt_injection",))
++    batch = generate_recommendation_candidates(
++        subscription,
++        (fixture_event(selectors=(fixture_selector("risk_topic", "prompt_injection"),)),),
++        cutoff_at=CUTOFF,
++    )
++    assert batch.candidates[0].reasons[0].code == "risk_topic_match"
++
++
++@pytest.mark.parametrize(
++    "updates",
++    [
++        dict(status_at_cutoff="withdrawn", current_status="withdrawn"),
++        dict(status_at_cutoff="superseded", current_status="superseded"),
++        dict(freshness_at_cutoff="stale", current_freshness="stale"),
++        dict(freshness_at_cutoff="unknown", current_freshness="unknown"),
++        dict(valid_until=CUTOFF),
++        dict(
++            observed_at=CUTOFF + timedelta(seconds=1),
++            current_state_checked_at=CUTOFF + timedelta(seconds=1),
++        ),
++    ],
++)
++def test_invalid_at_cutoff_events_are_not_new_recommendations(updates):
++    assert (
++        generate_recommendation_candidates(
++            fixture_subscription(), (fixture_event(**updates),), cutoff_at=CUTOFF
++        ).candidates
++        == ()
++    )
++
++
++def test_stale_assessment_does_not_turn_product_news_into_supported_risk():
++    batch = generate_recommendation_candidates(
++        fixture_subscription(asset_ids=("fixture-asset",)),
++        (
++            fixture_event(
++                assessments=(
++                    fixture_receipt(AssessmentStatus.SUPPORTED_APPLICABILITY, freshness="stale"),
++                )
++            ),
++        ),
++        cutoff_at=CUTOFF,
++    )
++    assert batch.candidates[0].kind == "intelligence_update"
++    assert batch.candidates[0].assessments == ()
++
++
++def test_missing_assessment_cannot_prove_asset_match_or_negation():
++    batch = generate_recommendation_candidates(
++        fixture_subscription(product_keys=(), asset_ids=("fixture-asset",)),
++        (fixture_event(),),
++        cutoff_at=CUTOFF,
++    )
++    assert batch.candidates == ()
++
++
++def test_receipt_mismatched_snapshot_or_missing_support_is_rejected():
++    for receipt in (
++        fixture_receipt(asset_snapshot_id="other-snapshot"),
++        fixture_receipt().model_copy(
++            update={
++                "prepared": fixture_receipt().prepared.model_copy(
++                    update={
++                        "inputs": fixture_receipt().prepared.inputs.model_copy(
++                            update={"supports": ()}
++                        )
++                    }
++                )
++            }
++        ),
++    ):
++        with pytest.raises(ValueError, match=r"assessment_.*binding_mismatch"):
++            generate_recommendation_candidates(
++                fixture_subscription(asset_ids=("fixture-asset",)),
++                (fixture_event(assessments=(receipt,)),),
++                cutoff_at=CUTOFF,
++            )
++
++
++def test_candidate_order_is_deterministic_under_permuted_event_input():
++    events = (fixture_event(event_id="z"), fixture_event(event_id="a"))
++    forward = generate_recommendation_candidates(fixture_subscription(), events, cutoff_at=CUTOFF)
++    reverse = generate_recommendation_candidates(
++        fixture_subscription(), events[::-1], cutoff_at=CUTOFF
++    )
++    assert forward == reverse
++    assert [item.key.event_id for item in forward.candidates] == ["a", "z"]
++
++
++def test_item_budget_has_explicit_unselected_keys_for_continuation():
++    batch = generate_recommendation_candidates(
++        fixture_subscription(),
++        (
++            fixture_event(event_id="a"),
++            fixture_event(event_id="b"),
++            fixture_event(event_id="c"),
++        ),
++        cutoff_at=CUTOFF,
++        max_candidates=2,
++    )
++    assert batch.partial and batch.stop_reason == "item_budget" and batch.eligible_count == 3
++    assert [key.event_id for key in batch.continuation_keys] == ["c"]
++    report = build_report_candidate(
++        batch, frequency="day", cutoff_at=CUTOFF, generated_at=CUTOFF, max_items=1
++    )
++    assert report.partial and report.stop_reason == "item_budget"
++    assert [key.event_id for key in report.continuation_keys] == ["b", "c"]
++
++
++@pytest.mark.parametrize("budget", [True, False, 0, -1, MAX_CANDIDATES + 1, 1.5])
++def test_candidate_and_report_budget_reject_boolean_negative_or_excess(budget):
++    with pytest.raises(ValueError, match="item_budget_out_of_bounds"):
++        generate_recommendation_candidates(
++            fixture_subscription(), (), cutoff_at=CUTOFF, max_candidates=budget
++        )
++    batch = generate_recommendation_candidates(fixture_subscription(), (), cutoff_at=CUTOFF)
++    with pytest.raises(ValueError, match="item_budget_out_of_bounds"):
++        build_report_candidate(
++            batch, frequency="day", cutoff_at=CUTOFF, generated_at=CUTOFF, max_items=budget
++        )
++
++
++def test_input_event_budget_is_bounded_even_for_duplicates():
++    with pytest.raises(ValueError, match="input_event_budget_exceeded"):
++        generate_recommendation_candidates(
++            fixture_subscription(), (fixture_event(),) * (MAX_INPUT_EVENTS + 1), cutoff_at=CUTOFF
++        )
++
++
++def test_daily_weekly_left_open_window_and_late_source_observation():
++    events = (
++        fixture_event(event_id="late-source", source_changed_at=CUTOFF - timedelta(days=60)),
++        fixture_event(event_id="daily-boundary", observed_at=CUTOFF - timedelta(days=1)),
++        fixture_event(event_id="weekly-boundary", observed_at=CUTOFF - timedelta(days=7)),
++        fixture_event(event_id="right-boundary", observed_at=CUTOFF),
++    )
++    batch = generate_recommendation_candidates(fixture_subscription(), events, cutoff_at=CUTOFF)
++    day = build_report_candidate(batch, frequency="day", cutoff_at=CUTOFF, generated_at=CUTOFF)
++    week = build_report_candidate(batch, frequency="week", cutoff_at=CUTOFF, generated_at=CUTOFF)
++    assert {item.key.event_id for item in day.intelligence_updates} == {
++        "late-source",
++        "right-boundary",
++    }
++    assert {item.key.event_id for item in week.intelligence_updates} == {
++        "late-source",
++        "right-boundary",
++        "daily-boundary",
++    }
++    assert day.window_basis == "first_material_observed_at"
++    assert next(
++        item for item in day.intelligence_updates if item.key.event_id == "late-source"
++    ).source_changed_at == CUTOFF - timedelta(days=60)
++
++
++def test_historical_report_keeps_then_valid_evidence_and_separate_current_withdrawal():
++    generated = CUTOFF + timedelta(days=2)
++    batch = generate_recommendation_candidates(
++        fixture_subscription(),
++        (
++            fixture_event(
++                current_status="withdrawn",
++                current_freshness="stale",
++                current_state_checked_at=generated,
++                valid_until=CUTOFF + timedelta(days=1),
++            ),
++        ),
++        cutoff_at=CUTOFF,
++    )
++    historical = build_report_candidate(
++        batch, frequency="day", cutoff_at=CUTOFF, generated_at=generated
++    )
++    assert historical.temporal_mode == "as_of_cutoff"
++    item = historical.intelligence_updates[0]
++    assert item.freshness_at_cutoff == FreshnessStatus.CURRENT
++    assert item.current_status == ClaimStatus.WITHDRAWN
++    assert item.current_state_checked_at == generated
++    assert item.validity_as_of == CUTOFF
++    current = generate_recommendation_candidates(
++        fixture_subscription(),
++        (
++            fixture_event(
++                current_status="withdrawn",
++                status_at_cutoff="withdrawn",
++                current_state_checked_at=generated,
++            ),
++        ),
++        cutoff_at=generated,
++    )
++    assert current.candidates == ()
++    assert historical.intelligence_updates[0] == item
++
++
++def test_naive_cutoff_and_inconsistent_current_snapshot_are_rejected():
++    with pytest.raises(ValidationError):
++        generate_recommendation_candidates(
++            fixture_subscription(), (), cutoff_at=datetime(2026, 10, 16)
++        )
++    with pytest.raises(ValueError, match="as_of_state_conflicts_with_current_state"):
++        generate_recommendation_candidates(
++            fixture_subscription(), (fixture_event(current_status="withdrawn"),), cutoff_at=CUTOFF
++        )
++
++
++def test_report_refuses_other_cutoff_future_generation_and_other_user_candidates():
++    batch = generate_recommendation_candidates(
++        fixture_subscription(), (fixture_event(),), cutoff_at=CUTOFF
++    )
++    for cutoff, generated in (
++        (CUTOFF + timedelta(days=1), CUTOFF + timedelta(days=1)),
++        (CUTOFF, CUTOFF - timedelta(seconds=1)),
++    ):
++        with pytest.raises(ValueError, match="report_cutoff_mismatch"):
++            build_report_candidate(batch, frequency="day", cutoff_at=cutoff, generated_at=generated)
++    polluted = batch.model_copy(
++        update={"candidates": (batch.candidates[0].model_copy(update={"user_id": "other-user"}),)}
++    )
++    with pytest.raises(ValueError, match="report_candidate_scope_mismatch"):
++        build_report_candidate(polluted, frequency="day", cutoff_at=CUTOFF, generated_at=CUTOFF)

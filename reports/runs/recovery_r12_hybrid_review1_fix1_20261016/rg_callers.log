@@ -1,0 +1,57 @@
+backend/src\ai_intel\answering\service.py:173:        if row["scope_epochs"].get("public") != current_public_epoch(session):
+backend/src\ai_intel\answering\service.py:263:                        scope_epochs={},
+backend/src\ai_intel\answering\service.py:337:                        scope_epochs={"public": selection.epoch},
+backend/src\ai_intel\retrieval\hybrid_schema.py:16:hybrid_metadata = MetaData()
+backend/src\ai_intel\retrieval\hybrid_schema.py:20:    hybrid_metadata,
+backend/src\ai_intel\retrieval\hybrid_schema.py:33:    hybrid_metadata,
+backend/src\ai_intel\retrieval\hybrid_schema.py:66:    hybrid_metadata,
+backend/src\ai_intel\retrieval\hybrid_schema.py:78:    hybrid_metadata,
+backend/src\ai_intel\knowledge\revisions.py:25:    scope_epochs,
+backend/src\ai_intel\knowledge\revisions.py:463:def bump_scope_epoch(session: Session, scope_key: str, updated_at: datetime) -> int:
+backend/src\ai_intel\knowledge\revisions.py:465:    statement = insert(scope_epochs).values(scope_key=scope_key, epoch=1, updated_at=updated_at)
+backend/src\ai_intel\knowledge\revisions.py:467:        index_elements=[scope_epochs.c.scope_key],
+backend/src\ai_intel\knowledge\revisions.py:468:        set_={"epoch": scope_epochs.c.epoch + 1, "updated_at": updated_at},
+backend/src\ai_intel\knowledge\revisions.py:469:    ).returning(scope_epochs.c.epoch)
+backend/src\ai_intel\retrieval\hybrid_contracts.py:134:    scope_epochs: tuple[tuple[str, int], ...]
+backend/src\ai_intel\retrieval\indexing.py:21:    facts_query,
+backend/src\ai_intel\retrieval\indexing.py:22:    read_scope_epochs,
+backend/src\ai_intel\retrieval\indexing.py:39:from ai_intel.retrieval.service import EventEvidenceRetriever, SemanticModels
+backend/src\ai_intel\retrieval\indexing.py:44:class HybridIndexer:
+backend/src\ai_intel\retrieval\indexing.py:48:        models: SemanticModels,
+backend/src\ai_intel\retrieval\indexing.py:152:            epochs = read_scope_epochs(session, worker_scope)
+backend/src\ai_intel\retrieval\indexing.py:158:                    facts_query(
+backend/src\ai_intel\retrieval\indexing.py:187:            if read_scope_epochs(session, worker_scope, lock=True) != epochs:
+backend/src\ai_intel\knowledge\persistence.py:51:from ai_intel.knowledge.revisions import bump_scope_epoch
+backend/src\ai_intel\knowledge\persistence.py:262:    epoch = bump_scope_epoch(session, scope_key, created_at)
+backend/src\ai_intel\retrieval\service.py:28:from ai_intel.knowledge.models import document_revisions, documents, evidence, scope_epochs
+backend/src\ai_intel\retrieval\service.py:41:class SemanticModels(Protocol):
+backend/src\ai_intel\retrieval\service.py:166:    query = select(scope_epochs.c.epoch).where(scope_epochs.c.scope_key == "public")
+backend/src\ai_intel\retrieval\service.py:176:    def __init__(self, engine: Engine, models: SemanticModels) -> None:
+backend/src\ai_intel\retrieval\hybrid.py:26:    scope_epochs,
+backend/src\ai_intel\retrieval\hybrid.py:51:from ai_intel.retrieval.service import EventEvidenceRetriever, SemanticModels, split_evidence_quote
+backend/src\ai_intel\retrieval\hybrid.py:81:def read_scope_epochs(
+backend/src\ai_intel\retrieval\hybrid.py:86:        select(scope_epochs)
+backend/src\ai_intel\retrieval\hybrid.py:87:        .where(scope_epochs.c.scope_key.in_(keys))
+backend/src\ai_intel\retrieval\hybrid.py:88:        .order_by(scope_epochs.c.scope_key)
+backend/src\ai_intel\retrieval\hybrid.py:104:def facts_query(scope: AccessScope, query: HybridQuery) -> Select[tuple[object, ...]]:
+backend/src\ai_intel\retrieval\hybrid.py:337:            facts_query(scope, query).where(
+backend/src\ai_intel\retrieval\hybrid.py:345:class HybridRetriever:
+backend/src\ai_intel\retrieval\hybrid.py:349:        models: SemanticModels,
+backend/src\ai_intel\retrieval\hybrid.py:364:            epochs = read_scope_epochs(session, scope)
+backend/src\ai_intel\retrieval\hybrid.py:394:                        facts_query(scope, query)
+backend/src\ai_intel\retrieval\hybrid.py:480:                            facts_query(scope, query).where(
+backend/src\ai_intel\retrieval\hybrid.py:541:            observed_epochs = read_scope_epochs(session, scope)
+backend/src\ai_intel\retrieval\hybrid.py:545:            final_epochs = read_scope_epochs(session, scope, lock=True)
+backend/src\ai_intel\retrieval\persistence_models.py:32:    Column("scope_epochs", JSONB(), nullable=False),
+backend/src\ai_intel\knowledge\models.py:31:scope_epochs = Table(
+backend/src\ai_intel\knowledge\models.py:32:    "scope_epochs",
+backend/src\ai_intel\knowledge\claims.py:96:        self, tenant_id: str, scope_epoch: str, claim_ids: list[str]
+backend/src\ai_intel\knowledge\claims.py:110:            "scope_epoch": scope_epoch,
+backend/src\ai_intel\infrastructure\models\semantic.py:177:class LocalSemanticModels:
+backend/src\ai_intel\infrastructure\models\semantic.py:227:    client: LocalSemanticModels,
+backend/src\ai_intel\api\question_routes.py:32:from ai_intel.infrastructure.models.semantic import LocalSemanticModels
+backend/src\ai_intel\api\question_routes.py:46:    models = LocalSemanticModels(settings.semantic_model_cache_directory)
+backend/src\ai_intel\ingestion\catalog_documents.py:23:from ai_intel.knowledge.models import document_revisions, documents, scope_epochs
+backend/src\ai_intel\ingestion\catalog_documents.py:287:                insert(scope_epochs)
+backend/src\ai_intel\ingestion\catalog_documents.py:290:                    index_elements=[scope_epochs.c.scope_key],
+backend/src\ai_intel\ingestion\catalog_documents.py:291:                    set_={"epoch": scope_epochs.c.epoch + 1, "updated_at": ingested_at},

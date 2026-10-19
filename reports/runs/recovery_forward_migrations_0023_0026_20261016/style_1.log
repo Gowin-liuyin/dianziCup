@@ -1,0 +1,318 @@
+E501 Line too long (102 > 100)
+  --> tests\contract\test_recovery_forward_migrations_0023_0026.py:86:101
+   |
+84 |     history = list(scripts.walk_revisions("base", "heads"))
+85 |     assert [int(revision.revision[:4]) for revision in history] == list(range(26, 0, -1))
+86 |     assert [revision.revision for revision in scripts.iterate_revisions("head", REVISIONS[0][1])] == [
+   |                                                                                                     ^^
+87 |         row[0] for row in reversed(REVISIONS)
+88 |     ]
+   |
+
+E501 Line too long (102 > 100)
+   --> tests\contract\test_recovery_forward_migrations_0023_0026.py:145:101
+    |
+145 | def test_batch_bytes_are_checked_and_only_batches_are_frozen(monkeypatch: pytest.MonkeyPatch) -> None:
+    |                                                                                                     ^^
+146 |     sql = captured_sql(REVISIONS[2][0], monkeypatch)
+147 |     assert "CHECK (payload_sha256 = encode(sha256(payload),'hex'))" in sql
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:3:1
+   |
+ 1 |   """Real forward DDL, preserved 0022 history and integrity in a marker-owned test database."""
+ 2 |
+ 3 | / from __future__ import annotations
+ 4 | |
+ 5 | | import hashlib
+ 6 | | import json
+ 7 | | import re
+ 8 | | import subprocess
+ 9 | | import sys
+10 | | from collections.abc import Callable, Iterator
+11 | | from concurrent.futures import ThreadPoolExecutor
+12 | | from dataclasses import dataclass
+13 | | from datetime import UTC, datetime, timedelta
+14 | | from pathlib import Path
+15 | | from threading import Barrier
+16 | | from uuid import uuid4
+17 | |
+18 | | import pytest
+19 | | from pydantic import SecretStr
+20 | | from sqlalchemy import MetaData, create_engine, inspect, text
+21 | | from sqlalchemy.engine import Connection, Engine, URL, make_url
+22 | | from sqlalchemy.exc import IntegrityError
+23 | | from sqlalchemy.pool import NullPool
+24 | | from tests.r12_hybrid_fixtures import seed_fact
+   | |_______________________________________________^
+25 |
+26 |   pytestmark = pytest.mark.real_pg
+   |
+help: Organize imports
+   |
+20 | from sqlalchemy import MetaData, create_engine, inspect, text
+   - from sqlalchemy.engine import Connection, Engine, URL, make_url
+21 + from sqlalchemy.engine import URL, Connection, Engine, make_url
+22 | from sqlalchemy.exc import IntegrityError
+   |
+
+F401 [*] `sqlalchemy.MetaData` imported but unused
+  --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:20:24
+   |
+18 | import pytest
+19 | from pydantic import SecretStr
+20 | from sqlalchemy import MetaData, create_engine, inspect, text
+   |                        ^^^^^^^^
+21 | from sqlalchemy.engine import Connection, Engine, URL, make_url
+22 | from sqlalchemy.exc import IntegrityError
+   |
+help: Remove unused import: `sqlalchemy.MetaData`
+   |
+19 | from pydantic import SecretStr
+   - from sqlalchemy import MetaData, create_engine, inspect, text
+20 + from sqlalchemy import create_engine, inspect, text
+21 | from sqlalchemy.engine import Connection, Engine, URL, make_url
+   |
+
+E501 Line too long (101 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:218:101
+    |
+216 |                 "actor_session_hash,actor_tenant_id,actor_role,event_id,visibility,tenant_id,"
+217 |                 "request_payload,request_sha256,rule_version,execution_policy,"
+218 |                 "execution_policy_sha256,input_context,input_fingerprint,initialized_at,created_at) "
+    |                                                                                                     ^
+219 |                 "VALUES('old-workflow','old-parent-job','old-owner-a',:digest,'tenant-a','analyst',"
+220 |                 ":event,'public',NULL,'{}',:digest,'synthetic-rule',:policy,:digest,'{}',:digest,"
+    |
+
+F841 Local variable `password` is assigned to but never used
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:244:5
+    |
+242 | def database() -> Iterator[OwnedDatabase]:
+243 |     original = controlled_test_url()
+244 |     password = SecretStr(original.password or "")
+    |     ^^^^^^^^
+245 |     admin = create_engine(original, poolclass=NullPool, hide_parameters=True)
+246 |     database_name = "test_forward26_" + uuid4().hex[:12]
+    |
+help: Remove assignment to unused variable `password`
+
+F841 Local variable `token` is assigned to but never used
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:254:5
+    |
+252 |         connection.execute(text(f"COMMENT ON DATABASE \"{database_name}\" IS '{marker}'"))
+253 |     url = original.set(database=database_name)
+254 |     token = SecretStr(url.render_as_string(hide_password=False))
+    |     ^^^^^
+255 |     engine = owned_engine(url, database_name)
+256 |     try:
+    |
+help: Remove assignment to unused variable `token`
+
+E501 Line too long (103 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:307:101
+    |
+305 |         with admin.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+306 |             actual_marker = connection.scalar(
+307 |                 text("SELECT shobj_description(oid,'pg_database') FROM pg_database WHERE datname=:db"),
+    |                                                                                                     ^^^
+308 |                 {"db": database_name},
+309 |             )
+    |
+
+E501 Line too long (103 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:345:101
+    |
+345 | def insert_answer(connection: Connection, owner: str = "old-owner-a", tenant: str = "tenant-a") -> str:
+    |                                                                                                     ^^^
+346 |     answer_id = str(uuid4())
+347 |     connection.execute(text(
+    |
+
+E501 Line too long (101 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:460:101
+    |
+458 |     assert actual == expected
+459 |     (RUN / f"reflection_{table}.json").write_text(
+460 |         json.dumps({"migration": actual, "frozen_metadata": expected}, indent=2, default=str) + "\n",
+    |                                                                                                     ^
+461 |         encoding="utf-8", newline="\n",
+462 |     )
+    |
+
+E501 Line too long (104 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:465:101
+    |
+465 | def test_new_audit_columns_are_nullable_and_legacy_steps_remain_usable(database: OwnedDatabase) -> None:
+    |                                                                                                     ^^^^
+466 |     columns = {column["name"]: column for column in inspect(database.engine).get_columns(
+467 |         "enrichment_job_steps", schema=database.schema)}
+    |
+
+E501 Line too long (105 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:509:101
+    |
+509 | def concurrent_codes(engine: Engine, statements: tuple[tuple[str, dict[str, object]], ...]) -> list[str]:
+    |                                                                                                     ^^^^^
+510 |     barrier = Barrier(len(statements))
+    |
+
+E501 Line too long (103 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:525:101
+    |
+525 | def test_concurrent_input_receipts_commit_once_and_freeze_model_trace(database: OwnedDatabase) -> None:
+    |                                                                                                     ^^^
+526 |     statements = tuple((AUDIT_UPDATE, {"payload": audit_payload(label), "now": NOW,
+527 |                                       "trace": MODEL_TRACE}) for label in ("first", "second"))
+    |
+
+E501 Line too long (105 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:568:101
+    |
+568 | def test_active_turn_fk_and_original_grounded_answer_fk_are_not_guessed(database: OwnedDatabase) -> None:
+    |                                                                                                     ^^^^^
+569 |     with database.engine.begin() as connection:
+570 |         first = insert_conversation(connection)
+    |
+
+E501 Line too long (102 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:596:101
+    |
+594 |         ), {"turn": turn_id, "id": conversation_id})
+595 |         connection.execute(text(
+596 |             "UPDATE grounded_answers SET response='{\"status\":\"terminal\"}' WHERE answer_id=:answer"
+    |                                                                                                     ^^
+597 |         ), {"answer": answer_id})
+598 |         connection.execute(text(
+    |
+
+E501 Line too long (102 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:603:101
+    |
+601 |         ), {"now": NOW, "id": conversation_id})
+602 |     statements = tuple((sql, {"turn": turn_id}) for sql in (
+603 |         "UPDATE qa_conversation_turns SET resolved_context='{\"tampered\":true}' WHERE turn_id=:turn",
+    |                                                                                                     ^^
+604 |         "DELETE FROM qa_conversation_turns WHERE turn_id=:turn",
+605 |     ))
+    |
+
+E501 Line too long (105 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:627:101
+    |
+627 | def test_turn_checks_reject_unknown_version_zero_number_and_bad_context(database: OwnedDatabase) -> None:
+    |                                                                                                     ^^^^^
+628 |     with database.engine.begin() as connection:
+629 |         conversation_id = insert_conversation(connection)
+    |
+
+E501 Line too long (101 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:636:101
+    |
+634 |                                             (1, 1, "d" * 64, "[]")):
+635 |         expect_rejection(database.engine,
+636 |                          "INSERT INTO qa_conversation_turns VALUES(:turn,:version,:id,'old-owner-a',"
+    |                                                                                                     ^
+637 |                          "'tenant-a',:number,0,:answer,:digest,CAST(:context AS jsonb),:now)",
+638 |                          {"turn": str(uuid4()), "version": version, "id": conversation_id,
+    |
+
+E501 Line too long (106 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:672:101
+    |
+672 | def test_batch_size_limit_and_state_checks_allow_real_mutable_watermarks(database: OwnedDatabase) -> None:
+    |                                                                                                     ^^^^^^
+673 |     oversized = b"x" * (8388608 + 1)
+674 |     parameters = {**batch_parameters(database), "payload": oversized,
+    |
+
+E501 Line too long (101 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:690:101
+    |
+688 |                          "INSERT INTO graph_projection_state VALUES('n','public','g',:key,"
+689 |                          ":kind,:event,'{}',:now,:now)",
+690 |                          {"key": str(uuid4()), "kind": kind, "event": event_id, "now": NOW}, "23514")
+    |                                                                                                     ^
+
+E501 Line too long (103 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:694:101
+    |
+693 | KEY_INSERT = (
+694 |     "INSERT INTO api_keys VALUES(:key,:digest,:owner,:resource,:scopes,:issued,:expires,NULL,:version)"
+    |                                                                                                     ^^^
+695 | )
+    |
+
+E501 Line too long (102 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:756:101
+    |
+754 |         expect_rejection(database.engine,
+755 |                          "INSERT INTO api_key_rate_buckets VALUES(:key,:operation,:window,:count)",
+756 |                          {"key": key, "operation": operation, "window": window, "count": count}, code)
+    |                                                                                                     ^^
+
+E501 Line too long (102 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:789:101
+    |
+787 |     with database.engine.connect() as connection:
+788 |         functions = connection.execute(text(
+789 |             "SELECT p.proname,p.proconfig FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace "
+    |                                                                                                     ^^
+790 |             "WHERE n.nspname=:schema AND p.proname IN "
+791 |             "('qa_validate_turn_ownership','guard_enrichment_input_audit')"
+    |
+
+E501 Line too long (102 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:824:101
+    |
+822 |         upgrade(database.url, schema, HEAD, "rollback_expected_failure", fails=True)
+823 |         with rollback.connect() as connection:
+824 |             assert connection.scalar(text(f'SELECT version_num FROM "{schema}".alembic_version')) == (
+    |                                                                                                     ^^
+825 |                 "0022_sbom_sidecars"
+826 |             )
+    |
+
+E501 Line too long (105 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:837:101
+    |
+835 |         upgrade(database.url, schema, HEAD, "rollback_retry_forward")
+836 |         with rollback.connect() as connection:
+837 |             assert connection.scalar(text(f'SELECT version_num FROM "{schema}".alembic_version')) == HEAD
+    |                                                                                                     ^^^^^
+838 |     finally:
+839 |         rollback.dispose()
+    |
+
+E501 Line too long (102 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:850:101
+    |
+848 |         connection.execute(text("UPDATE api_keys SET revoked_at=:now,version=2 WHERE key_id=:key"),
+849 |                            {"now": NOW, "key": parameters["key"]})
+850 |         before = connection.scalar(text("SELECT to_jsonb(k)::text FROM api_keys k WHERE key_id=:key"),
+    |                                                                                                     ^^
+851 |                                    {"key": parameters["key"]})
+852 |     database.engine.dispose()
+    |
+
+E501 Line too long (101 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:872:101
+    |
+870 | ) -> None:
+871 |     for revision in ("0022", "0023", "0024", "0025", "0026"):
+872 |         assert "business_create_all_guard_installed" in (RUN / f"upgrade_{revision}.log").read_text()
+    |                                                                                                     ^
+873 |     assert set(NEW_TABLES).issubset(inspect(database.engine).get_table_names(schema=database.schema))
+    |
+
+E501 Line too long (101 > 100)
+   --> tests\integration\test_recovery_forward_migrations_0023_0026_pg.py:873:101
+    |
+871 |     for revision in ("0022", "0023", "0024", "0025", "0026"):
+872 |         assert "business_create_all_guard_installed" in (RUN / f"upgrade_{revision}.log").read_text()
+873 |     assert set(NEW_TABLES).issubset(inspect(database.engine).get_table_names(schema=database.schema))
+    |                                                                                                     ^
+
+Found 28 errors.
+[*] 2 fixable with the `--fix` option (2 hidden fixes can be enabled with the `--unsafe-fixes` option).

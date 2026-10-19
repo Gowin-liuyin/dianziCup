@@ -1,0 +1,48 @@
+frontend/src\app\workspace-navigation.ts:28:export function readDocumentSelection(hash: string): { documentId: string; revisionId: string | null } | null {
+frontend/src\app\workspace-navigation.ts:40:  if (readDocumentSelection(hash) !== null) return "documents";
+frontend/src\app\workspace-navigation.test.ts:2:import { readDocumentSelection, readEventSelection, readWorkspacePage } from "./workspace-navigation";
+frontend/src\app\workspace-navigation.test.ts:21:    expect(readWorkspacePage(hash)).toBe("documents"); expect(readDocumentSelection(hash)).toEqual({ documentId: id, revisionId: revision });
+frontend/src\app\workspace-navigation.test.ts:22:    expect(readWorkspacePage(`${hash}?tenant=forged`)).toBe("missing"); expect(readDocumentSelection("#documents/../private")).toBeNull();
+frontend/src\App.tsx:13:import { DocumentWorkspace } from "./features/documents/document-workspace";
+frontend/src\App.tsx:196:          {page === "documents" && <DocumentWorkspace key={sessionScopeKey} />}
+frontend/src\api\document-client.test.ts:3:import { getDocumentDetail, getDocumentList, getDocumentRevisions } from "./document-client";
+frontend/src\api\document-client.test.ts:22:    await expect(getDocumentDetail("../private")).rejects.toMatchObject({ status: 422 });
+frontend/src\api\document-client.test.ts:23:    await expect(getDocumentDetail(documentId, null, 100)).rejects.toMatchObject({ status: 422 });
+frontend/src\api\document-client.test.ts:24:    await expect(getDocumentRevisions(documentId, -1)).rejects.toMatchObject({ status: 422 });
+frontend/src\api\document-client.test.ts:30:      await expect(getDocumentDetail(documentId, revisionId, 100)).rejects.toMatchObject({ code: "invalid_response" });
+frontend/src\api\document-client.test.ts:33:    await expect(getDocumentDetail(documentId, revisionId)).rejects.toMatchObject({ code: "invalid_response" });
+frontend/src\api\document-client.test.ts:38:      await expect(getDocumentRevisions(documentId, 20)).rejects.toMatchObject({ code: "invalid_response" });
+frontend/src\api\client.ts:78:export async function fetchJson(path: string, options: RequestInit = {}, signal?: AbortSignal, acceptedStatuses: number[] = [], requestTimeoutMilliseconds = 10_000): Promise<unknown> {
+frontend/src\api\client.ts:121:  return parseCurrentUser(await fetchJson("/v1/auth/me", {}, signal));
+frontend/src\api\client.ts:125:  const value = await fetchJson("/v1/auth/me", {}, signal);
+frontend/src\api\client.ts:132:  const value = await fetchJson("/v1/auth/csrf", {}, signal);
+frontend/src\api\client.ts:138:  const value = await fetchJson("/v1/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
+frontend/src\api\client.ts:145:  const value = await fetchJson("/v1/auth/logout", { method: "POST", headers: { "X-CSRF-Token": csrfToken } });
+frontend/src\api\client.ts:150:  const value = await fetchJson("/v1/health/live", {}, signal);
+frontend/src\api\client.ts:155:  const value = await fetchJson("/v1/health/ready", {}, signal, [503]);
+frontend/src\api\knowledge-client.ts:1:import { ApiProblem, fetchJson } from "./client";
+frontend/src\api\knowledge-client.ts:23:  return parseEventListResponse(await fetchJson(`/v1/events?${query}`, {}, signal));
+frontend/src\api\knowledge-client.ts:27:  const result = parseEventDetailResponse(await fetchJson(eventPath(id, "events"), {}, signal));
+frontend/src\api\knowledge-client.ts:33:  const result = parseEvidenceResponse(await fetchJson(eventPath(id, "evidence"), {}, signal));
+frontend/src\api\client.test.ts:4:import { ApiProblem, fetchJson, getCsrfToken, getCurrentUser, getReadiness, getSessionSnapshot, loginSession, logoutSession } from "./client";
+frontend/src\api\client.test.ts:100:    const assertion = expect(fetchJson("/v1/questions", {}, undefined, [], 90_000)).rejects.toMatchObject({ code: "request_timeout", retryable: true });
+frontend/src\api\client.test.ts:110:    await expect(fetchJson("/v1/questions", {}, undefined, [], budget)).rejects.toBeInstanceOf(RangeError);
+frontend/src\api\question-client.ts:1:import { ApiProblem, fetchJson, getCsrfToken } from "./client";
+frontend/src\api\question-client.ts:12:  return parseQuestionAnswer(await fetchJson("/v1/questions", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, "Idempotency-Key": idempotencyKey }, body }, signal, [], 90_000));
+frontend/src\api\question-client.ts:17:  const answer = parseQuestionAnswer(await fetchJson(`/v1/answers/${id}`, {}, signal));
+frontend/src\api\document-client.ts:1:import { ApiProblem, fetchJson } from "./client";
+frontend/src\api\document-client.ts:34:  return parseDocumentListResponse(await fetchJson(`/v1/documents?${query}`, {}, signal));
+frontend/src\api\document-client.ts:38:export async function getDocumentDetail(id: string, revisionId: string | null = null, evidenceOffset = 0, signal?: AbortSignal): Promise<DocumentDetailResponse> {
+frontend/src\api\document-client.ts:46:  const result = parseDocumentDetailResponse(await fetchJson(`${path}?${query}`, {}, signal));
+frontend/src\api\document-client.ts:50:export async function getDocumentRevisions(id: string, offset = 0, signal?: AbortSignal): Promise<DocumentRevisionsResponse> {
+frontend/src\api\document-client.ts:53:  const result = parseDocumentRevisionsResponse(await fetchJson(`${path}/revisions?offset=${offset}&limit=20`, {}, signal));
+frontend/src\api\source-client.ts:1:import { ApiProblem, fetchJson, getCsrfToken } from "./client";
+frontend/src\api\source-client.ts:13:  const value = await fetchJson(path, { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": token, "Idempotency-Key": idempotencyKey }, body }, signal);
+frontend/src\api\source-client.ts:19:  const value = parseSourceJob(await fetchJson(`/v1/jobs/${id}`, {}, signal));
+frontend/src\features\documents\document-workspace.tsx:3:import { getDocumentDetail, getDocumentList, getDocumentRevisions, type DocumentFilters } from "../../api/document-client";
+frontend/src\features\documents\document-workspace.tsx:8:import { readDocumentSelection } from "../../app/workspace-navigation";
+frontend/src\features\documents\document-workspace.tsx:62:    void getDocumentDetail(id, selectedRevision.current, request.offset, controller.signal).then((value) => {
+frontend/src\features\documents\document-workspace.tsx:84:    void getDocumentRevisions(id, historyRequest.offset, controller.signal).then((value) => {
+frontend/src\features\documents\document-workspace.tsx:149:export function DocumentWorkspace() {
+frontend/src\features\documents\document-workspace.tsx:151:  const [selection, setSelection] = useState(() => readDocumentSelection(window.location.hash));
+frontend/src\features\documents\document-workspace.tsx:161:  useEffect(() => { const navigate = () => setSelection(readDocumentSelection(window.location.hash)); window.addEventListener("hashchange", navigate); return () => window.removeEventListener("hashchange", navigate); }, []);

@@ -1,0 +1,91 @@
+3:JobRun owns task status. Operation rows are reservations and immutable receipts, not a
+71:from ai_intel.enrichment.source_report_reader import build_source_report_reader
+106:from ai_intel.investigation.source_report_node import read_enrichment_source_reports
+134:SOURCE_REPORT_CONSUMER_VERSION = "r14-source-report-consumer-1"
+188:    Column("input_bytes", Integer, nullable=False),
+189:    Column("output_bytes", Integer, nullable=False),
+202:        "input_bytes >= 0 AND output_bytes >= 0 AND tool_calls >= 0 AND model_calls >= 0",
+209:        name="ck_investigation_operation_receipt",
+218:CREATE FUNCTION prevent_investigation_receipt_changes() RETURNS trigger LANGUAGE plpgsql AS $$
+223:   RAISE EXCEPTION 'investigation receipt is immutable';
+229:FOR EACH ROW EXECUTE FUNCTION prevent_investigation_receipt_changes();
+291:        "receipts": [],
+359:        self._source_report_consumer_version = (
+360:            SOURCE_REPORT_CONSUMER_VERSION if content_store is not None else "not_configured"
+387:            "source_report_consumer_version": self._source_report_consumer_version,
+391:        if len(payload) > budget.max_input_bytes:
+671:            or envelope.get("source_report_consumer_version")
+672:            != self.service._source_report_consumer_version
+729:    def lookup(self, key: str) -> dict[str, JsonValue] | None:
+751:    def restore_node_state(self, state: WorkflowState) -> WorkflowState:
+752:        """Recover unknown outcomes from PG receipts without replaying IO or rewriting history."""
+771:        if len(state["receipts"]) > len(AgentRole):
+772:            raise ValueError("invalid checkpoint receipt count")
+773:        for index, item in enumerate(state["receipts"]):
+774:            receipt = _record(RoleReceipt, item)
+775:            for key in receipt.operation_keys:
+781:                    restored_receipt = {
+788:                        "receipts": [
+789:                            *state["receipts"][:index],
+790:                            restored_receipt,
+791:                            *state["receipts"][index + 1 :],
+800:        The immutable output_bytes column is the original reservation. Completed usage
+822:    def operation_output_bytes(row: RowMapping) -> int:
+824:            return int(row["output_bytes"])
+827:    def reserve(
+837:        output_bytes: int = 0,
+838:        input_bytes: int | None = None,
+844:        inputs = len(request_bytes) if input_bytes is None else input_bytes
+845:        output_bytes = max(output_bytes, OUTPUT_BUDGET_FAILURE_BYTES)
+850:                sum(int(row["input_bytes"]) for row in rows) + inputs > self.budget.max_input_bytes
+851:                or sum(self.operation_output_bytes(row) for row in rows) + output_bytes
+852:                > self.budget.max_output_bytes
+880:                    input_bytes=inputs,
+881:                    output_bytes=output_bytes,
+897:    def complete_operation(
+903:        """Persist only accepted actual bytes or the pre-reserved fixed failure receipt."""
+918:                    raise ValueError("operation_receipt_already_completed")
+920:            remaining_bytes = self.budget.max_output_bytes - sum(
+921:                self.operation_output_bytes(row) for row in rows if row["operation_key"] != key
+926:                    int(target["output_bytes"]) < OUTPUT_BUDGET_FAILURE_BYTES
+929:                    raise ValueError("operation_failure_receipt_not_reserved")
+966:            output_bytes=self.budget.tool_result_bytes,
+979:                max_total_input_bytes=4096,
+981:                max_total_output_bytes=self.budget.tool_result_bytes,
+992:        failure = self.complete_operation(
+1024:            input_bytes=self.budget.model_request_bytes,
+1025:            output_bytes=self.budget.model_response_bytes,
+1040:            max_total_input_bytes=self.budget.model_request_bytes,
+1042:            max_total_output_bytes=self.budget.model_response_bytes,
+1054:            failure = self.complete_operation(
+1074:            failure = self.complete_operation(key, {"value": json_object(value), **attempts})
+1084:            failure = self.complete_operation(
+1156:    def run_role(self, role: AgentRole, state: WorkflowState) -> WorkflowState:
+1157:        """Rebuild an unfinished node from its separately reserved operation receipts.
+1163:        state = self.restore_node_state(state)
+1172:                return self.restore_node_state(_state(previous["state"]))
+1181:                key, "node", role, self.input_sha256.encode(), input_bytes=0
+1330:            source_reports: list[JsonValue] = []
+1332:            read_reason = "source_report_reader_not_configured"
+1334:                read_status, read_reason = "not_found", "source_report_references_missing"
+1338:                source_report_reader = build_source_report_reader(
+1346:                    reports = read_enrichment_source_reports(
+1347:                        source_report_reader, self.request, deadline
+1350:                    raise WorkflowChangedError("source_report_inputs_changed") from error
+1352:                    read_status, read_reason = "partial", "source_report_deadline_exhausted"
+1357:                    read_status, read_reason = "partial", "source_report_deadline_exhausted"
+1359:                    source_reports = [json_object(report) for report in reports]
+1361:                        read_status, read_reason = "reported", "source_reports_reported"
+1363:                        read_status, read_reason = "not_found", "source_reports_not_found"
+1365:                        read_status, read_reason = "partial", "source_reports_partial"
+1370:                    "source_reports": source_reports,
+1371:                    "source_report_read_status": read_status,
+1372:                    "source_report_reason": read_reason,
+1603:            reasons = {receipt["reason_code"] for receipt in state["receipts"]} | {reason}
+1625:            self.complete_operation(key, {"error_code": OUTPUT_BUDGET_FAILURE}, "failed")
+1637:        receipt = RoleReceipt(
+1647:        state = {**state, "receipts": [*state["receipts"], json_object(receipt)]}
+1649:        failure = self.complete_operation(
+1668:                "receipts": tuple(_record(RoleReceipt, item) for item in state["receipts"]),
+1677:                    for item in state["receipts"]
+1759:        state = self.restore_node_state(state)

@@ -1,0 +1,178 @@
+{
+    "ghsa_id": "GHSA-6cxc-2vcg-w5qc",
+    "cve_id": "CVE-2026-12345",
+    "url": "https://api.github.com/repos/vllm-project/vllm/security-advisories/GHSA-6cxc-2vcg-w5qc",
+    "html_url": "https://github.com/vllm-project/vllm/security/advisories/GHSA-6cxc-2vcg-w5qc",
+    "summary": "V1 InputBatch.condense leaves a stale allowed_token_ids mask on recycled batch rows",
+    "description": "## Severity\r\n\r\n- **Severity:** Low\r\n- **CVSS v3.1:** `CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N` (3.7, Low)\r\n- **CWE:** CWE-440 (Expected Behavior Violation), CWE-668 (Exposure of Resource to Wrong Sphere)\r\n\r\n## Summary\r\n\r\nvLLM V1 `InputBatch.condense()` can leave a stale `allowed_token_ids_mask_cpu_tensor` row after moving a constrained request. A later unrestricted request that reuses that batch slot inherits the previous request's token allowlist, so sampling for that other client is constrained by a mask it did not set (cross-request output-integrity issue). The victim request still returns HTTP 200 with no error indication.\r\n\r\nPublic report: https://github.com/vllm-project/vllm/issues/43894\r\n\r\n## Affected\r\n\r\n- **Ecosystem / package:** pip / `vllm`\r\n- **Affected versions:** vLLM ≤ 0.30.0 (V1 worker `InputBatch` path). Confirmed via public issue #43894.\r\n- **Fixed versions:** Fix merged in https://github.com/vllm-project/vllm/pull/43931 (not yet in a tagged release as of v0.30.0; expected in the next release).\r\n\r\n## Details\r\n\r\n`InputBatch.condense()` copies `allowed_token_ids_mask_cpu_tensor` from a moved request's row into the freed index but never clears the source row. `add_request()` only writes that row when the new request sets `sampling_params.allowed_token_ids`. When another active request still has `allowed_token_ids`, `_make_sampling_metadata()` copies the active prefix of the CPU mask to GPU and `Sampler.apply_logits_processors()` applies the stale whitelist to the unrestricted request.\r\n\r\nAn attacker who can submit generate traffic (including unauthenticated `/invocations`, which is outside `--api-key` guards, or any valid API key on `/v1`) plants a chosen `allowed_token_ids` mask. If batching/`condense` recycles that row onto another client's unrestricted request while the constrained request is still active, the victim's tokens are limited to the attacker's allowlist (for example only a single token, only digit tokens, or only tokens that spell a short phrase). This is vocabulary steering / wrong allowlist application, not free-form substitution of arbitrary attacker text.\r\n\r\nA related but distinct bug in `InputBatch.swap_states()` (row-view aliasing of the same mask tensor) was fixed in https://github.com/vllm-project/vllm/pull/48419.\r\n\r\n## Impact\r\n\r\nLimited cross-request sampling integrity on a shared engine: one client's `allowed_token_ids` can constrain another client's outputs under concurrent batching. Confidentiality and availability are unaffected. Attack complexity is High because exploitation needs concurrent requests plus a `condense` slot-reuse race while the attacker's constrained request remains in the batch.\r\n\r\n## Patches\r\n\r\n- https://github.com/vllm-project/vllm/pull/43931 — clear vacated `allowed_token_ids` mask rows in `condense()`\r\n- https://github.com/vllm-project/vllm/pull/48419 — related `swap_states` mask aliasing fix\r\n\r\n## References\r\n\r\n- https://github.com/vllm-project/vllm/issues/43894\r\n- https://github.com/vllm-project/vllm/pull/43931\r\n- https://github.com/vllm-project/vllm/pull/48419\r\n- https://docs.vllm.ai/en/latest/usage/security.html (API key does not cover `/invocations`)\r\n\r\n## Credit\r\n\r\nReported publicly by @glaziermag in issue #43894.\r\n",
+    "severity": "low",
+    "author": null,
+    "publisher": {
+      "login": "jperezdealgaba",
+      "id": 124347725,
+      "node_id": "U_kgDOB2llTQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/124347725?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/jperezdealgaba",
+      "html_url": "https://github.com/jperezdealgaba",
+      "followers_url": "https://api.github.com/users/jperezdealgaba/followers",
+      "following_url": "https://api.github.com/users/jperezdealgaba/following{/other_user}",
+      "gists_url": "https://api.github.com/users/jperezdealgaba/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/jperezdealgaba/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/jperezdealgaba/subscriptions",
+      "organizations_url": "https://api.github.com/users/jperezdealgaba/orgs",
+      "repos_url": "https://api.github.com/users/jperezdealgaba/repos",
+      "events_url": "https://api.github.com/users/jperezdealgaba/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/jperezdealgaba/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "identifiers": [
+      {
+        "value": "GHSA-6cxc-2vcg-w5qc",
+        "type": "GHSA"
+      }
+    ],
+    "state": "published",
+    "created_at": null,
+    "updated_at": "2026-10-06T20:45:08Z",
+    "published_at": "2026-10-06T20:45:08Z",
+    "closed_at": null,
+    "withdrawn_at": null,
+    "submission": null,
+    "vulnerabilities": [
+      {
+        "package": {
+          "ecosystem": "pip",
+          "name": "vllm"
+        },
+        "vulnerable_version_range": "< 0.31.0",
+        "patched_versions": ">= 0.31.0",
+        "vulnerable_functions": []
+      }
+    ],
+    "cvss_severities": {
+      "cvss_v3": {
+        "vector_string": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N",
+        "score": 3.7
+      },
+      "cvss_v4": {
+        "vector_string": null,
+        "score": null
+      }
+    },
+    "cwes": [
+      {
+        "cwe_id": "CWE-440",
+        "name": "Expected Behavior Violation"
+      },
+      {
+        "cwe_id": "CWE-668",
+        "name": "Exposure of Resource to Wrong Sphere"
+      }
+    ],
+    "cwe_ids": [
+      "CWE-440",
+      "CWE-668"
+    ],
+    "credits": [
+      {
+        "login": "glaziermag",
+        "type": "remediation_developer"
+      },
+      {
+        "login": "jperezdealgaba",
+        "type": "coordinator"
+      },
+      {
+        "login": "SunnyR",
+        "type": "reporter"
+      }
+    ],
+    "credits_detailed": [
+      {
+        "user": {
+          "login": "glaziermag",
+          "id": 130600081,
+          "node_id": "U_kgDOB8jMkQ",
+          "avatar_url": "https://avatars.githubusercontent.com/u/130600081?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/glaziermag",
+          "html_url": "https://github.com/glaziermag",
+          "followers_url": "https://api.github.com/users/glaziermag/followers",
+          "following_url": "https://api.github.com/users/glaziermag/following{/other_user}",
+          "gists_url": "https://api.github.com/users/glaziermag/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/glaziermag/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/glaziermag/subscriptions",
+          "organizations_url": "https://api.github.com/users/glaziermag/orgs",
+          "repos_url": "https://api.github.com/users/glaziermag/repos",
+          "events_url": "https://api.github.com/users/glaziermag/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/glaziermag/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "type": "remediation_developer",
+        "state": "accepted"
+      },
+      {
+        "user": {
+          "login": "jperezdealgaba",
+          "id": 124347725,
+          "node_id": "U_kgDOB2llTQ",
+          "avatar_url": "https://avatars.githubusercontent.com/u/124347725?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/jperezdealgaba",
+          "html_url": "https://github.com/jperezdealgaba",
+          "followers_url": "https://api.github.com/users/jperezdealgaba/followers",
+          "following_url": "https://api.github.com/users/jperezdealgaba/following{/other_user}",
+          "gists_url": "https://api.github.com/users/jperezdealgaba/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/jperezdealgaba/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/jperezdealgaba/subscriptions",
+          "organizations_url": "https://api.github.com/users/jperezdealgaba/orgs",
+          "repos_url": "https://api.github.com/users/jperezdealgaba/repos",
+          "events_url": "https://api.github.com/users/jperezdealgaba/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/jperezdealgaba/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "type": "coordinator",
+        "state": "accepted"
+      },
+      {
+        "user": {
+          "login": "SunnyR",
+          "id": 1923481,
+          "node_id": "MDQ6VXNlcjE5MjM0ODE=",
+          "avatar_url": "https://avatars.githubusercontent.com/u/1923481?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/SunnyR",
+          "html_url": "https://github.com/SunnyR",
+          "followers_url": "https://api.github.com/users/SunnyR/followers",
+          "following_url": "https://api.github.com/users/SunnyR/following{/other_user}",
+          "gists_url": "https://api.github.com/users/SunnyR/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/SunnyR/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/SunnyR/subscriptions",
+          "organizations_url": "https://api.github.com/users/SunnyR/orgs",
+          "repos_url": "https://api.github.com/users/SunnyR/repos",
+          "events_url": "https://api.github.com/users/SunnyR/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/SunnyR/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "type": "reporter",
+        "state": "accepted"
+      }
+    ],
+    "collaborating_users": null,
+    "collaborating_teams": null,
+    "private_fork": null,
+    "comments": 0,
+    "cvss": {
+      "vector_string": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N",
+      "score": 3.7
+    }
+  }

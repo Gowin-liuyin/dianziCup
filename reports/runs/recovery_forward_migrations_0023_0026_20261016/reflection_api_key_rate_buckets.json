@@ -1,0 +1,148 @@
+{
+  "migration": {
+    "columns": [
+      {
+        "name": "key_id",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "operation",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "window_started_at",
+        "type": "TIMESTAMP",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "request_count",
+        "type": "INTEGER",
+        "nullable": false,
+        "default": null
+      }
+    ],
+    "primary_key": {
+      "constrained_columns": [
+        "key_id",
+        "operation",
+        "window_started_at"
+      ],
+      "name": "api_key_rate_buckets_pkey",
+      "comment": null,
+      "dialect_options": {
+        "postgresql_include": []
+      }
+    },
+    "unique": [],
+    "foreign_keys": [
+      {
+        "name": "api_key_rate_buckets_key_id_fkey",
+        "constrained_columns": [
+          "key_id"
+        ],
+        "referred_table": "api_keys",
+        "referred_columns": [
+          "key_id"
+        ],
+        "options": {},
+        "comment": null
+      }
+    ],
+    "checks": [
+      {
+        "name": "ck_api_key_rate_count",
+        "sqltext": "request_count >= 0 AND request_count <=\nCASE operation\n    WHEN 'read'::text THEN 60\n    ELSE 10\nEND",
+        "comment": null
+      },
+      {
+        "name": "ck_api_key_rate_operation",
+        "sqltext": "operation = ANY (ARRAY['read'::text, 'ask'::text])",
+        "comment": null
+      },
+      {
+        "name": "ck_api_key_rate_window",
+        "sqltext": "window_started_at = date_trunc('minute'::text, window_started_at)",
+        "comment": null
+      }
+    ],
+    "indexes": []
+  },
+  "frozen_metadata": {
+    "columns": [
+      {
+        "name": "key_id",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "operation",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "window_started_at",
+        "type": "TIMESTAMP",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "request_count",
+        "type": "INTEGER",
+        "nullable": false,
+        "default": null
+      }
+    ],
+    "primary_key": {
+      "constrained_columns": [
+        "key_id",
+        "operation",
+        "window_started_at"
+      ],
+      "name": "api_key_rate_buckets_pkey",
+      "comment": null,
+      "dialect_options": {
+        "postgresql_include": []
+      }
+    },
+    "unique": [],
+    "foreign_keys": [
+      {
+        "name": "api_key_rate_buckets_key_id_fkey",
+        "constrained_columns": [
+          "key_id"
+        ],
+        "referred_table": "api_keys",
+        "referred_columns": [
+          "key_id"
+        ],
+        "options": {},
+        "comment": null
+      }
+    ],
+    "checks": [
+      {
+        "name": "ck_api_key_rate_count",
+        "sqltext": "request_count >= 0 AND request_count <=\nCASE operation\n    WHEN 'read'::text THEN 60\n    ELSE 10\nEND",
+        "comment": null
+      },
+      {
+        "name": "ck_api_key_rate_operation",
+        "sqltext": "operation = ANY (ARRAY['read'::text, 'ask'::text])",
+        "comment": null
+      },
+      {
+        "name": "ck_api_key_rate_window",
+        "sqltext": "window_started_at = date_trunc('minute'::text, window_started_at)",
+        "comment": null
+      }
+    ],
+    "indexes": []
+  }
+}

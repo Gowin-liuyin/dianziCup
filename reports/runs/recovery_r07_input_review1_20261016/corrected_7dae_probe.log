@@ -1,0 +1,117 @@
+FF.F.........                                                            [100%]
+================================== FAILURES ===================================
+_ test_invalid_uri_returns_typed_safe_error[https://cwe.mitre.org:bad/data/xml/cwec_v4.19.xml] _
+
+uri = 'https://cwe.mitre.org:bad/data/xml/cwec_v4.19.xml'
+
+    @pytest.mark.parametrize("uri", ["https://cwe.mitre.org:bad/data/xml/cwec_v4.19.xml", "https://[invalid/data/xml/cwec_v4.19.xml"])
+    def test_invalid_uri_returns_typed_safe_error(uri):
+        with pytest.raises(TaxonomyInputError, match="taxonomy_source_uri_invalid"):
+>           parse_cwe_catalogue(CWE_XML, provenance(CWE_XML, canonical_uri=uri))
+
+..\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py:25: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\enrichment\taxonomy_inputs.py:117: in parse_cwe_catalogue
+    _verify_raw(raw, provenance)
+src\ai_intel\enrichment\taxonomy_inputs.py:85: in _verify_raw
+    or parsed.port not in (None, 443)
+       ^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = SplitResult(scheme='https', netloc='cwe.mitre.org:bad', path='/data/xml/cwec_v4.19.xml', query='', fragment='')
+
+    @property
+    def port(self):
+        port = self._hostinfo[1]
+        if port is not None:
+            if port.isdigit() and port.isascii():
+                port = int(port)
+            else:
+>               raise ValueError(f"Port could not be cast to integer value as {port!r}")
+E               ValueError: Port could not be cast to integer value as 'bad'
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\urllib\parse.py:182: ValueError
+_ test_invalid_uri_returns_typed_safe_error[https://[invalid/data/xml/cwec_v4.19.xml] _
+
+uri = 'https://[invalid/data/xml/cwec_v4.19.xml'
+
+    @pytest.mark.parametrize("uri", ["https://cwe.mitre.org:bad/data/xml/cwec_v4.19.xml", "https://[invalid/data/xml/cwec_v4.19.xml"])
+    def test_invalid_uri_returns_typed_safe_error(uri):
+        with pytest.raises(TaxonomyInputError, match="taxonomy_source_uri_invalid"):
+>           parse_cwe_catalogue(CWE_XML, provenance(CWE_XML, canonical_uri=uri))
+
+..\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py:25: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\enrichment\taxonomy_inputs.py:117: in parse_cwe_catalogue
+    _verify_raw(raw, provenance)
+src\ai_intel\enrichment\taxonomy_inputs.py:80: in _verify_raw
+    parsed = urlsplit(provenance.canonical_uri)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+url = '/data/xml/cwec_v4.19.xml', scheme = 'https', allow_fragments = True
+
+    @functools.lru_cache(typed=True)
+    def urlsplit(url, scheme='', allow_fragments=True):
+        """Parse a URL into 5 components:
+        <scheme>://<netloc>/<path>?<query>#<fragment>
+    
+        The result is a named 5-tuple with fields corresponding to the
+        above. It is either a SplitResult or SplitResultBytes object,
+        depending on the type of the url parameter.
+    
+        The username, password, hostname, and port sub-components of netloc
+        can also be accessed as attributes of the returned object.
+    
+        The scheme argument provides the default value of the scheme
+        component when no scheme is found in url.
+    
+        If allow_fragments is False, no attempt is made to separate the
+        fragment component from the previous component, which can be either
+        path or query.
+    
+        Note that % escapes are not expanded.
+        """
+    
+        url, scheme, _coerce_result = _coerce_args(url, scheme)
+        # Only lstrip url as some applications rely on preserving trailing space.
+        # (https://url.spec.whatwg.org/#concept-basic-url-parser would strip both)
+        url = url.lstrip(_WHATWG_C0_CONTROL_OR_SPACE)
+        scheme = scheme.strip(_WHATWG_C0_CONTROL_OR_SPACE)
+    
+        for b in _UNSAFE_URL_BYTES_TO_REMOVE:
+            url = url.replace(b, "")
+            scheme = scheme.replace(b, "")
+    
+        allow_fragments = bool(allow_fragments)
+        netloc = query = fragment = ''
+        i = url.find(':')
+        if i > 0 and url[0].isascii() and url[0].isalpha():
+            for c in url[:i]:
+                if c not in scheme_chars:
+                    break
+            else:
+                scheme, url = url[:i].lower(), url[i+1:]
+        if url[:2] == '//':
+            netloc, url = _splitnetloc(url, 2)
+            if (('[' in netloc and ']' not in netloc) or
+                    (']' in netloc and '[' not in netloc)):
+>               raise ValueError("Invalid IPv6 URL")
+E               ValueError: Invalid IPv6 URL
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\urllib\parse.py:514: ValueError
+_______________ test_semantic_yaml_duplicate_keys_are_rejected ________________
+
+    def test_semantic_yaml_duplicate_keys_are_rejected():
+        raw = ATLAS_YAML + b"\nmetadata:\n  true: first\n  True: second\n"
+>       with pytest.raises(TaxonomyInputError, match="taxonomy_yaml_duplicate_key"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'ai_intel.enrichment.taxonomy_inputs.TaxonomyInputError'>
+
+..\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py:44: Failed
+- generated xml file: D:\wt\r07-input-review1\reports\runs\recovery_r07_input_review1_20261016\corrected_7dae_probe.xml -
+=========================== short test summary info ===========================
+FAILED ..\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py::test_invalid_uri_returns_typed_safe_error[https://cwe.mitre.org:bad/data/xml/cwec_v4.19.xml]
+FAILED ..\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py::test_invalid_uri_returns_typed_safe_error[https://[invalid/data/xml/cwec_v4.19.xml]
+FAILED ..\reports\runs\recovery_r07_input_review1_20261016\test_review_probe.py::test_semantic_yaml_duplicate_keys_are_rejected
+3 failed, 10 passed in 2.19s

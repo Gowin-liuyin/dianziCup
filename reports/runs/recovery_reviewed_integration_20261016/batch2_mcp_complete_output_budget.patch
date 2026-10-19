@@ -1,0 +1,3261 @@
+diff --git a/sdk/python/ai_intel_client/__init__.py b/sdk/python/ai_intel_client/__init__.py
+new file mode 100644
+index 00000000..f35b1730
+--- /dev/null
++++ b/sdk/python/ai_intel_client/__init__.py
+@@ -0,0 +1,14 @@
++"""Installable client types and fixed public API operations."""
++
++from ai_intel_client.client import DianziApiError, DianziClient, DianziTransportError
++from ai_intel_client.models import AskRequest, AskResult, StackCheckRequest, StackCheckResult
++
++__all__ = [
++    "AskRequest",
++    "AskResult",
++    "DianziApiError",
++    "DianziClient",
++    "DianziTransportError",
++    "StackCheckRequest",
++    "StackCheckResult",
++]
+diff --git a/sdk/python/ai_intel_client/cli.py b/sdk/python/ai_intel_client/cli.py
+new file mode 100644
+index 00000000..0e295b1c
+--- /dev/null
++++ b/sdk/python/ai_intel_client/cli.py
+@@ -0,0 +1,97 @@
++"""CLI input/output for actual backend calls; credentials come only from environment."""
++
++from __future__ import annotations
++
++import argparse
++import sys
++from collections.abc import Sequence
++from pathlib import Path
++from typing import Never
++
++from pydantic import ValidationError
++
++from ai_intel_client.client import (
++    ClientConfigurationError,
++    ClientInputError,
++    DianziApiError,
++    DianziClient,
++    DianziTransportError,
++    ResponseContractError,
++    validate_json_bytes,
++)
++from ai_intel_client.models import AskRequest, StackCheckRequest, StackCheckResult
++
++MAX_INPUT_BYTES = 1048576
++
++
++class ClientArgumentParser(argparse.ArgumentParser):
++    def error(self, message: str) -> Never:
++        raise ClientInputError("command arguments are invalid")
++
++
++def build_parser() -> argparse.ArgumentParser:
++    parser = ClientArgumentParser(prog="dianzi-intel")
++    subcommands = parser.add_subparsers(dest="command", required=True)
++    for name in ("check", "ask"):
++        operation = subcommands.add_parser(name)
++        operation.add_argument(
++            "--input", type=Path, help="Explicit JSON file; otherwise read stdin"
++        )
++        operation.add_argument("--idempotency-key", help="Operation key, never an API credential")
++    return parser
++
++
++def _read_input(path: Path | None) -> bytes:
++    if path is None:
++        raw = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
++    else:
++        with path.open("rb") as source:
++            raw = source.read(MAX_INPUT_BYTES + 1)
++    if len(raw) > MAX_INPUT_BYTES:
++        raise ClientInputError("input exceeds the synchronous client size boundary")
++    validate_json_bytes(raw)
++    return raw
++
++
++def legacy_stack_exit_code(result: StackCheckResult) -> int:
++    """The frozen legacy result has no risk confirmation; no inference can justify 0/1."""
++    return 2
++
++
++def main(arguments: Sequence[str] | None = None) -> int:
++    try:
++        options = build_parser().parse_args(arguments)
++        with DianziClient.from_environment() as client:
++            raw = _read_input(options.input)
++            if options.command == "check":
++                checked = client.check_stack(
++                    StackCheckRequest.model_validate_json(raw),
++                    idempotency_key=options.idempotency_key,
++                )
++                sys.stdout.write(checked.wire_json(ensure_ascii=True) + "\n")
++                sys.stderr.write("Risk classification is unavailable; retain uncertainty.\n")
++                return legacy_stack_exit_code(checked)
++            answer = client.ask(
++                AskRequest.model_validate_json(raw), idempotency_key=options.idempotency_key
++            )
++            sys.stdout.write(answer.wire_json(ensure_ascii=True) + "\n")
++            sys.stderr.write(
++                "A returned answer or task handle does not establish risk certainty.\n"
++            )
++            return 2
++    except (
++        ClientConfigurationError,
++        ClientInputError,
++        ResponseContractError,
++        DianziApiError,
++        DianziTransportError,
++        ValidationError,
++        OSError,
++        UnicodeError,
++    ):
++        sys.stderr.write("The operation could not be completed; check configuration and access.\n")
++        return 3
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/sdk/python/ai_intel_client/client.py b/sdk/python/ai_intel_client/client.py
+new file mode 100644
+index 00000000..2395d032
+--- /dev/null
++++ b/sdk/python/ai_intel_client/client.py
+@@ -0,0 +1,335 @@
++"""Bounded fixed-path HTTP operations against the project's shared backend."""
++
++from __future__ import annotations
++
++import json
++import math
++import os
++import re
++import secrets
++from collections.abc import Mapping
++from typing import TypeVar
++from urllib.parse import urlsplit
++
++import httpx
++from pydantic import (
++    BaseModel,
++    ConfigDict,
++    Field,
++    JsonValue,
++    SecretStr,
++    TypeAdapter,
++    ValidationError,
++)
++
++from ai_intel_client.models import (
++    ASK_RESULT_ADAPTER,
++    AskRequest,
++    AskResult,
++    QAAnswer,
++    StackCheckRequest,
++    StackCheckResult,
++    TaskHandle,
++)
++
++MAX_RESPONSE_BYTES = 1048576
++MAX_SYNCHRONOUS_REQUEST_BYTES = 1048576
++ResultType = TypeVar("ResultType")
++
++
++class ClientConfigurationError(ValueError):
++    """Missing or unsafe client configuration; no configuration value is echoed."""
++
++
++class ClientInputError(ValueError):
++    """Invalid local input before a backend request was sent."""
++
++
++class ResponseContractError(ValueError):
++    """The backend result did not satisfy the frozen response boundary."""
++
++
++class ApiErrorDetails(BaseModel):
++    model_config = ConfigDict(extra="forbid", strict=True, hide_input_in_errors=True)
++    code: str = Field(pattern=r"^[a-z][a-z0-9_]{0,99}$")
++    message: str
++    retryable: bool
++    details: dict[str, JsonValue]
++
++
++class ApiProblem(BaseModel):
++    model_config = ConfigDict(extra="forbid", strict=True, hide_input_in_errors=True)
++    type: str
++    title: str
++    status: int = Field(ge=400, le=599)
++    detail: str
++    instance: str
++    error: ApiErrorDetails
++    trace_id: str = Field(pattern=r"^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$")
++
++
++class DianziApiError(RuntimeError):
++    """Public fixed error metadata, without server text or response bodies in logs."""
++
++    def __init__(self, status: int, code: str, trace_id: str | None, retryable: bool) -> None:
++        super().__init__(f"backend request failed: HTTP {status}")
++        self.status = status
++        self.code = code
++        self.trace_id = trace_id
++        self.retryable = retryable
++
++
++class DianziTransportError(RuntimeError):
++    """A POST may have executed; callers can query or reuse its operation key."""
++
++    def __init__(self, idempotency_key: str, may_have_executed: bool) -> None:
++        super().__init__("backend request could not be completed")
++        self.idempotency_key = idempotency_key
++        self.may_have_executed = may_have_executed
++
++
++def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
++    result: dict[str, object] = {}
++    for key, value in pairs:
++        if key in result:
++            raise ValueError("duplicate JSON key")
++        result[key] = value
++    return result
++
++
++def _reject_nonfinite_json(_: str) -> object:
++    raise ValueError("nonfinite JSON number")
++
++
++def _parse_finite_float(value: str) -> float:
++    parsed = float(value)
++    if not math.isfinite(parsed):
++        raise ValueError("nonfinite JSON number")
++    return parsed
++
++
++def validate_json_bytes(raw: bytes) -> None:
++    """Reject duplicate fields and invalid JSON before typed validation chooses values."""
++    try:
++        json.loads(
++            raw,
++            object_pairs_hook=_unique_json_object,
++            parse_constant=_reject_nonfinite_json,
++            parse_float=_parse_finite_float,
++        )
++    except (ValueError, UnicodeError, RecursionError):
++        raise ResponseContractError("response JSON is invalid") from None
++
++
++def _validate_base_url(value: str) -> str:
++    try:
++        parsed = urlsplit(value)
++        port = parsed.port
++        http_allowed = parsed.scheme == "http" and parsed.hostname in {
++            "127.0.0.1",
++            "localhost",
++            "::1",
++        }
++        if (
++            not value
++            or value != value.strip()
++            or any(ord(character) <= 32 for character in value)
++            or parsed.scheme not in {"http", "https"}
++            or (parsed.scheme == "http" and not http_allowed)
++            or not parsed.hostname
++            or parsed.username is not None
++            or parsed.password is not None
++            or parsed.path not in {"", "/"}
++            or parsed.query
++            or parsed.fragment
++            or (port is not None and port == 0)
++        ):
++            raise ValueError("invalid base URL")
++        httpx.URL(value)
++    except (ValueError, httpx.InvalidURL):
++        raise ClientConfigurationError("backend base URL is invalid") from None
++    return value.rstrip("/")
++
++
++def _validate_operation_key(value: str) -> str:
++    if re.fullmatch(r"[\x21-\x7e]{1,200}", value) is None:
++        raise ClientInputError("operation key is invalid")
++    return value
++
++
++def _remove_cookie_authentication(request: httpx.Request) -> None:
++    """A server's Set-Cookie must not turn subsequent Bearer calls into cookie calls."""
++    request.headers.pop("cookie", None)
++
++
++class DianziClient:
++    """No retries, arbitrary URLs, database credentials or duplicated business decisions."""
++
++    def __init__(
++        self,
++        base_url: str,
++        api_key: SecretStr,
++        *,
++        timeout_seconds: float = 10,
++        question_timeout_seconds: float = 100,
++        transport: httpx.BaseTransport | None = None,
++    ) -> None:
++        origin = _validate_base_url(base_url)
++        if not isinstance(api_key, SecretStr):
++            raise ClientConfigurationError("API key must use SecretStr")
++        credential = api_key.get_secret_value()
++        if (
++            not 32 <= len(credential) <= 4096
++            or re.fullmatch(r"[A-Za-z0-9._~+/-]+=*", credential) is None
++        ):
++            raise ClientConfigurationError("API key is invalid")
++        if (
++            type(timeout_seconds) not in {int, float}
++            or type(question_timeout_seconds) not in {int, float}
++            or not 0 < timeout_seconds <= 60
++            or not 0 < question_timeout_seconds <= 120
++        ):
++            raise ClientConfigurationError("client timeout is outside the allowed bounds")
++        self._question_timeout_seconds = question_timeout_seconds
++        self._timeout_seconds = timeout_seconds
++        self._http = httpx.Client(
++            base_url=origin,
++            headers={
++                "Authorization": "Bearer " + credential,
++                "Accept": "application/json",
++                "Accept-Encoding": "identity",
++            },
++            timeout=timeout_seconds,
++            follow_redirects=False,
++            trust_env=False,
++            transport=transport,
++            event_hooks={"request": [_remove_cookie_authentication]},
++        )
++
++    @classmethod
++    def from_environment(cls, environment: Mapping[str, str] | None = None) -> DianziClient:
++        configured = os.environ if environment is None else environment
++        base_url = configured.get("DIANZI_API_BASE_URL")
++        key = configured.get("DIANZI_API_KEY")
++        if not base_url or not key:
++            raise ClientConfigurationError("backend base URL and API key must be configured")
++        return cls(base_url, SecretStr(key))
++
++    def close(self) -> None:
++        self._http.close()
++
++    def __enter__(self) -> DianziClient:
++        return self
++
++    def __exit__(self, *_: object) -> None:
++        self.close()
++
++    def _post(
++        self,
++        path: str,
++        body: str,
++        operation_key: str,
++        adapter: TypeAdapter[ResultType],
++        timeout_seconds: float,
++    ) -> tuple[int, ResultType]:
++        encoded = body.encode("utf-8")
++        if len(encoded) > MAX_SYNCHRONOUS_REQUEST_BYTES:
++            raise ClientInputError("synchronous request exceeds the client size boundary")
++        try:
++            with self._http.stream(
++                "POST",
++                path,
++                content=encoded,
++                headers={"Content-Type": "application/json", "Idempotency-Key": operation_key},
++                timeout=timeout_seconds,
++            ) as response:
++                if response.headers.get("content-encoding", "identity").lower() != "identity":
++                    raise ResponseContractError(
++                        "compressed response is outside the client boundary"
++                    )
++                raw = bytearray()
++                for chunk in response.iter_bytes():
++                    if len(raw) + len(chunk) > MAX_RESPONSE_BYTES:
++                        raise ResponseContractError("response exceeds the allowed size")
++                    raw.extend(chunk)
++                content = bytes(raw)
++                if response.status_code not in {200, 202}:
++                    problem = None
++                    if (
++                        response.headers.get("content-type", "").split(";", 1)[0].lower()
++                        == "application/problem+json"
++                    ):
++                        try:
++                            validate_json_bytes(content)
++                            problem = ApiProblem.model_validate_json(content)
++                        except (ResponseContractError, ValidationError):
++                            problem = None
++                    if problem is None or problem.status != response.status_code:
++                        raise DianziApiError(response.status_code, "http_error", None, False)
++                    raise DianziApiError(
++                        problem.status,
++                        problem.error.code,
++                        problem.trace_id,
++                        problem.error.retryable,
++                    )
++                if (
++                    response.headers.get("content-type", "").split(";", 1)[0].lower()
++                    != "application/json"
++                ):
++                    raise ResponseContractError("response content type is invalid")
++                validate_json_bytes(content)
++                try:
++                    result = adapter.validate_json(content)
++                except ValidationError:
++                    raise ResponseContractError(
++                        "response does not match the public contract"
++                    ) from None
++                return response.status_code, result
++        except httpx.HTTPError:
++            raise DianziTransportError(operation_key, True) from None
++
++    def ask(self, request: AskRequest, *, idempotency_key: str | None = None) -> AskResult:
++        if not isinstance(request, AskRequest):
++            raise ClientInputError("question request is invalid")
++        try:
++            validated = AskRequest.model_validate_json(request.wire_json())
++        except (ValidationError, UnicodeError, ValueError):
++            raise ClientInputError("question request is invalid") from None
++        key = _validate_operation_key(
++            secrets.token_urlsafe(32) if idempotency_key is None else idempotency_key
++        )
++        status, result = self._post(
++            "/api/v1/ask",
++            validated.wire_json(),
++            key,
++            ASK_RESULT_ADAPTER,
++            self._question_timeout_seconds,
++        )
++        if (isinstance(result, QAAnswer) and status != 200) or (
++            isinstance(result, TaskHandle) and status != 202
++        ):
++            raise ResponseContractError("answer kind does not match HTTP status")
++        return result
++
++    def check_stack(
++        self, request: StackCheckRequest, *, idempotency_key: str | None = None
++    ) -> StackCheckResult:
++        if not isinstance(request, StackCheckRequest):
++            raise ClientInputError("stack request is invalid")
++        try:
++            validated = StackCheckRequest.model_validate_json(request.wire_json())
++        except (ValidationError, UnicodeError, ValueError):
++            raise ClientInputError("stack request is invalid") from None
++        key = _validate_operation_key(
++            secrets.token_urlsafe(32) if idempotency_key is None else idempotency_key
++        )
++        status, result = self._post(
++            "/api/v1/stack/check",
++            validated.wire_json(),
++            key,
++            TypeAdapter(StackCheckResult),
++            self._timeout_seconds,
++        )
++        if status != 200:
++            raise ResponseContractError("synchronous stack result requires HTTP 200")
++        return result
+diff --git a/sdk/python/ai_intel_client/mcp_adapter.py b/sdk/python/ai_intel_client/mcp_adapter.py
+new file mode 100644
+index 00000000..23a6b393
+--- /dev/null
++++ b/sdk/python/ai_intel_client/mcp_adapter.py
+@@ -0,0 +1,205 @@
++"""Official MCP transport handlers for the currently frozen read-tool DTOs."""
++
++from __future__ import annotations
++
++import hashlib
++import json
++from collections.abc import AsyncIterator, Mapping
++from contextlib import asynccontextmanager
++from functools import partial
++
++import anyio
++from mcp.server.context import ServerRequestContext
++from mcp.server.lowlevel import Server
++from mcp.shared.exceptions import MCPError
++from mcp_types import (
++    SERVER_INFO_META_KEY,
++    CallToolRequestParams,
++    CallToolResult,
++    ListToolsResult,
++    PaginatedRequestParams,
++    TextContent,
++    Tool,
++    ToolAnnotations,
++)
++from mcp_types.jsonrpc import INVALID_PARAMS
++from pydantic import ValidationError
++from starlette.requests import Request
++
++from ai_intel_client.client import (
++    ClientInputError,
++    DianziApiError,
++    DianziClient,
++    DianziTransportError,
++    ResponseContractError,
++)
++from ai_intel_client.models import (
++    ASK_RESULT_ADAPTER,
++    AskRequest,
++    PublicRecord,
++    QAAnswer,
++    StackCheckRequest,
++    StackCheckResult,
++)
++from ai_intel_client.output_budget import McpOutputBudget as McpOutputBudget
++from ai_intel_client.output_budget import OutputBudgetTokenizationError
++
++SERVER_NAME = "dianzi-current-read-tools"
++SERVER_VERSION = "0.1.0"
++
++
++def _result_metadata() -> dict[str, object]:
++    return {SERVER_INFO_META_KEY: {"name": SERVER_NAME, "version": SERVER_VERSION}}
++
++
++def _tool_error(code: str) -> CallToolResult:
++    return CallToolResult(
++        _meta=_result_metadata(),
++        is_error=True,
++        content=[TextContent(text=json.dumps({"error": {"code": code}}, separators=(",", ":")))],
++    )
++
++
++def _complete_result(record: PublicRecord, budget: McpOutputBudget) -> CallToolResult:
++    text = record.wire_json()
++    result = CallToolResult(
++        _meta=_result_metadata(),
++        content=[TextContent(text=text)],
++        structured_content=json.loads(text),
++    )
++    if not budget.fits(result):
++        citations = []
++        if isinstance(record, QAAnswer):
++            citations = [citation.model_dump(mode="json") for citation in record.citations]
++        elif isinstance(record, StackCheckResult):
++            citations = [
++                citation.model_dump(mode="json")
++                for assessment in record.results
++                for citation in assessment.citations
++            ]
++        details = {
++            "code": "output_budget_exceeded",
++            "budget_profile": budget.profile,
++            "complete": False,
++            "result_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
++            "pagination": "not_configured",
++            "references_status": "complete",
++            "citations": citations,
++        }
++        error = CallToolResult(
++            _meta=_result_metadata(),
++            is_error=True,
++            content=[TextContent(text=json.dumps({"error": details}, separators=(",", ":")))],
++        )
++        if budget.fits(error):
++            return error
++        details["references_status"] = "unavailable_within_budget"
++        details.pop("citations")
++        return CallToolResult(
++            _meta=_result_metadata(),
++            is_error=True,
++            content=[TextContent(text=json.dumps({"error": details}, separators=(",", ":")))],
++        )
++    return result
++
++
++@asynccontextmanager
++async def _server_lifespan(_: Server[None]) -> AsyncIterator[None]:
++    yield None
++
++
++def create_current_read_tool_server(
++    client: DianziClient,
++    output_budget: McpOutputBudget,
++) -> Server[None]:
++    """Expose only implemented shared-backend calls; no HTTP auth or invented endpoints.
++
++    The owning runtime must verify its tokenizer/cache and authenticate transport
++    requests before exposing this server. HTTP clients must have a request-bound
++    credential; the fixed client supplied here is intended for one stdio identity.
++    """
++    request_models: dict[str, type[PublicRecord]] = {
++        "ask": AskRequest,
++        "check_stack": StackCheckRequest,
++    }
++    output_schemas = {
++        "ask": {"type": "object", **ASK_RESULT_ADAPTER.json_schema()},
++        "check_stack": StackCheckResult.model_json_schema(),
++    }
++    tools = [
++        Tool(
++            name=name,
++            description=(
++                "Ask the shared backend with traceable source support."
++                if name == "ask"
++                else "Check component applicability; absence of a match remains unknown."
++            ),
++            input_schema=model.model_json_schema(),
++            output_schema=output_schemas[name],
++            annotations=ToolAnnotations(
++                read_only_hint=True, destructive_hint=False, open_world_hint=True
++            ),
++        )
++        for name, model in request_models.items()
++    ]
++    worker_slots = anyio.CapacityLimiter(4)
++
++    async def list_tools(
++        _: ServerRequestContext[None, Request], params: PaginatedRequestParams | None
++    ) -> ListToolsResult:
++        if params is not None and params.cursor is not None:
++            raise MCPError(INVALID_PARAMS, "tool discovery cursor is invalid")
++        return ListToolsResult(tools=tools)
++
++    async def call_tool(
++        context: ServerRequestContext[None, Request], params: CallToolRequestParams
++    ) -> CallToolResult:
++        if context.request is not None:
++            return _tool_error("not_configured")
++        if params.name not in request_models:
++            return _tool_error("unknown_tool")
++        try:
++            raw = json.dumps(params.arguments or {}, allow_nan=False).encode("utf-8")
++            validated_request = request_models[params.name].model_validate_json(raw)
++        except (ValidationError, UnicodeError, ValueError):
++            return _tool_error("invalid_arguments")
++        record: PublicRecord
++        try:
++            if params.name == "ask":
++                if not isinstance(validated_request, AskRequest):
++                    return _tool_error("invalid_arguments")
++                record = await anyio.to_thread.run_sync(
++                    partial(client.ask, validated_request), limiter=worker_slots
++                )
++            else:
++                if not isinstance(validated_request, StackCheckRequest):
++                    return _tool_error("invalid_arguments")
++                record = await anyio.to_thread.run_sync(
++                    partial(client.check_stack, validated_request), limiter=worker_slots
++                )
++            return _complete_result(record, output_budget)
++        except ClientInputError:
++            return _tool_error("backend_request_error")
++        except DianziApiError as error:
++            return _tool_error(error.code)
++        except DianziTransportError:
++            return _tool_error("backend_transport_error")
++        except ResponseContractError:
++            return _tool_error("backend_contract_error")
++        except OutputBudgetTokenizationError:
++            return _tool_error("tokenizer_unavailable")
++        except Exception:
++            return _tool_error("backend_internal_error")
++
++    def input_schema(name: str) -> Mapping[str, object] | None:
++        model = request_models.get(name)
++        return None if model is None else model.model_json_schema()
++
++    return Server(
++        SERVER_NAME,
++        version=SERVER_VERSION,
++        lifespan=_server_lifespan,
++        on_list_tools=list_tools,
++        on_call_tool=call_tool,
++        get_tool_input_schema=input_schema,
++    )
+diff --git a/sdk/python/ai_intel_client/mcp_stdio.py b/sdk/python/ai_intel_client/mcp_stdio.py
+new file mode 100644
+index 00000000..c4035e68
+--- /dev/null
++++ b/sdk/python/ai_intel_client/mcp_stdio.py
+@@ -0,0 +1,38 @@
++"""One-identity stdio entry point with the pinned offline output tokenizer."""
++
++from __future__ import annotations
++
++import asyncio
++import os
++import sys
++from pathlib import Path
++
++from mcp.server.stdio import stdio_server
++
++from ai_intel_client.client import ClientConfigurationError, DianziClient
++from ai_intel_client.mcp_adapter import create_current_read_tool_server
++from ai_intel_client.output_budget import McpOutputBudget, OutputBudgetConfigurationError
++
++
++async def serve_stdio() -> None:
++    cache_file = os.environ.get("DIANZI_MCP_ENCODING_CACHE_FILE")
++    if not cache_file:
++        raise OutputBudgetConfigurationError("not_configured")
++    budget = McpOutputBudget(Path(cache_file))
++    with DianziClient.from_environment() as backend:
++        server = create_current_read_tool_server(backend, budget)
++        async with stdio_server() as (read_stream, write_stream):
++            await server.run(read_stream, write_stream, server.create_initialization_options())
++
++
++def main() -> int:
++    try:
++        asyncio.run(serve_stdio())
++    except (ClientConfigurationError, OutputBudgetConfigurationError):
++        sys.stderr.write('{"error":{"code":"not_configured"}}\n')
++        return 3
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/sdk/python/ai_intel_client/models.py b/sdk/python/ai_intel_client/models.py
+new file mode 100644
+index 00000000..4ea0880a
+--- /dev/null
++++ b/sdk/python/ai_intel_client/models.py
+@@ -0,0 +1,310 @@
++"""Typed projections of the approved public API v2; no backend or database imports."""
++
++from __future__ import annotations
++
++import json
++import re
++from typing import Annotated, Literal
++from uuid import UUID
++
++from pydantic import (
++    AfterValidator,
++    AnyUrl,
++    AwareDatetime,
++    BaseModel,
++    BeforeValidator,
++    ConfigDict,
++    Field,
++    TypeAdapter,
++    ValidationInfo,
++    model_validator,
++)
++
++Freshness = Literal["current", "stale", "unknown"]
++DataMode = Literal["live", "fixture"]
++ClaimStatus = Literal["supported", "disputed", "unverified", "superseded", "withdrawn"]
++DimensionName = Literal[
++    "cvss", "epss", "kev", "cwe", "atlas", "versions", "literature", "poc", "exposure"
++]
++DimensionStatus = Literal[
++    "available", "not_found", "not_applicable", "conflict", "blocked", "failed", "pending"
++]
++AssessmentStatus = Literal[
++    "supported_applicability",
++    "excluded_with_evidence",
++    "insufficient_evidence",
++    "conflicting_evidence",
++]
++Text = Annotated[str, Field(min_length=1)]
++URI_ADAPTER = TypeAdapter(AnyUrl)
++DATETIME_JSON_ADAPTER = TypeAdapter(AwareDatetime, config=ConfigDict(strict=True))
++
++
++def _validate_absolute_uri(value: str) -> str:
++    if (
++        re.fullmatch(r"[A-Za-z][A-Za-z0-9+.-]*:[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]*", value)
++        is None
++        or re.search(r"%(?![0-9a-fA-F]{2})", value) is not None
++    ):
++        raise ValueError("invalid absolute URI")
++    URI_ADAPTER.validate_python(value)
++    return value
++
++
++AbsoluteUri = Annotated[
++    str,
++    Field(json_schema_extra={"format": "uri"}),
++    AfterValidator(_validate_absolute_uri),
++]
++
++
++def _validate_uuid_spelling(value: object) -> object:
++    """Check wire spelling before Pydantic can normalize broader UUID forms."""
++    if (
++        isinstance(value, str)
++        and re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", value) is None
++    ):
++        raise ValueError("UUID requires its hyphenated public spelling")
++    return value
++
++
++def _validate_datetime_spelling(value: object, info: ValidationInfo) -> object:
++    """Limit JSON text to the frozen date-time format; the core checks calendar validity."""
++    if (
++        isinstance(value, str)
++        and re.fullmatch(
++            r"[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]"
++            r"(?:\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])",
++            value,
++        )
++        is None
++    ):
++        raise ValueError("timestamp requires the public RFC3339 spelling")
++    if info.mode == "json" and isinstance(value, str):
++        return DATETIME_JSON_ADAPTER.validate_json(json.dumps(value))
++    return value
++
++
++PublicUuid = Annotated[UUID, BeforeValidator(_validate_uuid_spelling)]
++PublicDateTime = Annotated[AwareDatetime, BeforeValidator(_validate_datetime_spelling)]
++
++
++class PublicRecord(BaseModel):
++    model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
++
++    def wire_json(self, *, ensure_ascii: bool = False) -> str:
++        """Omitted optional fields remain omitted rather than becoming invalid nulls."""
++        return self.model_dump_json(exclude_unset=True, ensure_ascii=ensure_ascii, warnings="error")
++
++
++class Citation(PublicRecord):
++    evidence_id: PublicUuid
++    revision_id: PublicUuid
++    quote: Text
++    locator: Text
++    source_uri: AbsoluteUri
++
++
++class Component(PublicRecord):
++    component_id: PublicUuid | None = None
++    ecosystem: Text
++    package_name: Text
++    version: str | None
++    purl: str | None = None
++
++    @model_validator(mode="after")
++    def require_nonnull_component_id_when_present(self) -> Component:
++        if "component_id" in self.model_fields_set and self.component_id is None:
++            raise ValueError("component ID cannot be null when present")
++        return self
++
++
++class Enrichment(PublicRecord):
++    dimension: DimensionName
++    status: DimensionStatus
++    claim_ids: tuple[PublicUuid, ...] = Field(max_length=100)
++    citations: tuple[Citation, ...] = Field(max_length=100)
++    freshness: Freshness
++    observed_at: PublicDateTime | None
++    source_version: str | None
++    error_code: str | None
++
++    @model_validator(mode="after")
++    def require_available_evidence(self) -> Enrichment:
++        if self.status == "available" and not self.citations:
++            raise ValueError("available enrichment requires citations")
++        return self
++
++
++class Relation(PublicRecord):
++    relation_id: PublicUuid
++    relation_type: Literal[
++        "same_event",
++        "affects_component_version",
++        "mapped_atlas",
++        "related_paper",
++        "remediated_by",
++        "component_version_vulnerability",
++    ]
++    subject_id: PublicUuid
++    object_id: PublicUuid
++    source_revision: PublicUuid
++    citations: tuple[Citation, ...] = Field(max_length=100)
++    rule_or_model_version: Text
++    reason: Text
++    status: ClaimStatus
++
++    @model_validator(mode="after")
++    def require_supported_evidence(self) -> Relation:
++        if self.status == "supported" and not self.citations:
++            raise ValueError("supported relation requires citations")
++        return self
++
++
++class NormalizedIntel(PublicRecord):
++    intel_id: PublicUuid
++    revision_id: PublicUuid
++    title: Text
++    kind: Literal["advisory", "article", "paper", "repository_record", "standard", "policy"]
++    external_ids: tuple[Text, ...] = Field(max_length=100)
++    citations: tuple[Citation, ...] = Field(max_length=100)
++    data_mode: DataMode
++
++
++class Vulnerability(PublicRecord):
++    intel_id: PublicUuid
++    event_id: PublicUuid
++    title: Text
++    external_ids: tuple[Text, ...] = Field(max_length=100)
++    enrichments: tuple[Enrichment, ...] = Field(max_length=9)
++    relations: tuple[Relation, ...] = Field(max_length=100)
++    freshness: Freshness
++
++
++class Advisory(PublicRecord):
++    intel_id: PublicUuid
++    revision_id: PublicUuid
++    title: Text
++    source_uri: AbsoluteUri
++    published_at: PublicDateTime | None
++    citations: tuple[Citation, ...] = Field(max_length=100)
++
++
++class AnswerClaim(PublicRecord):
++    text: Text
++    kind: Literal["source_fact", "rule_result", "project_suggestion"]
++    support_ids: tuple[PublicUuid, ...] = Field(max_length=100)
++
++    @model_validator(mode="after")
++    def require_fact_support(self) -> AnswerClaim:
++        if self.kind != "project_suggestion" and not self.support_ids:
++            raise ValueError("facts require support")
++        return self
++
++
++class QAAnswer(PublicRecord):
++    kind: Literal["completed"]
++    answer_id: PublicUuid
++    answer_text: str
++    claims: tuple[AnswerClaim, ...] = Field(max_length=100)
++    citations: tuple[Citation, ...] = Field(max_length=100)
++    limitations: tuple[Text, ...] = Field(max_length=100)
++    freshness: Freshness
++    data_mode: DataMode
++    started_at: PublicDateTime
++    completed_at: PublicDateTime
++    latency_milliseconds: int = Field(ge=0)
++
++    @model_validator(mode="after")
++    def require_complete_support_and_timing(self) -> QAAnswer:
++        evidence_ids = [citation.evidence_id for citation in self.citations]
++        if len(evidence_ids) != len(set(evidence_ids)):
++            raise ValueError("citations must be unique")
++        if any(set(claim.support_ids) - set(evidence_ids) for claim in self.claims):
++            raise ValueError("claim support is not present in citations")
++        if self.completed_at < self.started_at:
++            raise ValueError("answer completion precedes start")
++        return self
++
++
++class TaskHandle(PublicRecord):
++    kind: Literal["task"]
++    task_id: PublicUuid
++    status: Literal["queued", "running", "retry_wait", "waiting_approval", "partial"]
++    poll_uri: Annotated[str, Field(pattern=r"^/api/v1/tasks/")]
++    created_at: PublicDateTime
++
++    @model_validator(mode="after")
++    def require_bound_poll_uri(self) -> TaskHandle:
++        if self.poll_uri != f"/api/v1/tasks/{self.task_id}":
++            raise ValueError("task polling URI does not match its ID")
++        return self
++
++
++AskResult = Annotated[QAAnswer | TaskHandle, Field(discriminator="kind")]
++ASK_RESULT_ADAPTER: TypeAdapter[AskResult] = TypeAdapter(AskResult)
++
++
++class AskRequest(PublicRecord):
++    question: Annotated[str, Field(min_length=1, max_length=4096)]
++    conversation_id: PublicUuid | None = None
++    asset_ids: tuple[PublicUuid, ...] = Field(default=(), max_length=20)
++    event_ids: tuple[PublicUuid, ...] = Field(default=(), max_length=20)
++    mode: Literal["auto", "library", "investigate"]
++    known_at: PublicDateTime | None = None
++    valid_at: PublicDateTime | None = None
++
++    @model_validator(mode="after")
++    def validate_question_boundary(self) -> AskRequest:
++        if not self.question.strip() or "\0" in self.question:
++            raise ValueError("question must be nonempty text")
++        try:
++            self.question.encode("utf-8")
++        except UnicodeError:
++            raise ValueError("question must be valid UTF-8") from None
++        for name in ("conversation_id", "known_at", "valid_at"):
++            if name in self.model_fields_set and getattr(self, name) is None:
++                raise ValueError("omitted optional fields cannot be explicitly null")
++        if any(
++            value is not None and value.tzinfo is None for value in (self.known_at, self.valid_at)
++        ):
++            raise ValueError("question timestamps require timezones")
++        return self
++
++
++class StackCheckRequest(PublicRecord):
++    components: tuple[Component, ...] = Field(max_length=200)
++
++
++class ComponentAssessment(PublicRecord):
++    component: Component
++    status: AssessmentStatus
++    reason_code: Text
++    assessment_id: PublicUuid | None
++    citations: tuple[Citation, ...] = Field(max_length=100)
++    freshness: Freshness
++
++    @model_validator(mode="after")
++    def preserve_unknown_reasons(self) -> ComponentAssessment:
++        if (
++            self.reason_code
++            in {"no_match", "unsupported", "unsupported_rule", "unsupported_ecosystem"}
++            and self.status != "insufficient_evidence"
++        ):
++            raise ValueError("unsupported and no-match reasons require insufficient evidence")
++        return self
++
++
++class StackCheckResult(PublicRecord):
++    kind: Literal["completed"]
++    results: tuple[ComponentAssessment, ...] = Field(max_length=200)
++    limitations: tuple[Text, ...] = Field(max_length=100)
++
++
++class StackUploadRequest(PublicRecord):
++    upload_id: PublicUuid
++    size_bytes: int = Field(ge=1, le=10485760)
++    declared_component_count: int = Field(ge=1, le=10000)
++    format: Literal[
++        "requirements_txt", "package_lock", "sbom_cyclonedx", "json_components", "csv_components"
++    ]
+diff --git a/sdk/python/ai_intel_client/output_budget.py b/sdk/python/ai_intel_client/output_budget.py
+new file mode 100644
+index 00000000..88503ae7
+--- /dev/null
++++ b/sdk/python/ai_intel_client/output_budget.py
+@@ -0,0 +1,119 @@
++"""Offline official tokenizer loading and the complete MCP result budget."""
++
++from __future__ import annotations
++
++import hashlib
++from importlib import import_module
++from importlib.metadata import version
++from pathlib import Path
++from types import FunctionType
++
++import tiktoken
++from mcp_types import CallToolResult
++from tiktoken.load import load_tiktoken_bpe
++
++OUTPUT_BUDGET_PROFILE = "r18-output-budget-1"
++MAX_TOOL_OUTPUT_TOKENS = 8000
++MAX_TOOL_OUTPUT_BYTES = 1048576
++ENCODING_URL = "https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken"
++ENCODING_SHA256 = "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d"
++ENCODING_SIZE_BYTES = 3613922
++
++
++class OutputBudgetConfigurationError(ValueError):
++    """The pinned tokenizer could not be loaded without network access."""
++
++
++class OutputBudgetTokenizationError(RuntimeError):
++    """The native tokenizer failed; no count or complete output is claimed."""
++
++
++def load_offline_encoding(cache_file: Path) -> tiktoken.Encoding:
++    """Reuse the official constructor and parser with a private in-memory reader.
++
++    Neither official module globals nor environment/cache settings are patched.
++    The verified bytes remain the sole input even if the file later changes.
++    """
++    if version("tiktoken") != "0.14.0":
++        raise OutputBudgetConfigurationError("not_configured")
++    try:
++        with cache_file.open("rb") as cache:
++            verified_bytes = cache.read(ENCODING_SIZE_BYTES + 1)
++    except OSError:
++        raise OutputBudgetConfigurationError("not_configured") from None
++    if (
++        len(verified_bytes) != ENCODING_SIZE_BYTES
++        or hashlib.sha256(verified_bytes).hexdigest() != ENCODING_SHA256
++    ):
++        raise OutputBudgetConfigurationError("not_configured")
++
++    def read_verified_bytes(path: str, expected_hash: str | None = None) -> bytes:
++        if path != ENCODING_URL or expected_hash != ENCODING_SHA256:
++            raise OutputBudgetConfigurationError("not_configured")
++        return verified_bytes
++
++    local_parser = FunctionType(
++        load_tiktoken_bpe.__code__,
++        {**load_tiktoken_bpe.__globals__, "read_file_cached": read_verified_bytes},
++    )
++    official_constructor: object = import_module("tiktoken_ext.openai_public").o200k_base
++    if not isinstance(official_constructor, FunctionType):
++        raise OutputBudgetConfigurationError("not_configured")
++    local_constructor = FunctionType(
++        official_constructor.__code__,
++        {**official_constructor.__globals__, "load_tiktoken_bpe": local_parser},
++    )
++    configuration: object = local_constructor()
++    if not isinstance(configuration, dict):
++        raise OutputBudgetConfigurationError("not_configured")
++    name = configuration.get("name")
++    pattern = configuration.get("pat_str")
++    raw_ranks = configuration.get("mergeable_ranks")
++    raw_special = configuration.get("special_tokens")
++    if name != "o200k_base" or not isinstance(pattern, str):
++        raise OutputBudgetConfigurationError("not_configured")
++    if not isinstance(raw_ranks, dict) or not isinstance(raw_special, dict):
++        raise OutputBudgetConfigurationError("not_configured")
++    ranks: dict[bytes, int] = {}
++    special: dict[str, int] = {}
++    for token, rank in raw_ranks.items():
++        if not isinstance(token, bytes) or type(rank) is not int:
++            raise OutputBudgetConfigurationError("not_configured")
++        ranks[token] = rank
++    for token, rank in raw_special.items():
++        if not isinstance(token, str) or type(rank) is not int:
++            raise OutputBudgetConfigurationError("not_configured")
++        special[token] = rank
++    return tiktoken.Encoding(
++        name="o200k_base", pat_str=pattern, mergeable_ranks=ranks, special_tokens=special
++    )
++
++
++class McpOutputBudget:
++    """Count the final compact JSON, including text, structured data and metadata."""
++
++    def __init__(self, cache_file: Path) -> None:
++        self.encoding = load_offline_encoding(cache_file)
++        self.profile = OUTPUT_BUDGET_PROFILE
++
++    @classmethod
++    def for_fixture(cls, encoding: tiktoken.Encoding) -> McpOutputBudget:
++        """Explicit isolated test counting; this never advertises the formal profile."""
++        budget = cls.__new__(cls)
++        budget.encoding = encoding
++        budget.profile = "explicit-fixture-token-budget"
++        return budget
++
++    def fits(self, result: CallToolResult) -> bool:
++        serialized = result.model_dump_json(by_alias=True, exclude_none=True)
++        if len(serialized.encode("utf-8")) > MAX_TOOL_OUTPUT_BYTES:
++            return False
++        try:
++            return len(self.encoding.encode_ordinary(serialized)) <= MAX_TOOL_OUTPUT_TOKENS
++        except BaseException as error:
++            if (
++                type(error).__module__ == "pyo3_runtime"
++                and type(error).__name__ == "PanicException"
++            ):
++                raise OutputBudgetTokenizationError("tokenizer_unavailable") from None
++            raise
+diff --git a/sdk/python/ai_intel_client/py.typed b/sdk/python/ai_intel_client/py.typed
+new file mode 100644
+index 00000000..e69de29b
+diff --git a/sdk/python/tests/conftest.py b/sdk/python/tests/conftest.py
+new file mode 100644
+index 00000000..71b7e614
+--- /dev/null
++++ b/sdk/python/tests/conftest.py
+@@ -0,0 +1,7 @@
++"""SDK tests import only their worktree client package and explicit synthetic data."""
++
++import sys
++from pathlib import Path
++
++SDK_ROOT = Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(SDK_ROOT))
+diff --git a/sdk/python/tests/fixtures/mcp_stdio_server.py b/sdk/python/tests/fixtures/mcp_stdio_server.py
+new file mode 100644
+index 00000000..d8dcf13c
+--- /dev/null
++++ b/sdk/python/tests/fixtures/mcp_stdio_server.py
+@@ -0,0 +1,56 @@
++"""Explicit stdio fixture process, isolated from product API keys and live services."""
++
++from __future__ import annotations
++
++import asyncio
++import os
++import sys
++from pathlib import Path
++
++import httpx
++import tiktoken
++from pydantic import SecretStr
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++
++from ai_intel_client.client import DianziClient
++from ai_intel_client.mcp_adapter import McpOutputBudget, create_current_read_tool_server
++from mcp.server.stdio import stdio_server
++
++ID = "00000000-0000-4000-8000-000000000001"
++
++
++async def main() -> None:
++    if os.environ.get("DIANZI_MCP_TEST_MODE") != "fixture":
++        raise SystemExit("stdio harness requires explicit fixture mode")
++    encoding = tiktoken.Encoding(
++        "synthetic-byte-vocabulary-fixture",
++        pat_str=r"(?s).",
++        mergeable_ranks={bytes([value]): value for value in range(256)},
++        special_tokens={},
++    )
++    answer = {
++        "kind": "completed",
++        "answer_id": ID,
++        "answer_text": "explicit stdio fixture",
++        "claims": [],
++        "citations": [],
++        "limitations": ["fixture has no evidence"],
++        "freshness": "unknown",
++        "data_mode": "fixture",
++        "started_at": "2026-10-16T00:00:00Z",
++        "completed_at": "2026-10-16T00:00:01Z",
++        "latency_milliseconds": 1000,
++    }
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr("synthetic-test-key-with-no-provider-access"),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=answer)),
++    ) as backend:
++        server = create_current_read_tool_server(backend, McpOutputBudget.for_fixture(encoding))
++        async with stdio_server() as (read_stream, write_stream):
++            await server.run(read_stream, write_stream, server.create_initialization_options())
++
++
++if __name__ == "__main__":
++    asyncio.run(main())
+diff --git a/sdk/python/tests/test_cli.py b/sdk/python/tests/test_cli.py
+new file mode 100644
+index 00000000..b4d8b680
+--- /dev/null
++++ b/sdk/python/tests/test_cli.py
+@@ -0,0 +1,153 @@
++"""The CLI displays only typed actual responses and conservatively preserves uncertainty."""
++
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import httpx
++import pytest
++from ai_intel_client.cli import main
++from ai_intel_client.client import DianziClient
++from pydantic import SecretStr
++
++SYNTHETIC_KEY = "synthetic-test-key-with-no-provider-access"
++
++
++def install_fixture_client(
++    monkeypatch: pytest.MonkeyPatch, response: httpx.Response
++) -> list[httpx.Request]:
++    calls: list[httpx.Request] = []
++
++    def handler(request: httpx.Request) -> httpx.Response:
++        calls.append(request)
++        return response
++
++    def factory() -> DianziClient:
++        return DianziClient(
++            "http://127.0.0.1:12345",
++            SecretStr(SYNTHETIC_KEY),
++            transport=httpx.MockTransport(handler),
++        )
++
++    monkeypatch.setattr(DianziClient, "from_environment", factory)
++    return calls
++
++
++@pytest.mark.parametrize(
++    "state",
++    [
++        "supported_applicability",
++        "excluded_with_evidence",
++        "insufficient_evidence",
++        "conflicting_evidence",
++    ],
++)
++def test_legacy_stack_without_risk_confirmation_is_never_zero_or_one(
++    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], state: str
++) -> None:
++    component = {"ecosystem": "PyPI", "package_name": "synthetic-package", "version": "1.0.0"}
++    result = {
++        "kind": "completed",
++        "results": [
++            {
++                "component": component,
++                "status": state,
++                "reason_code": "synthetic_boundary",
++                "assessment_id": None,
++                "citations": [],
++                "freshness": "current",
++            }
++        ],
++        "limitations": [],
++    }
++    source = tmp_path / "synthetic-stack.json"
++    source.write_text(json.dumps({"components": [component]}))
++    calls = install_fixture_client(monkeypatch, httpx.Response(200, json=result))
++    assert main(["check", "--input", str(source)]) == 2
++    captured = capsys.readouterr()
++    assert json.loads(captured.out) == result
++    assert "uncertainty" in captured.err
++    assert SYNTHETIC_KEY not in captured.out + captured.err
++    assert len(calls) == 1
++    assert calls[0].url.path == "/api/v1/stack/check"
++
++
++def test_async_ask_does_not_report_completed_or_zero(
++    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
++) -> None:
++    task_id = "00000000-0000-4000-8000-000000000001"
++    task = {
++        "kind": "task",
++        "task_id": task_id,
++        "status": "queued",
++        "poll_uri": "/api/v1/tasks/" + task_id,
++        "created_at": "2026-10-16T00:00:00Z",
++    }
++    source = tmp_path / "synthetic-question.json"
++    source.write_text(json.dumps({"question": "synthetic question", "mode": "library"}))
++    install_fixture_client(monkeypatch, httpx.Response(202, json=task))
++    assert main(["ask", "--input", str(source)]) == 2
++    captured = capsys.readouterr()
++    assert json.loads(captured.out)["kind"] == "task"
++    assert "answer_text" not in json.loads(captured.out)
++
++
++@pytest.mark.parametrize("status", [401, 403, 404, 409, 429, 503])
++def test_http_failure_is_three_and_does_not_print_server_body(
++    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], status: int
++) -> None:
++    source = tmp_path / "synthetic-question.json"
++    source.write_text(json.dumps({"question": "synthetic question", "mode": "library"}))
++    install_fixture_client(
++        monkeypatch, httpx.Response(status, content=b"SYNTHETIC_PRIVATE_SERVER_BODY")
++    )
++    assert main(["ask", "--input", str(source)]) == 3
++    captured = capsys.readouterr()
++    assert captured.out == ""
++    assert "SYNTHETIC_PRIVATE" not in captured.err
++    assert SYNTHETIC_KEY not in captured.err
++
++
++@pytest.mark.parametrize(
++    "content",
++    [
++        b'{"question":"synthetic","question":"duplicated","mode":"library"}',
++        b'{"question":"synthetic","mode":"library","tenant_id":"forged"}',
++        b'{"question":"synthetic","mode":"library","known_at":null}',
++    ],
++)
++def test_invalid_input_never_calls_backend(
++    monkeypatch: pytest.MonkeyPatch,
++    tmp_path: Path,
++    capsys: pytest.CaptureFixture[str],
++    content: bytes,
++) -> None:
++    source = tmp_path / "synthetic-invalid.json"
++    source.write_bytes(content)
++    calls = install_fixture_client(monkeypatch, httpx.Response(200, json={}))
++    assert main(["ask", "--input", str(source)]) == 3
++    assert calls == []
++    assert capsys.readouterr().out == ""
++
++
++def test_unknown_arguments_cannot_echo_an_accidentally_supplied_key(
++    capsys: pytest.CaptureFixture[str],
++) -> None:
++    assert main(["check", "--api-key", SYNTHETIC_KEY]) == 3
++    captured = capsys.readouterr()
++    assert captured.out == ""
++    assert SYNTHETIC_KEY not in captured.err
++
++
++def test_missing_configuration_is_three_without_network(
++    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
++) -> None:
++    monkeypatch.delenv("DIANZI_API_BASE_URL", raising=False)
++    monkeypatch.delenv("DIANZI_API_KEY", raising=False)
++    source = tmp_path / "synthetic-stack.json"
++    source.write_text('{"components":[]}')
++    assert main(["check", "--input", str(source)]) == 3
++    captured = capsys.readouterr()
++    assert captured.out == ""
++    assert "could not be completed" in captured.err
+diff --git a/sdk/python/tests/test_client.py b/sdk/python/tests/test_client.py
+new file mode 100644
+index 00000000..4ac94b2d
+--- /dev/null
++++ b/sdk/python/tests/test_client.py
+@@ -0,0 +1,364 @@
++"""Synthetic transport tests assert calls, failure boundaries and public semantics."""
++
++from __future__ import annotations
++
++import json
++
++import httpx
++import pytest
++from ai_intel_client.client import (
++    MAX_RESPONSE_BYTES,
++    MAX_SYNCHRONOUS_REQUEST_BYTES,
++    ClientConfigurationError,
++    ClientInputError,
++    DianziApiError,
++    DianziClient,
++    DianziTransportError,
++    ResponseContractError,
++    validate_json_bytes,
++)
++from ai_intel_client.models import AskRequest, QAAnswer, StackCheckRequest, TaskHandle
++from pydantic import SecretStr
++
++SYNTHETIC_KEY = "synthetic-test-key-with-no-provider-access"
++ID = "00000000-0000-4000-8000-000000000001"
++ANSWER = {
++    "kind": "completed",
++    "answer_id": ID,
++    "answer_text": "synthetic unknown",
++    "claims": [],
++    "citations": [],
++    "limitations": ["fixture has no evidence"],
++    "freshness": "unknown",
++    "data_mode": "fixture",
++    "started_at": "2026-10-16T00:00:00Z",
++    "completed_at": "2026-10-16T00:00:01Z",
++    "latency_milliseconds": 1000,
++}
++TASK = {
++    "kind": "task",
++    "task_id": ID,
++    "status": "queued",
++    "poll_uri": "/api/v1/tasks/" + ID,
++    "created_at": "2026-10-16T00:00:00Z",
++}
++QUESTION = AskRequest(question="synthetic question", mode="library")
++
++
++def problem(status: int) -> dict[str, object]:
++    return {
++        "type": "urn:ai-intel:problem:not_found",
++        "title": "not_found",
++        "status": status,
++        "detail": "SYNTHETIC_PRIVATE_DETAIL_MUST_NOT_BE_LOGGED",
++        "instance": "/api/v1/ask",
++        "trace_id": ID,
++        "error": {
++            "code": "not_found",
++            "message": "SYNTHETIC_PRIVATE_MESSAGE",
++            "retryable": False,
++            "details": {},
++        },
++    }
++
++
++def test_ask_uses_fixed_path_bearer_and_operation_key_without_cookie() -> None:
++    calls: list[httpx.Request] = []
++
++    def handler(request: httpx.Request) -> httpx.Response:
++        calls.append(request)
++        return httpx.Response(200, json=ANSWER)
++
++    with DianziClient(
++        "http://127.0.0.1:12345", SecretStr(SYNTHETIC_KEY), transport=httpx.MockTransport(handler)
++    ) as client:
++        result = client.ask(QUESTION, idempotency_key="synthetic-operation-key")
++        assert isinstance(result, QAAnswer)
++        assert result.data_mode == "fixture"
++        assert SYNTHETIC_KEY not in repr(client)
++    assert len(calls) == 1
++    request = calls[0]
++    assert request.method == "POST"
++    assert request.url.path == "/api/v1/ask"
++    assert request.headers["authorization"] == "Bearer " + SYNTHETIC_KEY
++    assert request.headers["idempotency-key"] == "synthetic-operation-key"
++    assert "cookie" not in request.headers
++    assert request.headers["accept-encoding"] == "identity"
++    assert json.loads(request.content) == {"question": "synthetic question", "mode": "library"}
++
++
++def test_async_handle_remains_async_and_has_no_fabricated_answer() -> None:
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(202, json=TASK)),
++    ) as client:
++        result = client.ask(QUESTION)
++    assert isinstance(result, TaskHandle)
++    assert not hasattr(result, "answer_text")
++    assert result.task_id.hex
++
++
++@pytest.mark.parametrize("status, value", [(200, TASK), (202, ANSWER)])
++def test_http_status_must_match_completed_or_async_kind(
++    status: int, value: dict[str, object]
++) -> None:
++    with (
++        DianziClient(
++            "http://127.0.0.1:12345",
++            SecretStr(SYNTHETIC_KEY),
++            transport=httpx.MockTransport(lambda _: httpx.Response(status, json=value)),
++        ) as client,
++        pytest.raises(ResponseContractError),
++    ):
++        client.ask(QUESTION)
++
++
++@pytest.mark.parametrize("status", [401, 403, 404, 409, 422, 429, 503])
++def test_problem_status_and_error_metadata_preserved_without_server_text(status: int) -> None:
++    with (
++        DianziClient(
++            "http://127.0.0.1:12345",
++            SecretStr(SYNTHETIC_KEY),
++            transport=httpx.MockTransport(
++                lambda _: httpx.Response(
++                    status,
++                    json=problem(status),
++                    headers={"Content-Type": "application/problem+json"},
++                )
++            ),
++        ) as client,
++        pytest.raises(DianziApiError) as caught,
++    ):
++        client.ask(QUESTION)
++    assert caught.value.status == status
++    assert caught.value.code == "not_found"
++    assert caught.value.trace_id == ID
++    assert not caught.value.retryable
++    assert "SYNTHETIC_PRIVATE" not in str(caught.value)
++    assert SYNTHETIC_KEY not in repr(caught.value)
++
++
++def test_network_failure_is_not_retried_and_may_have_executed() -> None:
++    calls = 0
++
++    def failing(request: httpx.Request) -> httpx.Response:
++        nonlocal calls
++        calls += 1
++        raise httpx.ReadTimeout("synthetic timeout", request=request)
++
++    with (
++        DianziClient(
++            "http://127.0.0.1:12345",
++            SecretStr(SYNTHETIC_KEY),
++            transport=httpx.MockTransport(failing),
++        ) as client,
++        pytest.raises(DianziTransportError) as caught,
++    ):
++        client.ask(QUESTION, idempotency_key="recover-this-operation")
++    assert calls == 1
++    assert caught.value.may_have_executed
++    assert caught.value.idempotency_key == "recover-this-operation"
++    assert SYNTHETIC_KEY not in str(caught.value)
++
++
++def test_redirect_is_not_followed_or_given_credentials_at_second_origin() -> None:
++    calls: list[str] = []
++
++    def redirected(request: httpx.Request) -> httpx.Response:
++        calls.append(str(request.url))
++        return httpx.Response(307, headers={"Location": "https://example.org/collect-key"})
++
++    with (
++        DianziClient(
++            "http://127.0.0.1:12345",
++            SecretStr(SYNTHETIC_KEY),
++            transport=httpx.MockTransport(redirected),
++        ) as client,
++        pytest.raises(DianziApiError) as caught,
++    ):
++        client.ask(QUESTION)
++    assert caught.value.status == 307
++    assert calls == ["http://127.0.0.1:12345/api/v1/ask"]
++
++
++@pytest.mark.parametrize(
++    "base",
++    [
++        "http://example.org",
++        "https://user:pass@example.org",
++        "https://example.org?key=synthetic",
++        "https://example.org/#fragment",
++        "https://example.org/path",
++        "http://127.0.0.1:0",
++    ],
++)
++def test_configuration_rejects_insecure_or_ambiguous_origins(base: str) -> None:
++    with pytest.raises(ClientConfigurationError):
++        DianziClient(base, SecretStr(SYNTHETIC_KEY))
++
++
++@pytest.mark.parametrize("key", ["", "short", SYNTHETIC_KEY + "\r\nX-Injected: value", "=" * 5000])
++def test_credential_header_boundary(key: str) -> None:
++    with pytest.raises(ClientConfigurationError):
++        DianziClient("http://127.0.0.1:12345", SecretStr(key))
++
++
++@pytest.mark.parametrize("key", ["", "\n", "x" * 201])
++def test_invalid_operation_key_is_rejected_before_transport(key: str) -> None:
++    def forbidden(_: httpx.Request) -> httpx.Response:
++        raise AssertionError("transport must not be used")
++
++    with (
++        DianziClient(
++            "http://127.0.0.1:12345",
++            SecretStr(SYNTHETIC_KEY),
++            transport=httpx.MockTransport(forbidden),
++        ) as client,
++        pytest.raises(ClientInputError),
++    ):
++        client.ask(QUESTION, idempotency_key=key)
++
++
++@pytest.mark.parametrize(
++    "content",
++    [
++        b'{"kind":"completed","kind":"task"}',
++        b'{"number":NaN}',
++        b"not JSON",
++        b'{"kind":"completed","secret":"SYNTHETIC_PRIVATE"}',
++    ],
++)
++def test_invalid_duplicate_nonfinite_or_uncontracted_json_is_rejected(content: bytes) -> None:
++    with (
++        DianziClient(
++            "http://127.0.0.1:12345",
++            SecretStr(SYNTHETIC_KEY),
++            transport=httpx.MockTransport(
++                lambda _: httpx.Response(
++                    200, content=content, headers={"Content-Type": "application/json"}
++                )
++            ),
++        ) as client,
++        pytest.raises(ResponseContractError) as caught,
++    ):
++        client.ask(QUESTION)
++    assert "SYNTHETIC_PRIVATE" not in str(caught.value)
++
++
++def test_response_size_limit_is_enforced_without_truncating_a_success() -> None:
++    with (
++        DianziClient(
++            "http://127.0.0.1:12345",
++            SecretStr(SYNTHETIC_KEY),
++            transport=httpx.MockTransport(
++                lambda _: httpx.Response(
++                    200,
++                    content=b" " * (MAX_RESPONSE_BYTES + 1),
++                    headers={"Content-Type": "application/json"},
++                )
++            ),
++        ) as client,
++        pytest.raises(ResponseContractError),
++    ):
++        client.ask(QUESTION)
++
++
++def test_compressed_content_is_rejected_before_decoder_reads_it() -> None:
++    class Unreadable(httpx.SyncByteStream):
++        def __iter__(self):
++            raise AssertionError("compressed response must not be decoded")
++
++    with (
++        DianziClient(
++            "http://127.0.0.1:12345",
++            SecretStr(SYNTHETIC_KEY),
++            transport=httpx.MockTransport(
++                lambda _: httpx.Response(
++                    200,
++                    stream=Unreadable(),
++                    headers={"Content-Type": "application/json", "Content-Encoding": "gzip"},
++                )
++            ),
++        ) as client,
++        pytest.raises(ResponseContractError),
++    ):
++        client.ask(QUESTION)
++
++
++def test_model_construct_cannot_bypass_stack_component_limit() -> None:
++    request = StackCheckRequest.model_construct(
++        components=tuple(
++            {"ecosystem": "PyPI", "package_name": "synthetic", "version": None} for _ in range(201)
++        )
++    )
++
++    def forbidden(_: httpx.Request) -> httpx.Response:
++        raise AssertionError("transport must not be used")
++
++    with (
++        DianziClient(
++            "http://127.0.0.1:12345",
++            SecretStr(SYNTHETIC_KEY),
++            transport=httpx.MockTransport(forbidden),
++        ) as client,
++        pytest.raises(ClientInputError),
++    ):
++        client.check_stack(request)
++
++
++def test_response_cookie_cannot_change_authentication_of_later_requests() -> None:
++    calls: list[httpx.Request] = []
++
++    def setting_cookie(request: httpx.Request) -> httpx.Response:
++        calls.append(request)
++        return httpx.Response(
++            200,
++            json=ANSWER,
++            headers={"Set-Cookie": "ai_intel_session=synthetic-session; Path=/"},
++        )
++
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(setting_cookie),
++    ) as client:
++        client.ask(QUESTION, idempotency_key="synthetic-first-key")
++        client.ask(QUESTION, idempotency_key="synthetic-second-key")
++    assert len(calls) == 2
++    assert all("cookie" not in request.headers for request in calls)
++    assert all(request.headers["authorization"] == "Bearer " + SYNTHETIC_KEY for request in calls)
++
++
++def test_float_overflow_does_not_bypass_nonfinite_json_boundary() -> None:
++    with pytest.raises(ResponseContractError):
++        validate_json_bytes(b'{"number":1e999}')
++
++
++def test_large_component_value_is_rejected_before_network_even_below_200_components() -> None:
++    request = StackCheckRequest.model_validate_json(
++        json.dumps(
++            {
++                "components": [
++                    {
++                        "ecosystem": "PyPI",
++                        "package_name": "x" * MAX_SYNCHRONOUS_REQUEST_BYTES,
++                        "version": None,
++                    }
++                ]
++            }
++        )
++    )
++
++    def forbidden(_: httpx.Request) -> httpx.Response:
++        raise AssertionError("oversized request must not be sent")
++
++    with (
++        DianziClient(
++            "http://127.0.0.1:12345",
++            SecretStr(SYNTHETIC_KEY),
++            transport=httpx.MockTransport(forbidden),
++        ) as client,
++        pytest.raises(ClientInputError),
++    ):
++        client.check_stack(request)
+diff --git a/sdk/python/tests/test_mcp_adapter.py b/sdk/python/tests/test_mcp_adapter.py
+new file mode 100644
+index 00000000..7c6ff8ed
+--- /dev/null
++++ b/sdk/python/tests/test_mcp_adapter.py
+@@ -0,0 +1,309 @@
++"""Explicit fixture-only SDK transport tests; no live backend or product credentials."""
++
++from __future__ import annotations
++
++import json
++import sys
++from pathlib import Path
++
++import httpx
++import pytest
++import tiktoken
++from ai_intel_client.client import DianziClient
++from ai_intel_client.mcp_adapter import (
++    McpOutputBudget,
++    create_current_read_tool_server,
++)
++from mcp import Client
++from mcp.client.stdio import StdioServerParameters
++from mcp.server.transport_security import TransportSecuritySettings
++from mcp.shared.exceptions import MCPError
++from mcp_types import CLIENT_CAPABILITIES_META_KEY, PROTOCOL_VERSION_META_KEY
++from pydantic import SecretStr
++
++SYNTHETIC_KEY = "synthetic-test-key-with-no-provider-access"
++ID = "00000000-0000-4000-8000-000000000001"
++ANSWER = {
++    "kind": "completed",
++    "answer_id": ID,
++    "answer_text": "synthetic unknown",
++    "claims": [],
++    "citations": [],
++    "limitations": ["fixture has no evidence"],
++    "freshness": "unknown",
++    "data_mode": "fixture",
++    "started_at": "2026-10-16T00:00:00Z",
++    "completed_at": "2026-10-16T00:00:01Z",
++    "latency_milliseconds": 1000,
++}
++
++
++@pytest.fixture
++def anyio_backend() -> str:
++    return "asyncio"
++
++
++@pytest.fixture
++def fixture_token_budget() -> McpOutputBudget:
++    """Synthetic tokenizer exercises counting code; it is never named o200k_base."""
++    encoding = tiktoken.Encoding(
++        "synthetic-byte-vocabulary-fixture",
++        pat_str=r"(?s).",
++        mergeable_ranks={bytes([value]): value for value in range(256)},
++        special_tokens={},
++    )
++    return McpOutputBudget.for_fixture(encoding)
++
++
++@pytest.mark.anyio
++async def test_official_client_discovers_exact_implemented_tools_and_calls_shared_rest(
++    fixture_token_budget: McpOutputBudget,
++) -> None:
++    calls: list[httpx.Request] = []
++
++    def handler(request: httpx.Request) -> httpx.Response:
++        calls.append(request)
++        return httpx.Response(200, json=ANSWER)
++
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(handler),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, fixture_token_budget)) as client:
++            listed = await client.list_tools()
++            assert [tool.name for tool in listed.tools] == ["ask", "check_stack"]
++            assert all(tool.input_schema["additionalProperties"] is False for tool in listed.tools)
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is False
++            assert result.structured_content == ANSWER
++            assert "fixture" in result.model_dump_json()
++    assert len(calls) == 1
++    assert calls[0].url.path == "/api/v1/ask"
++    assert calls[0].headers["authorization"] == "Bearer " + SYNTHETIC_KEY
++
++
++@pytest.mark.anyio
++@pytest.mark.parametrize(
++    "arguments",
++    [
++        {"question": "synthetic", "mode": "library", "tenant_id": ID},
++        {"question": "synthetic", "mode": "library", "skip_validation": True},
++        {"question": "synthetic", "mode": "unsupported"},
++        {"question": "synthetic", "mode": "library", "event_ids": "[]"},
++    ],
++)
++async def test_extra_identity_bypass_and_stringified_json_rejected_before_backend(
++    fixture_token_budget: McpOutputBudget, arguments: dict[str, object]
++) -> None:
++    calls: list[httpx.Request] = []
++
++    def handler(request: httpx.Request) -> httpx.Response:
++        calls.append(request)
++        return httpx.Response(200, json=ANSWER)
++
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(handler),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, fixture_token_budget)) as client:
++            result = await client.call_tool("ask", arguments)
++            assert result.is_error is True
++            assert "invalid_arguments" in result.model_dump_json()
++    assert calls == []
++
++
++@pytest.mark.anyio
++async def test_queued_handle_preserved_without_answer(
++    fixture_token_budget: McpOutputBudget,
++) -> None:
++    queued = {
++        "kind": "task",
++        "task_id": ID,
++        "status": "queued",
++        "poll_uri": "/api/v1/tasks/" + ID,
++        "created_at": "2026-10-16T00:00:00Z",
++    }
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(202, json=queued)),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, fixture_token_budget)) as client:
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is False
++            assert result.structured_content == queued
++            assert "answer_text" not in result.model_dump_json()
++
++
++@pytest.mark.anyio
++async def test_backend_contract_failure_remains_distinct_from_input_failure(
++    fixture_token_budget: McpOutputBudget,
++) -> None:
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json={"unexpected": True})),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, fixture_token_budget)) as client:
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is True
++            assert "backend_contract_error" in result.model_dump_json()
++
++
++@pytest.mark.anyio
++async def test_atomic_output_budget_fails_instead_of_truncating_evidence(
++    fixture_token_budget: McpOutputBudget,
++) -> None:
++    large_answer = dict(ANSWER, answer_text="synthetic " * 900)
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=large_answer)),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, fixture_token_budget)) as client:
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is True
++            assert result.structured_content is None
++            assert "output_budget_exceeded" in result.model_dump_json()
++            assert "synthetic " not in result.model_dump_json()
++
++
++@pytest.mark.anyio
++async def test_backend_permission_failure_has_no_server_body_or_key(
++    fixture_token_budget: McpOutputBudget,
++) -> None:
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(
++            lambda _: httpx.Response(403, text="SYNTHETIC_PRIVATE_BACKEND_BODY")
++        ),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, fixture_token_budget)) as client:
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is True
++            assert "http_error" in result.model_dump_json()
++            assert "SYNTHETIC_PRIVATE" not in result.model_dump_json()
++            assert SYNTHETIC_KEY not in result.model_dump_json()
++
++
++@pytest.mark.anyio
++async def test_stack_unknown_semantics_preserved(
++    fixture_token_budget: McpOutputBudget,
++) -> None:
++    stack = {
++        "kind": "completed",
++        "results": [],
++        "limitations": ["fixture has no inventory"],
++    }
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=stack)),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, fixture_token_budget)) as client:
++            result = await client.call_tool("check_stack", {"components": []})
++            assert result.is_error is False
++            assert result.structured_content == stack
++            assert "clean" not in json.dumps(result.structured_content)
++
++
++@pytest.mark.anyio
++async def test_official_stdio_subprocess_discovery_and_tool_call() -> None:
++    parameters = StdioServerParameters(
++        command=sys.executable,
++        args=[str(Path(__file__).parent / "fixtures" / "mcp_stdio_server.py")],
++        env={"DIANZI_MCP_TEST_MODE": "fixture"},
++    )
++    async with Client(parameters, read_timeout_seconds=10) as client:
++        listed = await client.list_tools()
++        assert [tool.name for tool in listed.tools] == ["ask", "check_stack"]
++        result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++        assert result.is_error is False
++        assert isinstance(result.structured_content, dict)
++        assert result.structured_content["data_mode"] == "fixture"
++        assert result.structured_content["answer_text"] == "explicit stdio fixture"
++
++
++@pytest.mark.anyio
++async def test_tool_discovery_rejects_unbound_cursor_as_protocol_input_error(
++    fixture_token_budget: McpOutputBudget,
++) -> None:
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=ANSWER)),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, fixture_token_budget)) as client:
++            with pytest.raises(MCPError) as raised:
++                await client.list_tools(cursor="unbound-cursor")
++            assert raised.value.code == -32602
++
++
++@pytest.mark.anyio
++@pytest.mark.parametrize(
++    "host,origin,expected_status",
++    [
++        ("127.0.0.1:12345", "http://127.0.0.1:12345", 200),
++        ("untrusted.example:12345", "http://127.0.0.1:12345", 421),
++        ("127.0.0.1:12345", "https://untrusted.example", 403),
++    ],
++)
++async def test_official_http_asgi_discovery_host_and_origin_boundary(
++    fixture_token_budget: McpOutputBudget,
++    host: str,
++    origin: str,
++    expected_status: int,
++) -> None:
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=ANSWER)),
++    ) as backend:
++        server = create_current_read_tool_server(backend, fixture_token_budget)
++        app = server.streamable_http_app(
++            stateless_http=True,
++            json_response=True,
++            max_request_body_size=1048576,
++            transport_security=TransportSecuritySettings(
++                allowed_hosts=["127.0.0.1:12345"],
++                allowed_origins=["http://127.0.0.1:12345"],
++            ),
++        )
++        async with (
++            app.router.lifespan_context(app),
++            httpx.AsyncClient(
++                transport=httpx.ASGITransport(app=app),
++                base_url="http://127.0.0.1:12345",
++            ) as client,
++        ):
++            response = await client.post(
++                "/mcp",
++                headers={
++                    "host": host,
++                    "origin": origin,
++                    "Accept": "application/json, text/event-stream",
++                    "MCP-Protocol-Version": "2026-07-28",
++                    "MCP-Method": "tools/list",
++                },
++                json={
++                    "jsonrpc": "2.0",
++                    "id": 1,
++                    "method": "tools/list",
++                    "params": {
++                        "_meta": {
++                            PROTOCOL_VERSION_META_KEY: "2026-07-28",
++                            CLIENT_CAPABILITIES_META_KEY: {},
++                        }
++                    },
++                },
++            )
++            assert response.status_code == expected_status, response.text
++            if expected_status == 200:
++                body = response.json()
++                assert [tool["name"] for tool in body["result"]["tools"]] == [
++                    "ask",
++                    "check_stack",
++                ]
+diff --git a/sdk/python/tests/test_mcp_output_security.py b/sdk/python/tests/test_mcp_output_security.py
+new file mode 100644
+index 00000000..b7da2891
+--- /dev/null
++++ b/sdk/python/tests/test_mcp_output_security.py
+@@ -0,0 +1,281 @@
++"""Explicit loopback/ASGI fixtures for the official MCP and credential boundary."""
++
++from __future__ import annotations
++
++import json
++import sys
++import threading
++import time
++from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
++from pathlib import Path
++
++import anyio
++import httpx
++import pytest
++from ai_intel_client.client import DianziClient
++from ai_intel_client.mcp_adapter import create_current_read_tool_server
++from ai_intel_client.output_budget import McpOutputBudget
++from mcp import Client
++from mcp.client.stdio import StdioServerParameters
++from mcp.server.transport_security import TransportSecuritySettings
++from mcp_types import CLIENT_CAPABILITIES_META_KEY, PROTOCOL_VERSION_META_KEY
++from pydantic import SecretStr
++
++CACHE_FILE = Path(
++    "D:/dianzi-runtime-cache/tiktoken-o200k-base-20261016/fb374d419588a4632f3f557e76b4b70aebbca790"
++)
++KEY = "synthetic-test-key-with-no-provider-access"
++ID = "00000000-0000-4000-8000-000000000001"
++ANSWER = {
++    "kind": "completed",
++    "answer_id": ID,
++    "answer_text": "中文证据不足；🙂",
++    "claims": [],
++    "citations": [],
++    "limitations": ["explicit synthetic loopback fixture"],
++    "freshness": "unknown",
++    "data_mode": "fixture",
++    "started_at": "2026-10-16T00:00:00Z",
++    "completed_at": "2026-10-16T00:00:01Z",
++    "latency_milliseconds": 1000,
++}
++
++
++@pytest.fixture
++def anyio_backend() -> str:
++    return "asyncio"
++
++
++@pytest.fixture(scope="module")
++def official_budget() -> McpOutputBudget:
++    return McpOutputBudget(CACHE_FILE)
++
++
++@pytest.mark.anyio
++@pytest.mark.parametrize("authorization", [None, "Bearer synthetic-other-identity-token-12345"])
++async def test_http_cannot_execute_using_shared_stdio_identity(
++    official_budget: McpOutputBudget, authorization: str | None
++) -> None:
++    calls: list[httpx.Request] = []
++
++    def handler(request: httpx.Request) -> httpx.Response:
++        calls.append(request)
++        return httpx.Response(200, json=ANSWER)
++
++    with DianziClient(
++        "http://127.0.0.1:12345", SecretStr(KEY), transport=httpx.MockTransport(handler)
++    ) as backend:
++        app = create_current_read_tool_server(backend, official_budget).streamable_http_app(
++            stateless_http=True,
++            json_response=True,
++            max_request_body_size=1048576,
++            transport_security=TransportSecuritySettings(
++                allowed_hosts=["127.0.0.1:12345"],
++                allowed_origins=["http://127.0.0.1:12345"],
++            ),
++        )
++        headers = {
++            "Accept": "application/json, text/event-stream",
++            "MCP-Protocol-Version": "2026-07-28",
++            "MCP-Method": "tools/call",
++            "MCP-Name": "ask",
++        }
++        if authorization is not None:
++            headers["authorization"] = authorization
++        async with (
++            app.router.lifespan_context(app),
++            httpx.AsyncClient(
++                transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:12345"
++            ) as client,
++        ):
++            for request_id in (1, 2):
++                response = await client.post(
++                    "/mcp",
++                    headers=headers,
++                    json={
++                        "jsonrpc": "2.0",
++                        "id": request_id,
++                        "method": "tools/call",
++                        "params": {
++                            "name": "ask",
++                            "arguments": {"question": "synthetic", "mode": "library"},
++                            "_meta": {
++                                PROTOCOL_VERSION_META_KEY: "2026-07-28",
++                                CLIENT_CAPABILITIES_META_KEY: {},
++                            },
++                        },
++                    },
++                )
++                assert response.status_code == 200, response.text
++                result = response.json()["result"]
++                assert result["isError"] is True
++                assert "not_configured" in json.dumps(result)
++                assert KEY not in json.dumps(result)
++    assert calls == []
++
++
++@pytest.mark.anyio
++@pytest.mark.parametrize(
++    "status,code", [(401, "credential_revoked"), (403, "forbidden"), (429, "rate_limited")]
++)
++async def test_backend_permission_and_rate_errors_keep_fixed_safe_metadata(
++    official_budget: McpOutputBudget, status: int, code: str
++) -> None:
++    problem = {
++        "type": "https://example.invalid/explicit-fixture-error",
++        "title": "synthetic",
++        "status": status,
++        "detail": "SYNTHETIC_PRIVATE_BODY",
++        "instance": "/api/v1/ask",
++        "trace_id": ID,
++        "error": {
++            "code": code,
++            "message": "SYNTHETIC_PRIVATE_BODY",
++            "retryable": status == 429,
++            "details": {"private": KEY},
++        },
++    }
++    calls: list[httpx.Request] = []
++
++    def handler(request: httpx.Request) -> httpx.Response:
++        calls.append(request)
++        return httpx.Response(
++            status,
++            json=problem,
++            headers={
++                "set-cookie": "synthetic=private",
++                "content-type": "application/problem+json",
++            },
++        )
++
++    with DianziClient(
++        "http://127.0.0.1:12345", SecretStr(KEY), transport=httpx.MockTransport(handler)
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, official_budget)) as client:
++            for _ in range(2):
++                result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++                serialized = result.model_dump_json()
++                assert result.is_error is True
++                assert code in serialized
++                assert "PRIVATE_BODY" not in serialized
++                assert KEY not in serialized
++                assert official_budget.fits(result)
++    assert len(calls) == 2
++    assert all("cookie" not in request.headers for request in calls)
++
++
++@pytest.mark.anyio
++async def test_network_failure_has_no_success_or_automatic_retry(
++    official_budget: McpOutputBudget,
++) -> None:
++    calls: list[httpx.Request] = []
++
++    def handler(request: httpx.Request) -> httpx.Response:
++        calls.append(request)
++        raise httpx.ReadTimeout("SYNTHETIC_PRIVATE_NETWORK_ERROR")
++
++    with DianziClient(
++        "http://127.0.0.1:12345", SecretStr(KEY), transport=httpx.MockTransport(handler)
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, official_budget)) as client:
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is True
++            assert "backend_transport_error" in result.model_dump_json()
++            assert "PRIVATE_NETWORK" not in result.model_dump_json()
++    assert len(calls) == 1
++
++
++@pytest.mark.anyio
++async def test_parallel_backend_calls_keep_four_worker_bound(
++    official_budget: McpOutputBudget,
++) -> None:
++    lock = threading.Lock()
++    active = peak = completed = 0
++
++    def handler(_: httpx.Request) -> httpx.Response:
++        nonlocal active, peak, completed
++        with lock:
++            active += 1
++            peak = max(peak, active)
++        time.sleep(0.03)
++        with lock:
++            active -= 1
++            completed += 1
++        return httpx.Response(200, json=ANSWER)
++
++    with DianziClient(
++        "http://127.0.0.1:12345", SecretStr(KEY), transport=httpx.MockTransport(handler)
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, official_budget)) as client:
++
++            async def call_once() -> None:
++                result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++                assert result.is_error is False
++                assert official_budget.fits(result)
++
++            with anyio.fail_after(10):
++                async with anyio.create_task_group() as group:
++                    for _ in range(8):
++                        group.start_soon(call_once)
++    assert completed == 8
++    assert peak == 4
++    assert active == 0
++
++
++@pytest.mark.anyio
++async def test_real_stdio_entry_discovers_and_calls_loopback_with_ascii_environment(
++    official_budget: McpOutputBudget,
++) -> None:
++    calls: list[tuple[str, str, dict[str, object]]] = []
++    deadline = time.monotonic() + 60
++
++    class Handler(BaseHTTPRequestHandler):
++        def do_POST(self) -> None:
++            if len(calls) >= 10 or time.monotonic() > deadline:
++                self.send_error(503)
++                return
++            size = int(self.headers.get("content-length", "0"))
++            if not 0 < size <= 1048576:
++                self.send_error(413)
++                return
++            body = json.loads(self.rfile.read(size))
++            calls.append((self.path, self.headers.get("authorization", ""), body))
++            raw = json.dumps(ANSWER, ensure_ascii=False).encode()
++            self.send_response(200)
++            self.send_header("Content-Type", "application/json")
++            self.send_header("Content-Length", str(len(raw)))
++            self.end_headers()
++            self.wfile.write(raw)
++
++        def log_message(self, format: str, *args: object) -> None:
++            return
++
++    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
++    worker = threading.Thread(target=server.serve_forever)
++    worker.start()
++    try:
++        parameters = StdioServerParameters(
++            command=sys.executable,
++            args=["-m", "ai_intel_client.mcp_stdio"],
++            env={
++                "PYTHONPATH": str(Path(__file__).resolve().parents[1]),
++                "PYTHONIOENCODING": "ascii",
++                "DIANZI_API_BASE_URL": "http://127.0.0.1:" + str(server.server_port),
++                "DIANZI_API_KEY": KEY,
++                "DIANZI_MCP_ENCODING_CACHE_FILE": str(CACHE_FILE),
++            },
++        )
++        async with Client(parameters, read_timeout_seconds=10) as client:
++            listed = await client.list_tools()
++            assert [tool.name for tool in listed.tools] == ["ask", "check_stack"]
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is False
++            assert result.structured_content == ANSWER
++            assert official_budget.fits(result)
++            assert "io.modelcontextprotocol/serverInfo" in (result.meta or {})
++    finally:
++        server.shutdown()
++        server.server_close()
++        worker.join(timeout=3)
++    assert not worker.is_alive()
++    assert calls == [("/api/v1/ask", "Bearer " + KEY, {"question": "synthetic", "mode": "library"})]
+diff --git a/sdk/python/tests/test_models.py b/sdk/python/tests/test_models.py
+new file mode 100644
+index 00000000..50a7339c
+--- /dev/null
++++ b/sdk/python/tests/test_models.py
+@@ -0,0 +1,269 @@
++"""Observable public v2 semantics and fixed source-contract comparisons."""
++
++from __future__ import annotations
++
++import json
++from copy import deepcopy
++from pathlib import Path
++
++import pytest
++from ai_intel_client.models import (
++    ASK_RESULT_ADAPTER,
++    Advisory,
++    AskRequest,
++    Citation,
++    Component,
++    Enrichment,
++    NormalizedIntel,
++    QAAnswer,
++    Relation,
++    StackCheckRequest,
++    StackCheckResult,
++    StackUploadRequest,
++    TaskHandle,
++    Vulnerability,
++)
++from pydantic import TypeAdapter, ValidationError
++
++ROOT = Path(__file__).resolve().parents[3]
++ID = "00000000-0000-4000-8000-000000000001"
++CITATION = {
++    "evidence_id": ID,
++    "revision_id": ID,
++    "quote": "synthetic evidence",
++    "locator": "paragraph:1",
++    "source_uri": "https://example.org/synthetic-advisory",
++}
++ENRICHMENT = {
++    "dimension": "cwe",
++    "status": "available",
++    "claim_ids": [ID],
++    "citations": [CITATION],
++    "freshness": "current",
++    "observed_at": None,
++    "source_version": "synthetic-1",
++    "error_code": None,
++}
++RELATION = {
++    "relation_id": ID,
++    "relation_type": "same_event",
++    "subject_id": ID,
++    "object_id": ID,
++    "source_revision": ID,
++    "citations": [CITATION],
++    "rule_or_model_version": "synthetic-1",
++    "reason": "explicit synthetic identifier",
++    "status": "supported",
++}
++COMPONENT = {"ecosystem": "PyPI", "package_name": "synthetic-package", "version": None}
++
++
++@pytest.mark.parametrize(
++    ("model", "value"),
++    [
++        (Citation, CITATION),
++        (Component, COMPONENT),
++        (Enrichment, ENRICHMENT),
++        (Relation, RELATION),
++        (
++            NormalizedIntel,
++            {
++                "intel_id": ID,
++                "revision_id": ID,
++                "title": "synthetic paper",
++                "kind": "paper",
++                "external_ids": [],
++                "citations": [CITATION],
++                "data_mode": "fixture",
++            },
++        ),
++        (
++            Vulnerability,
++            {
++                "intel_id": ID,
++                "event_id": ID,
++                "title": "synthetic AI risk without CVE",
++                "external_ids": [],
++                "enrichments": [ENRICHMENT],
++                "relations": [RELATION],
++                "freshness": "current",
++            },
++        ),
++        (
++            Advisory,
++            {
++                "intel_id": ID,
++                "revision_id": ID,
++                "title": "synthetic advisory",
++                "source_uri": "https://example.org/synthetic-advisory",
++                "published_at": None,
++                "citations": [CITATION],
++            },
++        ),
++    ],
++)
++def test_public_business_object_json_roundtrip(model: type, value: dict[str, object]) -> None:
++    parsed = model.model_validate_json(json.dumps(value))
++    assert json.loads(parsed.wire_json()) == value
++
++
++def test_frozen_public_example_cases() -> None:
++    examples = json.loads((ROOT / "contracts/schemas/public_api_v2_examples.json").read_bytes())
++    adapters = {
++        "AskResult": ASK_RESULT_ADAPTER,
++        "StackCheckRequest": TypeAdapter(StackCheckRequest),
++        "StackCheckResult": TypeAdapter(StackCheckResult),
++    }
++    count = 0
++    for name, values in examples["valid"].items():
++        for value in values:
++            adapters[name].validate_json(json.dumps(value))
++            count += 1
++    for name, values in examples["invalid"].items():
++        for value in values:
++            with pytest.raises(ValidationError):
++                adapters[name].validate_json(json.dumps(value))
++            count += 1
++    assert count == 7
++
++
++@pytest.mark.parametrize(
++    "model",
++    [NormalizedIntel, Vulnerability, Advisory, Component, Enrichment, Relation, Citation, QAAnswer],
++)
++def test_eight_model_properties_match_approved_public_schema(model: type) -> None:
++    public = json.loads((ROOT / "contracts/schemas/public_api_v2.json").read_bytes())
++    schema = model.model_json_schema()
++    approved = public["$defs"][model.__name__]
++    assert schema["additionalProperties"] is False
++    assert set(schema["properties"]) == set(approved["properties"])
++    assert set(schema["required"]) == set(approved["required"])
++
++
++@pytest.mark.parametrize(
++    "identity", ["tenant_id", "user_id", "role", "permissions", "skip_validation"]
++)
++def test_request_rejects_identity_and_hidden_permission_fields(identity: str) -> None:
++    value = {"question": "synthetic question", "mode": "library", identity: "forged"}
++    with pytest.raises(ValidationError):
++        AskRequest.model_validate_json(json.dumps(value))
++
++
++@pytest.mark.parametrize("name", ["conversation_id", "known_at", "valid_at"])
++def test_omitted_question_fields_are_not_explicit_nulls(name: str) -> None:
++    value = {"question": "synthetic question", "mode": "library"}
++    question = AskRequest.model_validate_json(json.dumps(value))
++    assert name not in json.loads(question.wire_json())
++    with pytest.raises(ValidationError):
++        AskRequest.model_validate_json(json.dumps({**value, name: None}))
++
++
++@pytest.mark.parametrize("value", ["2026-10-16T00:00:00", 42, True])
++def test_question_rejects_naive_or_non_timestamp_time(value: object) -> None:
++    with pytest.raises(ValidationError):
++        AskRequest.model_validate_json(
++            json.dumps({"question": "synthetic question", "mode": "library", "known_at": value})
++        )
++
++
++@pytest.mark.parametrize("count, valid", [(200, True), (201, False)])
++def test_synchronous_component_boundary(count: int, valid: bool) -> None:
++    raw = json.dumps({"components": [COMPONENT] * count})
++    if valid:
++        assert len(StackCheckRequest.model_validate_json(raw).components) == 200
++    else:
++        with pytest.raises(ValidationError):
++            StackCheckRequest.model_validate_json(raw)
++
++
++@pytest.mark.parametrize("extra", [{"size_bytes": 10485761}, {"declared_component_count": 10001}])
++def test_upload_limits_are_independent_of_sync_count(extra: dict[str, int]) -> None:
++    value = {
++        "upload_id": ID,
++        "size_bytes": 10485760,
++        "declared_component_count": 10000,
++        "format": "json_components",
++    }
++    assert (
++        StackUploadRequest.model_validate_json(json.dumps(value)).declared_component_count == 10000
++    )
++    with pytest.raises(ValidationError):
++        StackUploadRequest.model_validate_json(json.dumps({**value, **extra}))
++
++
++@pytest.mark.parametrize(
++    "reason", ["no_match", "unsupported", "unsupported_rule", "unsupported_ecosystem"]
++)
++def test_no_match_or_unsupported_cannot_be_exclusion(reason: str) -> None:
++    result = {
++        "kind": "completed",
++        "results": [
++            {
++                "component": COMPONENT,
++                "status": "insufficient_evidence",
++                "reason_code": reason,
++                "assessment_id": None,
++                "citations": [],
++                "freshness": "unknown",
++            }
++        ],
++        "limitations": [],
++    }
++    assert (
++        StackCheckResult.model_validate_json(json.dumps(result)).results[0].status
++        == "insufficient_evidence"
++    )
++    result["results"][0]["status"] = "excluded_with_evidence"
++    with pytest.raises(ValidationError):
++        StackCheckResult.model_validate_json(json.dumps(result))
++
++
++@pytest.mark.parametrize("model, value", [(Enrichment, ENRICHMENT), (Relation, RELATION)])
++def test_confirmed_field_requires_evidence(model: type, value: dict[str, object]) -> None:
++    changed = deepcopy(value)
++    changed["citations"] = []
++    with pytest.raises(ValidationError):
++        model.model_validate_json(json.dumps(changed))
++
++
++def test_task_cannot_redirect_polling_to_another_object_or_origin() -> None:
++    value = {
++        "kind": "task",
++        "task_id": ID,
++        "status": "queued",
++        "poll_uri": "/api/v1/tasks/" + ID,
++        "created_at": "2026-10-16T00:00:00Z",
++    }
++    assert TaskHandle.model_validate_json(json.dumps(value)).task_id.hex
++    for uri in (
++        "https://example.org/task",
++        "/api/v1/tasks/00000000-0000-4000-8000-000000000002",
++        "/api/v1/tasks/" + ID + "?api_key=synthetic",
++    ):
++        with pytest.raises(ValidationError):
++            TaskHandle.model_validate_json(json.dumps({**value, "poll_uri": uri}))
++
++
++@pytest.mark.parametrize(
++    "uri",
++    [
++        "https://example.org/a b",
++        "https://example.org/%zz",
++        "https://example.org/<script>",
++        "https://example.org/\nsecret",
++        "relative/path",
++        "https://example.org/正文",
++    ],
++)
++def test_citation_rejects_non_uri_bytes_without_normalizing_them(uri: str) -> None:
++    with pytest.raises(ValidationError):
++        Citation.model_validate_json(json.dumps({**CITATION, "source_uri": uri}))
++
++
++@pytest.mark.parametrize(
++    "uri",
++    ["https://example.org", "urn:example:synthetic", "https://example.org/%E6%AD%A3%E6%96%87"],
++)
++def test_uri_validation_keeps_the_original_identifier(uri: str) -> None:
++    citation = Citation.model_validate_json(json.dumps({**CITATION, "source_uri": uri}))
++    assert citation.source_uri == uri
+diff --git a/sdk/python/tests/test_output_budget.py b/sdk/python/tests/test_output_budget.py
+new file mode 100644
+index 00000000..24ae1b54
+--- /dev/null
++++ b/sdk/python/tests/test_output_budget.py
+@@ -0,0 +1,322 @@
++"""Pinned tokenizer tests use local official bytes and explicit protocol fixtures."""
++
++from __future__ import annotations
++
++import hashlib
++import json
++import os
++import subprocess
++import sys
++from concurrent.futures import ThreadPoolExecutor
++from pathlib import Path
++from unittest.mock import patch
++
++import httpx
++import pytest
++import tiktoken.load
++import tiktoken_ext.openai_public
++from ai_intel_client.client import DianziClient
++from ai_intel_client.mcp_adapter import create_current_read_tool_server
++from ai_intel_client.models import QAAnswer
++from ai_intel_client.output_budget import (
++    ENCODING_SHA256,
++    MAX_TOOL_OUTPUT_BYTES,
++    OUTPUT_BUDGET_PROFILE,
++    McpOutputBudget,
++    OutputBudgetConfigurationError,
++    OutputBudgetTokenizationError,
++    load_offline_encoding,
++)
++from mcp import Client
++from mcp_types import CallToolResult, TextContent
++from pydantic import SecretStr
++
++CACHE_FILE = Path(
++    "D:/dianzi-runtime-cache/tiktoken-o200k-base-20261016/fb374d419588a4632f3f557e76b4b70aebbca790"
++)
++SYNTHETIC_KEY = "synthetic-test-key-with-no-provider-access"
++ID = "00000000-0000-4000-8000-000000000001"
++ANSWER = {
++    "kind": "completed",
++    "answer_id": ID,
++    "answer_text": "中文证据不足；🙂 <|endoftext|>",
++    "claims": [],
++    "citations": [],
++    "limitations": ["explicit fixture with unknown evidence"],
++    "freshness": "unknown",
++    "data_mode": "fixture",
++    "started_at": "2026-10-16T00:00:00Z",
++    "completed_at": "2026-10-16T00:00:01Z",
++    "latency_milliseconds": 1000,
++}
++
++
++@pytest.fixture
++def anyio_backend() -> str:
++    return "asyncio"
++
++
++@pytest.fixture(scope="module")
++def official_budget() -> McpOutputBudget:
++    return McpOutputBudget(CACHE_FILE)
++
++
++def test_official_loader_never_touches_network_environment_or_module_globals() -> None:
++    environment = os.environ.copy()
++    reader = tiktoken.load.read_file_cached
++    constructor_loader = tiktoken_ext.openai_public.load_tiktoken_bpe
++    with (
++        patch("tiktoken.load.read_file", side_effect=AssertionError("network forbidden")) as io,
++        patch("requests.get", side_effect=AssertionError("network forbidden")) as network,
++    ):
++        with ThreadPoolExecutor(max_workers=2) as workers:
++            encodings = list(workers.map(load_offline_encoding, [CACHE_FILE, CACHE_FILE]))
++        for encoding in encodings:
++            for text in ("中文🙂", "ordinary ASCII", "<|endoftext|>"):
++                assert encoding.decode(encoding.encode_ordinary(text)) == text
++        assert io.call_count == network.call_count == 0
++    assert os.environ == environment
++    assert tiktoken.load.read_file_cached is reader
++    assert tiktoken_ext.openai_public.load_tiktoken_bpe is constructor_loader
++    assert encodings[0].name == encodings[1].name == "o200k_base"
++
++
++@pytest.mark.parametrize("state", ["missing", "empty", "corrupt", "oversized"])
++def test_missing_corrupt_cache_is_not_configured_without_download(
++    tmp_path: Path, state: str
++) -> None:
++    cache = tmp_path / "encoding"
++    if state == "empty":
++        cache.write_bytes(b"")
++    elif state == "corrupt":
++        cache.write_bytes(b"x" * 3613922)
++    elif state == "oversized":
++        cache.write_bytes(b"x" * 3613923)
++    with patch("requests.get", side_effect=AssertionError("network forbidden")) as network:
++        with pytest.raises(OutputBudgetConfigurationError, match="not_configured"):
++            load_offline_encoding(cache)
++        assert network.call_count == 0
++    if cache.exists():
++        assert cache.read_bytes() == (b"" if state == "empty" else b"x" * cache.stat().st_size)
++
++
++def test_verified_encoding_survives_cache_replacement(
++    tmp_path: Path, official_budget: McpOutputBudget
++) -> None:
++    path = tmp_path / "encoding"
++    path.write_bytes(CACHE_FILE.read_bytes())
++    encoding = load_offline_encoding(path)
++    path.write_bytes(b"corrupt after deployment preload")
++    text = "并发中文🙂"
++    assert encoding.encode_ordinary(text) == official_budget.encoding.encode_ordinary(text)
++
++
++def test_cache_official_digest_and_profile(official_budget: McpOutputBudget) -> None:
++    assert hashlib.sha256(CACHE_FILE.read_bytes()).hexdigest() == ENCODING_SHA256
++    assert official_budget.profile == OUTPUT_BUDGET_PROFILE
++
++
++def test_complete_result_counts_text_structured_and_continuation(
++    official_budget: McpOutputBudget,
++) -> None:
++    text = "证据🙂" * 900
++    text_only = CallToolResult(content=[TextContent(text=text)])
++    complete = CallToolResult(
++        content=[TextContent(text=text)],
++        structured_content={"unknown": text, "continuation": text},
++    )
++    assert official_budget.fits(text_only)
++    assert not official_budget.fits(complete)
++
++
++@pytest.mark.parametrize("token_count,expected", [(7999, True), (8000, True), (8001, False)])
++def test_official_exact_token_boundary(
++    official_budget: McpOutputBudget, token_count: int, expected: bool
++) -> None:
++    overhead = (
++        len(
++            official_budget.encoding.encode_ordinary(
++                CallToolResult(content=[TextContent(text=" x")]).model_dump_json(
++                    by_alias=True, exclude_none=True
++                )
++            )
++        )
++        - 1
++    )
++    result = CallToolResult(content=[TextContent(text=" x" * (token_count - overhead))])
++    actual = len(
++        official_budget.encoding.encode_ordinary(
++            result.model_dump_json(by_alias=True, exclude_none=True)
++        )
++    )
++    assert actual == token_count
++    assert official_budget.fits(result) is expected
++
++
++def test_byte_ceiling_is_independent_of_token_ceiling(
++    official_budget: McpOutputBudget,
++) -> None:
++    result = CallToolResult(content=[TextContent(text=" " * MAX_TOOL_OUTPUT_BYTES)])
++    compact = result.model_dump_json(by_alias=True, exclude_none=True)
++    assert len(compact.encode("utf-8")) > MAX_TOOL_OUTPUT_BYTES
++    with patch.object(
++        official_budget.encoding, "encode_ordinary", side_effect=AssertionError("byte guard first")
++    ) as encoder:
++        assert not official_budget.fits(result)
++        assert encoder.call_count == 0
++
++
++def test_native_regex_stack_failure_is_explicit_not_a_fake_count(
++    official_budget: McpOutputBudget,
++) -> None:
++    result = CallToolResult(content=[TextContent(text=" " * 500000)])
++    assert len(result.model_dump_json().encode()) < MAX_TOOL_OUTPUT_BYTES
++    assert official_budget.fits(result)
++
++    class PanicException(BaseException):
++        """Explicit native-failure-shape injection; no actual panic is claimed."""
++
++        __module__ = "pyo3_runtime"
++
++    with (
++        patch.object(
++            official_budget.encoding, "encode_ordinary", side_effect=PanicException("synthetic")
++        ),
++        pytest.raises(OutputBudgetTokenizationError, match="tokenizer_unavailable"),
++    ):
++        official_budget.fits(result)
++
++
++@pytest.mark.anyio
++async def test_native_tokenizer_failure_stays_a_bounded_tool_error(
++    official_budget: McpOutputBudget,
++) -> None:
++    class PanicException(BaseException):
++        """Explicit isolated native-failure injection."""
++
++        __module__ = "pyo3_runtime"
++
++    answer = dict(ANSWER)
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=answer)),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, official_budget)) as client:
++            with patch.object(
++                official_budget.encoding, "encode_ordinary", side_effect=PanicException("synthetic")
++            ):
++                result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is True
++            assert "tokenizer_unavailable" in result.model_dump_json()
++            assert official_budget.fits(result)
++
++
++@pytest.mark.parametrize("exception", [KeyboardInterrupt, SystemExit])
++def test_process_control_exceptions_are_not_swallowed(
++    official_budget: McpOutputBudget, exception: type[BaseException]
++) -> None:
++    with (
++        patch.object(official_budget.encoding, "encode_ordinary", side_effect=exception()),
++        pytest.raises(exception),
++    ):
++        official_budget.fits(CallToolResult(content=[TextContent(text="synthetic")]))
++
++
++@pytest.mark.anyio
++async def test_formal_result_retains_unicode_unknown_and_complete_citation(
++    official_budget: McpOutputBudget,
++) -> None:
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=ANSWER)),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, official_budget)) as client:
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is False
++            assert result.structured_content == ANSWER
++            assert official_budget.fits(result)
++
++
++@pytest.mark.anyio
++@pytest.mark.parametrize("oversized_reference", [False, True])
++async def test_oversized_atomic_result_has_hash_and_honest_reference_status(
++    official_budget: McpOutputBudget, oversized_reference: bool
++) -> None:
++    citation = {
++        "evidence_id": ID,
++        "revision_id": ID,
++        "quote": "中文证据" * (6000 if oversized_reference else 1),
++        "locator": "page 1",
++        "source_uri": "https://example.invalid/explicit-fixture",
++    }
++    answer = dict(ANSWER, answer_text=" x" * 6000, citations=[citation])
++    expected_hash = hashlib.sha256(
++        QAAnswer.model_validate_json(json.dumps(answer)).wire_json().encode()
++    ).hexdigest()
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=answer)),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, official_budget)) as client:
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is True
++            assert official_budget.fits(result)
++            error = json.loads(result.content[0].text)["error"]
++            assert error["result_sha256"] == expected_hash
++            assert error["complete"] is False
++            assert error["pagination"] == "not_configured"
++            if oversized_reference:
++                assert error["references_status"] == "unavailable_within_budget"
++                assert "citations" not in error
++            else:
++                assert error["references_status"] == "complete"
++                assert error["citations"] == [citation]
++
++
++@pytest.mark.parametrize(
++    "field,value",
++    [
++        ("answer_id", ID.replace("-", "")),
++        ("answer_id", "{" + ID + "}"),
++        ("answer_id", "urn:uuid:" + ID),
++        ("started_at", "2026-10-16 00:00:00Z"),
++        ("started_at", "2026-10-16T00:00:00+0800"),
++        ("started_at", "2026-10-16T00:00:00,123Z"),
++        ("started_at", "1760572800"),
++    ],
++)
++@pytest.mark.anyio
++async def test_fixed_sdk_wire_format_root_cause_is_rejected_through_mcp(
++    official_budget: McpOutputBudget, field: str, value: str
++) -> None:
++    answer = dict(ANSWER)
++    answer[field] = value
++    with DianziClient(
++        "http://127.0.0.1:12345",
++        SecretStr(SYNTHETIC_KEY),
++        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=answer)),
++    ) as backend:
++        async with Client(create_current_read_tool_server(backend, official_budget)) as client:
++            result = await client.call_tool("ask", {"question": "synthetic", "mode": "library"})
++            assert result.is_error is True
++            assert "backend_contract_error" in result.model_dump_json()
++
++
++def test_missing_stdio_tokenizer_reports_not_configured_without_stdout(tmp_path: Path) -> None:
++    environment = os.environ.copy()
++    environment.pop("DIANZI_MCP_ENCODING_CACHE_FILE", None)
++    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
++    result = subprocess.run(
++        [sys.executable, "-m", "ai_intel_client.mcp_stdio"],
++        env=environment,
++        capture_output=True,
++        timeout=10,
++        check=False,
++        cwd=tmp_path,
++    )
++    assert result.returncode == 3
++    assert result.stdout == b""
++    assert json.loads(result.stderr)["error"]["code"] == "not_configured"
+diff --git a/sdk/python/tests/test_wire_formats.py b/sdk/python/tests/test_wire_formats.py
+new file mode 100644
+index 00000000..78fce477
+--- /dev/null
++++ b/sdk/python/tests/test_wire_formats.py
+@@ -0,0 +1,283 @@
++"""Frozen format semantics cover raw JSON before normalization and ordinary typed callers."""
++
++from __future__ import annotations
++
++import json
++from datetime import datetime, timedelta, timezone
++from pathlib import Path
++from uuid import UUID
++
++import httpx
++import pytest
++from ai_intel_client.client import DianziClient, ResponseContractError
++from ai_intel_client.models import (
++    Advisory,
++    AnswerClaim,
++    AskRequest,
++    Citation,
++    Component,
++    ComponentAssessment,
++    Enrichment,
++    NormalizedIntel,
++    PublicRecord,
++    QAAnswer,
++    Relation,
++    StackUploadRequest,
++    TaskHandle,
++    Vulnerability,
++)
++from jsonschema import Draft202012Validator, FormatChecker
++from pydantic import SecretStr, ValidationError
++from test_models import CITATION, COMPONENT, ENRICHMENT, ID, RELATION
++
++ROOT = Path(__file__).resolve().parents[3]
++SCHEMA = json.loads((ROOT / "contracts/schemas/public_api_v2.json").read_bytes())
++ANSWER = {
++    "kind": "completed",
++    "answer_id": ID,
++    "answer_text": "synthetic unknown",
++    "claims": [],
++    "citations": [],
++    "limitations": ["fixture only"],
++    "freshness": "unknown",
++    "data_mode": "fixture",
++    "started_at": "2026-10-16T00:00:00Z",
++    "completed_at": "2026-10-16T00:00:01Z",
++    "latency_milliseconds": 1000,
++}
++TASK = {
++    "kind": "task",
++    "task_id": ID,
++    "status": "queued",
++    "poll_uri": "/api/v1/tasks/" + ID,
++    "created_at": "2026-10-16T00:00:00Z",
++}
++
++
++def assert_format_rejected(model: type[PublicRecord], raw: dict[str, object]) -> None:
++    references = {
++        "AnswerClaim": "#/$defs/QAAnswer/properties/claims/items",
++        "ComponentAssessment": "#/$defs/StackCheckResult/properties/results/items",
++    }
++    validator = Draft202012Validator(
++        {**SCHEMA, "$ref": references.get(model.__name__, "#/$defs/" + model.__name__)},
++        format_checker=FormatChecker(),
++    )
++    assert list(validator.iter_errors(raw))
++    with pytest.raises(ValidationError):
++        model.model_validate_json(json.dumps(raw))
++
++
++@pytest.mark.parametrize(
++    "model,raw",
++    [
++        (Citation, dict(CITATION, revision_id=ID.replace("-", ""))),
++        (Component, dict(COMPONENT, component_id=ID.replace("-", ""))),
++        (Enrichment, dict(ENRICHMENT, claim_ids=[ID.replace("-", "")])),
++        (Relation, dict(RELATION, relation_id=ID.replace("-", ""))),
++        (Relation, dict(RELATION, subject_id=ID.replace("-", ""))),
++        (Relation, dict(RELATION, object_id=ID.replace("-", ""))),
++        (Relation, dict(RELATION, source_revision=ID.replace("-", ""))),
++        (
++            NormalizedIntel,
++            {
++                "intel_id": ID.replace("-", ""),
++                "revision_id": ID,
++                "title": "fixture",
++                "kind": "advisory",
++                "external_ids": [],
++                "citations": [],
++                "data_mode": "fixture",
++            },
++        ),
++        (
++            Vulnerability,
++            {
++                "intel_id": ID,
++                "event_id": ID.replace("-", ""),
++                "title": "fixture",
++                "external_ids": [],
++                "enrichments": [],
++                "relations": [],
++                "freshness": "unknown",
++            },
++        ),
++        (
++            Advisory,
++            {
++                "intel_id": ID,
++                "revision_id": ID.replace("-", ""),
++                "title": "fixture",
++                "source_uri": "https://example.org/fixture",
++                "published_at": None,
++                "citations": [],
++            },
++        ),
++        (
++            AnswerClaim,
++            {"text": "fixture", "kind": "source_fact", "support_ids": [ID.replace("-", "")]},
++        ),
++        (QAAnswer, dict(ANSWER, answer_id=ID.replace("-", ""))),
++        (TaskHandle, dict(TASK, task_id=ID.replace("-", ""))),
++        (
++            AskRequest,
++            {"question": "fixture", "mode": "library", "conversation_id": ID.replace("-", "")},
++        ),
++        (
++            AskRequest,
++            {"question": "fixture", "mode": "library", "asset_ids": [ID.replace("-", "")]},
++        ),
++        (
++            AskRequest,
++            {"question": "fixture", "mode": "library", "event_ids": [ID.replace("-", "")]},
++        ),
++        (
++            ComponentAssessment,
++            {
++                "component": COMPONENT,
++                "status": "insufficient_evidence",
++                "reason_code": "no_match",
++                "assessment_id": ID.replace("-", ""),
++                "citations": [],
++                "freshness": "unknown",
++            },
++        ),
++        (
++            StackUploadRequest,
++            {
++                "upload_id": ID.replace("-", ""),
++                "size_bytes": 1,
++                "declared_component_count": 1,
++                "format": "json_components",
++            },
++        ),
++    ],
++)
++def test_all_public_uuid_boundaries_reject_noncanonical_raw_spelling(
++    model: type[PublicRecord], raw: dict[str, object]
++) -> None:
++    assert_format_rejected(model, raw)
++
++
++@pytest.mark.parametrize(
++    "model,raw",
++    [
++        (Enrichment, dict(ENRICHMENT, observed_at="2026-10-16 00:00:00Z")),
++        (
++            Advisory,
++            {
++                "intel_id": ID,
++                "revision_id": ID,
++                "title": "fixture",
++                "source_uri": "https://example.org/fixture",
++                "published_at": "2026-10-16 00:00:00Z",
++                "citations": [],
++            },
++        ),
++        (QAAnswer, dict(ANSWER, started_at="2026-10-16 00:00:00Z")),
++        (QAAnswer, dict(ANSWER, completed_at="2026-10-16 00:00:00Z")),
++        (TaskHandle, dict(TASK, created_at="2026-10-16 00:00:00Z")),
++        (AskRequest, {"question": "fixture", "mode": "library", "known_at": "1760572800"}),
++        (AskRequest, {"question": "fixture", "mode": "library", "valid_at": "1760572800"}),
++    ],
++)
++def test_all_public_datetime_boundaries_reject_non_rfc3339_raw_spelling(
++    model: type[PublicRecord], raw: dict[str, object]
++) -> None:
++    assert_format_rejected(model, raw)
++
++
++@pytest.mark.parametrize(
++    "value",
++    [
++        "2026-10-16T00:00:00Z",
++        "2026-10-16t00:00:00z",
++        "2026-10-16T00:00:00.1Z",
++        "2026-10-16T00:00:00.123456Z",
++        "2026-10-16T00:00:00+08:00",
++        "2026-10-16T00:00:00-05:30",
++        "2026-10-16T00:00:00+23:59",
++        "2024-02-29T00:00:00Z",
++    ],
++)
++def test_approved_timezone_case_calendar_and_microsecond_forms_stay_valid(value: str) -> None:
++    raw = dict(ANSWER, started_at=value, completed_at=value)
++    validator = Draft202012Validator(
++        {**SCHEMA, "$ref": "#/$defs/QAAnswer"}, format_checker=FormatChecker()
++    )
++    assert list(validator.iter_errors(raw)) == []
++    parsed = QAAnswer.model_validate_json(json.dumps(raw))
++    assert parsed.started_at.utcoffset() is not None
++    assert parsed.completed_at == parsed.started_at
++    assert list(validator.iter_errors(json.loads(parsed.wire_json()))) == []
++
++
++@pytest.mark.parametrize(
++    "value",
++    [
++        "aabbccdd-eeff-4abc-9def-0123456789ab",
++        "AABBCCDD-EEFF-4ABC-9DEF-0123456789AB",
++        "AaBbCcDd-EeFf-4aBc-9DeF-0123456789Ab",
++    ],
++)
++def test_approved_uuid_case_forms_keep_typed_identity(value: str) -> None:
++    parsed = Citation.model_validate_json(json.dumps(dict(CITATION, evidence_id=value)))
++    assert parsed.evidence_id == UUID(value)
++
++
++@pytest.mark.parametrize(
++    "value",
++    [
++        "2026-10-16T00:00:00+08:60",
++        "2026-10-16T00:00:00+24:00",
++        "2026-10-16T24:00:00Z",
++        "2026-10-16T00:00:60Z",
++        "2026-02-30T00:00:00Z",
++        "2026-10-16T00:00:00",
++    ],
++)
++def test_invalid_timezone_clock_calendar_and_missing_zone_stay_rejected(value: str) -> None:
++    assert_format_rejected(QAAnswer, dict(ANSWER, started_at=value, completed_at=value))
++
++
++def test_typed_uuid_and_aware_datetime_python_callers_remain_supported() -> None:
++    timestamp = datetime(2026, 10, 16, microsecond=123456, tzinfo=timezone(timedelta(hours=8)))
++    request = AskRequest(
++        question="fixture", mode="library", conversation_id=UUID(ID), known_at=timestamp
++    )
++    restored = AskRequest.model_validate_json(request.wire_json())
++    assert restored.conversation_id == UUID(ID)
++    assert restored.known_at == timestamp
++    citation = Citation(
++        evidence_id=UUID(ID),
++        revision_id=UUID(ID),
++        quote="fixture",
++        locator="paragraph:1",
++        source_uri="https://example.org/fixture",
++    )
++    assert citation.evidence_id == UUID(ID)
++
++
++def test_missing_optional_dates_remain_omitted_and_naive_python_datetime_rejected() -> None:
++    request = AskRequest(question="fixture", mode="library")
++    assert "known_at" not in json.loads(request.wire_json())
++    with pytest.raises(ValidationError):
++        AskRequest(question="fixture", mode="library", known_at=datetime(2026, 10, 16))
++
++
++@pytest.mark.parametrize(
++    "invalid_response",
++    [dict(ANSWER, answer_id=ID.replace("-", "")), dict(ANSWER, started_at="2026-10-16 00:00:00Z")],
++)
++def test_http_invalid_wire_format_becomes_contract_error_before_success(
++    invalid_response: dict[str, object],
++) -> None:
++    with (
++        DianziClient(
++            "http://127.0.0.1:12345",
++            SecretStr("synthetic-format-key-no-provider-access"),
++            transport=httpx.MockTransport(lambda _: httpx.Response(200, json=invalid_response)),
++        ) as client,
++        pytest.raises(ResponseContractError),
++    ):
++        client.ask(AskRequest(question="fixture", mode="library"))

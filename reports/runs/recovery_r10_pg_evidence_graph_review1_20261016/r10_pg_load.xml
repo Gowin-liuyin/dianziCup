@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="6.089" timestamp="2026-10-16T03:17:36.732449+08:00" hostname="yin"><testcase classname="test_graph_load_pg" name="test_support_row_cap_and_repeated_paper_target_lookups" time="5.281"><failure message="AssertionError: Same target document/revision should require one bounded lookup, not one per support span&#10;assert 2000 &lt;= 1">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_review1_20261016?options=-c+search_path%3Dtest_r10_graph_a7dd656daa8e45ae90741a75e95ab9dd+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-666/test_support_row_cap_and_repea0')
+
+    def test_support_row_cap_and_repeated_paper_target_lookups(graph_engine, tmp_path):
+        event_id = uuid4()
+        value = paper_value(graph_engine, tmp_path / 'paper')
+        submission = publish_fact(graph_engine, tmp_path / 'support', event_id, value)
+        publish_event(graph_engine, event_id, [submission])
+        with graph_engine.begin() as connection:
+            original = dict(connection.execute(select(evidence).where(
+                evidence.c.evidence_id == submission.evidence_links[0].evidence_id.value,
+            )).mappings().one())
+            evidence_rows = [{**original, 'evidence_id': str(uuid4())} for _ in range(2000)]
+            connection.execute(evidence.insert(), evidence_rows)
+            connection.execute(claim_evidence.insert(), [
+                {'claim_id': submission.record.claim_id.value, 'evidence_id': row['evidence_id'], 'support_kind': 'supports', 'validation_status': 'validated'}
+                for row in evidence_rows
+            ])
+        counts = {'sql': 0, 'paper_target': 0}
+    
+        def count_query(connection, cursor, statement, parameters, context, executemany):
+            counts['sql'] += 1
+            if 'FROM document_revisions JOIN documents' in statement and 'documents.kind =' in statement:
+                counts['paper_target'] += 1
+    
+        event.listen(graph_engine, 'before_cursor_execute', count_query)
+        started = perf_counter()
+        try:
+            result = read_graph(graph_engine, event_id, max_nodes=1, max_edges=1)
+        finally:
+            elapsed = perf_counter() - started
+            event.remove(graph_engine, 'before_cursor_execute', count_query)
+        observation = {**counts, 'elapsed_seconds': elapsed, 'input_support_rows': 2001, 'selected_nodes': len(result.nodes), 'selected_edges': len(result.edges), 'truncated': result.truncated, 'scope': 'isolated synthetic local observation; not a performance acceptance score'}
+        (Path(__file__).parent / 'graph_load_observation.json').write_text(json.dumps(observation, indent=2), encoding='utf-8')
+        assert result.truncated and len(result.nodes) == 1 and len(result.edges) == 0
+&gt;       assert counts['paper_target'] &lt;= 1, 'Same target document/revision should require one bounded lookup, not one per support span'
+E       AssertionError: Same target document/revision should require one bounded lookup, not one per support span
+E       assert 2000 &lt;= 1
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_20261016\test_graph_load_pg.py:50: AssertionError</failure></testcase></testsuite></testsuites>

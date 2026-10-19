@@ -1,0 +1,236 @@
+................................................FFF..........F.F.        [100%]
+================================== FAILURES ===================================
+_ test_body_fingerprint_is_stable_for_input_key_order_and_backend_409_remains_failure _
+
+    def test_body_fingerprint_is_stable_for_input_key_order_and_backend_409_remains_failure() -> None:
+        seen = {}
+        calls = []
+    
+        def handler(request: httpx.Request) -> httpx.Response:
+            body_hash = hashlib.sha256(request.content).hexdigest()
+            key = request.headers["idempotency-key"]
+            calls.append((key, body_hash))
+            if key in seen and seen[key] != body_hash:
+                return httpx.Response(409, content=b"synthetic conflict")
+            seen[key] = body_hash
+            return httpx.Response(200, json=ANSWER)
+    
+        with DianziClient(
+            "http://localhost:12345", SecretStr(SYNTHETIC_KEY), transport=httpx.MockTransport(handler)
+        ) as client:
+>           client.ask(AskRequest.model_validate_json(json.dumps(QUESTION)), idempotency_key="same-key")
+
+reports\runs\recovery_r18_sdk_client_fix1_20261016\test_independent_boundaries.py:352: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sdk\python\ai_intel_client\client.py:301: in ask
+    status, result = self._post(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel_client.client.DianziClient object at 0x00000214FE032300>
+path = '/api/v1/ask'
+body = '{"question":"synthetic review question","mode":"library"}'
+operation_key = 'same-key'
+adapter = TypeAdapter(Annotated[Union[QAAnswer, TaskHandle], FieldInfo(annotation=NoneType, required=True, discriminator='kind')])
+timeout_seconds = 100
+
+    def _post(
+        self,
+        path: str,
+        body: str,
+        operation_key: str,
+        adapter: TypeAdapter[ResultType],
+        timeout_seconds: float,
+    ) -> tuple[int, ResultType]:
+        encoded = body.encode("utf-8")
+        if len(encoded) > MAX_SYNCHRONOUS_REQUEST_BYTES:
+            raise ClientInputError("synchronous request exceeds the client size boundary")
+        try:
+            with self._http.stream(
+                "POST",
+                path,
+                content=encoded,
+                headers={"Content-Type": "application/json", "Idempotency-Key": operation_key},
+                timeout=timeout_seconds,
+            ) as response:
+                if response.headers.get("content-encoding", "identity").lower() != "identity":
+                    raise ResponseContractError(
+                        "compressed response is outside the client boundary"
+                    )
+                raw = bytearray()
+                for chunk in response.iter_bytes():
+                    if len(raw) + len(chunk) > MAX_RESPONSE_BYTES:
+                        raise ResponseContractError("response exceeds the allowed size")
+                    raw.extend(chunk)
+                content = bytes(raw)
+                if response.status_code not in {200, 202}:
+                    problem = None
+                    if (
+                        response.headers.get("content-type", "").split(";", 1)[0].lower()
+                        == "application/problem+json"
+                    ):
+                        try:
+                            validate_json_bytes(content)
+                            problem = ApiProblem.model_validate_json(content)
+                        except (ResponseContractError, ValidationError):
+                            problem = None
+                    if problem is None or problem.status != response.status_code:
+                        raise DianziApiError(response.status_code, "http_error", None, False)
+                    raise DianziApiError(
+                        problem.status,
+                        problem.error.code,
+                        problem.trace_id,
+                        problem.error.retryable,
+                    )
+                if (
+                    response.headers.get("content-type", "").split(";", 1)[0].lower()
+                    != "application/json"
+                ):
+                    raise ResponseContractError("response content type is invalid")
+                validate_json_bytes(content)
+                try:
+                    result = adapter.validate_json(content)
+                except ValidationError:
+>                   raise ResponseContractError(
+                        "response does not match the public contract"
+                    ) from None
+E                   ai_intel_client.client.ResponseContractError: response does not match the public contract
+
+sdk\python\ai_intel_client\client.py:284: ResponseContractError
+___ test_actual_cli_process_outputs_complete_json_and_exits_two[200-value0] ___
+
+status = 200
+value = {'answer_id': '00000000-0000-4000-8000-000000000001', 'answer_text': '\u8bc1\u636e\u4e0d\u8db3\uff1b\U0001f642', 'citations': [], 'claims': [], ...}
+
+    @pytest.mark.parametrize("status,value", [(200, ANSWER), (202, TASK)])
+    def test_actual_cli_process_outputs_complete_json_and_exits_two(status: int, value: object) -> None:
+        with fixture_server(status, json.dumps(value).encode()) as (base, calls):
+            result = run_cli(base, "ask", QUESTION)
+>       assert result.returncode == 2
+E       AssertionError: assert 3 == 2
+E        +  where 3 = CompletedProcess(args=['D:\\dianzi\\backend\\.venv\\Scripts\\python.exe', '-m', 'ai_intel_client.cli', 'ask', '--idemp...ation'], returncode=3, stdout=b'', stderr=b'The operation could not be completed; check configuration and access.\r\n').returncode
+
+reports\runs\recovery_r18_sdk_client_fix1_20261016\test_independent_boundaries.py:452: AssertionError
+___ test_actual_cli_process_outputs_complete_json_and_exits_two[202-value1] ___
+
+status = 202
+value = {'created_at': '2026-10-16T00:00:00Z', 'kind': 'task', 'poll_uri': '/api/v1/tasks/00000000-0000-4000-8000-000000000001', 'status': 'queued', ...}
+
+    @pytest.mark.parametrize("status,value", [(200, ANSWER), (202, TASK)])
+    def test_actual_cli_process_outputs_complete_json_and_exits_two(status: int, value: object) -> None:
+        with fixture_server(status, json.dumps(value).encode()) as (base, calls):
+            result = run_cli(base, "ask", QUESTION)
+>       assert result.returncode == 2
+E       AssertionError: assert 3 == 2
+E        +  where 3 = CompletedProcess(args=['D:\\dianzi\\backend\\.venv\\Scripts\\python.exe', '-m', 'ai_intel_client.cli', 'ask', '--idemp...ation'], returncode=3, stdout=b'', stderr=b'The operation could not be completed; check configuration and access.\r\n').returncode
+
+reports\runs\recovery_r18_sdk_client_fix1_20261016\test_independent_boundaries.py:452: AssertionError
+_________ test_raw_http_set_cookie_does_not_authenticate_second_post __________
+
+    def test_raw_http_set_cookie_does_not_authenticate_second_post() -> None:
+        with (
+            fixture_server(
+                200,
+                json.dumps(ANSWER).encode(),
+                headers={"Set-Cookie": "ai_intel_session=synthetic; Path=/"},
+            ) as (base, calls),
+            DianziClient(base, SecretStr(SYNTHETIC_KEY)) as client,
+        ):
+            request = AskRequest.model_validate_json(json.dumps(QUESTION))
+>           client.ask(request, idempotency_key="first")
+
+reports\runs\recovery_r18_sdk_client_fix1_20261016\test_independent_boundaries.py:545: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sdk\python\ai_intel_client\client.py:301: in ask
+    status, result = self._post(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel_client.client.DianziClient object at 0x00000214FE03B500>
+path = '/api/v1/ask'
+body = '{"question":"synthetic review question","mode":"library"}'
+operation_key = 'first'
+adapter = TypeAdapter(Annotated[Union[QAAnswer, TaskHandle], FieldInfo(annotation=NoneType, required=True, discriminator='kind')])
+timeout_seconds = 100
+
+    def _post(
+        self,
+        path: str,
+        body: str,
+        operation_key: str,
+        adapter: TypeAdapter[ResultType],
+        timeout_seconds: float,
+    ) -> tuple[int, ResultType]:
+        encoded = body.encode("utf-8")
+        if len(encoded) > MAX_SYNCHRONOUS_REQUEST_BYTES:
+            raise ClientInputError("synchronous request exceeds the client size boundary")
+        try:
+            with self._http.stream(
+                "POST",
+                path,
+                content=encoded,
+                headers={"Content-Type": "application/json", "Idempotency-Key": operation_key},
+                timeout=timeout_seconds,
+            ) as response:
+                if response.headers.get("content-encoding", "identity").lower() != "identity":
+                    raise ResponseContractError(
+                        "compressed response is outside the client boundary"
+                    )
+                raw = bytearray()
+                for chunk in response.iter_bytes():
+                    if len(raw) + len(chunk) > MAX_RESPONSE_BYTES:
+                        raise ResponseContractError("response exceeds the allowed size")
+                    raw.extend(chunk)
+                content = bytes(raw)
+                if response.status_code not in {200, 202}:
+                    problem = None
+                    if (
+                        response.headers.get("content-type", "").split(";", 1)[0].lower()
+                        == "application/problem+json"
+                    ):
+                        try:
+                            validate_json_bytes(content)
+                            problem = ApiProblem.model_validate_json(content)
+                        except (ResponseContractError, ValidationError):
+                            problem = None
+                    if problem is None or problem.status != response.status_code:
+                        raise DianziApiError(response.status_code, "http_error", None, False)
+                    raise DianziApiError(
+                        problem.status,
+                        problem.error.code,
+                        problem.trace_id,
+                        problem.error.retryable,
+                    )
+                if (
+                    response.headers.get("content-type", "").split(";", 1)[0].lower()
+                    != "application/json"
+                ):
+                    raise ResponseContractError("response content type is invalid")
+                validate_json_bytes(content)
+                try:
+                    result = adapter.validate_json(content)
+                except ValidationError:
+>                   raise ResponseContractError(
+                        "response does not match the public contract"
+                    ) from None
+E                   ai_intel_client.client.ResponseContractError: response does not match the public contract
+
+sdk\python\ai_intel_client\client.py:284: ResponseContractError
+_____ test_actual_cli_non_utf8_output_stream_still_returns_complete_json ______
+
+    def test_actual_cli_non_utf8_output_stream_still_returns_complete_json() -> None:
+        with fixture_server(200, json.dumps(ANSWER).encode()) as (base, calls):
+            result = run_cli(base, "ask", QUESTION, encoding="ascii")
+>       assert result.returncode == 2
+E       AssertionError: assert 3 == 2
+E        +  where 3 = CompletedProcess(args=['D:\\dianzi\\backend\\.venv\\Scripts\\python.exe', '-m', 'ai_intel_client.cli', 'ask', '--idemp...ation'], returncode=3, stdout=b'', stderr=b'The operation could not be completed; check configuration and access.\r\n').returncode
+
+reports\runs\recovery_r18_sdk_client_fix1_20261016\test_independent_boundaries.py:571: AssertionError
+- generated xml file: D:\wt\r18-sdk-client-fix1\reports\runs\recovery_r18_sdk_client_fix1_20261016\original_65_after_fix.xml -
+=========================== short test summary info ===========================
+FAILED reports/runs/recovery_r18_sdk_client_fix1_20261016/test_independent_boundaries.py::test_body_fingerprint_is_stable_for_input_key_order_and_backend_409_remains_failure
+FAILED reports/runs/recovery_r18_sdk_client_fix1_20261016/test_independent_boundaries.py::test_actual_cli_process_outputs_complete_json_and_exits_two[200-value0]
+FAILED reports/runs/recovery_r18_sdk_client_fix1_20261016/test_independent_boundaries.py::test_actual_cli_process_outputs_complete_json_and_exits_two[202-value1]
+FAILED reports/runs/recovery_r18_sdk_client_fix1_20261016/test_independent_boundaries.py::test_raw_http_set_cookie_does_not_authenticate_second_post
+FAILED reports/runs/recovery_r18_sdk_client_fix1_20261016/test_independent_boundaries.py::test_actual_cli_non_utf8_output_stream_still_returns_complete_json
+5 failed, 60 passed in 10.48s
+
+--- stderr ---

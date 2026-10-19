@@ -1,0 +1,253 @@
+..............F.F                                                        [100%]
+================================== FAILURES ===================================
+_ test_actual_writer_document_phase_and_pg_source_wait_prevent_old_cycle[False-publisher] _
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_pub_review2_20261016?options=-c+search_path%3Dtest_r06_catalog_736aa686e4c54d319494c13e26a65e57+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-684/test_actual_writer_document_ph1')
+leader = 'publisher', paired = False
+
+    @pytest.mark.parametrize("leader", ["writer", "publisher"])
+    @pytest.mark.parametrize("paired", [False, True])
+    def test_actual_writer_document_phase_and_pg_source_wait_prevent_old_cycle(catalog_engine, tmp_path, leader, paired):
+        store, loaded = inputs(catalog_engine, tmp_path, paired=paired)
+        if paired:
+            loaded = replace(loaded, documents=tuple(reversed(loaded.documents)))
+        attempts = enrich_structured_fields(loaded.context, loaded.documents)
+        request_id = uuid4()
+        payload = json.loads(source_response("nvd_ollama")[0])
+        payload["vulnerabilities"][0]["cve"]["descriptions"][0]["value"] += " Independent recheck revision."
+        response = SourceResponse("nvd_ollama", json.dumps(payload).encode(), "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=ollama&resultsPerPage=20&startIndex=0", loaded.documents[0].observed_at + timedelta(seconds=1))
+        target_source = "source:" + str(next(document.source_id for document in loaded.documents if any(block.json_pointer == "/cve/id" for block in document.blocks)))
+        first_doc_held, follower_attempted, release = Event(), Event(), Event()
+        pids, phases, source_lock_order = {}, [], {"writer": [], "publisher": []}
+    
+        def before_execute(connection, cursor, statement, parameters, context, executemany):
+            actor = connection.info.get("independent_actor")
+            if actor in source_lock_order and "pg_advisory_xact_lock" in statement:
+                key = next(iter(parameters.values()))
+                if key == target_source and actor != leader:
+                    follower_attempted.set()
+    
+        def after_execute(connection, cursor, statement, parameters, context, executemany):
+            actor = connection.info.get("independent_actor")
+            if actor not in source_lock_order:
+                return
+            if "pg_advisory_xact_lock" in statement:
+                key = next(iter(parameters.values()))
+                if isinstance(key, str) and key.startswith("source:"):
+                    phases.append((actor, "source"))
+                    source_lock_order[actor].append(key)
+                elif isinstance(key, str) and key.startswith("knowledge-publication:"):
+                    phases.append((actor, "scope"))
+            is_doc_phase = "FOR UPDATE" in statement and "documents" in statement and ((actor == "writer" and "SELECT documents." in statement) or (actor == "publisher" and "FOR UPDATE OF" in statement))
+            if is_doc_phase:
+                phases.append((actor, "document"))
+                if actor == leader and not first_doc_held.is_set():
+                    first_doc_held.set()
+                    assert release.wait(4), "observer did not release the leader"
+    
+        def invoke(actor):
+            try:
+                with Session(catalog_engine) as session, session.begin():
+                    session.connection().info["independent_actor"] = actor
+                    pids[actor] = session.scalar(select(func.pg_backend_pid()))
+                    if actor == "writer":
+                        persist_source_response(session, store, ADMIN, response, ingested_at=response.observed_at)
+                    else:
+                        publish_enrichment_attempts(session, ADMIN, loaded, attempts, request_id=request_id, recorded_at=response.observed_at)
+                return {"actor": actor, "outcome": "completed", "sqlstate": None}
+            except EnrichmentPublicationError as failure:
+                return {"actor": actor, "outcome": "snapshot_rejected", "reason": str(failure), "sqlstate": None}
+            except Exception as failure:
+                return {"actor": actor, "outcome": type(failure).__name__, "sqlstate": getattr(getattr(failure, "orig", None), "sqlstate", None)}
+    
+        event.listen(catalog_engine, "before_cursor_execute", before_execute)
+        event.listen(catalog_engine, "after_cursor_execute", after_execute)
+        observed = []
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                first = pool.submit(invoke, leader)
+                assert first_doc_held.wait(3), "leader never reached its real document lock"
+                follower = "publisher" if leader == "writer" else "writer"
+                second = pool.submit(invoke, follower)
+                try:
+                    assert follower_attempted.wait(3), "follower did not attempt the shared source lock"
+                    deadline = monotonic() + 1.5
+                    with catalog_engine.connect() as observer:
+                        while True:
+                            rows = observer.execute(text("SELECT pid,granted,classid::bigint AS classid,objid::bigint AS objid,objsubid FROM pg_locks WHERE pid=:pid AND locktype='advisory'"), {"pid": pids[follower]}).mappings().all()
+                            target_hash = observer.scalar(select(func.hashtextextended(target_source, 0)))
+                            observed = [dict(row) for row in rows]
+                            waiting = [row for row in rows if not row["granted"] and row["classid"] == (target_hash >> 32) & 0xFFFFFFFF and row["objid"] == target_hash & 0xFFFFFFFF]
+                            if waiting:
+                                assert observer.scalar(text("SELECT :blocker=ANY(pg_blocking_pids(:waiter))"), {"blocker": pids[leader], "waiter": pids[follower]})
+                                break
+                            assert monotonic() < deadline, "no real PG wait on the exact source key"
+                            sleep(0.01)
+                finally:
+                    release.set()
+                outcomes = [first.result(timeout=15), second.result(timeout=15)]
+        finally:
+            event.remove(catalog_engine, "before_cursor_execute", before_execute)
+            event.remove(catalog_engine, "after_cursor_execute", after_execute)
+        artifact = {"leader": leader, "paired": paired, "outcomes": outcomes, "phases": phases, "source_locks": source_lock_order, "observed_pg_locks": observed}
+        (RAW / (f"actual_lock_{leader}_{paired}.json")).write_text(json.dumps(artifact, indent=2), encoding="utf-8")
+        assert [row["outcome"] for row in outcomes] == (["completed", "snapshot_rejected"] if leader == "writer" else ["completed", "completed"]), artifact
+        assert source_lock_order["publisher"] == sorted({"source:" + str(document.source_id) for document in loaded.documents})
+        for actor in ("writer", "publisher"):
+            assert phases.index((actor, "source")) < phases.index((actor, "document")) < phases.index((actor, "scope"))
+        with Session(catalog_engine) as session:
+            count = session.scalar(select(func.count()).select_from(enrichment_results).where(enrichment_results.c.publication_key.startswith("r07:" + str(request_id) + ":")))
+            assert count == (0 if leader == "writer" else len(attempts))
+        if leader == "publisher":
+            before = snapshot(catalog_engine)
+            replay = publish(catalog_engine, loaded, attempts, request_id)
+            assert all(result.reused for result in replay)
+            assert snapshot(catalog_engine) == before
+            with pytest.raises(EnrichmentPublicationError):
+                publish(catalog_engine, loaded, attempts)
+            assert snapshot(catalog_engine) == before
+            with Session(catalog_engine) as session:
+                detail = KnowledgeReadService(session, ADMIN, "fixture").event_detail(loaded.context.event_id)
+>               assert all(item.freshness == "stale" for item in detail.dimensions)
+E               assert False
+E                +  where False = all(<generator object test_actual_writer_document_phase_and_pg_source_wait_prevent_old_cycle.<locals>.<genexpr> at 0x0000019251C5D7D0>)
+
+..\reports\runs\recovery_r07_publication_review1_recheck_20261016\test_independent_recheck_pg.py:273: AssertionError
+_ test_actual_writer_document_phase_and_pg_source_wait_prevent_old_cycle[True-publisher] _
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_pub_review2_20261016?options=-c+search_path%3Dtest_r06_catalog_3cf2f9da855640b6bfa2c95ed9dc5cd2+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-684/test_actual_writer_document_ph3')
+leader = 'publisher', paired = True
+
+    @pytest.mark.parametrize("leader", ["writer", "publisher"])
+    @pytest.mark.parametrize("paired", [False, True])
+    def test_actual_writer_document_phase_and_pg_source_wait_prevent_old_cycle(catalog_engine, tmp_path, leader, paired):
+        store, loaded = inputs(catalog_engine, tmp_path, paired=paired)
+        if paired:
+            loaded = replace(loaded, documents=tuple(reversed(loaded.documents)))
+        attempts = enrich_structured_fields(loaded.context, loaded.documents)
+        request_id = uuid4()
+        payload = json.loads(source_response("nvd_ollama")[0])
+        payload["vulnerabilities"][0]["cve"]["descriptions"][0]["value"] += " Independent recheck revision."
+        response = SourceResponse("nvd_ollama", json.dumps(payload).encode(), "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=ollama&resultsPerPage=20&startIndex=0", loaded.documents[0].observed_at + timedelta(seconds=1))
+        target_source = "source:" + str(next(document.source_id for document in loaded.documents if any(block.json_pointer == "/cve/id" for block in document.blocks)))
+        first_doc_held, follower_attempted, release = Event(), Event(), Event()
+        pids, phases, source_lock_order = {}, [], {"writer": [], "publisher": []}
+    
+        def before_execute(connection, cursor, statement, parameters, context, executemany):
+            actor = connection.info.get("independent_actor")
+            if actor in source_lock_order and "pg_advisory_xact_lock" in statement:
+                key = next(iter(parameters.values()))
+                if key == target_source and actor != leader:
+                    follower_attempted.set()
+    
+        def after_execute(connection, cursor, statement, parameters, context, executemany):
+            actor = connection.info.get("independent_actor")
+            if actor not in source_lock_order:
+                return
+            if "pg_advisory_xact_lock" in statement:
+                key = next(iter(parameters.values()))
+                if isinstance(key, str) and key.startswith("source:"):
+                    phases.append((actor, "source"))
+                    source_lock_order[actor].append(key)
+                elif isinstance(key, str) and key.startswith("knowledge-publication:"):
+                    phases.append((actor, "scope"))
+            is_doc_phase = "FOR UPDATE" in statement and "documents" in statement and ((actor == "writer" and "SELECT documents." in statement) or (actor == "publisher" and "FOR UPDATE OF" in statement))
+            if is_doc_phase:
+                phases.append((actor, "document"))
+                if actor == leader and not first_doc_held.is_set():
+                    first_doc_held.set()
+                    assert release.wait(4), "observer did not release the leader"
+    
+        def invoke(actor):
+            try:
+                with Session(catalog_engine) as session, session.begin():
+                    session.connection().info["independent_actor"] = actor
+                    pids[actor] = session.scalar(select(func.pg_backend_pid()))
+                    if actor == "writer":
+                        persist_source_response(session, store, ADMIN, response, ingested_at=response.observed_at)
+                    else:
+                        publish_enrichment_attempts(session, ADMIN, loaded, attempts, request_id=request_id, recorded_at=response.observed_at)
+                return {"actor": actor, "outcome": "completed", "sqlstate": None}
+            except EnrichmentPublicationError as failure:
+                return {"actor": actor, "outcome": "snapshot_rejected", "reason": str(failure), "sqlstate": None}
+            except Exception as failure:
+                return {"actor": actor, "outcome": type(failure).__name__, "sqlstate": getattr(getattr(failure, "orig", None), "sqlstate", None)}
+    
+        event.listen(catalog_engine, "before_cursor_execute", before_execute)
+        event.listen(catalog_engine, "after_cursor_execute", after_execute)
+        observed = []
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                first = pool.submit(invoke, leader)
+                assert first_doc_held.wait(3), "leader never reached its real document lock"
+                follower = "publisher" if leader == "writer" else "writer"
+                second = pool.submit(invoke, follower)
+                try:
+                    assert follower_attempted.wait(3), "follower did not attempt the shared source lock"
+                    deadline = monotonic() + 1.5
+                    with catalog_engine.connect() as observer:
+                        while True:
+                            rows = observer.execute(text("SELECT pid,granted,classid::bigint AS classid,objid::bigint AS objid,objsubid FROM pg_locks WHERE pid=:pid AND locktype='advisory'"), {"pid": pids[follower]}).mappings().all()
+                            target_hash = observer.scalar(select(func.hashtextextended(target_source, 0)))
+                            observed = [dict(row) for row in rows]
+                            waiting = [row for row in rows if not row["granted"] and row["classid"] == (target_hash >> 32) & 0xFFFFFFFF and row["objid"] == target_hash & 0xFFFFFFFF]
+                            if waiting:
+                                assert observer.scalar(text("SELECT :blocker=ANY(pg_blocking_pids(:waiter))"), {"blocker": pids[leader], "waiter": pids[follower]})
+                                break
+                            assert monotonic() < deadline, "no real PG wait on the exact source key"
+                            sleep(0.01)
+                finally:
+                    release.set()
+                outcomes = [first.result(timeout=15), second.result(timeout=15)]
+        finally:
+            event.remove(catalog_engine, "before_cursor_execute", before_execute)
+            event.remove(catalog_engine, "after_cursor_execute", after_execute)
+        artifact = {"leader": leader, "paired": paired, "outcomes": outcomes, "phases": phases, "source_locks": source_lock_order, "observed_pg_locks": observed}
+        (RAW / (f"actual_lock_{leader}_{paired}.json")).write_text(json.dumps(artifact, indent=2), encoding="utf-8")
+        assert [row["outcome"] for row in outcomes] == (["completed", "snapshot_rejected"] if leader == "writer" else ["completed", "completed"]), artifact
+        assert source_lock_order["publisher"] == sorted({"source:" + str(document.source_id) for document in loaded.documents})
+        for actor in ("writer", "publisher"):
+            assert phases.index((actor, "source")) < phases.index((actor, "document")) < phases.index((actor, "scope"))
+        with Session(catalog_engine) as session:
+            count = session.scalar(select(func.count()).select_from(enrichment_results).where(enrichment_results.c.publication_key.startswith("r07:" + str(request_id) + ":")))
+            assert count == (0 if leader == "writer" else len(attempts))
+        if leader == "publisher":
+            before = snapshot(catalog_engine)
+            replay = publish(catalog_engine, loaded, attempts, request_id)
+            assert all(result.reused for result in replay)
+            assert snapshot(catalog_engine) == before
+            with pytest.raises(EnrichmentPublicationError):
+                publish(catalog_engine, loaded, attempts)
+            assert snapshot(catalog_engine) == before
+            with Session(catalog_engine) as session:
+                detail = KnowledgeReadService(session, ADMIN, "fixture").event_detail(loaded.context.event_id)
+>               assert all(item.freshness == "stale" for item in detail.dimensions)
+E               assert False
+E                +  where False = all(<generator object test_actual_writer_document_phase_and_pg_source_wait_prevent_old_cycle.<locals>.<genexpr> at 0x000001925161A260>)
+
+..\reports\runs\recovery_r07_publication_review1_recheck_20261016\test_independent_recheck_pg.py:273: AssertionError
+============================== warnings summary ===============================
+tests\integration\test_r06_catalog_documents_pg.py:32
+  D:\wt\r07-pub-recheck1\backend\tests\integration\test_r06_catalog_documents_pg.py:32: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+tests\integration\test_r06_source_worker_pg.py:43
+  D:\wt\r07-pub-recheck1\backend\tests\integration\test_r06_source_worker_pg.py:43: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+tests\integration\test_r07_enrichment_inputs_pg.py:18
+  D:\wt\r07-pub-recheck1\backend\tests\integration\test_r07_enrichment_inputs_pg.py:18: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+..\reports\runs\recovery_r07_publication_review1_recheck_20261016\test_independent_recheck_pg.py:37
+  D:\wt\r07-pub-recheck1\reports\runs\recovery_r07_publication_review1_recheck_20261016\test_independent_recheck_pg.py:37: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\r07-pub-recheck1\reports\runs\recovery_r07_publication_review1_recheck_20261016\independent_recheck.xml -
+=========================== short test summary info ===========================
+FAILED ..\reports\runs\recovery_r07_publication_review1_recheck_20261016\test_independent_recheck_pg.py::test_actual_writer_document_phase_and_pg_source_wait_prevent_old_cycle[False-publisher]
+FAILED ..\reports\runs\recovery_r07_publication_review1_recheck_20261016\test_independent_recheck_pg.py::test_actual_writer_document_phase_and_pg_source_wait_prevent_old_cycle[True-publisher]
+2 failed, 15 passed, 4 warnings in 31.47s

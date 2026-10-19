@@ -1,0 +1,203 @@
+"""Collect scan input metadata and classification-load timing without values."""
+
+from __future__ import annotations
+
+import cProfile
+import hashlib
+import json
+import pstats
+import subprocess
+import sys
+import time
+from collections import Counter, defaultdict
+from datetime import datetime
+from pathlib import Path
+from zipfile import ZipFile
+from zoneinfo import ZoneInfo
+
+ROOT = Path(__file__).resolve().parents[3]
+RUN = Path(__file__).parent
+TABLE = ROOT / "reports/security/recovery_fixture_false_positives.json"
+SOURCE_RUN = ROOT / "reports/runs/recovery_r20_secret_provenance_20261016"
+BUNDLE = ROOT / "fixtures/synthetic/security/r20_secret_provenance_20261016.zip"
+
+
+def now() -> str:
+    return datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="milliseconds")
+
+
+def path_metadata(relative_path: str) -> dict[str, object]:
+    target = ROOT / relative_path
+    if not target.exists():
+        return {"path": relative_path, "exists": False}
+    status = target.stat()
+    return {
+        "path": relative_path,
+        "exists": True,
+        "is_file": target.is_file(),
+        "bytes": status.st_size,
+        "mtime_ns": status.st_mtime_ns,
+    }
+
+
+def main() -> int:
+    started = now()
+    tick = time.monotonic()
+    (RUN / "metadata_started.json").write_text(
+        json.dumps({"started_at": started, "command": sys.argv, "mode": "offline_metadata"}),
+        encoding="utf-8",
+    )
+    sys.path.insert(0, str(ROOT))
+    from scripts import security_scan
+
+    table = json.loads(TABLE.read_text(encoding="utf-8"))
+    proposal = json.loads((SOURCE_RUN / "registration_proposal.json").read_text(encoding="utf-8"))
+    original = json.loads((SOURCE_RUN / "registry_original_bytes.bin").read_bytes())
+    assert len(table["records"]) == 136
+    assert len(original["records"]) == 54
+    assert table["records"][:54] == original["records"]
+    assert len(proposal["proposals"]) == 82
+    dependency_roles: dict[str, set[str]] = defaultdict(set)
+    for record in table["records"]:
+        dependency_roles[record["path"]].add("registered_target")
+        dependency_roles[record["review_ref"]].add("review_ref")
+        origin = record["fixture_origin"]
+        dependency_roles[origin["source_path"]].add("fixture_origin_source")
+        if "review_report_path" in origin:
+            dependency_roles[origin["review_report_path"]].add("fixture_origin_review")
+    for relative_path in proposal["fixture_bindings"]:
+        dependency_roles[relative_path].add("proposal_fixture_binding")
+    for target, role in (
+        (TABLE, "classification_table"),
+        (SOURCE_RUN / "registration_proposal.json", "test_collection_proposal"),
+        (SOURCE_RUN / "registry_original_bytes.bin", "test_original_registry_bytes"),
+        (BUNDLE, "test_fixture_bundle"),
+    ):
+        dependency_roles[target.relative_to(ROOT).as_posix()].add(role)
+    dependencies = [
+        {**path_metadata(path), "roles": sorted(roles)}
+        for path, roles in sorted(dependency_roles.items())
+    ]
+    with ZipFile(BUNDLE) as archive:
+        bundle_info = {
+            "members": len(archive.infolist()),
+            "compressed_member_bytes": sum(item.compress_size for item in archive.infolist()),
+            "uncompressed_member_bytes": sum(item.file_size for item in archive.infolist()),
+        }
+    load_started = now()
+    load_tick = time.monotonic()
+    profile = cProfile.Profile()
+    profile.enable()
+    classifications = security_scan.load_fixture_classifications(ROOT, TABLE)
+    profile.disable()
+    load_seconds = time.monotonic() - load_tick
+    load_ended = now()
+    assert len(classifications) == 136
+    profile_rows = []
+    for (filename, line, function), stats in pstats.Stats(profile).stats.items():
+        primitive_calls, total_calls, self_seconds, cumulative_seconds, _ = stats
+        profile_rows.append({
+            "function": function,
+            "filename": filename,
+            "line": line,
+            "primitive_calls": primitive_calls,
+            "total_calls": total_calls,
+            "self_seconds": self_seconds,
+            "cumulative_seconds": cumulative_seconds,
+        })
+    roots = []
+    candidates = []
+    top_directories: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    for relative_root in security_scan.SCAN_ROOTS:
+        source_root = ROOT / relative_root
+        root_tick = time.monotonic()
+        entries = sorted(source_root.rglob("*")) if source_root.exists() else []
+        enumeration_seconds = time.monotonic() - root_tick
+        eligible_files = []
+        suffix_counts: Counter[str] = Counter()
+        directory_count = 0
+        all_file_count = 0
+        all_file_bytes = 0
+        for target in entries:
+            if target.is_dir():
+                directory_count += 1
+                continue
+            if not target.is_file():
+                continue
+            status = target.stat()
+            all_file_count += 1
+            all_file_bytes += status.st_size
+            suffix_counts[target.suffix] += 1
+            if target.suffix not in security_scan.SCAN_SUFFIXES:
+                continue
+            relative_path = target.relative_to(ROOT).as_posix()
+            row = {"path": relative_path, "bytes": status.st_size, "mtime_ns": status.st_mtime_ns}
+            eligible_files.append(row)
+            candidates.append(row)
+            rest = target.relative_to(source_root).parts
+            top_directory = relative_root + ("/" + rest[0] if len(rest) > 1 else "")
+            top_directories[top_directory][0] += 1
+            top_directories[top_directory][1] += status.st_size
+        roots.append({
+            "path": relative_root,
+            "exists": source_root.exists(),
+            "all_entries": len(entries),
+            "directory_count": directory_count,
+            "all_file_count": all_file_count,
+            "all_file_bytes": all_file_bytes,
+            "eligible_file_count": len(eligible_files),
+            "eligible_file_bytes": sum(int(row["bytes"]) for row in eligible_files),
+            "enumeration_seconds": enumeration_seconds,
+            "root_total_metadata_seconds": time.monotonic() - root_tick,
+            "all_suffix_counts": dict(sorted(suffix_counts.items())),
+        })
+    assert sum(int(root["eligible_file_count"]) for root in roots) == len(candidates)
+    assert sum(int(root["eligible_file_bytes"]) for root in roots) == sum(int(row["bytes"]) for row in candidates)
+    receipt = {
+        "started_at": started,
+        "ended_at": now(),
+        "duration_seconds": time.monotonic() - tick,
+        "exit_code": 0,
+        "mode": "offline_metadata",
+        "command": sys.argv,
+        "cwd": str(ROOT),
+        "python_executable": sys.executable,
+        "python_version": sys.version,
+        "head_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+        "scanner_sha256": hashlib.sha256((ROOT / "scripts/security_scan.py").read_bytes()).hexdigest(),
+        "registry_sha256": hashlib.sha256(TABLE.read_bytes()).hexdigest(),
+        "registry_records": len(classifications),
+        "original_records": len(original["records"]),
+        "proposal_rows": len(proposal["proposals"]),
+        "proposal_distinct_paths": len({row["path"] for row in proposal["proposals"]}),
+        "proposal_distinct_value_families_count_only": len({row["value_sha256"] for row in proposal["proposals"]}),
+        "bundle": bundle_info,
+        "dynamic_dependency_metadata": dependencies,
+        "classification_load": {
+            "started_at": load_started,
+            "ended_at": load_ended,
+            "duration_seconds": load_seconds,
+            "profile_top_cumulative": sorted(profile_rows, key=lambda row: float(row["cumulative_seconds"]), reverse=True)[:25],
+        },
+        "scan_roots": roots,
+        "eligible_total_files": len(candidates),
+        "eligible_total_bytes": sum(int(row["bytes"]) for row in candidates),
+        "largest_eligible_files": sorted(candidates, key=lambda row: int(row["bytes"]), reverse=True)[:40],
+        "top_directories_by_eligible_bytes": [
+            {"path": path, "eligible_files": counts[0], "eligible_bytes": counts[1]}
+            for path, counts in sorted(top_directories.items(), key=lambda item: item[1][1], reverse=True)[:30]
+        ],
+        "full_root_scan": "not_run",
+        "171_registry_tests": "not_run_by_this_probe",
+        "exact_authorized_secret_scan": "not_run",
+        "self_checks": "registry counts, preserved original records, aggregate candidate count and bytes",
+        "metadata_mtime_semantics": "filesystem observation only; not report writing time",
+    }
+    (RUN / "metadata.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({key: receipt[key] for key in ("started_at", "ended_at", "duration_seconds", "exit_code", "head_sha", "eligible_total_files", "eligible_total_bytes")}))
+    print(json.dumps({"classification_load_seconds": load_seconds, "roots": roots}))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

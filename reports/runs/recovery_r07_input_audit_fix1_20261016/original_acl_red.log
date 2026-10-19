@@ -1,0 +1,112 @@
+FFF                                                                      [100%]
+================================== FAILURES ===================================
+_ test_parent_acl_writer_cannot_commit_between_acl_check_and_private_audit_return[source] _
+audit_engine = Engine([redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]_r01:***[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]16?options=-c+search_path%3Dtest_r07[redacted test credential fragment]ix1_d071841c0f7a4cb587f18886198716bb+-c+statement_timeout%3D15000+-c+lock_timeout%3D3000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-920/test_parent_acl_writer_cannot_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000220E715E6C0>
+parent = 'source'
+
+    @pytest.mark.parametrize('parent', ['source', 'document', 'revision'])
+    def test_parent_acl_writer_cannot_commit_between_acl_check_and_private_audit_return(audit_engine, tmp_path, monkeypatch, parent):
+        service, scope, session_hash, _, step, _ = private_recorded_workflow(audit_engine, tmp_path, monkeypatch)
+        original = service._read[redacted test credential fragment]udit_record
+        observed = {'writer_blocked': False, 'writer_committed': False, 'reader_denied': False}
+        table = {'source': 'sources', 'document': 'documents', 'revision': 'document_revisions'}[parent]
+        def concurrent_writer(session, workflow, step_row):
+            try:
+                with audit_engine.begin() as connection:
+                    connection.execute(text("SET LOCAL lock_timeout='300ms'"))
+                    connection.execute(text('UPDATE ' + table + " SET visibility='tenant',tenant_id='synthetic-independent-revoked-parent'"))
+                observed['writer_committed'] = True
+            except OperationalError:
+                observed['writer_blocked'] = True
+            return original(session, workflow, step_row)
+        monkeypatch.setattr(service, '_read[redacted test credential fragment]udit_record', concurrent_writer)
+        with Session(audit_engine) as session, session.begin():
+            try:
+                result = service.read[redacted test credential fragment]udit(session, scope, UUID(step['job_id']), actor_session_hash=session_hash, at=service.clock())
+                observed['returned_texts'] = bool(result.record.input_selections[0].texts)
+            except PermissionError:
+                observed['reader_denied'] = True
+        (RUN / ('independent_parent_acl_race_' + parent + '.json')).write_bytes(json.dumps(observed, indent=2).encode())
+>       assert observed['writer_blocked'] or observed['reader_denied'], observed
+E       AssertionError: {'reader_denied': False, 'returned_texts': True, 'writer_blocked': False, 'writer_committed': True}
+E       assert (False or False)
+
+..\reports\runs\recovery[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]261016\probes\test_independent[redacted test credential fragment]udit.py:277: AssertionError
+_ test_parent_acl_writer_cannot_commit_between_acl_check_and_private_audit_return[document] _
+audit_engine = Engine([redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]_r01:***[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]16?options=-c+search_path%3Dtest_r07[redacted test credential fragment]ix1_71a1d8f623c84e21864c120f10c81e2e+-c+statement_timeout%3D15000+-c+lock_timeout%3D3000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-920/test_parent_acl_writer_cannot_1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000220E75F5FA0>
+parent = 'document'
+
+    @pytest.mark.parametrize('parent', ['source', 'document', 'revision'])
+    def test_parent_acl_writer_cannot_commit_between_acl_check_and_private_audit_return(audit_engine, tmp_path, monkeypatch, parent):
+        service, scope, session_hash, _, step, _ = private_recorded_workflow(audit_engine, tmp_path, monkeypatch)
+        original = service._read[redacted test credential fragment]udit_record
+        observed = {'writer_blocked': False, 'writer_committed': False, 'reader_denied': False}
+        table = {'source': 'sources', 'document': 'documents', 'revision': 'document_revisions'}[parent]
+        def concurrent_writer(session, workflow, step_row):
+            try:
+                with audit_engine.begin() as connection:
+                    connection.execute(text("SET LOCAL lock_timeout='300ms'"))
+                    connection.execute(text('UPDATE ' + table + " SET visibility='tenant',tenant_id='synthetic-independent-revoked-parent'"))
+                observed['writer_committed'] = True
+            except OperationalError:
+                observed['writer_blocked'] = True
+            return original(session, workflow, step_row)
+        monkeypatch.setattr(service, '_read[redacted test credential fragment]udit_record', concurrent_writer)
+        with Session(audit_engine) as session, session.begin():
+            try:
+                result = service.read[redacted test credential fragment]udit(session, scope, UUID(step['job_id']), actor_session_hash=session_hash, at=service.clock())
+                observed['returned_texts'] = bool(result.record.input_selections[0].texts)
+            except PermissionError:
+                observed['reader_denied'] = True
+        (RUN / ('independent_parent_acl_race_' + parent + '.json')).write_bytes(json.dumps(observed, indent=2).encode())
+>       assert observed['writer_blocked'] or observed['reader_denied'], observed
+E       AssertionError: {'reader_denied': False, 'returned_texts': True, 'writer_blocked': False, 'writer_committed': True}
+E       assert (False or False)
+
+..\reports\runs\recovery[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]261016\probes\test_independent[redacted test credential fragment]udit.py:277: AssertionError
+_ test_parent_acl_writer_cannot_commit_between_acl_check_and_private_audit_return[revision] _
+audit_engine = Engine([redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]_r01:***[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]16?options=-c+search_path%3Dtest_r07[redacted test credential fragment]ix1_41522999a62149bca2ca85847e857d61+-c+statement_timeout%3D15000+-c+lock_timeout%3D3000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-920/test_parent_acl_writer_cannot_2')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000220E781F8F0>
+parent = 'revision'
+
+    @pytest.mark.parametrize('parent', ['source', 'document', 'revision'])
+    def test_parent_acl_writer_cannot_commit_between_acl_check_and_private_audit_return(audit_engine, tmp_path, monkeypatch, parent):
+        service, scope, session_hash, _, step, _ = private_recorded_workflow(audit_engine, tmp_path, monkeypatch)
+        original = service._read[redacted test credential fragment]udit_record
+        observed = {'writer_blocked': False, 'writer_committed': False, 'reader_denied': False}
+        table = {'source': 'sources', 'document': 'documents', 'revision': 'document_revisions'}[parent]
+        def concurrent_writer(session, workflow, step_row):
+            try:
+                with audit_engine.begin() as connection:
+                    connection.execute(text("SET LOCAL lock_timeout='300ms'"))
+                    connection.execute(text('UPDATE ' + table + " SET visibility='tenant',tenant_id='synthetic-independent-revoked-parent'"))
+                observed['writer_committed'] = True
+            except OperationalError:
+                observed['writer_blocked'] = True
+            return original(session, workflow, step_row)
+        monkeypatch.setattr(service, '_read[redacted test credential fragment]udit_record', concurrent_writer)
+        with Session(audit_engine) as session, session.begin():
+            try:
+                result = service.read[redacted test credential fragment]udit(session, scope, UUID(step['job_id']), actor_session_hash=session_hash, at=service.clock())
+                observed['returned_texts'] = bool(result.record.input_selections[0].texts)
+            except PermissionError:
+                observed['reader_denied'] = True
+        (RUN / ('independent_parent_acl_race_' + parent + '.json')).write_bytes(json.dumps(observed, indent=2).encode())
+>       assert observed['writer_blocked'] or observed['reader_denied'], observed
+E       AssertionError: {'reader_denied': False, 'returned_texts': True, 'writer_blocked': False, 'writer_committed': True}
+E       assert (False or False)
+
+..\reports\runs\recovery[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]261016\probes\test_independent[redacted test credential fragment]udit.py:277: AssertionError
+- generated xml file: D:\wt\r07-input-audit-fix1\reports\runs\recovery_r07_input_audit_fix1_20261016\original_acl_red.xml -
+=========================== short test summary info ===========================
+FAILED ..\reports\runs\recovery_r07_input_audit_fix1_20261016\probes\test_independent_input_audit.py::test_parent_acl_writer_cannot_commit_between_acl_check_and_private_audit_return[source]
+FAILED ..\reports\runs\recovery_r07_input_audit_fix1_20261016\probes\test_independent_input_audit.py::test_parent_acl_writer_cannot_commit_between_acl_check_and_private_audit_return[document]
+FAILED ..\reports\runs\recovery_r07_input_audit_fix1_20261016\probes\test_independent_input_audit.py::test_parent_acl_writer_cannot_commit_between_acl_check_and_private_audit_return[revision]
+3 failed, 14 deselected in 5.03s
+D:\wt\r07-input-audit-fix1\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa

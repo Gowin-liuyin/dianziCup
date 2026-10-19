@@ -1,0 +1,38 @@
+[
+  {
+    "case": "underfull_nonfinal_page",
+    "synthetic_xml": "<feed xmlns=\"http://www.w3.org/2005/Atom\" xmlns:o=\"http://a9.com/-/spec/opensearch/1.1/\" xmlns:arxiv=\"http://arxiv.org/schemas/atom\"><o:totalResults>100</o:totalResults><o:startIndex>0</o:startIndex><o:itemsPerPage>10</o:itemsPerPage><entry><id>https://arxiv.org/abs/2610.00001v1</id><title>Boundary paper</title><author><name>Independent author</name></author></entry></feed>",
+    "expected": "AcademicContractError for incomplete nonfinal page",
+    "actual": {
+      "records": 1,
+      "total_results": 100,
+      "start_index": 0,
+      "items_per_page": 10
+    }
+  },
+  {
+    "case": "invalid_timezone_minutes",
+    "synthetic_xml": "<rss version=\"2.0\"><channel><link>https://blog.trailofbits.com/</link><item><title>Boundary article</title><link>https://blog.trailofbits.com/review/</link><pubDate>Wed, 14 Oct 2026 07:00:00 +1260</pubDate></item></channel></rss>",
+    "expected": "FeedParseError for invalid numeric timezone +1260",
+    "actual": {
+      "published_at": "2026-10-13T18:00:00Z"
+    }
+  },
+  {
+    "case": "rss_uri_del_control",
+    "synthetic_xml": "<rss version=\"2.0\"><channel><link>https://blog.trailofbits.com/</link><item><title>Boundary article</title><link>https://blog.trailofbits.com/review/&#127;</link></item></channel></rss>",
+    "expected": "FeedParseError for DEL control in official article URI",
+    "actual": {
+      "canonical_uri": "https://blog.trailofbits.com/review/\u007f"
+    }
+  },
+  {
+    "case": "arxiv_license_del_control",
+    "synthetic_xml": "<feed xmlns=\"http://www.w3.org/2005/Atom\" xmlns:o=\"http://a9.com/-/spec/opensearch/1.1/\" xmlns:arxiv=\"http://arxiv.org/schemas/atom\"><o:totalResults>1</o:totalResults><o:startIndex>0</o:startIndex><o:itemsPerPage>1</o:itemsPerPage><entry><id>https://arxiv.org/abs/2610.00001v1</id><title>Boundary paper</title><author><name>Independent author</name></author><arxiv:license>https://publisher.invalid/&#127;</arxiv:license></entry></feed>",
+    "expected": "AcademicContractError for DEL control in licence URI",
+    "actual": {
+      "license_identifier": "https://publisher.invalid/\u007f",
+      "full_text_fetched": false
+    }
+  }
+]

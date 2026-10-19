@@ -1,0 +1,86 @@
+F.F.F.....FF.                                                            [100%]
+================================== FAILURES ===================================
+_ test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both[False-8.1-conflict] _
+
+score = 8.1, status = 'conflict', vendor_first = False
+
+    @pytest.mark.parametrize("score,status", [(8.1, "conflict"), (9.8, "available")])
+    @pytest.mark.parametrize("vendor_first", [False, True])
+    def test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both(score, status, vendor_first):
+        nvd, vendor = document(nvd_payload()), vendor_document(score=score)
+        sources = (vendor, nvd) if vendor_first else (nvd, vendor)
+        result = attempts(*sources)["cvss"]
+>       assert result.status.value == status
+E       AssertionError: assert 'available' == 'conflict'
+E         
+E         - conflict
+E         + available
+
+tests\unit\test_r07_public_signals_fix1.py:35: AssertionError
+_ test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both[True-8.1-conflict] _
+
+score = 8.1, status = 'conflict', vendor_first = True
+
+    @pytest.mark.parametrize("score,status", [(8.1, "conflict"), (9.8, "available")])
+    @pytest.mark.parametrize("vendor_first", [False, True])
+    def test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both(score, status, vendor_first):
+        nvd, vendor = document(nvd_payload()), vendor_document(score=score)
+        sources = (vendor, nvd) if vendor_first else (nvd, vendor)
+        result = attempts(*sources)["cvss"]
+>       assert result.status.value == status
+E       AssertionError: assert 'available' == 'conflict'
+E         
+E         - conflict
+E         + available
+
+tests\unit\test_r07_public_signals_fix1.py:35: AssertionError
+______ test_same_cve_different_vector_conflicts_even_when_score_matches _______
+
+    def test_same_cve_different_vector_conflicts_even_when_score_matches():
+        vector = VECTOR.replace("AC:L", "AC:H")
+        result = attempts(document(nvd_payload()), vendor_document(score=9.8, vector=vector))["cvss"]
+>       assert result.status.value == "conflict"
+E       AssertionError: assert 'available' == 'conflict'
+E         
+E         - conflict
+E         + available
+
+tests\unit\test_r07_public_signals_fix1.py:51: AssertionError
+__________ test_identifier_shaped_publisher_is_not_an_event_identity __________
+
+    def test_identifier_shaped_publisher_is_not_an_event_identity():
+        result = attempts(document(nvd_payload()), vendor_document(authority=OTHER_CVE))["cvss"]
+>       assert result.status.value == "conflict"
+E       AssertionError: assert 'available' == 'conflict'
+E         
+E         - conflict
+E         + available
+
+tests\unit\test_r07_public_signals_fix1.py:81: AssertionError
+____________ test_cvss_comparison_is_independent_of_evidence_order ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002A67E9AC200>
+
+    def test_cvss_comparison_is_independent_of_evidence_order(monkeypatch):
+        original = signals._evidence
+    
+        def reversed_evidence(source, fields):
+            return tuple(reversed(original(source, fields)))
+    
+        monkeypatch.setattr(signals, "_evidence", reversed_evidence)
+        result = attempts(document(nvd_payload()), vendor_document())["cvss"]
+>       assert result.status.value == "conflict" and len(result.candidates) == 2
+E       AssertionError: assert ('available' == 'conflict'
+E         
+E         - conflict
+E         + available)
+
+tests\unit\test_r07_public_signals_fix1.py:93: AssertionError
+- generated xml file: D:\wt\r07-cvss-scope\reports\runs\recovery_r07_cvss_authority_scope_fix_20261016\old_expectation_red.xml -
+=========================== short test summary info ===========================
+FAILED tests/unit/test_r07_public_signals_fix1.py::test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both[False-8.1-conflict]
+FAILED tests/unit/test_r07_public_signals_fix1.py::test_nvd_vendor_same_verified_cve_compares_score_and_keeps_both[True-8.1-conflict]
+FAILED tests/unit/test_r07_public_signals_fix1.py::test_same_cve_different_vector_conflicts_even_when_score_matches
+FAILED tests/unit/test_r07_public_signals_fix1.py::test_identifier_shaped_publisher_is_not_an_event_identity
+FAILED tests/unit/test_r07_public_signals_fix1.py::test_cvss_comparison_is_independent_of_evidence_order
+5 failed, 8 passed in 0.38s

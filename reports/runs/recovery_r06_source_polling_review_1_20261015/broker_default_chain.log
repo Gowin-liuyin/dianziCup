@@ -1,0 +1,76 @@
+F
+================================== FAILURES ===================================
+_ test_actual_default_schedule_dispatches_and_disabled_restart_preserves_history _
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_polling_20261015?options=-c+search_path%3Dtest_r06_catalog_46769c92b20e4183b8f1351626b20406+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+
+    def test_actual_default_schedule_dispatches_and_disabled_restart_preserves_history(catalog_engine):
+        identifier='poll_review_'+uuid4().hex
+        prefix=identifier+':'
+        queue=identifier+'_queue'
+        redis_url=make_url(os.environ['TEST_REDIS_URL']).set(database='15').render_as_string(hide_password=False)
+        client=Redis.from_url(redis_url,socket_connect_timeout=3,socket_timeout=3)
+        before={key for key in client.scan_iter()}
+        assert not list(client.scan_iter(match=prefix+'*'))
+        environment=dict(os.environ,DATABASE_URL=catalog_engine.url.render_as_string(hide_password=False),REDIS_URL=redis_url,APP_ENV='test',DATA_MODE='fixture',SOURCE_POLLING_ENABLED='true',REVIEW_QUEUE=queue,REVIEW_BROKER_PREFIX=prefix)
+        processes=[]
+        phase_receipts=[]
+        def start(label,beat=False):
+            path=RUN/(identifier+'_'+label+'.raw.log')
+            output=path.open('w',encoding='utf-8')
+            arguments=[sys.executable,'-B',str(RUN/'broker_fixture_entry.py')]
+            if beat:
+                arguments+=['beat','--loglevel=WARNING','--schedule',str(RUN/(identifier+'_'+label+'.beat')),'--pidfile',str(RUN/(identifier+'_'+label+'.pid'))]
+            else:
+                arguments+=['worker','--pool=solo','--loglevel=WARNING','--without-gossip','--without-mingle','--without-heartbeat','-Q',queue,'-n',label+'@'+identifier]
+            process=subprocess.Popen(arguments,cwd=ROOT/'backend',env=environment,stdin=subprocess.DEVNULL,stdout=output,stderr=subprocess.STDOUT)
+            processes.append((label,process,output,path,datetime.now().astimezone().isoformat(timespec='seconds')))
+            return process
+        def stop_phase():
+            for label,process,output,path,started in processes:
+                if process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=10)
+                output.close()
+                contents=path.read_text(encoding='utf-8')
+                for value in [environment['DATABASE_URL'],environment['REDIS_URL'],make_url(environment['DATABASE_URL']).password,make_url(environment['REDIS_URL']).password]:
+                    if value:
+                        contents=contents.replace(value,'[redacted fixture credential]')
+                path.write_text(contents,encoding='utf-8')
+                phase_receipts.append({'label':label,'pid':process.pid,'started_at':started,'stopped_at':datetime.now().astimezone().isoformat(timespec='seconds'),'exit_code':process.returncode,'log':path.name,'pool':'beat' if 'beat' in label else 'native solo','stop':'review-controlled termination'})
+            processes.clear()
+        def osv_success_count():
+            with Session(catalog_engine) as session:
+                return session.scalar(select(func.count()).select_from(fetch_attempts).where(fetch_attempts.c.source_id==CATALOG_SOURCES['osv_ollama'].source_id,fetch_attempts.c.outcome=='succeeded'))
+        def jobs_count():
+            with Session(catalog_engine) as session:
+                return session.scalar(select(func.count()).select_from(job_runs))
+        try:
+            enabled_start=time.monotonic()
+            start('enabled_worker')
+            start('enabled_beat',beat=True)
+>           wait_for(lambda:jobs_count()==9,85)
+
+..\reports\runs\recovery_r06_source_polling_review_1_20261015\test_review_broker.py:89: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+predicate = <function test_actual_default_schedule_dispatches_and_disabled_restart_preserves_history.<locals>.<lambda> at 0x0000028414D85E40>
+timeout = 85
+
+    def wait_for(predicate,timeout):
+        deadline=time.monotonic()+timeout
+        while time.monotonic()<deadline:
+            if predicate():
+                return
+            time.sleep(0.25)
+>       raise AssertionError('actual process state did not arrive within bounded observation')
+E       AssertionError: actual process state did not arrive within bounded observation
+
+..\reports\runs\recovery_r06_source_polling_review_1_20261015\test_review_broker.py:37: AssertionError
+=========================== short test summary info ===========================
+FAILED ..\reports\runs\recovery_r06_source_polling_review_1_20261015\test_review_broker.py::test_actual_default_schedule_dispatches_and_disabled_restart_preserves_history
+1 failed in 86.52s (0:01:26)

@@ -1,0 +1,102 @@
+business_create_all_guard_installed
+Traceback (most recent call last):
+  File "D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1943, in _exec_single_context
+    self.dialect.do_execute(
+  File "D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 1180, in do_execute
+    cursor.execute(statement, parameters)
+  File "D:\dianzi\backend\.venv\Lib\site-packages\psycopg\cursor.py", line 117, in execute
+    raise ex.with_traceback(None)
+psycopg.errors.DuplicateTable: relation "api_keys" already exists
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<string>", line 8, in <module>
+  File "D:\wt\r07-r12-r10-r18-migrations\backend\src\ai_intel\infrastructure\database.py", line 69, in run_migrations
+    command.upgrade(alembic_config, target_revision)
+  File "D:\dianzi\backend\.venv\Lib\site-packages\alembic\command.py", line 487, in upgrade
+    script.run_env()
+  File "D:\dianzi\backend\.venv\Lib\site-packages\alembic\script\base.py", line 550, in run_env
+    util.load_python_file(self.dir, "env.py")
+  File "D:\dianzi\backend\.venv\Lib\site-packages\alembic\util\pyfiles.py", line 114, in load_python_file
+    module = load_module_py(module_id, path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\dianzi\backend\.venv\Lib\site-packages\alembic\util\pyfiles.py", line 132, in load_module_py
+    spec.loader.exec_module(module)  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap_external>", line 999, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "D:\wt\r07-r12-r10-r18-migrations\backend\migrations\env.py", line 48, in <module>
+    run_migrations_online()
+  File "D:\wt\r07-r12-r10-r18-migrations\backend\migrations\env.py", line 42, in run_migrations_online
+    context.run_migrations()
+  File "<string>", line 8, in run_migrations
+  File "D:\dianzi\backend\.venv\Lib\site-packages\alembic\runtime\environment.py", line 970, in run_migrations
+    self.get_context().run_migrations(**kw)
+  File "D:\dianzi\backend\.venv\Lib\site-packages\alembic\runtime\migration.py", line 616, in run_migrations
+    step.migration_fn(**kw)
+  File "D:\wt\r07-r12-r10-r18-migrations\backend\migrations\versions\0026_api_key_credentials.py", line 17, in upgrade
+    op.execute(
+  File "<string>", line 8, in execute
+  File "<string>", line 3, in execute
+  File "D:\dianzi\backend\.venv\Lib\site-packages\alembic\operations\ops.py", line 2645, in execute
+    return operations.invoke(op)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\dianzi\backend\.venv\Lib\site-packages\alembic\operations\base.py", line 448, in invoke
+    return fn(self, operation)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\dianzi\backend\.venv\Lib\site-packages\alembic\operations\toimpl.py", line 256, in execute_sql
+    operations.migration_context.impl.execute(
+  File "D:\dianzi\backend\.venv\Lib\site-packages\alembic\ddl\impl.py", line 259, in execute
+    self._exec(sql, execution_options)
+  File "D:\dianzi\backend\.venv\Lib\site-packages\alembic\ddl\impl.py", line 252, in _exec
+    return conn.execute(construct, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1448, in execute
+    return meth(
+           ^^^^^
+  File "D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 533, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1668, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1822, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1962, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2332, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1943, in _exec_single_context
+    self.dialect.do_execute(
+  File "D:\dianzi\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 1180, in do_execute
+    cursor.execute(statement, parameters)
+  File "D:\dianzi\backend\.venv\Lib\site-packages\psycopg\cursor.py", line 117, in execute
+    raise ex.with_traceback(None)
+sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateTable) relation "api_keys" already exists
+[SQL: 
+CREATE TABLE api_keys (
+    key_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    resource TEXT NOT NULL,
+    scopes TEXT[] NOT NULL,
+    issued_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    version INTEGER NOT NULL,
+    PRIMARY KEY (key_id),
+    CONSTRAINT ck_api_keys_token_hash CHECK (token_hash ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT ck_api_keys_resource CHECK (resource = 'urn:dianzi:api:v1'),
+    CONSTRAINT ck_api_keys_scopes CHECK (scopes = ARRAY['read:public']::text[] OR scopes =
+ARRAY['read:asset']::text[] OR scopes = ARRAY['read:asset','read:public']::text[]),
+    CONSTRAINT ck_api_keys_expiration CHECK (expires_at > issued_at AND expires_at <= issued_at +
+INTERVAL '2160 hours'),
+    CONSTRAINT ck_api_keys_revocation CHECK (revoked_at IS NULL OR revoked_at >= issued_at),
+    CONSTRAINT ck_api_keys_version CHECK (version >= 1),
+    UNIQUE (token_hash),
+    FOREIGN KEY(user_id) REFERENCES users (user_id)
+)
+        ]
+(Background on this error at: https://sqlalche.me/e/21/f405)

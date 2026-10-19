@@ -1,0 +1,1248 @@
+diff --git a/backend/migrations/versions/0015_catalog_document_metadata.py b/backend/migrations/versions/0015_catalog_document_metadata.py
+new file mode 100644
+index 0000000..e8c3c6c
+--- /dev/null
++++ b/backend/migrations/versions/0015_catalog_document_metadata.py
+@@ -0,0 +1,34 @@
++"""保留论文、仓库、标准和政策的来源原始字段与内容能力。
++
++Revision ID: 0015_catalog_document_metadata
++Revises: 0014_grounded_answer_vectors
++"""
++
++import sqlalchemy as sa
++from alembic import op
++from sqlalchemy.dialects.postgresql import JSONB
++
++revision = "0015_catalog_document_metadata"
++down_revision = "0014_grounded_answer_vectors"
++branch_labels = None
++depends_on = None
++
++
++def upgrade() -> None:
++    """只加修订级元数据，旧日期、内容和证据不推测重写。"""
++    op.add_column(
++        "document_revisions",
++        sa.Column(
++            "source_metadata", JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")
++        ),
++    )
++    op.create_check_constraint(
++        "ck_revision_source_metadata_object",
++        "document_revisions",
++        "jsonb_typeof(source_metadata) = 'object'",
++    )
++
++
++def downgrade() -> None:
++    """停新来源写入后以前向修复恢复，不删除来源与历史字段。"""
++    raise RuntimeError("source document metadata requires forward-only recovery")
+diff --git a/backend/src/ai_intel/api/document_contracts.py b/backend/src/ai_intel/api/document_contracts.py
+new file mode 100644
+index 0000000..7898938
+--- /dev/null
++++ b/backend/src/ai_intel/api/document_contracts.py
+@@ -0,0 +1,109 @@
++"""资料库只读合同；覆盖范围、原始日期精度和历史版本分别表达。"""
++
++from typing import Annotated, Literal
++from urllib.parse import parse_qsl, urlsplit
++from uuid import UUID
++
++from pydantic import Field, HttpUrl, field_validator, model_validator
++
++from ai_intel.api.knowledge_contracts import DataMode, EvidenceResponse
++from ai_intel.domain.enums import SourceCategory
++from ai_intel.domain.records import StrictRecord
++from ai_intel.domain.values import UtcTimestamp
++from ai_intel.infrastructure.network import SENSITIVE_QUERY_KEYS
++
++DocumentKindFilter = Literal[
++    "advisory", "article", "paper", "repository_record", "standard", "policy"
++]
++ContentCoverage = Literal["full_text", "abstract", "feed_excerpt", "metadata", "unknown"]
++BoundedSourceText = Annotated[str, Field(min_length=1, max_length=1000)]
++
++
++def validate_public_source_uri(value: HttpUrl | None) -> HttpUrl | None:
++    """只返回可供用户打开的HTTPS链接，不把凭据或敏感query带进界面。"""
++    if value is None:
++        return None
++    uri = urlsplit(str(value))
++    if (
++        uri.scheme != "https"
++        or uri.username is not None
++        or uri.password is not None
++        or uri.fragment
++        or any(key.lower() in SENSITIVE_QUERY_KEYS for key, _ in parse_qsl(uri.query))
++    ):
++        raise ValueError("source URI is not a public HTTPS link")
++    return value
++
++
++class DocumentSummary(StrictRecord):
++    document_id: UUID
++    source_id: UUID
++    revision_id: UUID
++    source_name: str = Field(min_length=1, max_length=300)
++    source_category: SourceCategory
++    document_kind: DocumentKindFilter
++    title: str = Field(min_length=1, max_length=500)
++    canonical_uri: HttpUrl | None
++    revision_number: int = Field(strict=True, ge=1)
++    is_current: bool
++    source_published_at: UtcTimestamp | None
++    source_modified_at: UtcTimestamp | None
++    first_observed_at: UtcTimestamp | None
++    ingested_at: UtcTimestamp | None
++    parse_status: Literal["pending", "parsed", "partial", "failed", "legacy_unverified"]
++    content_coverage: ContentCoverage
++    published_at_raw: str | None = Field(min_length=1, max_length=256)
++    published_precision: Literal["instant", "calendar_date", "unknown"]
++
++    _public_uri = field_validator("canonical_uri")(validate_public_source_uri)
++
++    @model_validator(mode="after")
++    def require_supported_date_precision(self) -> "DocumentSummary":
++        """没有来源时区不能声明精确UTC时刻，日期精度不能暗中升级。"""
++        if self.published_precision == "instant" and self.source_published_at is None:
++            raise ValueError("instant publication requires a source timestamp")
++        if self.published_precision == "calendar_date" and (
++            self.source_published_at is not None or self.published_at_raw is None
++        ):
++            raise ValueError("calendar publication must retain only its raw date")
++        return self
++
++
++class DocumentListResponse(StrictRecord):
++    schema_version: Literal[2] = 2
++    items: tuple[DocumentSummary, ...] = Field(max_length=100)
++    next_cursor: str | None = Field(min_length=1, max_length=2048)
++    data_mode: DataMode
++
++
++class DocumentDetailResponse(StrictRecord):
++    schema_version: Literal[2] = 2
++    document: DocumentSummary
++    evidence: tuple[EvidenceResponse, ...] = Field(max_length=100)
++    evidence_total: int = Field(strict=True, ge=0)
++    next_evidence_offset: int | None = Field(strict=True, ge=1, le=2000)
++    license_identifier: str | None = Field(min_length=1, max_length=256)
++    license_uri: HttpUrl | None
++    source_notes: tuple[BoundedSourceText, ...] = Field(max_length=20)
++    data_mode: DataMode
++
++    _public_uri = field_validator("license_uri")(validate_public_source_uri)
++
++    @model_validator(mode="after")
++    def keep_one_revision_and_mode(self) -> "DocumentDetailResponse":
++        """分页也不能把别的修订、fixture片段或无效总数混入当前正文。"""
++        if self.evidence_total < len(self.evidence):
++            raise ValueError("document evidence count is inconsistent")
++        if any(
++            item.revision_id != self.document.revision_id or item.data_mode != self.data_mode
++            for item in self.evidence
++        ):
++            raise ValueError("document evidence has different revision or data mode")
++        return self
++
++
++class DocumentRevisionListResponse(StrictRecord):
++    schema_version: Literal[2] = 2
++    items: tuple[DocumentSummary, ...] = Field(max_length=100)
++    next_offset: int | None = Field(strict=True, ge=1, le=100000)
++    data_mode: DataMode
+diff --git a/backend/src/ai_intel/ingestion/catalog_documents.py b/backend/src/ai_intel/ingestion/catalog_documents.py
+new file mode 100644
+index 0000000..6b24ca8
+--- /dev/null
++++ b/backend/src/ai_intel/ingestion/catalog_documents.py
+@@ -0,0 +1,302 @@
++"""非漏洞资料复用原文、修订和证据账本，不凭文档类型创建漏洞事件。"""
++
++from __future__ import annotations
++
++import json
++from dataclasses import dataclass
++from datetime import UTC, datetime
++from urllib.parse import urlsplit
++from uuid import NAMESPACE_URL, uuid5
++
++from pydantic import JsonValue
++from sqlalchemy import func, select, update
++from sqlalchemy.dialects.postgresql import insert
++from sqlalchemy.orm import Session
++
++from ai_intel.domain.access import MANAGE_PUBLIC_SOURCES, READ_PUBLIC, AccessScope, Role
++from ai_intel.domain.enums import DocumentKind
++from ai_intel.infrastructure.content_store import ContentStorage
++from ai_intel.ingestion.parsing.text_blocks import ParseOutcome
++from ai_intel.ingestion.source_catalog import CATALOG_SOURCES, SourceCatalogError, SourceKind
++from ai_intel.knowledge.models import document_revisions, documents, scope_epochs, text_blocks
++from ai_intel.knowledge.persistence_models import claims
++from ai_intel.knowledge.revisions import (
++    add_text_block,
++    attach_evidence_span,
++    register_response_content,
++    save_document_revision,
++)
++
++
++@dataclass(frozen=True)
++class NormalizedSourceDocument:
++    """来源解析的事实输入；metadata保留原始日期精度、许可与全文能力。"""
++
++    source_record_id: str
++    kind: DocumentKind
++    title: str
++    canonical_uri: str
++    payload: bytes
++    parsed: ParseOutcome
++    published_at: datetime | None
++    modified_at: datetime | None
++    metadata: dict[str, JsonValue]
++    source_locator: str | None = None
++
++
++@dataclass(frozen=True)
++class SavedCatalogDocuments:
++    """父事务提交前的内部PG标识；事件/论断发布由各业务判断另行完成。"""
++
++    revision_ids: tuple[str, ...]
++    new_revision_count: int
++
++
++def _utc(value: datetime) -> datetime:
++    if value.utcoffset() is None:
++        raise SourceCatalogError("source ingestion time must be timezone aware")
++    return value.astimezone(UTC)
++
++
++def _validate_document(source_kind: SourceKind, member: NormalizedSourceDocument) -> None:
++    source_document_kinds = {
++        "nvd_ollama": DocumentKind.ADVISORY,
++        "vllm_vendor": DocumentKind.ADVISORY,
++        "osv_ollama": DocumentKind.ADVISORY,
++        "avid_community": DocumentKind.ARTICLE,
++        "ollama_releases": DocumentKind.REPOSITORY_RECORD,
++        "trailofbits_blog": DocumentKind.ARTICLE,
++        "arxiv_security": DocumentKind.PAPER,
++        "nist_ai_rmf": DocumentKind.STANDARD,
++        "cac_generative_ai": DocumentKind.POLICY,
++    }
++    if member.kind != source_document_kinds[source_kind]:
++        raise SourceCatalogError("document kind does not match fixed source category")
++    if not 1 <= len(member.source_record_id) <= 512 or any(
++        ord(char) < 32 or ord(char) == 127 for char in member.source_record_id
++    ):
++        raise SourceCatalogError("invalid stable source record identifier")
++    if not 1 <= len(member.title) <= 500 or not member.title.strip() or "\x00" in member.title:
++        raise SourceCatalogError("invalid source document title")
++    origin = urlsplit(CATALOG_SOURCES[source_kind].base_origin)
++    allowed_hosts = {origin.hostname}
++    if source_kind in {"avid_community", "ollama_releases"}:
++        allowed_hosts.add("github.com")
++    if source_kind == "arxiv_security":
++        allowed_hosts.add("arxiv.org")
++    try:
++        uri = urlsplit(member.canonical_uri)
++        valid_uri = (
++            uri.scheme == "https"
++            and uri.hostname in allowed_hosts
++            and uri.port in {None, 443}
++            and uri.username is None
++            and uri.password is None
++            and not uri.fragment
++        )
++    except ValueError:
++        raise SourceCatalogError("invalid source document URI") from None
++    if (
++        not valid_uri
++        or not member.canonical_uri.isascii()
++        or len(member.canonical_uri) > 2083
++        or any(ord(char) <= 32 or ord(char) == 127 for char in member.canonical_uri)
++    ):
++        raise SourceCatalogError("source document URI outside fixed publisher")
++    if not 1 <= len(member.payload) <= 5 * 1024 * 1024:
++        raise SourceCatalogError("source document content exceeds limit")
++    if (
++        member.parsed.status not in {"parsed", "partial"}
++        or not 1 <= len(member.parsed.blocks) <= 2000
++    ):
++        raise SourceCatalogError("source document lacks bounded parsed content")
++    if len(member.parsed.normalized_text) > 4 * 1024 * 1024:
++        raise SourceCatalogError("source text exceeds limit")
++    offset = 0
++    for ordinal, block in enumerate(member.parsed.blocks):
++        if (
++            block.ordinal != ordinal
++            or block.start_offset != offset
++            or block.end_offset != offset + len(block.text)
++            or not block.text
++            or "\x00" in block.text
++        ):
++            raise SourceCatalogError("source text coordinates are not consistent")
++        offset = block.end_offset
++    if member.parsed.normalized_text != "".join(block.text for block in member.parsed.blocks):
++        raise SourceCatalogError("source normalized text differs from its blocks")
++    metadata = json.dumps(_revision_metadata(member), ensure_ascii=False, allow_nan=False).encode(
++        "utf-8"
++    )
++    if len(metadata) > 65536 or b"\\u0000" in metadata:
++        raise SourceCatalogError("source metadata exceeds safe limit")
++    for timestamp in (member.published_at, member.modified_at):
++        if timestamp is not None:
++            _utc(timestamp)
++
++
++def _revision_metadata(member: NormalizedSourceDocument) -> dict[str, JsonValue]:
++    return dict(
++        member.metadata,
++        title=member.title,
++        canonical_uri=member.canonical_uri,
++        published_at=_utc(member.published_at).isoformat() if member.published_at else None,
++        modified_at=_utc(member.modified_at).isoformat() if member.modified_at else None,
++        source_locator=member.source_locator,
++        parse_status=member.parsed.status,
++        parser_version=member.parsed.parser_version,
++        normalizer_version=member.parsed.normalizer_version,
++    )
++
++
++def persist_catalog_documents(
++    session: Session,
++    store: ContentStorage,
++    scope: AccessScope,
++    source_kind: SourceKind,
++    members: tuple[NormalizedSourceDocument, ...],
++    *,
++    response_hash: str,
++    observed_at: datetime,
++    ingested_at: datetime,
++) -> SavedCatalogDocuments:
++    """仅写同一公开源；整页savepoint与cursor/outbox由调用方事务共同提交。"""
++    scope.requires(MANAGE_PUBLIC_SOURCES)
++    scope.requires(READ_PUBLIC)
++    if scope.role != Role.SYSTEM_ADMIN or scope.tenant_id is not None:
++        raise SourceCatalogError("public source administrator required")
++    observed_at, ingested_at = _utc(observed_at), _utc(ingested_at)
++    if observed_at > ingested_at or source_kind not in CATALOG_SOURCES:
++        raise SourceCatalogError("invalid source observation")
++    if len(members) > 100 or len({member.source_record_id for member in members}) != len(members):
++        raise SourceCatalogError("source page contains duplicate or too many documents")
++    for member in members:
++        _validate_document(source_kind, member)
++    source_id = CATALOG_SOURCES[source_kind].source_id
++    revisions: list[str] = []
++    new_count = 0
++    for member in members:
++        document_id = str(
++            uuid5(NAMESPACE_URL, f"dianzi:document:{source_id}:{member.source_record_id}")
++        )
++        session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(document_id, 0))))
++        content = register_response_content(session, store, member.payload, ingested_at)
++        session.execute(
++            insert(documents)
++            .values(
++                document_id=document_id,
++                source_id=source_id,
++                kind=member.kind.value,
++                title=member.title,
++                published_at=member.published_at,
++                retrieved_at=observed_at,
++                content_hash=content.content_hash,
++                visibility="public",
++                tenant_id=None,
++                schema_version=2,
++            )
++            .on_conflict_do_nothing(index_elements=[documents.c.document_id])
++        )
++        existing = (
++            session.execute(
++                select(documents).where(documents.c.document_id == document_id).with_for_update()
++            )
++            .mappings()
++            .one()
++        )
++        if (
++            existing["source_id"],
++            existing["kind"],
++            existing["visibility"],
++            existing["tenant_id"],
++        ) != (source_id, member.kind.value, "public", None):
++            raise SourceCatalogError("source document identity or scope conflicts")
++        saved = save_document_revision(
++            session,
++            store,
++            document_id,
++            member.payload,
++            "public",
++            None,
++            ingested_at,
++            revision_metadata=_revision_metadata(member),
++        )
++        revisions.append(saved.revision_id)
++        if saved.reused:
++            continue
++        new_count += 1
++        prior_revisions = select(document_revisions.c.revision_id).where(
++            document_revisions.c.document_id == document_id,
++            document_revisions.c.revision_id != saved.revision_id,
++        )
++        session.execute(
++            update(claims)
++            .where(claims.c.source_revision_id.in_(prior_revisions))
++            .values(is_current=False)
++        )
++        session.execute(
++            update(document_revisions)
++            .where(document_revisions.c.revision_id == saved.revision_id)
++            .values(
++                canonical_uri=member.canonical_uri,
++                source_published_at=member.published_at,
++                source_modified_at=member.modified_at,
++                first_observed_at=observed_at,
++                ingested_at=ingested_at,
++                parser_version=member.parsed.parser_version,
++                normalizer_version=member.parsed.normalizer_version,
++                parse_status=member.parsed.status,
++                source_response_hash=response_hash,
++                source_json_pointer=member.source_locator,
++                source_metadata=_revision_metadata(member),
++            )
++        )
++        for block in member.parsed.blocks:
++            block_id = add_text_block(
++                session,
++                saved.revision_id,
++                block.ordinal,
++                block.start_offset,
++                block.end_offset,
++                block.text,
++            )
++            pointer = (
++                block.block_type.removeprefix("field:")
++                if block.block_type.startswith("field:")
++                else None
++            )
++            session.execute(
++                update(text_blocks)
++                .where(text_blocks.c.block_id == block_id)
++                .values(
++                    block_type="json_field" if pointer is not None else block.block_type,
++                    page_number=block.page_number,
++                    json_pointer=pointer,
++                )
++            )
++            attach_evidence_span(
++                session,
++                saved.revision_id,
++                block.start_offset,
++                block.end_offset,
++                f"page:{block.page_number}"
++                if block.page_number is not None
++                else (pointer or f"block:{block.ordinal}"),
++                block.text,
++                False,
++                "public",
++                None,
++                ingested_at,
++                block_id=block_id,
++                verified_at=ingested_at,
++            )
++    if new_count:
++        session.execute(
++            insert(scope_epochs)
++            .values(scope_key="public", epoch=1, updated_at=ingested_at)
++            .on_conflict_do_update(
++                index_elements=[scope_epochs.c.scope_key],
++                set_={"epoch": scope_epochs.c.epoch + 1, "updated_at": ingested_at},
++            )
++        )
++    return SavedCatalogDocuments(tuple(revisions), new_count)
+diff --git a/backend/src/ai_intel/ingestion/source_catalog.py b/backend/src/ai_intel/ingestion/source_catalog.py
+new file mode 100644
+index 0000000..65e23fc
+--- /dev/null
++++ b/backend/src/ai_intel/ingestion/source_catalog.py
+@@ -0,0 +1,218 @@
++"""服务端固定公开来源与有界请求；类别、内容范围和采集阶段分别表达。"""
++
++from __future__ import annotations
++
++import re
++from collections.abc import Mapping
++from dataclasses import dataclass
++from datetime import UTC, datetime
++from typing import Literal
++from urllib.parse import urlencode
++from uuid import NAMESPACE_URL, uuid5
++
++from pydantic import JsonValue
++
++from ai_intel.domain.enums import SourceCategory
++
++SourceKind = Literal[
++    "nvd_ollama",
++    "vllm_vendor",
++    "osv_ollama",
++    "avid_community",
++    "ollama_releases",
++    "trailofbits_blog",
++    "arxiv_security",
++    "nist_ai_rmf",
++    "cac_generative_ai",
++]
++
++
++class SourceCatalogError(ValueError):
++    """来源或游标不属于服务端允许的公开采集范围。"""
++
++
++@dataclass(frozen=True)
++class CatalogSource:
++    """固定身份不随别名、入口页、内容版本或抓取状态变化。"""
++
++    source_id: str
++    name: str
++    category: SourceCategory
++    base_origin: str
++    content_scope: str
++
++
++@dataclass(frozen=True)
++class CatalogRequest:
++    """只允许来源适配器构建请求，原始游标不作为URL或任意POST正文。"""
++
++    method: Literal["GET", "POST"]
++    url: str
++    json_body: dict[str, JsonValue] | None = None
++
++
++def _source(
++    key: str, name: str, category: SourceCategory, origin: str, content_scope: str
++) -> CatalogSource:
++    return CatalogSource(
++        str(uuid5(NAMESPACE_URL, "dianzi:source:" + key.replace("_", "-"))),
++        name,
++        category,
++        origin,
++        content_scope,
++    )
++
++
++CATALOG_SOURCES: dict[SourceKind, CatalogSource] = {
++    "nvd_ollama": _source(
++        "nvd_ollama",
++        "NVD Ollama keyword window",
++        SourceCategory.STRUCTURED_VULNERABILITY,
++        "https://services.nvd.nist.gov",
++        "product_vulnerability",
++    ),
++    "vllm_vendor": _source(
++        "vllm_vendor",
++        "vLLM repository security advisories",
++        SourceCategory.VENDOR_ADVISORY,
++        "https://api.github.com",
++        "vendor_advisory",
++    ),
++    "osv_ollama": _source(
++        "osv_ollama",
++        "OSV Ollama Go package",
++        SourceCategory.STRUCTURED_VULNERABILITY,
++        "https://api.osv.dev",
++        "package_vulnerability",
++    ),
++    "avid_community": _source(
++        "avid_community",
++        "AVID AI vulnerability database",
++        SourceCategory.SECURITY_COMMUNITY,
++        "https://api.github.com",
++        "community_report",
++    ),
++    "ollama_releases": _source(
++        "ollama_releases",
++        "Ollama official repository releases",
++        SourceCategory.CODE_REPOSITORY,
++        "https://api.github.com",
++        "release_metadata_not_confirmed_vulnerability",
++    ),
++    "trailofbits_blog": _source(
++        "trailofbits_blog",
++        "Trail of Bits security research",
++        SourceCategory.TECHNICAL_BLOG,
++        "https://blog.trailofbits.com",
++        "research_article",
++    ),
++    "arxiv_security": _source(
++        "arxiv_security",
++        "arXiv AI security research",
++        SourceCategory.ACADEMIC_PAPER,
++        "https://export.arxiv.org",
++        "paper_metadata_full_text_separate",
++    ),
++    "nist_ai_rmf": _source(
++        "nist_ai_rmf",
++        "NIST AI RMF 1.0",
++        SourceCategory.TECHNICAL_STANDARD,
++        "https://nvlpubs.nist.gov",
++        "voluntary_framework",
++    ),
++    "cac_generative_ai": _source(
++        "cac_generative_ai",
++        "CAC generative AI service measures",
++        SourceCategory.POLICY_REGULATION,
++        "https://www.cac.gov.cn",
++        "official_policy_no_applicability_assessment",
++    ),
++}
++
++HEX_SHA = re.compile(r"[0-9a-f]{40}\Z")
++
++
++def parse_source_timestamp(value: object) -> datetime | None:
++    """只有来源显式给出时区的时间可进入时延分母，日期精度原值另存。"""
++    if value is None:
++        return None
++    if not isinstance(value, str) or len(value) > 64:
++        raise SourceCatalogError("invalid source timestamp")
++    try:
++        parsed = datetime.fromisoformat(value)
++    except ValueError:
++        raise SourceCatalogError("invalid source timestamp") from None
++    return parsed.astimezone(UTC) if parsed.utcoffset() is not None else None
++
++
++def _page(cursor: Mapping[str, object], *, maximum: int) -> int:
++    value = cursor.get("page", 1)
++    if set(cursor) - {"page"} or type(value) is not int or not 1 <= value <= maximum:
++        raise SourceCatalogError("invalid source page")
++    return value
++
++
++def build_catalog_request(source_kind: SourceKind, cursor: Mapping[str, object]) -> CatalogRequest:
++    """来源固定域/路径/包名；分页只允许预定义的有界值。"""
++    if source_kind not in CATALOG_SOURCES:
++        raise SourceCatalogError("unknown public source")
++    if source_kind == "ollama_releases":
++        return CatalogRequest(
++            "GET",
++            "https://api.github.com/repos/ollama/ollama/releases?"
++            + urlencode({"per_page": 20, "page": _page(cursor, maximum=100)}),
++        )
++    if source_kind == "osv_ollama":
++        if set(cursor) - {"page_token"}:
++            raise SourceCatalogError("invalid OSV cursor")
++        body: dict[str, JsonValue] = {
++            "package": {"ecosystem": "Go", "name": "github.com/ollama/ollama"}
++        }
++        if cursor:
++            token = cursor.get("page_token")
++            if (
++                not isinstance(token, str)
++                or not 1 <= len(token) <= 2048
++                or not token.isascii()
++                or any(ord(character) <= 32 or ord(character) == 127 for character in token)
++            ):
++                raise SourceCatalogError("invalid OSV page token")
++            body["page_token"] = token
++        return CatalogRequest("POST", "https://api.osv.dev/v1/query", body)
++    if source_kind == "avid_community":
++        if not cursor:
++            return CatalogRequest(
++                "GET", "https://api.github.com/repos/avidml/avid-db/git/trees/main?recursive=1"
++            )
++        sha = cursor.get("blob_sha")
++        if (
++            set(cursor) != {"blob_sha"}
++            or not isinstance(sha, str)
++            or HEX_SHA.fullmatch(sha) is None
++        ):
++            raise SourceCatalogError("invalid AVID immutable blob")
++        return CatalogRequest("GET", "https://api.github.com/repos/avidml/avid-db/git/blobs/" + sha)
++    if source_kind == "arxiv_security":
++        page = _page(cursor, maximum=100)
++        return CatalogRequest(
++            "GET",
++            "https://export.arxiv.org/api/query?"
++            + urlencode(
++                {
++                    "search_query": 'all:"AI security"',
++                    "start": (page - 1) * 20,
++                    "max_results": 20,
++                    "sortBy": "lastUpdatedDate",
++                    "sortOrder": "descending",
++                }
++            ),
++        )
++    if cursor:
++        raise SourceCatalogError("source endpoint does not accept a cursor")
++    if source_kind == "trailofbits_blog":
++        return CatalogRequest("GET", "https://blog.trailofbits.com/index.xml")
++    if source_kind == "nist_ai_rmf":
++        return CatalogRequest("GET", "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf")
++    if source_kind == "cac_generative_ai":
++        return CatalogRequest("GET", "https://www.cac.gov.cn/2023-07/13/c_1690898327029107.htm")
++    raise SourceCatalogError("legacy source request must use its existing paging adapter")
+diff --git a/backend/src/ai_intel/ingestion/source_documents.py b/backend/src/ai_intel/ingestion/source_documents.py
+index 96096a5..dc427cb 100644
+--- a/backend/src/ai_intel/ingestion/source_documents.py
++++ b/backend/src/ai_intel/ingestion/source_documents.py
+@@ -34,6 +34,7 @@ from ai_intel.enrichment.persistence import DimensionRepository, DimensionSubmis
+ from ai_intel.infrastructure.content_store import ContentStorage
+ from ai_intel.ingestion.parsing.parsers import parse_json_document
+ from ai_intel.ingestion.parsing.text_blocks import ParseOutcome, TextBlock
++from ai_intel.ingestion.source_catalog import CATALOG_SOURCES, SourceKind
+ from ai_intel.ingestion.sources.nvd import normalize_nvd_page, normalize_nvd_record
+ from ai_intel.ingestion.sources.vendor_advisories import normalize_vendor_advisory
+ from ai_intel.knowledge.event_linking import EventIdentifier, EventRepository, EventSubmission
+@@ -56,18 +57,8 @@ from ai_intel.knowledge.revisions import (
+ MAX_RESPONSE_BYTES = 5 * 1024 * 1024
+ PUBLIC_SCOPE = VisibilityScope(visibility="public")
+ SOURCE_DEFINITIONS = {
+-    "nvd_ollama": (
+-        str(uuid5(NAMESPACE_URL, "dianzi:source:nvd-ollama")),
+-        "NVD Ollama keyword window",
+-        "structured_vulnerability",
+-        "https://services.nvd.nist.gov",
+-    ),
+-    "vllm_vendor": (
+-        str(uuid5(NAMESPACE_URL, "dianzi:source:vllm-vendor")),
+-        "vLLM repository security advisories",
+-        "vendor_advisory",
+-        "https://api.github.com",
+-    ),
++    key: (source.source_id, source.name, source.category.value, source.base_origin)
++    for key, source in CATALOG_SOURCES.items()
+ }
+ 
+ 
+@@ -369,7 +360,7 @@ def _require_public_administrator(scope: AccessScope) -> None:
+ def ensure_source_registration(
+     session: Session,
+     access_scope: AccessScope,
+-    source_kind: Literal["nvd_ollama", "vllm_vendor"],
++    source_kind: SourceKind,
+     created_at: datetime,
+ ) -> str:
+     """Register one fixed public source for cursor leases; the caller owns commit."""
+diff --git a/backend/src/ai_intel/knowledge/models.py b/backend/src/ai_intel/knowledge/models.py
+index 059f00f..93c2d7f 100644
+--- a/backend/src/ai_intel/knowledge/models.py
++++ b/backend/src/ai_intel/knowledge/models.py
+@@ -85,6 +85,10 @@ document_revisions = Table(
+     Column("parse_status", Text(), nullable=False, server_default="legacy_unverified"),
+     Column("source_response_hash", Text(), ForeignKey("content_objects.content_hash")),
+     Column("source_json_pointer", Text()),
++    Column("source_metadata", JSONB(), nullable=False, server_default="{}"),
++    CheckConstraint(
++        "jsonb_typeof(source_metadata) = 'object'", name="ck_revision_source_metadata_object"
++    ),
+     UniqueConstraint("document_id", "revision_number", name="uq_revision_per_document"),
+     CheckConstraint(
+         "parse_status IN ('pending','parsed','partial','failed','legacy_unverified')",
+diff --git a/backend/src/ai_intel/knowledge/revisions.py b/backend/src/ai_intel/knowledge/revisions.py
+index 3e3903a..1e5c67a 100644
+--- a/backend/src/ai_intel/knowledge/revisions.py
++++ b/backend/src/ai_intel/knowledge/revisions.py
+@@ -3,10 +3,12 @@
+ from __future__ import annotations
+ 
+ import hashlib
++import json
+ import uuid
+ from dataclasses import dataclass
+ from datetime import datetime
+ 
++from pydantic import JsonValue
+ from sqlalchemy import func, select, update
+ from sqlalchemy.dialects.postgresql import insert
+ from sqlalchemy.exc import IntegrityError
+@@ -105,8 +107,23 @@ def save_document_revision(
+     visibility: str,
+     tenant_id: str | None,
+     created_at: datetime,
++    *,
++    revision_metadata: dict[str, JsonValue] | None = None,
+ ) -> SavedRevision:
+-    """保存文档修订: 末版同内容复用; A→B→A 保留三修订; 归属与租户必须一致。"""
++    """同内容及显式元数据才复用；旧调用不提供metadata时保留原有语义。"""
++    if revision_metadata is not None:
++        try:
++            encoded_metadata = json.dumps(
++                revision_metadata, ensure_ascii=False, allow_nan=False
++            ).encode("utf-8")
++        except (TypeError, ValueError, UnicodeError, RecursionError):
++            raise ValueError("invalid document revision metadata") from None
++        if (
++            not isinstance(revision_metadata, dict)
++            or len(encoded_metadata) > 65536
++            or b"\\u0000" in encoded_metadata
++        ):
++            raise ValueError("document revision metadata exceeds bounded object")
+     document_row = _load_document_row(session, document_id)
+     if (visibility == "tenant") != (tenant_id is not None):
+         raise TenantScopeViolation("tenant revision requires exactly one tenant_id")
+@@ -128,7 +145,11 @@ def save_document_revision(
+         .mappings()
+         .first()
+     )
+-    if tip is not None and tip["content_hash"] == stored.content_hash:
++    if (
++        tip is not None
++        and tip["content_hash"] == stored.content_hash
++        and (revision_metadata is None or tip["source_metadata"] == revision_metadata)
++    ):
+         return SavedRevision(
+             revision_id=str(tip["revision_id"]),
+             revision_number=int(tip["revision_number"]),
+@@ -161,6 +182,7 @@ def save_document_revision(
+             previous_revision_id=str(tip["revision_id"]) if tip is not None else None,
+             visibility=visibility,
+             tenant_id=tenant_id,
++            source_metadata=revision_metadata if revision_metadata is not None else {},
+         )
+     )
+     session.execute(
+diff --git a/backend/tests/integration/test_r05_vector_persistence.py b/backend/tests/integration/test_r05_vector_persistence.py
+index ce0f891..d2f4171 100644
+--- a/backend/tests/integration/test_r05_vector_persistence.py
++++ b/backend/tests/integration/test_r05_vector_persistence.py
+@@ -122,7 +122,7 @@ def test_upgrade_preserves_immutable_evidence_and_real_extension(vector_database
+         )
+         assert (
+             connection.scalar(text("SELECT version_num FROM alembic_version"))
+-            == "0014_grounded_answer_vectors"
++            == "0015_catalog_document_metadata"
+         )
+ 
+ 
+diff --git a/backend/tests/integration/test_r06_catalog_documents_pg.py b/backend/tests/integration/test_r06_catalog_documents_pg.py
+new file mode 100644
+index 0000000..4934ecf
+--- /dev/null
++++ b/backend/tests/integration/test_r06_catalog_documents_pg.py
+@@ -0,0 +1,234 @@
++"""资料文档在真实隔离PG保留正文、元数据修订和权限，不能造漏洞事件。"""
++
++import hashlib
++import json
++from concurrent.futures import ThreadPoolExecutor
++from dataclasses import replace
++from datetime import UTC, datetime, timedelta
++from uuid import UUID, uuid4
++
++import pytest
++from sqlalchemy import create_engine, func, select
++from sqlalchemy.engine import make_url
++from sqlalchemy.orm import Session
++from sqlalchemy.schema import CreateSchema, DropSchema
++
++from ai_intel.api.knowledge_read_service import KnowledgeReadService
++from ai_intel.domain.access import AccessScope, PermissionDeniedError, Role
++from ai_intel.domain.enums import DocumentKind
++from ai_intel.infrastructure.content_store import ContentStore
++from ai_intel.infrastructure.database import run_migrations
++from ai_intel.ingestion.catalog_documents import (
++    NormalizedSourceDocument,
++    persist_catalog_documents,
++)
++from ai_intel.ingestion.parsing.parsers import parse_json_document
++from ai_intel.ingestion.source_catalog import SourceCatalogError
++from ai_intel.ingestion.source_documents import ensure_source_registration
++from ai_intel.knowledge.models import document_revisions, documents, evidence, scope_epochs
++from ai_intel.knowledge.persistence_models import events
++from ai_intel.knowledge.revisions import register_response_content
++
++pytestmark = pytest.mark.real_pg
++NOW = datetime(2026, 10, 15, 10, tzinfo=UTC)
++ADMIN = AccessScope.for_authenticated_user("catalog-worker", None, Role.SYSTEM_ADMIN)
++
++
++@pytest.fixture
++def catalog_engine(isolated_test_database_url):
++    url = make_url(isolated_test_database_url)
++    assert url.database.startswith("test_dianzi_r06_catalog_")
++    base = create_engine(url, connect_args={"connect_timeout": 5})
++    schema = "test_r06_catalog_" + uuid4().hex
++    with base.begin() as connection:
++        connection.execute(CreateSchema(schema))
++    isolated = url.update_query_dict(
++        {"options": f"-c search_path={schema} -c statement_timeout=15000 -c lock_timeout=5000"}
++    )
++    run_migrations(isolated.render_as_string(hide_password=False))
++    engine = create_engine(isolated, connect_args={"connect_timeout": 5})
++    try:
++        yield engine
++    finally:
++        engine.dispose()
++        with base.begin() as connection:
++            connection.execute(DropSchema(schema, cascade=True))
++        base.dispose()
++
++
++def paper():
++    body = json.dumps(
++        {
++            "title": "真实坐标结构的合成论文🙂",
++            "abstract": "Quoted metadata is evidence of source text, not a security verdict.",
++        },
++        ensure_ascii=False,
++    ).encode()
++    return NormalizedSourceDocument(
++        "2601.00001",
++        DocumentKind.PAPER,
++        "Synthetic paper metadata",
++        "https://arxiv.org/abs/2601.00001v1",
++        body,
++        parse_json_document(body),
++        None,
++        None,
++        {
++            "version_label": "v1",
++            "full_text_fetched": False,
++            "published_at_raw": "2026-01-01",
++            "published_precision": "calendar_date",
++        },
++    )
++
++
++def save(engine, store, members, *, at=NOW, scope=ADMIN):
++    with Session(engine) as session, session.begin():
++        ensure_source_registration(session, ADMIN, "arxiv_security", at)
++        response = register_response_content(
++            session, store, b"synthetic upstream response bytes", at
++        )
++        return persist_catalog_documents(
++            session,
++            store,
++            scope,
++            "arxiv_security",
++            members,
++            response_hash=response.content_hash,
++            observed_at=at,
++            ingested_at=at,
++        )
++
++
++def test_paper_is_replayable_document_with_openable_verified_spans_not_a_vulnerability(
++    catalog_engine, tmp_path
++):
++    store = ContentStore(tmp_path / "raw")
++    first = save(catalog_engine, store, (paper(),))
++    repeated = save(catalog_engine, store, (paper(),), at=NOW + timedelta(seconds=1))
++    assert first.new_revision_count == 1 and repeated.new_revision_count == 0
++    assert repeated.revision_ids == first.revision_ids
++    with Session(catalog_engine) as session:
++        assert session.scalar(select(func.count()).select_from(documents)) == 1
++        assert session.scalar(select(func.count()).select_from(events)) == 0
++        revision = session.execute(select(document_revisions)).mappings().one()
++        assert revision["source_published_at"] is None
++        assert revision["source_metadata"]["published_at_raw"] == "2026-01-01"
++        row = session.execute(select(evidence).limit(1)).mappings().one()
++        result = KnowledgeReadService(session, ADMIN, "fixture").read_evidence(
++            UUID(row["evidence_id"])
++        )
++        assert result.verified_at is not None and result.quote_text == row["quote"]
++        assert result.quote_sha256 == hashlib.sha256(result.quote_text.encode()).hexdigest()
++        assert row["supports_claim"] is False
++        assert store.read_verified(revision["content_hash"]) == paper().payload
++
++
++def test_metadata_changes_and_a_b_a_keep_three_distinct_historical_revisions(
++    catalog_engine, tmp_path
++):
++    store = ContentStore(tmp_path / "raw")
++    original = paper()
++    changed = replace(original, metadata={**original.metadata, "version_label": "v2"})
++    ids = [
++        save(catalog_engine, store, (member,), at=NOW + timedelta(seconds=index)).revision_ids[0]
++        for index, member in enumerate((original, changed, original))
++    ]
++    assert len(set(ids)) == 3
++    with Session(catalog_engine) as session:
++        rows = list(
++            session.execute(
++                select(document_revisions).order_by(document_revisions.c.revision_number)
++            ).mappings()
++        )
++        assert [row["source_metadata"]["version_label"] for row in rows] == ["v1", "v2", "v1"]
++        assert [row["is_current"] for row in rows] == [False, False, True]
++        assert [row["previous_revision_id"] for row in rows] == [None, ids[0], ids[1]]
++        assert (
++            session.scalar(select(scope_epochs.c.epoch).where(scope_epochs.c.scope_key == "public"))
++            == 3
++        )
++
++
++@pytest.mark.parametrize(
++    "scope",
++    [
++        AccessScope.for_authenticated_user("viewer", "tenant-a", Role.VIEWER),
++        AccessScope.for_authenticated_user("tenant-admin", "tenant-a", Role.TENANT_ADMIN),
++    ],
++)
++def test_tenant_roles_cannot_publish_public_source_documents(catalog_engine, tmp_path, scope):
++    with pytest.raises((SourceCatalogError, PermissionDeniedError)):
++        save(catalog_engine, ContentStore(tmp_path / "raw"), (paper(),), scope=scope)
++    with catalog_engine.connect() as connection:
++        assert connection.scalar(select(func.count()).select_from(documents)) == 0
++
++
++@pytest.mark.parametrize(
++    "mutation",
++    ["foreign_uri", "duplicate", "coordinates", "del_uri", "kind", "long_uri", "del_identifier"],
++)
++def test_bad_member_rejects_the_whole_page_without_partial_documents(
++    catalog_engine, tmp_path, mutation
++):
++    original = paper()
++    bad = replace(original, source_record_id="2601.00002")
++    if mutation == "foreign_uri":
++        bad = replace(bad, canonical_uri="https://attacker.invalid/document")
++    elif mutation == "duplicate":
++        bad = original
++    elif mutation == "del_uri":
++        bad = replace(bad, canonical_uri="https://arxiv.org/abs/2601.00002\x7f")
++    elif mutation == "kind":
++        bad = replace(bad, kind=DocumentKind.ADVISORY)
++    elif mutation == "long_uri":
++        bad = replace(bad, canonical_uri="https://arxiv.org/abs/" + "x" * 2083)
++    elif mutation == "del_identifier":
++        bad = replace(bad, source_record_id="2601.00002\x7f")
++    else:
++        parsed = replace(
++            bad.parsed,
++            blocks=(replace(bad.parsed.blocks[0], start_offset=99), *bad.parsed.blocks[1:]),
++        )
++        bad = replace(bad, parsed=parsed)
++    with pytest.raises(SourceCatalogError):
++        save(catalog_engine, ContentStore(tmp_path / "raw"), (original, bad))
++    with catalog_engine.connect() as connection:
++        assert connection.scalar(select(func.count()).select_from(document_revisions)) == 0
++        assert connection.scalar(select(func.count()).select_from(evidence)) == 0
++
++
++@pytest.mark.parametrize("field", ["canonical_uri", "published_at", "modified_at"])
++def test_source_metadata_identity_changes_create_new_revisions(catalog_engine, tmp_path, field):
++    original = paper()
++    changes = {
++        "canonical_uri": "https://arxiv.org/abs/2601.00001v2",
++        "published_at": NOW,
++        "modified_at": NOW,
++    }
++    changed = replace(original, **{field: changes[field]})
++    store = ContentStore(tmp_path / "raw")
++    first = save(catalog_engine, store, (original,))
++    second = save(catalog_engine, store, (changed,), at=NOW + timedelta(seconds=1))
++    assert first.new_revision_count == second.new_revision_count == 1
++    assert first.revision_ids != second.revision_ids
++    with catalog_engine.connect() as connection:
++        current = (
++            connection.execute(
++                select(document_revisions).where(document_revisions.c.is_current.is_(True))
++            )
++            .mappings()
++            .one()
++        )
++        assert current["source_metadata"][field] == (
++            changes[field].isoformat() if isinstance(changes[field], datetime) else changes[field]
++        )
++
++
++def test_concurrent_replay_creates_only_one_revision(catalog_engine, tmp_path):
++    store = ContentStore(tmp_path / "raw")
++    with ThreadPoolExecutor(max_workers=2) as pool:
++        futures = [pool.submit(save, catalog_engine, store, (paper(),)) for _ in range(2)]
++        results = [future.result(timeout=20) for future in futures]
++    assert sum(result.new_revision_count for result in results) == 1
++    assert results[0].revision_ids == results[1].revision_ids
+diff --git a/backend/tests/unit/test_r06_document_contracts.py b/backend/tests/unit/test_r06_document_contracts.py
+new file mode 100644
+index 0000000..0656315
+--- /dev/null
++++ b/backend/tests/unit/test_r06_document_contracts.py
+@@ -0,0 +1,111 @@
++"""新资料公开DTO边界与历史/精度不变量，不调用外部服务。"""
++
++from uuid import uuid4
++
++import pytest
++from pydantic import ValidationError
++
++from ai_intel.api.document_contracts import DocumentDetailResponse, DocumentSummary
++
++
++def summary_values():
++    return {
++        "document_id": str(uuid4()),
++        "source_id": str(uuid4()),
++        "revision_id": str(uuid4()),
++        "source_name": "Synthetic official publication",
++        "source_category": "academic_paper",
++        "document_kind": "paper",
++        "title": "Synthetic paper title",
++        "canonical_uri": "https://arxiv.org/abs/2601.00001v1",
++        "revision_number": 1,
++        "is_current": False,
++        "source_published_at": None,
++        "source_modified_at": None,
++        "first_observed_at": "2026-10-15T10:00:00Z",
++        "ingested_at": "2026-10-15T10:00:01Z",
++        "parse_status": "partial",
++        "content_coverage": "abstract",
++        "published_at_raw": "2026-01-01",
++        "published_precision": "calendar_date",
++    }
++
++
++def test_calendar_only_historical_abstract_is_not_full_text_or_instant():
++    value = DocumentSummary.model_validate(summary_values())
++    assert value.source_published_at is None
++    assert value.is_current is False and value.content_coverage == "abstract"
++    assert value.published_at_raw == "2026-01-01"
++
++
++@pytest.mark.parametrize(
++    "uri",
++    [
++        "http://arxiv.org/abs/2601.00001",
++        "https://account:credential@arxiv.org/abs/2601.00001",
++        "https://arxiv.org/abs/2601.00001?access_token=synthetic",
++        "https://arxiv.org/abs/2601.00001#fragment",
++        "https://arxiv.org/" + "x" * 2083,
++    ],
++)
++def test_document_projection_rejects_unsafe_or_unbounded_source_uri(uri):
++    with pytest.raises(ValidationError):
++        DocumentSummary.model_validate({**summary_values(), "canonical_uri": uri})
++
++
++@pytest.mark.parametrize(
++    "change",
++    [
++        {"source_name": "x" * 301},
++        {"title": "x" * 501},
++        {"published_at_raw": "x" * 257},
++        {"published_precision": "instant"},
++        {"source_published_at": "2026-01-01T00:00:00Z"},
++        {"published_precision": "calendar_date", "published_at_raw": None},
++        {"source_modified_at": "2026-01-01T00:00:00"},
++        {"document_kind": "asset_inventory"},
++        {"content_coverage": "confirmed_safe"},
++        {"untrusted_extra": True},
++    ],
++)
++def test_document_projection_rejects_unsupported_precision_scope_and_fields(change):
++    with pytest.raises(ValidationError):
++        DocumentSummary.model_validate({**summary_values(), **change})
++
++
++@pytest.mark.parametrize("different", ["revision", "mode", "count"])
++def test_detail_does_not_mix_evidence_revision_mode_or_total(different):
++    document = summary_values()
++    evidence = {
++        "schema_version": 2,
++        "span_id": str(uuid4()),
++        "revision_id": str(uuid4()) if different == "revision" else document["revision_id"],
++        "block_id": None,
++        "start_offset": 0,
++        "end_offset": 4,
++        "quote_text": "text",
++        "quote_sha256": "0" * 64,
++        "locator_kind": "text",
++        "page_number": None,
++        "json_pointer": None,
++        "verified_at": "2026-10-15T10:00:01Z",
++        "source_uri": document["canonical_uri"],
++        "source_published_at": None,
++        "source_modified_at": None,
++        "first_observed_at": document["first_observed_at"],
++        "ingested_at": document["ingested_at"],
++        "data_mode": "fixture" if different == "mode" else "live",
++    }
++    with pytest.raises(ValidationError):
++        DocumentDetailResponse.model_validate(
++            {
++                "document": document,
++                "evidence": [evidence],
++                "evidence_total": 0 if different == "count" else 1,
++                "next_evidence_offset": None,
++                "license_identifier": None,
++                "license_uri": None,
++                "source_notes": [],
++                "data_mode": "live",
++            }
++        )
+diff --git a/backend/tests/unit/test_r06_source_catalog.py b/backend/tests/unit/test_r06_source_catalog.py
+new file mode 100644
+index 0000000..c787e0c
+--- /dev/null
++++ b/backend/tests/unit/test_r06_source_catalog.py
+@@ -0,0 +1,65 @@
++"""固定公开来源不能借游标改变外联目标或伪造发布时间。"""
++
++from datetime import UTC, datetime
++from uuid import UUID
++
++import pytest
++
++from ai_intel.ingestion.source_catalog import (
++    CATALOG_SOURCES,
++    SourceCatalogError,
++    build_catalog_request,
++    parse_source_timestamp,
++)
++
++
++@pytest.mark.parametrize("value", ["https://evil.example/", "../main", "a" * 41, "g" * 40])
++def test_avid_blob_cursor_cannot_supply_a_url_or_unpinned_ref(value: str) -> None:
++    with pytest.raises(SourceCatalogError):
++        build_catalog_request("avid_community", {"blob_sha": value})
++
++
++@pytest.mark.parametrize(
++    "cursor", [{"page": True}, {"page": 0}, {"page": 101}, {"url": "https://evil.example"}]
++)
++def test_repository_paging_requires_bounded_integer_page(cursor: dict[str, object]) -> None:
++    with pytest.raises(SourceCatalogError):
++        build_catalog_request("ollama_releases", cursor)
++
++
++def test_osv_package_and_host_cannot_be_overridden_by_cursor() -> None:
++    request = build_catalog_request("osv_ollama", {"page_token": "next-token"})
++    assert request.method == "POST"
++    assert request.url == "https://api.osv.dev/v1/query"
++    assert request.json_body == {
++        "package": {"ecosystem": "Go", "name": "github.com/ollama/ollama"},
++        "page_token": "next-token",
++    }
++    with pytest.raises(SourceCatalogError):
++        build_catalog_request("osv_ollama", {"package": "unapproved"})
++
++
++def test_source_identity_is_namespaced_and_category_coverage_is_not_alias_counting() -> None:
++    assert len({UUID(source.source_id) for source in CATALOG_SOURCES.values()}) == len(
++        CATALOG_SOURCES
++    )
++    assert len({source.category for source in CATALOG_SOURCES.values()}) == 8
++    assert CATALOG_SOURCES["nist_ai_rmf"].content_scope == "voluntary_framework"
++
++
++def test_date_only_and_naive_time_remain_unknown_for_delay_metrics() -> None:
++    assert parse_source_timestamp("2023-07-13") is None
++    assert parse_source_timestamp("2023-07-13T09:00:00") is None
++    assert parse_source_timestamp(None) is None
++    assert parse_source_timestamp("2023-07-13T09:00:00+08:00") == datetime(
++        2023, 7, 13, 1, tzinfo=UTC
++    )
++
++
++def test_material_document_endpoint_cannot_accept_a_cursor() -> None:
++    with pytest.raises(SourceCatalogError):
++        build_catalog_request("cac_generative_ai", {"uri": "https://evil.example"})
++    assert (
++        build_catalog_request("nist_ai_rmf", {}).url
++        == "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf"
++    )

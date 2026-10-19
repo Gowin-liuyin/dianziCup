@@ -1,0 +1,47 @@
+[
+  {
+    "migration": "0023_enrichment_input_audit.py",
+    "statement": "ALTER FUNCTION guard_enrichment_input_audit() SET search_path FROM CURRENT",
+    "sha256_utf8": "91b947705a7785396eed1b312132c956113309a46674547c102ba8bcb5b62aad"
+  },
+  {
+    "migration": "0023_enrichment_input_audit.py",
+    "statement": "CREATE FUNCTION prevent_enrichment_input_audit_deletion() RETURNS trigger\nLANGUAGE plpgsql AS $$ BEGIN\nIF OLD.input_audit_payload IS NOT NULL THEN\nRAISE EXCEPTION 'input audit receipt is immutable' USING ERRCODE='23514';\nEND IF;\nRETURN OLD;\nEND $$",
+    "sha256_utf8": "d5d2b1eca75d4e04ce141c05f9681be68d45d2849182a76d396c4acb5508a135"
+  },
+  {
+    "migration": "0023_enrichment_input_audit.py",
+    "statement": "CREATE TRIGGER enrichment_input_audit_delete_guard BEFORE DELETE ON enrichment_job_steps\nFOR EACH ROW EXECUTE FUNCTION prevent_enrichment_input_audit_deletion()",
+    "sha256_utf8": "6a8bb294bec485181ee27f72053bbae10f355a935db89e13e1c2cbaf2f4fc229"
+  },
+  {
+    "migration": "0024_conversation_context.py",
+    "statement": "ALTER FUNCTION qa_validate_turn_ownership() SET search_path FROM CURRENT",
+    "sha256_utf8": "9da64f48ba32fed013eb32fb6534d270640ffe7fec29b0a4bd14ce32ebd07ed2"
+  },
+  {
+    "migration": "0024_conversation_context.py",
+    "statement": "CREATE FUNCTION prevent_qa_turn_changes() RETURNS trigger LANGUAGE plpgsql AS $$\nBEGIN RAISE EXCEPTION 'conversation turns are immutable' USING ERRCODE='23514'; END $$",
+    "sha256_utf8": "579d7b1a844c6c3efc295bbb5ae41a6a2096693e09af275fa4d5416d1f460d43"
+  },
+  {
+    "migration": "0024_conversation_context.py",
+    "statement": "CREATE TRIGGER qa_conversation_turns_immutable BEFORE UPDATE OR DELETE\nON qa_conversation_turns FOR EACH ROW EXECUTE FUNCTION prevent_qa_turn_changes()",
+    "sha256_utf8": "76472dea4ba24248e49eacc50897f7903dd8cbfd38f402eac138ed3808a9c585"
+  },
+  {
+    "migration": "0025_graph_projection.py",
+    "statement": "ALTER TABLE graph_projection_batches ADD CONSTRAINT ck_graph_projection_payload_sha256\nCHECK (payload_sha256 = encode(sha256(payload),'hex'))",
+    "sha256_utf8": "0ee0d668b24e1babd1e3cf87d209433cdc70575db52a76056beacaf5f407cbff"
+  },
+  {
+    "migration": "0025_graph_projection.py",
+    "statement": "CREATE FUNCTION prevent_graph_projection_batch_changes() RETURNS trigger\nLANGUAGE plpgsql AS $$ BEGIN\nRAISE EXCEPTION 'graph projection batches are immutable' USING ERRCODE='23514'; END $$",
+    "sha256_utf8": "bfb8a641330fbe1c3c8b51c2306fe9de6e0918c76a74673da5f9c90fd782452a"
+  },
+  {
+    "migration": "0025_graph_projection.py",
+    "statement": "CREATE TRIGGER graph_projection_batches_immutable BEFORE UPDATE OR DELETE\nON graph_projection_batches FOR EACH ROW EXECUTE FUNCTION prevent_graph_projection_batch_changes()",
+    "sha256_utf8": "8c49ca6346055f8118b30c81aca7f0f075dae404535c1a265b415dbfbff740b3"
+  }
+]

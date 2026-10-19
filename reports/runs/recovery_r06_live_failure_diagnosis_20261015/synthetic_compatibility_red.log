@@ -1,0 +1,86 @@
+F.......F.............                                                   [100%]
+================================== FAILURES ===================================
+_ test_legitimate_twenty_release_asset_metadata_can_exceed_model_node_default _
+
+    def test_legitimate_twenty_release_asset_metadata_can_exceed_model_node_default():
+        body = json.dumps([synthetic_release(identifier, 40) for identifier in range(1, 21)]).encode()
+        assert len(body) < 2 * 1024 * 1024
+        with pytest.raises(ValueError, match="JSON structure outside limit"):
+            strict_json_object(b'{"releases":' + body + b'}', 2 * 1024 * 1024 + 13)
+>       page = normalize_catalog_page("ollama_releases", body, {}, {
+            "Link": '<https://api.github.com/repositories/658928958/releases?per_page=20&page=2>; rel="next"'
+        })
+
+..\reports\runs\recovery_r06_live_failure_diagnosis_20261015\test_minimal_release_regressions.py:32: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\ingestion\catalog_pages.py:604: in normalize_catalog_page
+    return _release_page(body, cursor, headers or {})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\ingestion\catalog_pages.py:325: in _release_page
+    records = parse_github_releases(body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+payload = b'[{"id": 1, "tag_name": "v1.0", "name": "Synthetic release", "body": "Synthetic release notes", "draft": false, "prer...ttps://github.com/ollama/ollama/releases/download/v1.0/synthetic.bin", "uploader": {"id": 1, "login": "synthetic"}}]}]'
+
+    def parse_github_releases(payload: bytes) -> tuple[RepositoryRecord, ...]:
+        """处理固定仓库的一页实际 JSON；坏记录使整页显式失败，调用方保存原文。"""
+        if not isinstance(payload, bytes) or not 1 <= len(payload) <= MAX_RELEASE_BYTES:
+            raise RepositoryFetchError("release response outside byte limit")
+        try:
+            document = strict_json_object(b'{"releases":' + payload + b"}", MAX_RELEASE_BYTES + 13)
+        except (ValueError, UnicodeError, RecursionError):
+>           raise RepositoryFetchError("invalid release JSON response") from None
+E           ai_intel.ingestion.sources.repository.RepositoryFetchError: invalid release JSON response
+
+src\ai_intel\ingestion\sources\github_releases.py:27: RepositoryFetchError
+_ test_known_repository_image_reference_is_context_without_advisory_identity __
+
+    def test_known_repository_image_reference_is_context_without_advisory_identity():
+>       record = normalize_avid_vulnerability(synthetic_record("../img/R00031.png"))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+..\reports\runs\recovery_r06_live_failure_diagnosis_20261015\test_minimal_avid_regressions.py:22: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\ingestion\sources\avid_records.py:118: in normalize_avid_vulnerability
+    related_identifier = _reference_identifier(reference.get("url"))
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+value = '../img/R00031.png'
+
+    def _reference_identifier(value: object) -> str | None:
+        if not isinstance(value, str) or len(value) > 4096:
+            raise RepositoryFetchError("AVID reference URL must be bounded text")
+        try:
+            parts = urlsplit(value)
+            host = parts.hostname or ""
+            if (
+                not value.isascii()
+                or parts.scheme not in ("https", "http")
+                or not host
+                or parts.username is not None
+                or parts.password is not None
+                or parts.port not in (None, 80, 443)
+                or any(ord(character) <= 32 or ord(character) == 127 for character in value)
+                or "\\" in value
+                or host == "localhost"
+                or host.endswith((".localhost", ".local", ".internal"))
+            ):
+                raise ValueError("unsafe URL")
+            try:
+                address = ipaddress.ip_address(host)
+            except ValueError:
+                address = None
+            if address is not None and not address.is_global:
+                raise ValueError("nonpublic literal address")
+        except ValueError:
+>           raise RepositoryFetchError("AVID reference URL is not public HTTP metadata") from None
+E           ai_intel.ingestion.sources.repository.RepositoryFetchError: AVID reference URL is not public HTTP metadata
+
+src\ai_intel\ingestion\sources\avid_records.py:65: RepositoryFetchError
+- generated xml file: D:\wt\r06-live-diagnosis-1156\reports\runs\recovery_r06_live_failure_diagnosis_20261015\synthetic_compatibility_red.xml -
+=========================== short test summary info ===========================
+FAILED ..\reports\runs\recovery_r06_live_failure_diagnosis_20261015\test_minimal_release_regressions.py::test_legitimate_twenty_release_asset_metadata_can_exceed_model_node_default
+FAILED ..\reports\runs\recovery_r06_live_failure_diagnosis_20261015\test_minimal_avid_regressions.py::test_known_repository_image_reference_is_context_without_advisory_identity
+2 failed, 20 passed in 0.56s

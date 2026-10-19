@@ -1,0 +1,62 @@
+--- D:\wt\r18-ports-review1\reports\runs\r18_plugin_production_ports_review1_20261017\pg_support\run_pg_review.py
++++ D:\dianzi\reports\runs\root_pg_packets_preparation_20261017\r16_pg_support\run_pg_review.py
+@@ -40,7 +40,7 @@
+     if (Path(sys.executable).resolve() != Path(PYTHON).resolve()
+             or sys.prefix != sys.base_prefix or sys.version_info[:2] != (3, 12)):
+         raise RuntimeError("approved_base_python_312_required")
+-    if os.environ.pop("DIANZI_REVIEW_RESOURCE_AUTHORIZED", "") != "root-batch17-review1":
++    if os.environ.pop("DIANZI_REVIEW_RESOURCE_AUTHORIZED", "") != "r16-history-review1":
+         raise RuntimeError("parent_resource_authorization_missing")
+     allowed = json.loads(os.environ.pop("R18_REVIEW_BATCH_ALLOWLIST"))
+     if not isinstance(allowed, list) or LABEL not in allowed:
+@@ -76,21 +76,21 @@
+     assert native_limits.basic.active_limit == 9
+     native_cpu = job.query(15, limits.CpuRate)
+     nonce = uuid4().hex[:12]
+-    run_id = "root_batch17_r1_" + nonce
++    run_id = "r16_change_history_http_" + nonce
+     database = "test_dianzi_" + run_id
+     parent = make_url(os.environ.pop("R18_REVIEW_PARENT_DATABASE_URL"))
+     assert (parent.host, parent.port, parent.database, parent.username) == (
+         "127.0.0.1", 25432, "test_dianzi_r01_20261014", "test_dianzi_r01")
+     parent = parent.set(drivername="postgresql+psycopg")
+     parent_dsn = parent.set(drivername="postgresql").render_as_string(hide_password=False)
+-    schema = "test_r05_root17_" + nonce
++    schema = "test_r16_review1_" + nonce
+     target_url = parent.set(database=database).update_query_dict({
+         "connect_timeout": "3",
+         "options": "-c search_path=" + schema + ",public -c statement_timeout=8000 -c lock_timeout=5000",
+     })
+     marker = {
+         "project": "dianzi", "kind": "isolated_integration_review", "run_id": run_id,
+-        "owner": "root-batch17-review1:" + nonce, "product_sha": QUALIFIED,
++        "owner": "r16-history-review1:" + nonce, "product_sha": QUALIFIED,
+         "maximum_seconds": MAXIMUM_SECONDS, "queue": "not_used", "redis_prefix": "not_used",
+         "created_at": now(),
+     }
+@@ -138,7 +138,7 @@
+         try:
+             with psycopg.connect(parent_dsn, connect_timeout=3, autocommit=True,
+                                  options="-c statement_timeout=2000 -c lock_timeout=1000",
+-                                 application_name="root_batch17_parent_sampler") as connection:
++                                 application_name="r16_history_parent_sampler") as connection:
+                 sampler_pid = connection.info.backend_pid
+                 while not stop.is_set():
+                     rows = connection.execute(
+@@ -243,6 +243,7 @@
+         fixture_plugins = ["-p", "repository_fixture_plugin"] if group.get("requires_repository_fixture_plugin") else []
+         command = [PYTHON, str(RUN / "worker_entry.py"), "pytest", "-p", "pg_phase_plugin",
+                    "-p", "task_pg_identity", *fixture_plugins,
++                   "-p", "reports.runs.r16_r17_change_history_review1_fix1_20261017.pg_collect_fixture_guard",
+                    *nodes, "-q", "--no-cov", "--tb=short",
+                    "--junitxml=" + str(RUN / (LABEL + ".xml"))]
+         record["command"], record["cwd"] = command, str(ROOT / "backend")
+@@ -352,7 +353,7 @@
+                 or counts.get("passed") != expected_cases):
+             error = record["error"] = error or "expected_cases_not_all_passed"
+         record["expected_cases"] = expected_cases
+-        record["original_test_assertions_changed"] = "none; original ports16 and independent sourcecycle2 unchanged; Root0031 exact dependency only"
++        record["original_test_assertions_changed"] = "none; original history12 and independent fixture-mode1 unchanged; Root0031 exact dependency only"
+         record["parent_bridge_approved"] = True
+         record["controller_deadline_seconds"] = 58
+         record["child_cutoff_seconds"] = 48

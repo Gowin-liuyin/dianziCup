@@ -1,0 +1,25 @@
+....................F..                                                  [100%]
+================================== FAILURES ===================================
+________ test_cache_ttl_never_exceeds_fractional_pg_remaining_lifetime ________
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001785993F4D0>
+policy = AggregateServerPolicy(authorization_profile='review-a42a33a1828140929ce235105c240590', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def test_cache_ttl_never_exceeds_fractional_pg_remaining_lifetime(repository, policy):
+        live = AggregateServerPolicy(policy.authorization_profile, "live", True)
+        observation = total_result("hunter", "ollama", 5, NOW, "live")
+        cache = Cache()
+        service = AggregateService(repository, {"hunter": Connector(observation)}, live, safe_cache=cache)
+        reference_time = NOW + timedelta(seconds=86399, microseconds=500000)
+        result = service.collect_provider_aggregate_observation("hunter", "ollama", ADMIN, now=reference_time)
+        assert result.status == "available" and result.freshness == "unknown"
+        remaining = (NOW + timedelta(seconds=86400) - reference_time).total_seconds()
+>       assert not cache.ttls or cache.ttls[-1] <= remaining
+E       assert (not [1] or 1 <= 0.5)
+E        +  where [1] = <test_review_boundaries.Cache object at 0x000001785993F680>.ttls
+
+..\reports\runs\recovery_r08_aggregate_persistence_review1_20261016\test_review_boundaries.py:219: AssertionError
+- generated xml file: D:\wt\r08-persistence-review1\reports\runs\recovery_r08_aggregate_persistence_review1_20261016\boundaries_final.xml -
+=========================== short test summary info ===========================
+FAILED ..\reports\runs\recovery_r08_aggregate_persistence_review1_20261016\test_review_boundaries.py::test_cache_ttl_never_exceeds_fractional_pg_remaining_lifetime
+1 failed, 22 passed in 4.82s

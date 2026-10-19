@@ -1,11 +1,11 @@
 # G-C · 广来源、九维富化与关联知识
 
 文档首次创建时间：2026-10-15T19:18:55+08:00
-本次写作开始时间：2026-10-17T10:23:42+08:00
-本次写作结束时间：2026-10-17T10:27:06+08:00
-最后更新时间：2026-10-17T10:27:06+08:00
+本次写作开始时间：2026-10-17T13:36:47.367+08:00
+本次写作结束时间：2026-10-17T13:36:47.433+08:00
+最后更新时间：2026-10-17T13:36:47.433+08:00
 阶段实际开始/结束时间：准备包首个时钟见原run，整体开始历史未单独记录 / 尚未结束
-本报告证据截止时间：2026-10-17T10:27:06+08:00
+本报告证据截止时间：2026-10-17T13:36:47.433+08:00
 主控/实现Agent：/root、r06_feed_parsers、r06_repository_community_adapters
 独立审查Agent与报告：R06源准备、parser、社区适配器各新reviewer，见第3节；阶段新reviewer尚未委派
 阶段状态：in_progress
@@ -510,3 +510,12 @@ Source actual6b/f418/5e39/bae第三次09:36:17失败，auth8.2s/import未完成�
 Risk9aa生产12场景+8125合法原expiry1实际通过，indreport raw1c27bf...限定producer；Root尚未导入。QAreader b46独审338绿/3新负例红（request binding/context误拒），新fixer独占reader+generation_requests，publisher新作者独占新publication/atomic rollback；workflow_service唯一plugin owner接纯helper委托，tool_gateway唯一pluginownerextract，read_adapters唯一R16 HTTP author。R16 source5ff7已173offline、PG12collect，UI dd35已124fixtures/strict/lint/build但未App/浏览器；CBM fixedcache串行Windows+Linux16，R1620.875s已释放，UI接窗→Source新独审。
 
 Root旧defaultreviewer原needs_changes已冻结，下一Root checkpoint后 followup新SHA做wheel/Docker/PG audit sameoracle+当前R01 lifecycle。原PGpacket日志 D:/dz16r1/.../pg_support+pg_audit_support，oldaudit red保留。所有task/phase stillpartial，不pushG-Caccepted。人工gold0/授权资产/CNNVD外部缺口不停止内部；后段多跳/9roles/图谱/重判/defaultports/evaluation/doc仍可执行。用户tsbuildinfo3c587e/pushledger/Root-batch13-index/未知未提交不stage。详细report reports/tasks/Root-batch17-integration.md。
+
+
+## 2026-10-17T13:36:47.367+08:00 · 批次18实际ready与默认入口并行续接
+
+首次创建时点保持不变，旧节为所标日期历史；当前权威：Root0291集成风险10文件已实际140pass/type1/Ruff10，原保全基线红与CR保留，新非作者尚未审Root。独立采集产品912d8b3/COREaf639/OPS6b775第四次实际启动，runtime_start已写，worker+beat出生标识/存活匹配，13:17:46+08至19:17:46+08受控窗口，formal six_hour=false。新任务不等于成功采集，费用/wireunknown；失败原件保留。详见Root-batch18-integration.md、actual readiness回执、workstreams所有权。R18ports原18实际PG已独审限定关闭；QA076 additional_sources跨revision P1的同oracle复验限定关闭，Root19PG尚未执行。R10async默认客户端/两事务defaultfactory、R12多轮runtime、R16模式与变化工作台、R18risk REST及R20恢复仍独立开发或审查，原stage状态in_progress/partial与全layer gate保持；无新增accepted/push。R14五真实生产adapter由新唯一集成人负责workflow/runtime，不以角色名计完成。
+
+问题台账续项：Root-risk-baseline（已更正/待新复核，触发保全测试比较旧9aa而Root此前合法修复5files，CR对应最小基线更正140green，实际默认route未接）；Source-pre-ready（三次原失败保存，本轮实际ready证明有界启动恢复，六小时及全类别成功未验）；R12-PG-idle（审查确认base pool闲连接可能越target2+sampler1，作者1bb仅NullPool+pool2fixture更正，原race oracle不动，PGnotrun）；R14-adapter-gaps（未解决，collector/enrich/graph/assessment/report当前实际未配置，新实现负责保留预算与负态）；Gold（外部人工阻塞，双人核验0，不计模型票为人工金标）。
+
+文档修订：2026-10-17T13:36:47.435+08:00 /root，补充本轮实际Sourceready与并行源；未更改历史首次创建时点、原验收或分母。

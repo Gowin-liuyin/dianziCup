@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="5" skipped="0" tests="12" time="63.336" timestamp="2026-10-15T23:47:41.449197+08:00" hostname="yin"><testcase classname="reports.runs.recovery_r06_live_compat_review_1_20261015.test_handler_pg" name="test_actual_saved_responses_commit_raw_revision_evidence_cursor_and_rest[ollama_releases]" time="42.296" /><testcase classname="reports.runs.recovery_r06_live_compat_review_1_20261015.test_handler_pg" name="test_actual_saved_responses_commit_raw_revision_evidence_cursor_and_rest[avid_community]" time="0.916"><failure message="AssertionError: assert 'retry_wait' == 'partial'&#10;  &#10;  - partial&#10;  + retry_wait">catalog_worker_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_worker_20261015?options=-c+search_path%3Dtest_r06_worker_4b84e213a64046c78a7bf7571e305188+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-580/test_actual_saved_responses_co1')
+clients = (&lt;function clients.&lt;locals&gt;.create at 0x0000020FA62565C0&gt;, &lt;fastapi.applications.FastAPI object at 0x0000020FA5BB6AB0&gt;, &lt;ai_intel.api.authentication.AuthenticationSessionService object at 0x0000020FA5BB6A20&gt;)
+kind = 'avid_community'
+
+    @pytest.mark.parametrize("kind", ["ollama_releases", "avid_community"])
+    def test_actual_saved_responses_commit_raw_revision_evidence_cursor_and_rest(catalog_worker_engine, tmp_path, clients, kind):
+        engine = catalog_worker_engine
+        store = ContentStore(tmp_path)
+        seen = []
+        if kind == "avid_community":
+            tree, body = official_bytes("tree"), official_bytes("avid")
+            selected = select_avid_blob(tree, PIN)
+            with Session(engine) as session, session.begin():
+                ensure_source_registration(session, ADMIN, kind, NOW)
+                session.execute(source_cursors.insert().values(source_id=CATALOG_SOURCES[kind].source_id, stream_kind="backfill", cursor_json={"position": PIN, "window_complete": False},
+                    window_end=NOW - timedelta(seconds=1), last_successful_page=1, generation=0, updated_at=NOW))
+            expected = 1
+        else:
+            body = official_bytes("release")
+            expected = 20
+    
+        def fetch(url):
+            seen.append(url)
+            if kind == "avid_community":
+                return FetchResult(url, 200, "application/json", body if "/git/blobs/" in url else tree)
+            return FetchResult(url, 200, "application/json", body, HEADERS)
+    
+        identifier = queue(engine, kind)
+&gt;       assert execute(engine, identifier, store, fetch) == "partial"
+E       AssertionError: assert 'retry_wait' == 'partial'
+E         
+E         - partial
+E         + retry_wait
+
+..\reports\runs\recovery_r06_live_compat_review_1_20261015\test_handler_pg.py:111: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r06_live_compat_review_1_20261015.test_handler_pg" name="test_handler_replay_and_a_b_a_keep_immutable_history[ollama_releases]" time="7.247" /><testcase classname="reports.runs.recovery_r06_live_compat_review_1_20261015.test_handler_pg" name="test_handler_replay_and_a_b_a_keep_immutable_history[avid_community]" time="1.436" /><testcase classname="reports.runs.recovery_r06_live_compat_review_1_20261015.test_handler_pg" name="test_handler_failure_does_not_advance_cursor_or_leave_pg_writes[invalid_input-ollama_releases]" time="0.807" /><testcase classname="reports.runs.recovery_r06_live_compat_review_1_20261015.test_handler_pg" name="test_handler_failure_does_not_advance_cursor_or_leave_pg_writes[invalid_input-avid_community]" time="0.677" /><testcase classname="reports.runs.recovery_r06_live_compat_review_1_20261015.test_handler_pg" name="test_handler_failure_does_not_advance_cursor_or_leave_pg_writes[after_documents-ollama_releases]" time="2.244"><failure message="AssertionError: assert 'handler_failed' == 'worker_execution_error'&#10;  &#10;  - worker_execution_error&#10;  + handler_failed">catalog_worker_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_worker_20261015?options=-c+search_path%3Dtest_r06_worker_dedab3daa71544189f8a52f08ac8e568+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-580/test_handler_failure_does_not_2')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000020FA6CA5EE0&gt;
+kind = 'ollama_releases', failure = 'after_documents'
+
+    @pytest.mark.parametrize("kind", ["ollama_releases", "avid_community"])
+    @pytest.mark.parametrize("failure", ["invalid_input", "after_documents", "cursor_commit"])
+    def test_handler_failure_does_not_advance_cursor_or_leave_pg_writes(catalog_worker_engine, tmp_path, monkeypatch, kind, failure):
+        engine = catalog_worker_engine
+        store = ContentStore(tmp_path)
+        tree, blob, avid = avid_snapshot()
+        release = json.loads(official_bytes("release"))[0]
+        if failure == "invalid_input":
+            if kind == "avid_community":
+                item = json.loads(avid)
+                next(x for x in item["references"] if x["type"] == "screenshot")["url"] = "../../img/R00031.png"
+                tree, blob, _ = avid_snapshot(json.dumps(item).encode())
+            else:
+                release["padding"] = [0] * 50001
+        body = json.dumps([release]).encode()
+        def fetch(url):
+            if kind == "avid_community":
+                return FetchResult(url, 200, "application/json", blob if "/git/blobs/" in url else tree)
+            return FetchResult(url, 200, "application/json", body)
+        if failure == "after_documents":
+            original = source_jobs.persist_catalog_documents
+            def reject(*args, **kwargs):
+                original(*args, **kwargs)
+                raise OSError("review injected transaction failure")
+            monkeypatch.setattr(source_jobs, "persist_catalog_documents", reject)
+        if failure == "cursor_commit":
+            def reject(*args, **kwargs):
+                raise OSError("review injected cursor failure")
+            monkeypatch.setattr(source_jobs.SourceCursorRepository, "commit_page", reject)
+        identifier = queue(engine, kind)
+        assert execute(engine, identifier, store, fetch) == ("blocked" if failure == "invalid_input" else "retry_wait")
+        assert all(value == 0 for value in counts(engine).values())
+        with Session(engine) as session:
+            assert session.scalar(select(func.count()).select_from(source_cursors)) == 0
+&gt;           assert session.scalar(select(job_runs.c.error_code)) == ("source_response_invalid" if failure == "invalid_input" else "worker_execution_error")
+E           AssertionError: assert 'handler_failed' == 'worker_execution_error'
+E             
+E             - worker_execution_error
+E             + handler_failed
+
+..\reports\runs\recovery_r06_live_compat_review_1_20261015\test_handler_pg.py:240: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r06_live_compat_review_1_20261015.test_handler_pg" name="test_handler_failure_does_not_advance_cursor_or_leave_pg_writes[after_documents-avid_community]" time="0.836"><failure message="AssertionError: assert 'handler_failed' == 'worker_execution_error'&#10;  &#10;  - worker_execution_error&#10;  + handler_failed">catalog_worker_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_worker_20261015?options=-c+search_path%3Dtest_r06_worker_510be9c15e3b4239b0af58c62c4d4fc0+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-580/test_handler_failure_does_not_3')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000020FA5AD5CA0&gt;
+kind = 'avid_community', failure = 'after_documents'
+
+    @pytest.mark.parametrize("kind", ["ollama_releases", "avid_community"])
+    @pytest.mark.parametrize("failure", ["invalid_input", "after_documents", "cursor_commit"])
+    def test_handler_failure_does_not_advance_cursor_or_leave_pg_writes(catalog_worker_engine, tmp_path, monkeypatch, kind, failure):
+        engine = catalog_worker_engine
+        store = ContentStore(tmp_path)
+        tree, blob, avid = avid_snapshot()
+        release = json.loads(official_bytes("release"))[0]
+        if failure == "invalid_input":
+            if kind == "avid_community":
+                item = json.loads(avid)
+                next(x for x in item["references"] if x["type"] == "screenshot")["url"] = "../../img/R00031.png"
+                tree, blob, _ = avid_snapshot(json.dumps(item).encode())
+            else:
+                release["padding"] = [0] * 50001
+        body = json.dumps([release]).encode()
+        def fetch(url):
+            if kind == "avid_community":
+                return FetchResult(url, 200, "application/json", blob if "/git/blobs/" in url else tree)
+            return FetchResult(url, 200, "application/json", body)
+        if failure == "after_documents":
+            original = source_jobs.persist_catalog_documents
+            def reject(*args, **kwargs):
+                original(*args, **kwargs)
+                raise OSError("review injected transaction failure")
+            monkeypatch.setattr(source_jobs, "persist_catalog_documents", reject)
+        if failure == "cursor_commit":
+            def reject(*args, **kwargs):
+                raise OSError("review injected cursor failure")
+            monkeypatch.setattr(source_jobs.SourceCursorRepository, "commit_page", reject)
+        identifier = queue(engine, kind)
+        assert execute(engine, identifier, store, fetch) == ("blocked" if failure == "invalid_input" else "retry_wait")
+        assert all(value == 0 for value in counts(engine).values())
+        with Session(engine) as session:
+            assert session.scalar(select(func.count()).select_from(source_cursors)) == 0
+&gt;           assert session.scalar(select(job_runs.c.error_code)) == ("source_response_invalid" if failure == "invalid_input" else "worker_execution_error")
+E           AssertionError: assert 'handler_failed' == 'worker_execution_error'
+E             
+E             - worker_execution_error
+E             + handler_failed
+
+..\reports\runs\recovery_r06_live_compat_review_1_20261015\test_handler_pg.py:240: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r06_live_compat_review_1_20261015.test_handler_pg" name="test_handler_failure_does_not_advance_cursor_or_leave_pg_writes[cursor_commit-ollama_releases]" time="2.748"><failure message="AssertionError: assert 'handler_failed' == 'worker_execution_error'&#10;  &#10;  - worker_execution_error&#10;  + handler_failed">catalog_worker_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_worker_20261015?options=-c+search_path%3Dtest_r06_worker_b7b4b58664c94a8697b4258480916a41+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-580/test_handler_failure_does_not_4')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000020FA6315970&gt;
+kind = 'ollama_releases', failure = 'cursor_commit'
+
+    @pytest.mark.parametrize("kind", ["ollama_releases", "avid_community"])
+    @pytest.mark.parametrize("failure", ["invalid_input", "after_documents", "cursor_commit"])
+    def test_handler_failure_does_not_advance_cursor_or_leave_pg_writes(catalog_worker_engine, tmp_path, monkeypatch, kind, failure):
+        engine = catalog_worker_engine
+        store = ContentStore(tmp_path)
+        tree, blob, avid = avid_snapshot()
+        release = json.loads(official_bytes("release"))[0]
+        if failure == "invalid_input":
+            if kind == "avid_community":
+                item = json.loads(avid)
+                next(x for x in item["references"] if x["type"] == "screenshot")["url"] = "../../img/R00031.png"
+                tree, blob, _ = avid_snapshot(json.dumps(item).encode())
+            else:
+                release["padding"] = [0] * 50001
+        body = json.dumps([release]).encode()
+        def fetch(url):
+            if kind == "avid_community":
+                return FetchResult(url, 200, "application/json", blob if "/git/blobs/" in url else tree)
+            return FetchResult(url, 200, "application/json", body)
+        if failure == "after_documents":
+            original = source_jobs.persist_catalog_documents
+            def reject(*args, **kwargs):
+                original(*args, **kwargs)
+                raise OSError("review injected transaction failure")
+            monkeypatch.setattr(source_jobs, "persist_catalog_documents", reject)
+        if failure == "cursor_commit":
+            def reject(*args, **kwargs):
+                raise OSError("review injected cursor failure")
+            monkeypatch.setattr(source_jobs.SourceCursorRepository, "commit_page", reject)
+        identifier = queue(engine, kind)
+        assert execute(engine, identifier, store, fetch) == ("blocked" if failure == "invalid_input" else "retry_wait")
+        assert all(value == 0 for value in counts(engine).values())
+        with Session(engine) as session:
+            assert session.scalar(select(func.count()).select_from(source_cursors)) == 0
+&gt;           assert session.scalar(select(job_runs.c.error_code)) == ("source_response_invalid" if failure == "invalid_input" else "worker_execution_error")
+E           AssertionError: assert 'handler_failed' == 'worker_execution_error'
+E             
+E             - worker_execution_error
+E             + handler_failed
+
+..\reports\runs\recovery_r06_live_compat_review_1_20261015\test_handler_pg.py:240: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r06_live_compat_review_1_20261015.test_handler_pg" name="test_handler_failure_does_not_advance_cursor_or_leave_pg_writes[cursor_commit-avid_community]" time="1.343"><failure message="AssertionError: assert 'handler_failed' == 'worker_execution_error'&#10;  &#10;  - worker_execution_error&#10;  + handler_failed">catalog_worker_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_worker_20261015?options=-c+search_path%3Dtest_r06_worker_f7eacecbc6f549d2979f2073909b1257+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-580/test_handler_failure_does_not_5')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000020FA6BC66F0&gt;
+kind = 'avid_community', failure = 'cursor_commit'
+
+    @pytest.mark.parametrize("kind", ["ollama_releases", "avid_community"])
+    @pytest.mark.parametrize("failure", ["invalid_input", "after_documents", "cursor_commit"])
+    def test_handler_failure_does_not_advance_cursor_or_leave_pg_writes(catalog_worker_engine, tmp_path, monkeypatch, kind, failure):
+        engine = catalog_worker_engine
+        store = ContentStore(tmp_path)
+        tree, blob, avid = avid_snapshot()
+        release = json.loads(official_bytes("release"))[0]
+        if failure == "invalid_input":
+            if kind == "avid_community":
+                item = json.loads(avid)
+                next(x for x in item["references"] if x["type"] == "screenshot")["url"] = "../../img/R00031.png"
+                tree, blob, _ = avid_snapshot(json.dumps(item).encode())
+            else:
+                release["padding"] = [0] * 50001
+        body = json.dumps([release]).encode()
+        def fetch(url):
+            if kind == "avid_community":
+                return FetchResult(url, 200, "application/json", blob if "/git/blobs/" in url else tree)
+            return FetchResult(url, 200, "application/json", body)
+        if failure == "after_documents":
+            original = source_jobs.persist_catalog_documents
+            def reject(*args, **kwargs):
+                original(*args, **kwargs)
+                raise OSError("review injected transaction failure")
+            monkeypatch.setattr(source_jobs, "persist_catalog_documents", reject)
+        if failure == "cursor_commit":
+            def reject(*args, **kwargs):
+                raise OSError("review injected cursor failure")
+            monkeypatch.setattr(source_jobs.SourceCursorRepository, "commit_page", reject)
+        identifier = queue(engine, kind)
+        assert execute(engine, identifier, store, fetch) == ("blocked" if failure == "invalid_input" else "retry_wait")
+        assert all(value == 0 for value in counts(engine).values())
+        with Session(engine) as session:
+            assert session.scalar(select(func.count()).select_from(source_cursors)) == 0
+&gt;           assert session.scalar(select(job_runs.c.error_code)) == ("source_response_invalid" if failure == "invalid_input" else "worker_execution_error")
+E           AssertionError: assert 'handler_failed' == 'worker_execution_error'
+E             
+E             - worker_execution_error
+E             + handler_failed
+
+..\reports\runs\recovery_r06_live_compat_review_1_20261015\test_handler_pg.py:240: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r06_live_compat_review_1_20261015.test_handler_pg" name="test_tenant_job_cannot_invoke_public_source_handler[ollama_releases]" time="0.969" /><testcase classname="reports.runs.recovery_r06_live_compat_review_1_20261015.test_handler_pg" name="test_tenant_job_cannot_invoke_public_source_handler[avid_community]" time="0.769" /></testsuite></testsuites>

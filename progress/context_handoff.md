@@ -995,3 +995,21 @@ Source actual6b/f418/5e39/bae第三次09:36:17失败，auth8.2s/import未完成�
 Risk9aa生产12场景+8125合法原expiry1实际通过，indreport raw1c27bf...限定producer；Root尚未导入。QAreader b46独审338绿/3新负例红（request binding/context误拒），新fixer独占reader+generation_requests，publisher新作者独占新publication/atomic rollback；workflow_service唯一plugin owner接纯helper委托，tool_gateway唯一pluginownerextract，read_adapters唯一R16 HTTP author。R16 source5ff7已173offline、PG12collect，UI dd35已124fixtures/strict/lint/build但未App/浏览器；CBM fixedcache串行Windows+Linux16，R1620.875s已释放，UI接窗→Source新独审。
 
 Root旧defaultreviewer原needs_changes已冻结，下一Root checkpoint后 followup新SHA做wheel/Docker/PG audit sameoracle+当前R01 lifecycle。原PGpacket日志 D:/dz16r1/.../pg_support+pg_audit_support，oldaudit red保留。所有task/phase stillpartial，不pushG-Caccepted。人工gold0/授权资产/CNNVD外部缺口不停止内部；后段多跳/9roles/图谱/重判/defaultports/evaluation/doc仍可执行。用户tsbuildinfo3c587e/pushledger/Root-batch13-index/未知未提交不stage。详细report reports/tasks/Root-batch17-integration.md。
+
+
+## 2026-10-17T13:02:29.469+08:00 · 批次18滚动并行与实际进展
+
+Root仍0291/codex/full-delivery-recovery/origin授权URL，最后远端G-B c229，G-C partial无新阶段push。已精确导入Risk8125十文件，保全源码比较旧9aa导致Root139/1，正式CR改该比较源到实际Root0291后完整140pass/Ruff10pass；未defaultstack/新actualPG/accepted，用户3原diff不动。
+
+Sourceaf639/common+OPS6b775对；actualoldBAE17于newRootrun已verified20/own0，known12于3cbe72f6d07c41529847264c3eaee6b3保全归档。Root旧de2a/0ba05派生发现OPS固定CORE旧常量阻断，未装；新pair_fix1 metadata f642/54dce在reports/runs/r06_startup_common_actual_install_20261017/pin_pair_fix1，原独审待pure最终核后Rootinstall/new17/七门singlelaunch。Product912/Source schema0030/ledger42/450/CPU55.84375/父截止21:49与latest15:34保持，无Source服务/6h。
+
+R18 plugin eea+22 exactdeps+Root0031extra schema四个realPG窗12:02:45.620–12:04:30.482全0，5/5/6/2原XML由原reviewer回核，ctrl e592/admission1183，Rootlauncher launch_root_r18_ports_pg.ps1；CBM纠名r18-ports-eea-review1当前独占≤45，完即释放，Docker/defaultfactory仍待。
+
+R10 policy986b/ind9635限定176offline绿、原4PG prepared；默认factoryc554新ind63e4指出Bolt两真实socket deadline红与真实mergedRuff I001，作者Async/公开DNS窄桥修复WIP，旧211green不掩。R12源5620023新真实内部组合+三检索event前过滤已自检新108/旧166、PG11collect，待postidx/新review。R16 mode14ce/ind1f957有限194+10+UI1绿，13PG prepared，Root尚未导入/接变化页。QA reader新snapshot0dfa+workflowe310，441作者绿/440独审绿不重复求和；新P1合法additionalSource跨primaryrev漏快照，作者正以完整已锁support_pairs最小修，原19PG别跑fault旧源；publishera253完整row已独审397有限关闭，仍等合格reader依赖。
+
+文件归属/CR见workstreams及executionmap补充，独立phase/wholeT验收不改。新阶段报告尚需Root整合实际证据；人工gold0/授权资产/CNNVD阻塞持续不妨碍内部代码/集成。不得使用旧source图审新源，每WT独立project命名，共用cache不合并进Git。下一关键：Source装配再真实start、Root新风险/变化/API任务reader/publisher/插件接线及review、实际PGR16/R10/QA、R12完整source审与实际模型/多跳/工作台；没有目标完成或外部-only停止条件。
+
+
+## 2026-10-17T13:26:17.947+08:00 · Source第四次实际ready与窗口返还
+
+实际 CORE af63972 / OPS 6b775e8，product912d8b3独立冻结WT保持；启动13:17:46.640400+08，截止19:17:46.640400+08。runtime_start与worker46256/beat42528整精度出生标识匹配、均alive，心跳本轮new=22 / 累计64任务；任务计数不是成功采集数，wire/费用unknown，六小时formal=false。原第三失败与CPU/ledger历史保留，无阶段通过。实际回执reports/runs/r06_startup_common_actual_install_20261017/pin_pair_fix1/fourth_source_actual_actor_readiness.json。R10/QA/R12启动静窗已明确返还，R12独占postfreezeCBM≤45秒；新R16/R17默认变化挂载及R18默认risk route在独立WT并行，前者唯一App修改，后者只新route模块，Root资源/Git/状态独占。R12新87a79615冻结，已派全新非作者初审。

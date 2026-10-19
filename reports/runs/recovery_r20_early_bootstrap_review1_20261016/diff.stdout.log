@@ -1,0 +1,1139 @@
+diff --git a/backend/src/ai_intel/infrastructure/_worker_bootstrap.py b/backend/src/ai_intel/infrastructure/_worker_bootstrap.py
+new file mode 100644
+index 0000000..098a1c9
+--- /dev/null
++++ b/backend/src/ai_intel/infrastructure/_worker_bootstrap.py
+@@ -0,0 +1,39 @@
++"""Fixed Windows worker gate; site runs only after the parent owns resource supervision."""
++
++import sys
++
++
++def main() -> None:
++    import _winapi
++
++    entrypoint = sys.argv[1]
++    if entrypoint not in ("pdf", "semantic"):
++        raise ValueError("unknown fixed worker entrypoint")
++    gate, job, memory_bytes, cpu_seconds = map(int, sys.argv[2:6])
++    if _winapi.WaitForSingleObject(gate, 3000) != _winapi.WAIT_OBJECT_0:
++        raise OSError("early worker supervision was not ready")
++    _winapi.CloseHandle(gate)
++    from pathlib import Path
++
++    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
++    from ai_intel.infrastructure import process_limits
++
++    process_limits._EARLY_RESOURCE_LIMIT = (memory_bytes, cpu_seconds, job)
++    import site
++
++    site.main()
++    if entrypoint == "pdf":
++        import runpy
++
++        sys.argv = ["ai_intel.ingestion.parsing._pdf_worker"]
++        runpy.run_module(sys.argv[0], run_name="__main__")
++    else:
++        parent_pid, pipe_handle = map(int, sys.argv[6:8])
++        sys.argv = ["semantic-worker", "--multiprocessing-fork"]
++        from multiprocessing.spawn import spawn_main
++
++        spawn_main(parent_pid=parent_pid, pipe_handle=pipe_handle)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/backend/src/ai_intel/infrastructure/models/semantic.py b/backend/src/ai_intel/infrastructure/models/semantic.py
+index 01e37ba..42555e5 100644
+--- a/backend/src/ai_intel/infrastructure/models/semantic.py
++++ b/backend/src/ai_intel/infrastructure/models/semantic.py
+@@ -6,14 +6,21 @@ import hashlib
+ import math
+ import multiprocessing
+ import os
++import subprocess
+ import threading
+ import time
+ from dataclasses import dataclass
+ from importlib import import_module
+ from multiprocessing.connection import Connection, _ConnectionBase
++from multiprocessing.context import SpawnContext, SpawnProcess
+ from multiprocessing.process import BaseProcess
+ from pathlib import Path
+-from typing import Literal
++from typing import TYPE_CHECKING, Literal
++
++if TYPE_CHECKING:
++    from multiprocessing.popen_spawn_win32 import Popen as WindowsSpawnPopen
++
++    from ai_intel.infrastructure.process_limits import _WindowsWorkerSupervisor
+ 
+ from ai_intel.infrastructure.models.clients import (
+     EmbeddingResult,
+@@ -26,9 +33,94 @@ MAX_BATCH = 8
+ MAX_TOKENS = 512
+ MAX_TEXT_CHARACTERS = 16384
+ MAX_MEMORY_BYTES = 2 * 1024**3
++MAX_CPU_SECONDS = 30
+ _WORKER_LOCK = threading.Lock()
+ 
+ 
++class _EarlySemanticProcess(SpawnProcess):
++    """Use the standard Windows spawn serialization behind the fixed early gate."""
++
++    _supervisor: _WindowsWorkerSupervisor | None = None
++
++    @staticmethod
++    def _Popen(process_object: BaseProcess) -> WindowsSpawnPopen:
++        import _winapi
++        import msvcrt
++        from multiprocessing import reduction, spawn, util
++        from multiprocessing.context import set_spawning_popen
++        from multiprocessing.popen_spawn_win32 import Popen
++
++        from ai_intel.infrastructure.process_limits import _launch_windows_worker
++
++        class EarlyPopen(Popen):
++            def __init__(self) -> None:
++                preparation = spawn.get_preparation_data(process_object.name)
++                reading_handle, writing_handle = _winapi.CreatePipe(None, 0)
++                worker = None
++                supervisor = None
++                try:
++                    with open(msvcrt.open_osfhandle(writing_handle, 0), "wb") as stream:
++                        worker, supervisor = _launch_windows_worker(
++                            "semantic",
++                            memory_bytes=MAX_MEMORY_BYTES,
++                            cpu_seconds=MAX_CPU_SECONDS,
++                            environment=dict(os.environ),
++                            spawn_arguments=(os.getpid(), reading_handle),
++                        )
++                        handle = getattr(worker, "_handle", None)
++                        if not isinstance(handle, int):
++                            raise OSError("true semantic worker handle unavailable")
++                        self.pid = worker.pid
++                        self.returncode = None
++                        self.supervisor = supervisor
++                        self._handle = reduction.duplicate(handle)
++                        self.sentinel = int(self._handle)
++                        self.finalizer = util.Finalize(
++                            self,
++                            self._finish,
++                            (worker, supervisor, self.sentinel, reading_handle),
++                        )
++                        set_spawning_popen(self)
++                        try:
++                            reduction.dump(preparation, stream)
++                            reduction.dump(process_object, stream)
++                        finally:
++                            set_spawning_popen(None)
++                        if isinstance(process_object, _EarlySemanticProcess):
++                            process_object._supervisor = supervisor
++                except BaseException:
++                    if worker is not None:
++                        worker.kill()
++                        worker.wait(timeout=1)
++                    if hasattr(self, "finalizer"):
++                        self.finalizer()
++                    else:
++                        if supervisor is not None:
++                            supervisor.close()
++                        _winapi.CloseHandle(reading_handle)
++                    raise
++
++            @staticmethod
++            def _finish(
++                worker: subprocess.Popen[bytes],
++                supervisor: _WindowsWorkerSupervisor,
++                worker_handle: int,
++                reading_handle: int,
++            ) -> None:
++                try:
++                    worker.wait(timeout=1)
++                    supervisor.close()
++                finally:
++                    _winapi.CloseHandle(worker_handle)
++                    _winapi.CloseHandle(reading_handle)
++
++        return EarlyPopen()
++
++    @property
++    def supervision_error(self) -> OSError | None:
++        return None if self._supervisor is None else self._supervisor.error
++
++
+ class SemanticInputError(ValueError):
+     """Empty, oversized or malformed input is rejected without truncation."""
+ 
+@@ -241,7 +333,12 @@ def _run_worker(
+             deadline = time.monotonic() + client.timeout_seconds
+             context = multiprocessing.get_context("spawn")
+             receiving, sending = context.Pipe(duplex=False)
+-            process = context.Process(
++            process_type = (
++                _EarlySemanticProcess
++                if os.name == "nt" and type(context) is SpawnContext
++                else context.Process
++            )
++            process = process_type(
+                 target=_semantic_worker,
+                 args=(sending, client.model_cache_directory, model, operation, texts, query),
+                 daemon=True,
+@@ -250,12 +347,18 @@ def _run_worker(
+             sending.close()
+         except Exception:
+             raise SemanticRuntimeError("local semantic worker could not initialize") from None
+-        if not receiving.poll(max(0.0, deadline - time.monotonic())):
++        try:
++            ready = receiving.poll(max(0.0, deadline - time.monotonic()))
++        except (EOFError, BrokenPipeError):
++            raise SemanticRuntimeError("local semantic worker exited without a result") from None
++        if not ready:
+             raise SemanticTimeoutError("local semantic worker exceeded total deadline")
+         try:
+             response: object = receiving.recv()
+         except EOFError:
+             raise SemanticRuntimeError("local semantic worker exited without a result") from None
++        if isinstance(process, _EarlySemanticProcess) and process.supervision_error is not None:
++            raise SemanticRuntimeError("local semantic worker resource supervision failed")
+         if not isinstance(response, tuple) or len(response) != 2:
+             raise ModelContractError("local worker returned an invalid envelope")
+         status, payload = response
+@@ -273,6 +376,7 @@ def _run_worker(
+         raise
+     finally:
+         cleanup_failed = False
++        supervision_failed = False
+         try:
+             for connection in (sending, receiving):
+                 if connection is not None:
+@@ -294,10 +398,17 @@ def _run_worker(
+                         cleanup_failed = True
+                     else:
+                         process.close()
++                        if isinstance(process, _EarlySemanticProcess):
++                            supervision_failed = process.supervision_error is not None
+                 except Exception:
+                     cleanup_failed = True
+         finally:
+             _WORKER_LOCK.release()
++        if supervision_failed:
++            if primary_error is not None:
++                primary_error.add_note("local semantic worker resource supervision failed")
++            else:
++                raise SemanticRuntimeError("local semantic worker resource supervision failed")
+         if cleanup_failed:
+             if primary_error is not None:
+                 primary_error.add_note("local semantic worker cleanup was incomplete")
+diff --git a/backend/src/ai_intel/infrastructure/process_limits.py b/backend/src/ai_intel/infrastructure/process_limits.py
+index 4b52333..62db954 100644
+--- a/backend/src/ai_intel/infrastructure/process_limits.py
++++ b/backend/src/ai_intel/infrastructure/process_limits.py
+@@ -6,8 +6,54 @@ import ctypes
+ import os
+ import subprocess
+ import sys
++import threading
++from ctypes import wintypes
++from pathlib import Path
++from typing import Literal
+ 
+ _WINDOWS_CPU_GUARDS: list[subprocess.Popen[bytes]] = []
++_EARLY_RESOURCE_LIMIT: tuple[int, int, int] | None = None
++
++
++class IoCounters(ctypes.Structure):
++    _fields_ = [
++        (name, ctypes.c_ulonglong)
++        for name in (
++            "read_operations",
++            "write_operations",
++            "other_operations",
++            "read_bytes",
++            "write_bytes",
++            "other_bytes",
++        )
++    ]
++
++
++class BasicLimits(ctypes.Structure):
++    _fields_ = [
++        ("process_time", ctypes.c_longlong),
++        ("job_time", ctypes.c_longlong),
++        ("flags", wintypes.DWORD),
++        ("minimum_working_set", ctypes.c_size_t),
++        ("maximum_working_set", ctypes.c_size_t),
++        ("active_processes", wintypes.DWORD),
++        ("affinity", ctypes.c_size_t),
++        ("priority", wintypes.DWORD),
++        ("scheduling", wintypes.DWORD),
++    ]
++
++
++class ExtendedLimits(ctypes.Structure):
++    _fields_ = [
++        ("basic", BasicLimits),
++        ("io", IoCounters),
++        ("process_memory", ctypes.c_size_t),
++        ("job_memory", ctypes.c_size_t),
++        ("peak_process_memory", ctypes.c_size_t),
++        ("peak_job_memory", ctypes.c_size_t),
++    ]
++
++
+ _WINDOWS_CPU_GUARD_CODE = """
+ import ctypes
+ import sys
+@@ -28,7 +74,7 @@ try:
+     if not kernel.GetHandleInformation(lifetime_handle, ctypes.byref(handle_flags)):
+         raise OSError('CPU guard lifetime unavailable')
+     if not kernel.GetProcessTimes(target_handle, *(ctypes.byref(value) for value in times)):
+-        raise OSError('CPU accounting unavailable')
++        raise ctypes.WinError(ctypes.get_last_error())
+     if times[2].value + times[3].value >= cpu_ticks:
+         raise OSError('CPU budget exhausted before readiness')
+     if not kernel.SetEvent(ready_handle):
+@@ -42,7 +88,7 @@ try:
+         if state != 258:
+             raise OSError('CPU guard process wait unavailable')
+         if not kernel.GetProcessTimes(target_handle, *(ctypes.byref(value) for value in times)):
+-            raise OSError('CPU accounting unavailable')
++            raise ctypes.WinError(ctypes.get_last_error())
+         if times[2].value + times[3].value >= cpu_ticks:
+             if not kernel.TerminateProcess(target_handle, 0xC0000044):
+                 if kernel.WaitForSingleObject(target_handle, 0) != 0:
+@@ -59,7 +105,9 @@ finally:
+ """
+ 
+ 
+-def _start_windows_cpu_guard(cpu_seconds: int, lifetime_handle: int) -> subprocess.Popen[bytes]:
++def _start_windows_cpu_guard(
++    cpu_seconds: int, lifetime_handle: int, *, target_process_handle: int | None = None
++) -> subprocess.Popen[bytes]:
+     """A separate stdlib process counts all worker threads even while its GIL is held."""
+     if sys.platform != "win32":
+         raise OSError("process resource limit unavailable")
+@@ -91,7 +139,7 @@ def _start_windows_cpu_guard(cpu_seconds: int, lifetime_handle: int) -> subproce
+         current_process = kernel.GetCurrentProcess()
+         if not kernel.DuplicateHandle(
+             current_process,
+-            current_process,
++            current_process if target_process_handle is None else target_process_handle,
+             current_process,
+             ctypes.byref(target_handle),
+             0x100000 | 0x1000 | 0x1,
+@@ -166,6 +214,11 @@ def bound_process_resources(*, memory_bytes: int, cpu_seconds: int) -> int | Non
+         raise ValueError("memory_bytes must be an integer between one byte and two GiB")
+     if type(cpu_seconds) is not int or not 1 <= cpu_seconds <= 30:
+         raise ValueError("cpu_seconds must be an integer between one and thirty")
++    if _EARLY_RESOURCE_LIMIT is not None:
++        early_memory, early_cpu, handle = _EARLY_RESOURCE_LIMIT
++        if (memory_bytes, cpu_seconds) != (early_memory, early_cpu):
++            raise OSError("worker resource envelope differs from its early bootstrap")
++        return handle
+     if sys.platform == "linux":
+         import resource
+ 
+@@ -178,42 +231,6 @@ def bound_process_resources(*, memory_bytes: int, cpu_seconds: int) -> int | Non
+ 
+     from ctypes import wintypes
+ 
+-    class IoCounters(ctypes.Structure):
+-        _fields_ = [
+-            (name, ctypes.c_ulonglong)
+-            for name in (
+-                "read_operations",
+-                "write_operations",
+-                "other_operations",
+-                "read_bytes",
+-                "write_bytes",
+-                "other_bytes",
+-            )
+-        ]
+-
+-    class BasicLimits(ctypes.Structure):
+-        _fields_ = [
+-            ("process_time", ctypes.c_longlong),
+-            ("job_time", ctypes.c_longlong),
+-            ("flags", wintypes.DWORD),
+-            ("minimum_working_set", ctypes.c_size_t),
+-            ("maximum_working_set", ctypes.c_size_t),
+-            ("active_processes", wintypes.DWORD),
+-            ("affinity", ctypes.c_size_t),
+-            ("priority", wintypes.DWORD),
+-            ("scheduling", wintypes.DWORD),
+-        ]
+-
+-    class ExtendedLimits(ctypes.Structure):
+-        _fields_ = [
+-            ("basic", BasicLimits),
+-            ("io", IoCounters),
+-            ("process_memory", ctypes.c_size_t),
+-            ("job_memory", ctypes.c_size_t),
+-            ("peak_process_memory", ctypes.c_size_t),
+-            ("peak_job_memory", ctypes.c_size_t),
+-        ]
+-
+     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+     kernel.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+     kernel.CreateJobObjectW.restype = wintypes.HANDLE
+@@ -269,3 +286,214 @@ def bound_process_resources(*, memory_bytes: int, cpu_seconds: int) -> int | Non
+         kernel.CloseHandle(lifetime_handle)
+     _WINDOWS_CPU_GUARDS.append(guard)
+     return int(handle)
++
++
++def _read_windows_cpu_ticks(kernel: ctypes.WinDLL, process_handle: int) -> int:
++    times = [ctypes.c_ulonglong() for _ in range(4)]
++    if not kernel.GetProcessTimes(process_handle, *(ctypes.byref(value) for value in times)):
++        raise ctypes.WinError(ctypes.get_last_error())
++    return times[2].value + times[3].value
++
++
++class _WindowsWorkerSupervisor:
++    """Own a true worker handle independently of the disposable guardian.
++
++    The existing 50ms poll remains a sampled safeguard, without a hard realtime bound.
++    Closing this owner is allowed only after the caller has ended its worker.
++    """
++
++    def __init__(
++        self, process_handle: int, guard: subprocess.Popen[bytes], cpu_seconds: int
++    ) -> None:
++        self.guard = guard
++        self.error: OSError | None = None
++        self.last_cpu_ticks = 0
++        self._cpu_ticks = cpu_seconds * 10_000_000
++        self._stop = threading.Event()
++        self._kernel = ctypes.WinDLL("kernel32", use_last_error=True)
++        self._kernel.GetCurrentProcess.restype = wintypes.HANDLE
++        self._kernel.DuplicateHandle.argtypes = [
++            wintypes.HANDLE,
++            wintypes.HANDLE,
++            wintypes.HANDLE,
++            ctypes.c_void_p,
++            wintypes.DWORD,
++            wintypes.BOOL,
++            wintypes.DWORD,
++        ]
++        self._kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
++        self._kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.c_void_p] * 4
++        self._kernel.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
++        self._kernel.CloseHandle.argtypes = [wintypes.HANDLE]
++        retained = wintypes.HANDLE()
++        current = self._kernel.GetCurrentProcess()
++        if not self._kernel.DuplicateHandle(
++            current, process_handle, current, ctypes.byref(retained), 0, False, 2
++        ):
++            raise ctypes.WinError(ctypes.get_last_error())
++        if retained.value is None:
++            raise OSError("worker CPU supervision handle unavailable")
++        self._handle = retained.value
++        self._thread = threading.Thread(target=self._supervise, daemon=True)
++        try:
++            self._thread.start()
++        except RuntimeError:
++            self._kernel.CloseHandle(self._handle)
++            raise
++
++    def _supervise(self) -> None:
++        try:
++            while True:
++                state = self._kernel.WaitForSingleObject(self._handle, 50)
++                if state == 0:
++                    self.last_cpu_ticks = _read_windows_cpu_ticks(self._kernel, self._handle)
++                    if self.last_cpu_ticks >= self._cpu_ticks:
++                        raise OSError("worker CPU budget exhausted")
++                    return
++                if state != 258:
++                    raise ctypes.WinError(ctypes.get_last_error())
++                self.last_cpu_ticks = _read_windows_cpu_ticks(self._kernel, self._handle)
++                if self.last_cpu_ticks >= self._cpu_ticks:
++                    raise OSError("worker CPU budget exhausted")
++                if self.guard.poll() is not None:
++                    raise OSError("worker CPU guardian exited")
++                if self._stop.is_set():
++                    raise OSError("worker CPU supervision closed before worker exit")
++        except OSError as error:
++            self.error = error
++            if (
++                not self._kernel.TerminateProcess(self._handle, 0xC0000044)
++                and self._kernel.WaitForSingleObject(self._handle, 0) != 0
++            ):
++                self.error.add_note(str(ctypes.WinError(ctypes.get_last_error())))
++        finally:
++            self._kernel.CloseHandle(self._handle)
++
++    def close(self) -> None:
++        self._stop.set()
++        self._thread.join(timeout=1)
++        if self._thread.is_alive():
++            raise OSError("worker CPU supervision did not end")
++        try:
++            self.guard.wait(timeout=1)
++        except subprocess.TimeoutExpired:
++            self.guard.kill()
++            self.guard.wait(timeout=1)
++        if self.guard.returncode != 0 and self.error is None:
++            self.error = OSError("worker CPU guardian exited")
++
++
++def _launch_windows_worker(
++    entrypoint: Literal["pdf", "semantic"],
++    *,
++    memory_bytes: int,
++    cpu_seconds: int,
++    environment: dict[str, str],
++    spawn_arguments: tuple[int, int] | None = None,
++) -> tuple[subprocess.Popen[bytes], _WindowsWorkerSupervisor]:
++    """Gate only the two fixed workers before site, coverage and application imports."""
++    if sys.platform != "win32" or entrypoint not in ("pdf", "semantic"):
++        raise OSError("early worker bootstrap unavailable")
++    if (entrypoint == "semantic") != (spawn_arguments is not None):
++        raise ValueError("fixed worker bootstrap arguments differ from its entrypoint")
++    if type(memory_bytes) is not int or not 1 <= memory_bytes <= 2 * 1024**3:
++        raise ValueError("invalid fixed worker memory envelope")
++    if type(cpu_seconds) is not int or not 1 <= cpu_seconds <= 30:
++        raise ValueError("invalid fixed worker CPU envelope")
++    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
++    kernel.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
++    kernel.CreateJobObjectW.restype = wintypes.HANDLE
++    kernel.CreateEventW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR]
++    kernel.CreateEventW.restype = wintypes.HANDLE
++    kernel.SetInformationJobObject.argtypes = [
++        wintypes.HANDLE,
++        ctypes.c_int,
++        ctypes.c_void_p,
++        wintypes.DWORD,
++    ]
++    kernel.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
++    kernel.SetEvent.argtypes = [wintypes.HANDLE]
++    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
++    handles: list[int] = []
++    process: subprocess.Popen[bytes] | None = None
++    guard: subprocess.Popen[bytes] | None = None
++    supervisor: _WindowsWorkerSupervisor | None = None
++    try:
++        gate = kernel.CreateEventW(None, True, False, None)
++        if gate is None:
++            raise ctypes.WinError(ctypes.get_last_error())
++        handles.append(gate)
++        job = kernel.CreateJobObjectW(None, None)
++        if job is None:
++            raise ctypes.WinError(ctypes.get_last_error())
++        handles.append(job)
++        limits = ExtendedLimits()
++        limits.basic.flags = 0x100 | 0x2 | 0x2000
++        limits.basic.process_time = cpu_seconds * 10_000_000
++        limits.process_memory = memory_bytes
++        if not kernel.SetInformationJobObject(job, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
++            raise ctypes.WinError(ctypes.get_last_error())
++        lifetime = kernel.CreateJobObjectW(None, None)
++        if lifetime is None:
++            raise ctypes.WinError(ctypes.get_last_error())
++        handles.append(lifetime)
++        lifetime_limits = ExtendedLimits()
++        lifetime_limits.basic.flags = 0x2000
++        if not kernel.SetInformationJobObject(
++            lifetime, 9, ctypes.byref(lifetime_limits), ctypes.sizeof(lifetime_limits)
++        ):
++            raise ctypes.WinError(ctypes.get_last_error())
++        for inherited in (gate, job):
++            os.set_handle_inheritable(inherited, True)
++        startup = subprocess.STARTUPINFO(lpAttributeList={"handle_list": [gate, job]})
++        environment = dict(environment)
++        environment["__PYVENV_LAUNCHER__"] = sys.executable
++        command = [
++            os.path.join(sys.base_prefix, "python.exe"),
++            "-S",
++            str(Path(__file__).with_name("_worker_bootstrap.py")),
++            entrypoint,
++            str(gate),
++            str(job),
++            str(memory_bytes),
++            str(cpu_seconds),
++        ]
++        if spawn_arguments is not None:
++            command.extend(str(value) for value in spawn_arguments)
++        process = subprocess.Popen(
++            command,
++            stdin=subprocess.PIPE if entrypoint == "pdf" else subprocess.DEVNULL,
++            stdout=subprocess.PIPE if entrypoint == "pdf" else None,
++            stderr=subprocess.DEVNULL if entrypoint == "pdf" else None,
++            env=environment,
++            startupinfo=startup,
++            close_fds=True,
++            creationflags=0x08000000,
++        )
++        process_handle = getattr(process, "_handle", None)
++        if not isinstance(process_handle, int):
++            raise OSError("true Windows worker handle unavailable")
++        if not kernel.AssignProcessToJobObject(job, process_handle):
++            raise ctypes.WinError(ctypes.get_last_error())
++        guard = _start_windows_cpu_guard(
++            cpu_seconds, lifetime, target_process_handle=process_handle
++        )
++        if not kernel.AssignProcessToJobObject(lifetime, process_handle):
++            raise ctypes.WinError(ctypes.get_last_error())
++        supervisor = _WindowsWorkerSupervisor(process_handle, guard, cpu_seconds)
++        if not kernel.SetEvent(gate):
++            raise ctypes.WinError(ctypes.get_last_error())
++        return process, supervisor
++    except BaseException:
++        if process is not None:
++            process.kill()
++            process.wait(timeout=1)
++        if supervisor is not None:
++            supervisor.close()
++        elif guard is not None:
++            guard.kill()
++            guard.wait(timeout=1)
++        raise
++    finally:
++        for handle in reversed(handles):
++            kernel.CloseHandle(handle)
+diff --git a/backend/src/ai_intel/ingestion/parsing/pdf_text.py b/backend/src/ai_intel/ingestion/parsing/pdf_text.py
+index 71a1528..0d65988 100644
+--- a/backend/src/ai_intel/ingestion/parsing/pdf_text.py
++++ b/backend/src/ai_intel/ingestion/parsing/pdf_text.py
+@@ -9,11 +9,11 @@ import sys
+ from dataclasses import replace
+ from threading import BoundedSemaphore
+ 
++from ai_intel.infrastructure.process_limits import _launch_windows_worker
+ from ai_intel.ingestion.parsing.text_blocks import ParseOutcome, build_blocks_from_segments
+ 
+ PDF_PARSER_VERSION = "pdf-2.0.0"
+ MAX_PDF_BYTES = 32 * 1024 * 1024
+-WINDOWS_CREATE_NO_WINDOW = 0x08000000
+ _PDF_CAPACITY = BoundedSemaphore(2)
+ 
+ 
+@@ -44,20 +44,32 @@ def parse_pdf_text_layer(content: bytes) -> ParseOutcome:
+             }
+         }
+         environment.update(PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
+-        process = subprocess.Popen(
+-            [sys.executable, "-m", "ai_intel.ingestion.parsing._pdf_worker"],
+-            stdin=subprocess.PIPE,
+-            stdout=subprocess.PIPE,
+-            stderr=subprocess.DEVNULL,
+-            env=environment,
+-            creationflags=WINDOWS_CREATE_NO_WINDOW if os.name == "nt" else 0,
+-        )
++        supervisor = None
++        if os.name == "nt":
++            process, supervisor = _launch_windows_worker(
++                "pdf", memory_bytes=512 * 1024**2, cpu_seconds=15, environment=environment
++            )
++        else:
++            process = subprocess.Popen(
++                [sys.executable, "-m", "ai_intel.ingestion.parsing._pdf_worker"],
++                stdin=subprocess.PIPE,
++                stdout=subprocess.PIPE,
++                stderr=subprocess.DEVNULL,
++                env=environment,
++                creationflags=0,
++            )
+         try:
+-            output, _ = process.communicate(content, timeout=20)
+-        except subprocess.TimeoutExpired:
+-            process.kill()
+-            process.communicate()
+-            return _failure("pdf extraction timed out")
++            try:
++                output, _ = process.communicate(content, timeout=20)
++            except subprocess.TimeoutExpired:
++                process.kill()
++                process.communicate()
++                return _failure("pdf extraction timed out")
++        finally:
++            if supervisor is not None:
++                supervisor.close()
++        if supervisor is not None and supervisor.error is not None:
++            return _failure("pdf extraction process failed or exceeded resource limit")
+         if process.returncode != 0 or len(output) > 6_100_000:
+             return _failure("pdf extraction process failed or exceeded resource limit")
+         try:
+diff --git a/backend/tests/unit/test_r04_real_parsing.py b/backend/tests/unit/test_r04_real_parsing.py
+index 0f5d9e6..8c8e964 100644
+--- a/backend/tests/unit/test_r04_real_parsing.py
++++ b/backend/tests/unit/test_r04_real_parsing.py
+@@ -236,7 +236,12 @@ def test_corrupt_child_protocol_cannot_publish_text(
+             assert content.startswith(b"%PDF-") and timeout == 20
+             return output, None
+ 
+-    monkeypatch.setattr(pdf_text.subprocess, "Popen", lambda *args, **kwargs: ChildFixture())
++    if pdf_text.os.name == "nt":
++        monkeypatch.setattr(
++            pdf_text, "_launch_windows_worker", lambda *args, **kwargs: (ChildFixture(), None)
++        )
++    else:
++        monkeypatch.setattr(pdf_text.subprocess, "Popen", lambda *args, **kwargs: ChildFixture())
+     outcome = parse_pdf_text_layer(b"%PDF-1.4")
+     assert outcome.status == "unparseable"
+     assert not outcome.blocks
+@@ -267,8 +272,17 @@ def test_timeout_kills_child_and_releases_capacity_without_passing_secrets(
+         assert "R04_TEST_SECRET" not in options["env"]
+         return ChildFixture()
+ 
++    def early_spawn(entrypoint, **options):
++        assert entrypoint == "pdf"
++        assert (options["memory_bytes"], options["cpu_seconds"]) == (512 * 1024**2, 15)
++        assert "R04_TEST_SECRET" not in options["environment"]
++        return ChildFixture(), None
++
+     monkeypatch.setenv("R04_TEST_SECRET", "isolated-synthetic-provider-secret")
+-    monkeypatch.setattr(pdf_text.subprocess, "Popen", spawn)
++    if pdf_text.os.name == "nt":
++        monkeypatch.setattr(pdf_text, "_launch_windows_worker", early_spawn)
++    else:
++        monkeypatch.setattr(pdf_text.subprocess, "Popen", spawn)
+     assert parse_pdf_text_layer(b"%PDF-1.4").notes == ("pdf extraction timed out",)
+     assert calls == ["initial", "killed", "drained"]
+     assert pdf_text._PDF_CAPACITY.acquire(blocking=False)
+diff --git a/backend/tests/unit/test_r20_early_cpu_bootstrap.py b/backend/tests/unit/test_r20_early_cpu_bootstrap.py
+new file mode 100644
+index 0000000..116afbe
+--- /dev/null
++++ b/backend/tests/unit/test_r20_early_cpu_bootstrap.py
+@@ -0,0 +1,373 @@
++"""Product-entry observations retain default coverage and cumulative Windows CPU."""
++
++from __future__ import annotations
++
++import ctypes
++import json
++import multiprocessing
++import os
++import subprocess
++import sys
++import time
++from ctypes import wintypes
++from multiprocessing.connection import Connection
++from pathlib import Path
++
++import pytest
++
++from ai_intel.infrastructure import process_limits
++from ai_intel.infrastructure.models import semantic
++
++
++def _fixture_worker(connection: Connection, workload: str, trigger_name: str | None = None) -> None:
++    """Synthetic test payload only; no model, service or downloaded code is invoked."""
++    import coverage
++
++    leaf = None
++    if workload in ("python-gil-held", "native-gil-held-idle", "native-cpu"):
++        leaf = subprocess.Popen(
++            [
++                os.path.join(sys.base_prefix, "python.exe"),
++                "-I",
++                "-S",
++                "-c",
++                "import time;time.sleep(8)",
++            ],
++            creationflags=0x08000000,
++        )
++    connection.send(
++        (
++            "ready",
++            os.getpid(),
++            None if leaf is None else leaf.pid,
++            coverage.Coverage.current() is not None,
++            time.process_time(),
++        )
++    )
++    if trigger_name is not None:
++        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
++        kernel.OpenEventW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
++        kernel.OpenEventW.restype = wintypes.HANDLE
++        kernel.SetEvent.argtypes = [wintypes.HANDLE]
++        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
++        trigger = kernel.OpenEventW(2, False, trigger_name)
++        assert trigger is not None and kernel.SetEvent(trigger)
++        kernel.CloseHandle(trigger)
++    if workload in ("python-gil-held", "normal-cpu"):
++        sys.setswitchinterval(60)
++        while time.process_time() < 2.25:
++            pass
++    elif workload == "native-gil-held-idle":
++        ctypes.PyDLL("kernel32").Sleep(2000)
++    elif workload == "native-cpu":
++        import hashlib
++
++        hashlib.pbkdf2_hmac("sha256", b"a", b"b", 100_000_000)
++    elif workload == "normal-idle":
++        ctypes.PyDLL("kernel32").Sleep(200)
++    connection.send(("result", sum(range(100_000))))
++    connection.close()
++
++
++def _semantic_fixture_ok(connection: Connection, *arguments: object) -> None:
++    """One exact normalized synthetic vector exercises only the real spawn/Pipe protocol."""
++    import coverage
++
++    assert coverage.Coverage.current() is not None
++    connection.send(("ok", [[1.0] + [0.0] * 383]))
++    connection.close()
++
++
++def _semantic_fixture_eof(connection: Connection, *arguments: object) -> None:
++    connection.close()
++
++
++def _cpu_kernel() -> ctypes.WinDLL:
++    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
++    kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.c_void_p] * 4
++    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
++    kernel.OpenProcess.restype = wintypes.HANDLE
++    kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
++    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
++    return kernel
++
++
++@pytest.mark.parametrize(
++    "workload",
++    ["short", "python-gil-held", "native-gil-held-idle", "native-cpu", "normal-cpu", "normal-idle"],
++)
++def test_fixed_early_spawn_keeps_original_cpu_and_result_boundary(
++    workload: str, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    if sys.platform != "win32":
++        return
++    fault = workload in ("python-gil-held", "native-gil-held-idle", "native-cpu")
++    if fault:
++        monkeypatch.setattr(
++            process_limits,
++            "_WINDOWS_CPU_GUARD_CODE",
++            process_limits._WINDOWS_CPU_GUARD_CODE.replace(
++                "    while True:\n",
++                "    import time,os\n    time.sleep(0.4)\n    os._exit(99)\n    while True:\n",
++            ),
++        )
++    monkeypatch.setattr(semantic, "MAX_MEMORY_BYTES", 100 * 1024**2)
++    monkeypatch.setattr(semantic, "MAX_CPU_SECONDS", 1)
++    receiving, sending = multiprocessing.get_context("spawn").Pipe(duplex=False)
++    process = semantic._EarlySemanticProcess(
++        target=_fixture_worker, args=(sending, workload), daemon=True
++    )
++    kernel = _cpu_kernel()
++    handles: list[int] = []
++    messages: list[object] = []
++    try:
++        process.start()
++        sending.close()
++        supervision = process._popen.supervisor
++        guard_handle = kernel.OpenProcess(0x100000 | 0x1000, False, supervision.guard.pid)
++        assert guard_handle is not None
++        handles.append(guard_handle)
++        assert receiving.poll(8), "worker did not produce a readiness or EOF within original 8s"
++        ready = receiving.recv()
++        assert ready[0] == "ready"
++        assert ready[3] is True, "actual worker coverage tracing must remain active"
++        if ready[2] is not None:
++            leaf_handle = kernel.OpenProcess(0x100000 | 0x1000, False, ready[2])
++            assert leaf_handle is not None
++            handles.append(leaf_handle)
++        process.join(timeout=8)
++        assert not process.is_alive()
++        while True:
++            try:
++                if not receiving.poll(0):
++                    break
++                messages.append(receiving.recv())
++            except (EOFError, BrokenPipeError):
++                break
++        ticks = process_limits._read_windows_cpu_ticks(kernel, process.sentinel)
++        observation = {
++            "workload": workload,
++            "ready": ready,
++            "final_cpu_seconds": ticks / 10_000_000,
++            "worker_exitcode": process.exitcode,
++            "guard_exitcode": supervision.guard.poll(),
++            "messages": messages,
++            "parent_supervision_error": str(supervision.error) if supervision.error else None,
++            "parent_last_cpu_seconds": supervision.last_cpu_ticks / 10_000_000,
++        }
++        print("EARLY_OBSERVATION " + json.dumps(observation))
++        assert all(kernel.WaitForSingleObject(handle, 1000) == 0 for handle in handles)
++        if workload in ("short", "normal-idle"):
++            assert messages == [("result", 4_999_950_000)]
++            assert process.exitcode == 0
++        else:
++            assert messages == []
++            assert ticks < 10_000_000
++    finally:
++        if process.pid is not None:
++            if process.is_alive():
++                process.kill()
++                process.join(timeout=1)
++            process.close()
++        receiving.close()
++        sending.close()
++        for handle in handles:
++            kernel.CloseHandle(handle)
++
++
++def test_real_get_process_times_failure_reports_win32_invalid_handle(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    if sys.platform != "win32":
++        return
++    kernel = _cpu_kernel()
++    kernel.CreateEventW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR]
++    kernel.CreateEventW.restype = wintypes.HANDLE
++    ready = kernel.CreateEventW(None, True, False, None)
++    lifetime = kernel.CreateEventW(None, True, False, None)
++    assert ready is not None and lifetime is not None
++    monkeypatch.setattr(sys, "argv", ["guard", "0", str(ready), str(lifetime), "10000000"])
++    with pytest.raises(OSError) as captured:
++        exec(process_limits._WINDOWS_CPU_GUARD_CODE, {})
++    assert captured.value.winerror == 6
++    print(
++        "REAL_API_FAILURE "
++        + json.dumps({"api": "GetProcessTimes", "winerror": captured.value.winerror})
++    )
++
++
++@pytest.mark.parametrize("response", ["ok", "eof"])
++def test_product_semantic_real_spawn_pipe_accepts_fixture_and_rejects_eof(
++    response: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
++) -> None:
++    monkeypatch.setattr(
++        semantic,
++        "_semantic_worker",
++        _semantic_fixture_ok if response == "ok" else _semantic_fixture_eof,
++    )
++    client = semantic.LocalSemanticModels(tmp_path)
++    if response == "ok":
++        result = client.embed_query("explicit synthetic fixture")
++        assert result.vectors == (tuple([1.0] + [0.0] * 383),)
++    else:
++        with pytest.raises(semantic.SemanticRuntimeError, match="exited without a result"):
++            client.embed_query("explicit synthetic EOF fixture")
++
++
++def test_fixed_bootstrap_rejects_unlisted_entrypoint_before_launch(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    def forbidden_launch(*args: object, **kwargs: object) -> None:
++        pytest.fail("unlisted entrypoint reached process creation")
++
++    monkeypatch.setattr(process_limits.subprocess, "Popen", forbidden_launch)
++    with pytest.raises(OSError, match="unavailable"):
++        process_limits._launch_windows_worker(
++            "arbitrary", memory_bytes=100 * 1024**2, cpu_seconds=1, environment={}
++        )
++
++
++def test_semantic_result_is_rejected_when_final_supervision_fails(
++    monkeypatch: pytest.MonkeyPatch,
++    tmp_path: Path,
++) -> None:
++    from test_r05_semantic import WorkerContext, WorkerProcess
++
++    class LateFailedProcess(WorkerProcess):
++        supervision_error: OSError | None = None
++
++        def close(self) -> None:
++            super().close()
++            self.supervision_error = OSError("final cumulative CPU query failed")
++
++    context = WorkerContext(("ok", [[1.0] + [0.0] * 383]))
++    context.process = LateFailedProcess()
++    monkeypatch.setattr(semantic, "_EarlySemanticProcess", LateFailedProcess)
++    monkeypatch.setattr(semantic.multiprocessing, "get_context", lambda *args: context)
++    with pytest.raises(semantic.SemanticRuntimeError, match="resource supervision failed"):
++        semantic.LocalSemanticModels(tmp_path).embed_query("explicit valid synthetic input")
++    assert context.process.closed and not semantic._WORKER_LOCK.locked()
++
++
++@pytest.mark.parametrize("workload", ["python-gil-held", "native-gil-held-idle", "native-cpu"])
++def test_body_ready_guard_fault_is_additional_to_early_ready_fault(
++    workload: str,
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    if sys.platform != "win32":
++        return
++    import uuid
++
++    kernel = _cpu_kernel()
++    kernel.CreateEventW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR]
++    kernel.CreateEventW.restype = wintypes.HANDLE
++    trigger_name = "Local\\R20BodyFault_" + uuid.uuid4().hex
++    trigger = kernel.CreateEventW(None, True, False, trigger_name)
++    assert trigger is not None
++    trigger_code = (
++        "    kernel.OpenEventW.argtypes=[wintypes.DWORD,wintypes.BOOL,wintypes.LPCWSTR]\n"
++        "    kernel.OpenEventW.restype=wintypes.HANDLE\n"
++        f"    trigger=kernel.OpenEventW(0x100000,False,{trigger_name!r})\n"
++        "    if not trigger or kernel.WaitForSingleObject(trigger,3000)!=0:\n"
++        "        raise OSError('test trigger unavailable')\n"
++        "    kernel.CloseHandle(trigger)\n"
++        "    import time,os\n    time.sleep(0.4)\n    os._exit(99)\n"
++    )
++    monkeypatch.setattr(
++        process_limits,
++        "_WINDOWS_CPU_GUARD_CODE",
++        process_limits._WINDOWS_CPU_GUARD_CODE.replace(
++            "    while True:\n", trigger_code + "    while True:\n"
++        ),
++    )
++    monkeypatch.setattr(semantic, "MAX_MEMORY_BYTES", 100 * 1024**2)
++    monkeypatch.setattr(semantic, "MAX_CPU_SECONDS", 1)
++    receiving, sending = multiprocessing.get_context("spawn").Pipe(duplex=False)
++    process = semantic._EarlySemanticProcess(
++        target=_fixture_worker, args=(sending, workload, trigger_name), daemon=True
++    )
++    handles: list[int] = []
++    messages: list[object] = []
++    try:
++        process.start()
++        sending.close()
++        assert receiving.poll(8)
++        ready = receiving.recv()
++        assert ready[0] == "ready" and ready[3] is True
++        supervision = process._popen.supervisor
++        for pid in (supervision.guard.pid, ready[2]):
++            handle = kernel.OpenProcess(0x100000 | 0x1000, False, pid)
++            assert handle is not None
++            handles.append(handle)
++        process.join(timeout=8)
++        assert not process.is_alive()
++        while True:
++            try:
++                if not receiving.poll(0):
++                    break
++                messages.append(receiving.recv())
++            except (EOFError, BrokenPipeError):
++                break
++        assert all(kernel.WaitForSingleObject(handle, 1000) == 0 for handle in handles)
++        ticks = process_limits._read_windows_cpu_ticks(kernel, process.sentinel)
++        print(
++            "BODY_FAULT_OBSERVATION "
++            + json.dumps(
++                {
++                    "workload": workload,
++                    "ready": ready,
++                    "final_cpu_seconds": ticks / 10_000_000,
++                    "guard_exitcode": supervision.guard.poll(),
++                    "worker_exitcode": process.exitcode,
++                    "messages": messages,
++                    "parent_error": str(supervision.error),
++                    "parent_last_cpu_seconds": supervision.last_cpu_ticks / 10_000_000,
++                }
++            )
++        )
++        assert messages == []
++        assert ticks < 10_000_000
++    finally:
++        if process.pid is not None:
++            if process.is_alive():
++                process.kill()
++                process.join(timeout=1)
++            process.close()
++        receiving.close()
++        sending.close()
++        for handle in handles:
++            kernel.CloseHandle(handle)
++        kernel.CloseHandle(trigger)
++
++
++@pytest.mark.parametrize("boundary", ["exhausted", "near"])
++def test_real_initial_cpu_and_near_budget_readiness_remain_cumulative(boundary: str) -> None:
++    target = 1.015625 if boundary == "exhausted" else 0.9375
++    code = (
++        "import os,time\nfrom ai_intel.infrastructure import process_limits\n"
++        f"while time.process_time() < {target}: pass\n"
++        "print('PREBOUND',time.process_time(),flush=True)\n"
++        "handle=process_limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\n"
++        "print('READY',time.process_time(),flush=True)\n"
++    )
++    result = subprocess.run(
++        [sys.executable, "-c", code], capture_output=True, timeout=8, check=False
++    )
++    print(
++        "STARTUP_BOUNDARY "
++        + json.dumps(
++            {
++                "boundary": boundary,
++                "returncode": result.returncode,
++                "stdout": result.stdout.decode("utf-8", "replace"),
++                "stderr": result.stderr.decode("utf-8", "replace"),
++            }
++        )
++    )
++    if boundary == "exhausted":
++        assert b"PREBOUND" in result.stdout and b"READY" not in result.stdout
++        assert result.returncode != 0
++    else:
++        assert result.returncode == 0 and b"READY" in result.stdout
++        cpu = float(result.stdout.split(b"READY ")[1].split()[0])
++        assert 0.9375 <= cpu < 1
+diff --git a/backend/tests/unit/test_r20_native_cpu_guard.py b/backend/tests/unit/test_r20_native_cpu_guard.py
+index 09a9e8b..4a192bf 100644
+--- a/backend/tests/unit/test_r20_native_cpu_guard.py
++++ b/backend/tests/unit/test_r20_native_cpu_guard.py
+@@ -218,7 +218,25 @@ def test_pdf_parent_rejects_result_missing_after_guard_hard_exit(
+             creationflags=creationflags,
+         )
+ 
+-    monkeypatch.setattr(pdf_text.subprocess, "Popen", launch_fault_worker)
++    def launch_early_fault_fixture(
++        entrypoint: str,
++        *,
++        memory_bytes: int,
++        cpu_seconds: int,
++        environment: dict[str, str],
++    ) -> tuple[subprocess.Popen[bytes], None]:
++        assert entrypoint == "pdf"
++        assert (memory_bytes, cpu_seconds) == (512 * 1024**2, 15)
++        return launch_fault_worker(
++            [sys.executable, "-m", "ai_intel.ingestion.parsing._pdf_worker"],
++            stdin=subprocess.PIPE,
++            stdout=subprocess.PIPE,
++            stderr=subprocess.DEVNULL,
++            env=environment,
++            creationflags=0x08000000,
++        ), None
++
++    monkeypatch.setattr(pdf_text, "_launch_windows_worker", launch_early_fault_fixture)
+     result = pdf_text.parse_pdf_text_layer(b"%PDF-1.7\n")
+     assert result.status == "unparseable"
+     assert result.notes == ("invalid pdf parser output",)
+diff --git a/backend/tests/unit/test_r20_process_startup.py b/backend/tests/unit/test_r20_process_startup.py
+index 08ca86d..dee2f33 100644
+--- a/backend/tests/unit/test_r20_process_startup.py
++++ b/backend/tests/unit/test_r20_process_startup.py
+@@ -111,12 +111,28 @@ def test_pdf_parent_filters_coverage_and_unrelated_environment(
+             returncode=0, communicate=lambda *args, **kwargs: (b'{"pages":[],"notes":[]}', None)
+         )
+ 
++    def early_launch(entrypoint: str, **keywords: object) -> tuple[SimpleNamespace, None]:
++        assert entrypoint == "pdf"
++        assert (keywords["memory_bytes"], keywords["cpu_seconds"]) == (512 * 1024**2, 15)
++        observed.update(env=keywords["environment"])
++        return SimpleNamespace(
++            returncode=0, communicate=lambda *args, **kwargs: (b'{"pages":[],"notes":[]}', None)
++        ), None
++
+     monkeypatch.setenv("COV_CORE_DATAFILE", "synthetic-coverage-marker")
+     monkeypatch.setenv("SYNTHETIC_SECRET", "synthetic-isolated-marker")
+-    monkeypatch.setattr(pdf_text.subprocess, "Popen", launch)
++    if pdf_text.os.name == "nt":
++        monkeypatch.setattr(pdf_text, "_launch_windows_worker", early_launch)
++    else:
++        monkeypatch.setattr(pdf_text.subprocess, "Popen", launch)
+     result = pdf_text.parse_pdf_text_layer(b"%PDF-1.4\n")
+     assert result.status == "unparseable"
+-    assert observed["command"] == [sys.executable, "-m", "ai_intel.ingestion.parsing._pdf_worker"]
++    if pdf_text.os.name != "nt":
++        assert observed["command"] == [
++            sys.executable,
++            "-m",
++            "ai_intel.ingestion.parsing._pdf_worker",
++        ]
+     assert set(observed["env"]) <= {
+         "SYSTEMROOT",
+         "WINDIR",

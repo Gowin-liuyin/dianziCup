@@ -1,0 +1,642 @@
+{
+  "sample_id": "no_coverage_short",
+  "argv": [
+    "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+    "-c",
+    "\nimport ctypes,json,os,sys,time\n_api_start=time.monotonic()\n_native_dll=ctypes.WinDLL\ndef _diag(event, **fields):\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\nclass _Function:\n    def __init__(self,name,function):\n        object.__setattr__(self,'name',name)\n        object.__setattr__(self,'function',function)\n    def __setattr__(self,name,value):\n        setattr(self.function,name,value)\n    def __call__(self,*args):\n        ctypes.set_last_error(0)\n        result=self.function(*args)\n        error=ctypes.get_last_error()\n        fields=dict(api=self.name,result=result,win32_error=error)\n        if self.name=='GetProcessTimes':\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\n        if self.name=='SetInformationJobObject':\n            limits=args[2]._obj\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\n        _diag('api',**fields)\n        return result\nclass _Kernel:\n    def __init__(self,native): self.native=native\n    def __getattr__(self,name):\n        function=_Function(name,getattr(self.native,name))\n        setattr(self,name,function)\n        return function\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\n\nfrom ai_intel.infrastructure import process_limits as limits\n_diag('before_bound')\nlimits._WINDOWS_CPU_GUARD_CODE=\"\\nimport ctypes,json,os,sys,time\\n_api_start=time.monotonic()\\n_native_dll=ctypes.WinDLL\\ndef _diag(event, **fields):\\n    print(json.dumps(dict(event=event,pid=os.getpid(),wall=time.monotonic()-_api_start,self_cpu=time.process_time(),**fields)),flush=True)\\nclass _Function:\\n    def __init__(self,name,function):\\n        object.__setattr__(self,'name',name)\\n        object.__setattr__(self,'function',function)\\n    def __setattr__(self,name,value):\\n        setattr(self.function,name,value)\\n    def __call__(self,*args):\\n        ctypes.set_last_error(0)\\n        result=self.function(*args)\\n        error=ctypes.get_last_error()\\n        fields=dict(api=self.name,result=result,win32_error=error)\\n        if self.name=='GetProcessTimes':\\n            fields.update(target_handle=args[0],times=[arg._obj.value for arg in args[1:]])\\n        if self.name in ('AssignProcessToJobObject','TerminateProcess','WaitForSingleObject','SetEvent','GetHandleInformation','CloseHandle'):\\n            fields.update(arguments=[arg.value if hasattr(arg,'value') else arg if isinstance(arg,int) else str(type(arg)) for arg in args])\\n        if self.name=='SetInformationJobObject':\\n            limits=args[2]._obj\\n            fields.update(flags=limits.basic.flags,process_time=limits.basic.process_time,memory=limits.process_memory)\\n        _diag('api',**fields)\\n        return result\\nclass _Kernel:\\n    def __init__(self,native): self.native=native\\n    def __getattr__(self,name):\\n        function=_Function(name,getattr(self.native,name))\\n        setattr(self,name,function)\\n        return function\\nctypes.WinDLL=lambda *args,**kwargs:_Kernel(_native_dll(*args,**kwargs))\\n_diag('entry',coverage_imported='coverage' in sys.modules,coverage_active=bool('coverage' in sys.modules and sys.modules['coverage'].Coverage.current() is not None), executable=sys.executable,base_prefix=sys.base_prefix)\\n\"+limits._WINDOWS_CPU_GUARD_CODE\n_original_popen=limits.subprocess.Popen\ndef _guard_popen(*args,**kwargs):\n    kwargs['stdout']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\no_coverage_short\\\\guard.stdout.jsonl','wb',buffering=0)\n    kwargs['stderr']=open('D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\reports\\\\runs\\\\recovery_r20_8a_cpu_diagnosis_20261016\\\\no_coverage_short\\\\guard.stderr.log','wb',buffering=0)\n    child=_original_popen(*args,**kwargs)\n    _diag('guard_launched',guard_pid=child.pid)\n    return child\nlimits.subprocess.Popen=_guard_popen\nhandle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nlimits.subprocess.Popen=_original_popen\n_diag('after_bound')\nprint('RESULT',sum(range(100_000)),flush=True)\n"
+  ],
+  "cwd": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend",
+  "started_at": "2026-10-16T03:10:31.669038+08:00",
+  "ended_at": "2026-10-16T03:10:31.981081+08:00",
+  "wall_seconds": 0.3120000000053551,
+  "exit_code": 0,
+  "outer_timeout": false,
+  "stdout": "{\"event\": \"entry\", \"pid\": 9024, \"wall\": 0.0, \"self_cpu\": 0.09375, \"coverage_imported\": false, \"coverage_active\": false, \"executable\": \"D:\\\\wt\\\\r20-8a-diag\\\\codex\\\\r20-8a-cpu-guard-diagnosis\\\\backend\\\\.venv\\\\Scripts\\\\python.exe\", \"base_prefix\": \"C:\\\\Users\\\\yinha\\\\AppData\\\\Roaming\\\\uv\\\\python\\\\cpython-3.12-windows-x86_64-none\"}\r\n{\"event\": \"before_bound\", \"pid\": 9024, \"wall\": 0.014999999999417923, \"self_cpu\": 0.125}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.014999999999417923, \"self_cpu\": 0.125, \"api\": \"CreateJobObjectW\", \"result\": 376, \"win32_error\": 0}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.014999999999417923, \"self_cpu\": 0.125, \"api\": \"SetInformationJobObject\", \"result\": 1, \"win32_error\": 0, \"flags\": 258, \"process_time\": 10000000, \"memory\": 104857600}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.014999999999417923, \"self_cpu\": 0.125, \"api\": \"GetCurrentProcess\", \"result\": 18446744073709551615, \"win32_error\": 0}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.014999999999417923, \"self_cpu\": 0.125, \"api\": \"AssignProcessToJobObject\", \"result\": 1, \"win32_error\": 0, \"arguments\": [376, 18446744073709551615]}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.014999999999417923, \"self_cpu\": 0.125, \"api\": \"CreateJobObjectW\", \"result\": 396, \"win32_error\": 0}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.014999999999417923, \"self_cpu\": 0.125, \"api\": \"SetInformationJobObject\", \"result\": 1, \"win32_error\": 0, \"flags\": 8192, \"process_time\": 0, \"memory\": 0}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.014999999999417923, \"self_cpu\": 0.125, \"api\": \"CreateEventW\", \"result\": 404, \"win32_error\": 0}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.014999999999417923, \"self_cpu\": 0.125, \"api\": \"GetCurrentProcess\", \"result\": 18446744073709551615, \"win32_error\": 0}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.014999999999417923, \"self_cpu\": 0.125, \"api\": \"DuplicateHandle\", \"result\": 1, \"win32_error\": 0}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.014999999999417923, \"self_cpu\": 0.125, \"api\": \"DuplicateHandle\", \"result\": 1, \"win32_error\": 0}\r\n{\"event\": \"guard_launched\", \"pid\": 9024, \"wall\": 0.046000000002095476, \"self_cpu\": 0.140625, \"guard_pid\": 38344}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.15600000000267755, \"self_cpu\": 0.140625, \"api\": \"WaitForSingleObject\", \"result\": 0, \"win32_error\": 0, \"arguments\": [404, 3000]}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.15600000000267755, \"self_cpu\": 0.140625, \"api\": \"CloseHandle\", \"result\": 1, \"win32_error\": 0, \"arguments\": [404]}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.15600000000267755, \"self_cpu\": 0.140625, \"api\": \"CloseHandle\", \"result\": 1, \"win32_error\": 0, \"arguments\": [400]}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.15600000000267755, \"self_cpu\": 0.140625, \"api\": \"CloseHandle\", \"result\": 1, \"win32_error\": 0, \"arguments\": [596]}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.15600000000267755, \"self_cpu\": 0.140625, \"api\": \"SetInformationJobObject\", \"result\": 1, \"win32_error\": 0, \"flags\": 8450, \"process_time\": 10000000, \"memory\": 104857600}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.15600000000267755, \"self_cpu\": 0.140625, \"api\": \"GetCurrentProcess\", \"result\": 18446744073709551615, \"win32_error\": 0}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.15600000000267755, \"self_cpu\": 0.140625, \"api\": \"AssignProcessToJobObject\", \"result\": 1, \"win32_error\": 0, \"arguments\": [396, 18446744073709551615]}\r\n{\"event\": \"api\", \"pid\": 9024, \"wall\": 0.15600000000267755, \"self_cpu\": 0.140625, \"api\": \"CloseHandle\", \"result\": 1, \"win32_error\": 0, \"arguments\": [396]}\r\n{\"event\": \"after_bound\", \"pid\": 9024, \"wall\": 0.15600000000267755, \"self_cpu\": 0.140625}\r\nRESULT 4999950000\r\n",
+  "stderr": "",
+  "observed_process_count": 4,
+  "observed_cpu_seconds": 0.34375,
+  "processes": [
+    {
+      "pid": 5904,
+      "parent_pid": 24364,
+      "executable": "D:\\wt\\r20-8a-diag\\codex\\r20-8a-cpu-guard-diagnosis\\backend\\.venv\\Scripts\\python.exe",
+      "discovered_wall": 0.0,
+      "initial": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365650316704107,
+        "exit_ticks": 0,
+        "kernel_ticks": 0,
+        "user_ticks": 156250,
+        "cpu_seconds": 0.015625,
+        "signaled": false
+      },
+      "final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365650316704107,
+        "exit_ticks": 134365650319768025,
+        "kernel_ticks": 0,
+        "user_ticks": 156250,
+        "cpu_seconds": 0.015625,
+        "signaled": true
+      }
+    },
+    {
+      "pid": 9024,
+      "parent_pid": 5904,
+      "executable": "python.exe",
+      "discovered_wall": 0.014999999999417923,
+      "initial": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365650316892810,
+        "exit_ticks": 0,
+        "kernel_ticks": 156250,
+        "user_ticks": 0,
+        "cpu_seconds": 0.015625,
+        "signaled": false
+      },
+      "final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365650316892810,
+        "exit_ticks": 134365650319722277,
+        "kernel_ticks": 1250000,
+        "user_ticks": 312500,
+        "cpu_seconds": 0.15625,
+        "signaled": true
+      }
+    },
+    {
+      "pid": 38344,
+      "parent_pid": 9024,
+      "executable": "python.exe",
+      "discovered_wall": 0.13999999999941792,
+      "initial": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365650318253676,
+        "exit_ticks": 0,
+        "kernel_ticks": 0,
+        "user_ticks": 0,
+        "cpu_seconds": 0.0,
+        "signaled": false
+      },
+      "final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365650318253676,
+        "exit_ticks": 134365650319746983,
+        "kernel_ticks": 937500,
+        "user_ticks": 312500,
+        "cpu_seconds": 0.125,
+        "signaled": true
+      }
+    },
+    {
+      "pid": 43528,
+      "parent_pid": 38344,
+      "executable": "conhost.exe",
+      "discovered_wall": 0.17100000000209548,
+      "initial": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365650318457289,
+        "exit_ticks": 0,
+        "kernel_ticks": 0,
+        "user_ticks": 0,
+        "cpu_seconds": 0.0,
+        "signaled": false
+      },
+      "final": {
+        "success": true,
+        "win32_error": 0,
+        "creation_ticks": 134365650318457289,
+        "exit_ticks": 134365650319760668,
+        "kernel_ticks": 312500,
+        "user_ticks": 156250,
+        "cpu_seconds": 0.046875,
+        "signaled": true
+      }
+    }
+  ],
+  "discovery_errors": [],
+  "samples": [
+    {
+      "wall_seconds": 0.0,
+      "processes": {
+        "5904": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316704107,
+          "exit_ticks": 0,
+          "kernel_ticks": 0,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.015625,
+          "signaled": false
+        }
+      }
+    },
+    {
+      "wall_seconds": 0.014999999999417923,
+      "processes": {
+        "5904": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316704107,
+          "exit_ticks": 0,
+          "kernel_ticks": 0,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.015625,
+          "signaled": false
+        },
+        "9024": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316892810,
+          "exit_ticks": 0,
+          "kernel_ticks": 156250,
+          "user_ticks": 0,
+          "cpu_seconds": 0.015625,
+          "signaled": false
+        }
+      }
+    },
+    {
+      "wall_seconds": 0.046000000002095476,
+      "processes": {
+        "5904": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316704107,
+          "exit_ticks": 0,
+          "kernel_ticks": 0,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.015625,
+          "signaled": false
+        },
+        "9024": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316892810,
+          "exit_ticks": 0,
+          "kernel_ticks": 156250,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.03125,
+          "signaled": false
+        }
+      }
+    },
+    {
+      "wall_seconds": 0.062000000005355105,
+      "processes": {
+        "5904": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316704107,
+          "exit_ticks": 0,
+          "kernel_ticks": 0,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.015625,
+          "signaled": false
+        },
+        "9024": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316892810,
+          "exit_ticks": 0,
+          "kernel_ticks": 156250,
+          "user_ticks": 312500,
+          "cpu_seconds": 0.046875,
+          "signaled": false
+        }
+      }
+    },
+    {
+      "wall_seconds": 0.07799999999406282,
+      "processes": {
+        "5904": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316704107,
+          "exit_ticks": 0,
+          "kernel_ticks": 0,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.015625,
+          "signaled": false
+        },
+        "9024": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316892810,
+          "exit_ticks": 0,
+          "kernel_ticks": 312500,
+          "user_ticks": 312500,
+          "cpu_seconds": 0.0625,
+          "signaled": false
+        }
+      }
+    },
+    {
+      "wall_seconds": 0.10899999999674037,
+      "processes": {
+        "5904": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316704107,
+          "exit_ticks": 0,
+          "kernel_ticks": 0,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.015625,
+          "signaled": false
+        },
+        "9024": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316892810,
+          "exit_ticks": 0,
+          "kernel_ticks": 625000,
+          "user_ticks": 312500,
+          "cpu_seconds": 0.09375,
+          "signaled": false
+        }
+      }
+    },
+    {
+      "wall_seconds": 0.125,
+      "processes": {
+        "5904": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316704107,
+          "exit_ticks": 0,
+          "kernel_ticks": 0,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.015625,
+          "signaled": false
+        },
+        "9024": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316892810,
+          "exit_ticks": 0,
+          "kernel_ticks": 781250,
+          "user_ticks": 312500,
+          "cpu_seconds": 0.109375,
+          "signaled": false
+        }
+      }
+    },
+    {
+      "wall_seconds": 0.13999999999941792,
+      "processes": {
+        "5904": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316704107,
+          "exit_ticks": 0,
+          "kernel_ticks": 0,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.015625,
+          "signaled": false
+        },
+        "9024": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316892810,
+          "exit_ticks": 0,
+          "kernel_ticks": 1093750,
+          "user_ticks": 312500,
+          "cpu_seconds": 0.140625,
+          "signaled": false
+        },
+        "38344": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650318253676,
+          "exit_ticks": 0,
+          "kernel_ticks": 0,
+          "user_ticks": 0,
+          "cpu_seconds": 0.0,
+          "signaled": false
+        }
+      }
+    },
+    {
+      "wall_seconds": 0.17100000000209548,
+      "processes": {
+        "5904": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316704107,
+          "exit_ticks": 0,
+          "kernel_ticks": 0,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.015625,
+          "signaled": false
+        },
+        "9024": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316892810,
+          "exit_ticks": 0,
+          "kernel_ticks": 1093750,
+          "user_ticks": 312500,
+          "cpu_seconds": 0.140625,
+          "signaled": false
+        },
+        "38344": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650318253676,
+          "exit_ticks": 0,
+          "kernel_ticks": 156250,
+          "user_ticks": 0,
+          "cpu_seconds": 0.015625,
+          "signaled": false
+        },
+        "43528": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650318457289,
+          "exit_ticks": 0,
+          "kernel_ticks": 0,
+          "user_ticks": 0,
+          "cpu_seconds": 0.0,
+          "signaled": false
+        }
+      }
+    },
+    {
+      "wall_seconds": 0.1870000000053551,
+      "processes": {
+        "5904": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316704107,
+          "exit_ticks": 0,
+          "kernel_ticks": 0,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.015625,
+          "signaled": false
+        },
+        "9024": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316892810,
+          "exit_ticks": 0,
+          "kernel_ticks": 1093750,
+          "user_ticks": 312500,
+          "cpu_seconds": 0.140625,
+          "signaled": false
+        },
+        "38344": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650318253676,
+          "exit_ticks": 0,
+          "kernel_ticks": 156250,
+          "user_ticks": 0,
+          "cpu_seconds": 0.015625,
+          "signaled": false
+        },
+        "43528": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650318457289,
+          "exit_ticks": 0,
+          "kernel_ticks": 312500,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.046875,
+          "signaled": false
+        }
+      }
+    },
+    {
+      "wall_seconds": 0.21799999999348074,
+      "processes": {
+        "5904": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316704107,
+          "exit_ticks": 0,
+          "kernel_ticks": 0,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.015625,
+          "signaled": false
+        },
+        "9024": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316892810,
+          "exit_ticks": 0,
+          "kernel_ticks": 1093750,
+          "user_ticks": 312500,
+          "cpu_seconds": 0.140625,
+          "signaled": false
+        },
+        "38344": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650318253676,
+          "exit_ticks": 0,
+          "kernel_ticks": 312500,
+          "user_ticks": 312500,
+          "cpu_seconds": 0.0625,
+          "signaled": false
+        },
+        "43528": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650318457289,
+          "exit_ticks": 0,
+          "kernel_ticks": 312500,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.046875,
+          "signaled": false
+        }
+      }
+    },
+    {
+      "wall_seconds": 0.23399999999674037,
+      "processes": {
+        "5904": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316704107,
+          "exit_ticks": 0,
+          "kernel_ticks": 0,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.015625,
+          "signaled": false
+        },
+        "9024": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316892810,
+          "exit_ticks": 0,
+          "kernel_ticks": 1093750,
+          "user_ticks": 312500,
+          "cpu_seconds": 0.140625,
+          "signaled": false
+        },
+        "38344": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650318253676,
+          "exit_ticks": 0,
+          "kernel_ticks": 468750,
+          "user_ticks": 312500,
+          "cpu_seconds": 0.078125,
+          "signaled": false
+        },
+        "43528": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650318457289,
+          "exit_ticks": 0,
+          "kernel_ticks": 312500,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.046875,
+          "signaled": false
+        }
+      }
+    },
+    {
+      "wall_seconds": 0.25,
+      "processes": {
+        "5904": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316704107,
+          "exit_ticks": 0,
+          "kernel_ticks": 0,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.015625,
+          "signaled": false
+        },
+        "9024": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316892810,
+          "exit_ticks": 0,
+          "kernel_ticks": 1093750,
+          "user_ticks": 312500,
+          "cpu_seconds": 0.140625,
+          "signaled": false
+        },
+        "38344": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650318253676,
+          "exit_ticks": 0,
+          "kernel_ticks": 625000,
+          "user_ticks": 312500,
+          "cpu_seconds": 0.09375,
+          "signaled": false
+        },
+        "43528": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650318457289,
+          "exit_ticks": 0,
+          "kernel_ticks": 312500,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.046875,
+          "signaled": false
+        }
+      }
+    },
+    {
+      "wall_seconds": 0.2649999999994179,
+      "processes": {
+        "5904": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316704107,
+          "exit_ticks": 0,
+          "kernel_ticks": 0,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.015625,
+          "signaled": false
+        },
+        "9024": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316892810,
+          "exit_ticks": 0,
+          "kernel_ticks": 1093750,
+          "user_ticks": 312500,
+          "cpu_seconds": 0.140625,
+          "signaled": false
+        },
+        "38344": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650318253676,
+          "exit_ticks": 0,
+          "kernel_ticks": 937500,
+          "user_ticks": 312500,
+          "cpu_seconds": 0.125,
+          "signaled": false
+        },
+        "43528": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650318457289,
+          "exit_ticks": 0,
+          "kernel_ticks": 312500,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.046875,
+          "signaled": false
+        }
+      }
+    },
+    {
+      "wall_seconds": 0.2960000000020955,
+      "processes": {
+        "5904": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316704107,
+          "exit_ticks": 134365650319768025,
+          "kernel_ticks": 0,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.015625,
+          "signaled": true
+        },
+        "9024": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650316892810,
+          "exit_ticks": 134365650319722277,
+          "kernel_ticks": 1250000,
+          "user_ticks": 312500,
+          "cpu_seconds": 0.15625,
+          "signaled": true
+        },
+        "38344": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650318253676,
+          "exit_ticks": 134365650319746983,
+          "kernel_ticks": 937500,
+          "user_ticks": 312500,
+          "cpu_seconds": 0.125,
+          "signaled": true
+        },
+        "43528": {
+          "success": true,
+          "win32_error": 0,
+          "creation_ticks": 134365650318457289,
+          "exit_ticks": 134365650319760668,
+          "kernel_ticks": 312500,
+          "user_ticks": 156250,
+          "cpu_seconds": 0.046875,
+          "signaled": true
+        }
+      }
+    }
+  ]
+}

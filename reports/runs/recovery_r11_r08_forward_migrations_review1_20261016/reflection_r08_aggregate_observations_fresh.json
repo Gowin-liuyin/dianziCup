@@ -1,0 +1,426 @@
+{
+  "production": {
+    "columns": [
+      {
+        "name": "observation_id",
+        "type": "UUID",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "schema_version",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "canonical_json",
+        "type": "JSONB",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "payload_sha256",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "call_key",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "provider",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "query_id",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "query_version",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "retrieved_at",
+        "type": "TIMESTAMP",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "observed_at",
+        "type": "TIMESTAMP",
+        "nullable": true,
+        "default": null
+      },
+      {
+        "name": "recorded_at",
+        "type": "TIMESTAMP",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "outcome",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "error_code",
+        "type": "TEXT",
+        "nullable": true,
+        "default": null
+      },
+      {
+        "name": "data_mode",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "fee_status",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "visibility",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "tenant_id",
+        "type": "TEXT",
+        "nullable": true,
+        "default": null
+      },
+      {
+        "name": "scope_key",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      }
+    ],
+    "primary_key": {
+      "constrained_columns": [
+        "observation_id"
+      ],
+      "name": "r08_aggregate_observations_pkey",
+      "comment": null,
+      "dialect_options": {
+        "postgresql_include": []
+      }
+    },
+    "unique": [],
+    "foreign_keys": [],
+    "checks": [
+      {
+        "name": "ck_r08_fee",
+        "sqltext": "fee_status = 'unknown'::text",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_hashes",
+        "sqltext": "payload_sha256 ~ '^[0-9a-f]{64}$'::text AND call_key ~ '^[0-9a-f]{64}$'::text",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_mode",
+        "sqltext": "data_mode = ANY (ARRAY['live'::text, 'fixture'::text])",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_outcome",
+        "sqltext": "outcome = 'available'::text AND error_code IS NULL OR outcome = 'unknown'::text AND error_code = 'missing_total'::text OR outcome = 'unauthorized'::text AND error_code = 'provider_unauthorized'::text OR outcome = 'rate_limited'::text AND error_code = 'provider_rate_limited'::text OR outcome = 'not_configured'::text AND error_code = 'credential_missing'::text OR outcome = 'failed'::text AND (error_code = ANY (ARRAY['invalid_total'::text, 'invalid_response'::text, 'provider_http_error'::text, 'provider_error'::text, 'network_error'::text, 'network_dns_error'::text, 'network_tls_error'::text, 'network_timeout'::text, 'network_policy_violation'::text, 'response_too_large'::text, 'unsupported_content_type'::text]))",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_provider",
+        "sqltext": "provider = ANY (ARRAY['hunter'::text, 'quake'::text])",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_query",
+        "sqltext": "query_id = ANY (ARRAY['ollama'::text, 'vllm'::text])",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_query_version",
+        "sqltext": "query_version = 'r08-product-name-1'::text",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_required_error",
+        "sqltext": "outcome = 'available'::text OR error_code IS NOT NULL",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_schema",
+        "sqltext": "schema_version = 'r08-aggregate-observation-1'::text",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_scope",
+        "sqltext": "visibility = 'public'::text AND tenant_id IS NULL AND scope_key = 'public'::text OR visibility = 'tenant'::text AND tenant_id IS NOT NULL AND scope_key = ('tenant:'::text || tenant_id)",
+        "comment": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_r08_current",
+        "unique": false,
+        "column_names": [
+          "call_key",
+          "scope_key",
+          "retrieved_at",
+          "recorded_at",
+          null,
+          "observation_id"
+        ],
+        "expressions": [
+          "call_key",
+          "scope_key",
+          "retrieved_at",
+          "recorded_at",
+          "(outcome = 'available'::text)",
+          "observation_id"
+        ],
+        "column_sorting": {
+          "retrieved_at": [
+            "desc"
+          ],
+          "recorded_at": [
+            "desc"
+          ],
+          "observation_id": [
+            "desc"
+          ]
+        },
+        "dialect_options": {
+          "postgresql_include": []
+        }
+      }
+    ]
+  },
+  "metadata_reference": {
+    "columns": [
+      {
+        "name": "observation_id",
+        "type": "UUID",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "schema_version",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "canonical_json",
+        "type": "JSONB",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "payload_sha256",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "call_key",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "provider",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "query_id",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "query_version",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "retrieved_at",
+        "type": "TIMESTAMP",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "observed_at",
+        "type": "TIMESTAMP",
+        "nullable": true,
+        "default": null
+      },
+      {
+        "name": "recorded_at",
+        "type": "TIMESTAMP",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "outcome",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "error_code",
+        "type": "TEXT",
+        "nullable": true,
+        "default": null
+      },
+      {
+        "name": "data_mode",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "fee_status",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "visibility",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      },
+      {
+        "name": "tenant_id",
+        "type": "TEXT",
+        "nullable": true,
+        "default": null
+      },
+      {
+        "name": "scope_key",
+        "type": "TEXT",
+        "nullable": false,
+        "default": null
+      }
+    ],
+    "primary_key": {
+      "constrained_columns": [
+        "observation_id"
+      ],
+      "name": "r08_aggregate_observations_pkey",
+      "comment": null,
+      "dialect_options": {
+        "postgresql_include": []
+      }
+    },
+    "unique": [],
+    "foreign_keys": [],
+    "checks": [
+      {
+        "name": "ck_r08_fee",
+        "sqltext": "fee_status = 'unknown'::text",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_hashes",
+        "sqltext": "payload_sha256 ~ '^[0-9a-f]{64}$'::text AND call_key ~ '^[0-9a-f]{64}$'::text",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_mode",
+        "sqltext": "data_mode = ANY (ARRAY['live'::text, 'fixture'::text])",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_outcome",
+        "sqltext": "outcome = 'available'::text AND error_code IS NULL OR outcome = 'unknown'::text AND error_code = 'missing_total'::text OR outcome = 'unauthorized'::text AND error_code = 'provider_unauthorized'::text OR outcome = 'rate_limited'::text AND error_code = 'provider_rate_limited'::text OR outcome = 'not_configured'::text AND error_code = 'credential_missing'::text OR outcome = 'failed'::text AND (error_code = ANY (ARRAY['invalid_total'::text, 'invalid_response'::text, 'provider_http_error'::text, 'provider_error'::text, 'network_error'::text, 'network_dns_error'::text, 'network_tls_error'::text, 'network_timeout'::text, 'network_policy_violation'::text, 'response_too_large'::text, 'unsupported_content_type'::text]))",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_provider",
+        "sqltext": "provider = ANY (ARRAY['hunter'::text, 'quake'::text])",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_query",
+        "sqltext": "query_id = ANY (ARRAY['ollama'::text, 'vllm'::text])",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_query_version",
+        "sqltext": "query_version = 'r08-product-name-1'::text",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_required_error",
+        "sqltext": "outcome = 'available'::text OR error_code IS NOT NULL",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_schema",
+        "sqltext": "schema_version = 'r08-aggregate-observation-1'::text",
+        "comment": null
+      },
+      {
+        "name": "ck_r08_scope",
+        "sqltext": "visibility = 'public'::text AND tenant_id IS NULL AND scope_key = 'public'::text OR visibility = 'tenant'::text AND tenant_id IS NOT NULL AND scope_key = ('tenant:'::text || tenant_id)",
+        "comment": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_r08_current",
+        "unique": false,
+        "column_names": [
+          "call_key",
+          "scope_key",
+          "retrieved_at",
+          "recorded_at",
+          null,
+          "observation_id"
+        ],
+        "expressions": [
+          "call_key",
+          "scope_key",
+          "retrieved_at",
+          "recorded_at",
+          "(outcome = 'available'::text)",
+          "observation_id"
+        ],
+        "column_sorting": {
+          "retrieved_at": [
+            "desc"
+          ],
+          "recorded_at": [
+            "desc"
+          ],
+          "observation_id": [
+            "desc"
+          ]
+        },
+        "dialect_options": {
+          "postgresql_include": []
+        }
+      }
+    ]
+  }
+}

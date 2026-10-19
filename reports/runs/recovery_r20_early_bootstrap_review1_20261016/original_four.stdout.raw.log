@@ -1,0 +1,237 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0 -- D:\wt\r20-early-review1\backend\.venv\Scripts\python.exe
+cachedir: D:\wt\r20-early-review1\reports\runs\recovery_r20_early_bootstrap_review1_20261016\original_four_cache
+rootdir: D:\wt\r20-early-review1\backend
+configfile: pyproject.toml
+plugins: anyio-4.15.1, cov-6.3.0
+collecting ... collected 4 items
+
+tests/unit/test_r20_native_cpu_guard.py::test_short_cpu_task_keeps_its_result FAILED
+tests/unit/test_r20_native_cpu_guard.py::test_guard_hard_exit_after_readiness_terminates_worker_tree[python-gil-held] FAILED
+tests/unit/test_r20_native_cpu_guard.py::test_guard_hard_exit_after_readiness_terminates_worker_tree[native-gil-held-idle] PASSED
+tests/unit/test_r20_native_cpu_guard.py::test_guard_hard_exit_after_readiness_terminates_worker_tree[native-cpu] FAILED
+ERROR: Coverage failure: total of 2 is less than fail-under=60
+
+
+================================== FAILURES ===================================
+____________________ test_short_cpu_task_keeps_its_result _____________________
+
+    def test_short_cpu_task_keeps_its_result() -> None:
+        code = RESOURCE_SETUP + "print('RESULT',sum(range(100_000)),flush=True)\n"
+        result = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, timeout=8, check=False
+        )
+>       assert result.returncode == 0, result.stderr
+E       AssertionError: b''
+E       assert 3221225540 == 0
+E        +  where 3221225540 = CompletedProcess(args=['D:\\wt\\r20-early-review1\\backend\\.venv\\Scripts\\python.exe', '-c', "from ai_intel.infrastructure.process_limits import bound_process_resources\nhandle=bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nprint('LIMIT_APPLIED',flush=True)\nprint('RESULT',sum(range(100_000)),flush=True)\n"], returncode=3221225540, stdout=b'', stderr=b'').returncode
+
+tests\unit\test_r20_native_cpu_guard.py:86: AssertionError
+_ test_guard_hard_exit_after_readiness_terminates_worker_tree[python-gil-held] _
+
+workload = 'sys.setswitchinterval(60)\nwhile time.process_time()<2.25:\n    pass\n'
+
+    @pytest.mark.parametrize(
+        "workload",
+        [
+            "sys.setswitchinterval(60)\nwhile time.process_time()<2.25:\n    pass\n",
+            "ctypes.PyDLL('kernel32').Sleep(2000)\n",
+            "import hashlib\nhashlib.pbkdf2_hmac('sha256',b'a',b'b',100_000_000)\n",
+        ],
+        ids=["python-gil-held", "native-gil-held-idle", "native-cpu"],
+    )
+    def test_guard_hard_exit_after_readiness_terminates_worker_tree(workload: str) -> None:
+        if sys.platform != "win32":
+            from ai_intel.infrastructure import process_limits
+    
+            with pytest.raises(OSError):
+                process_limits._start_windows_cpu_guard(1, 0)
+            return
+    
+        import ctypes
+        from ctypes import wintypes
+    
+        code = (
+            "import ctypes,os,sys,time,subprocess\n"
+            "from ai_intel.infrastructure import process_limits as limits\n"
+            "limits._WINDOWS_CPU_GUARD_CODE=limits._WINDOWS_CPU_GUARD_CODE.replace("
+            "'    while True:\\n','    import time,os\\n    time.sleep(0.4)\\n"
+            "    os._exit(99)\\n    while True:\\n')\n"
+            "handle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\n"
+            "leaf=subprocess.Popen([os.path.join(sys.base_prefix,'python.exe'),'-I','-S','-c',"
+            "'import time;time.sleep(10)'],creationflags=0x08000000)\n"
+            "print('TREE',os.getpid(),limits._WINDOWS_CPU_GUARDS[0].pid,leaf.pid,flush=True)\n"
+            + workload
+            + "print('UNSUPERVISED_RESULT',flush=True)\n"
+        )
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.WaitForSingleObject.restype = wintypes.DWORD
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.c_void_p] * 4
+        handles: list[int] = []
+        with subprocess.Popen(
+            [sys.executable, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        ) as worker:
+            ready: queue.Queue[bytes] = queue.Queue()
+    
+            def read_tree() -> None:
+                assert worker.stdout is not None
+                ready.put(worker.stdout.readline())
+    
+            threading.Thread(target=read_tree, daemon=True).start()
+            try:
+                first_line = ready.get(timeout=8)
+                assert first_line.startswith(b"TREE "), first_line
+                for pid in first_line.split()[1:]:
+                    handle = kernel.OpenProcess(0x100000 | 0x1000, False, int(pid))
+                    assert handle is not None
+                    handles.append(handle)
+                stdout, stderr = worker.communicate(timeout=8)
+                assert b"UNSUPERVISED_RESULT" not in stdout
+                assert b"Traceback" not in stderr
+                assert all(kernel.WaitForSingleObject(handle, 1000) == 0 for handle in handles)
+                times = [ctypes.c_ulonglong() for _ in range(4)]
+                assert kernel.GetProcessTimes(handles[0], *(ctypes.byref(value) for value in times))
+>               assert times[2].value + times[3].value < 10_000_000
+E               assert (8593750 + 3906250) < 10000000
+E                +  where 8593750 = c_ulonglong(8593750).value
+E                +  and   3906250 = c_ulonglong(3906250).value
+
+tests\unit\test_r20_native_cpu_guard.py:154: AssertionError
+___ test_guard_hard_exit_after_readiness_terminates_worker_tree[native-cpu] ___
+
+workload = "import hashlib\nhashlib.pbkdf2_hmac('sha256',b'a',b'b',100_000_000)\n"
+
+    @pytest.mark.parametrize(
+        "workload",
+        [
+            "sys.setswitchinterval(60)\nwhile time.process_time()<2.25:\n    pass\n",
+            "ctypes.PyDLL('kernel32').Sleep(2000)\n",
+            "import hashlib\nhashlib.pbkdf2_hmac('sha256',b'a',b'b',100_000_000)\n",
+        ],
+        ids=["python-gil-held", "native-gil-held-idle", "native-cpu"],
+    )
+    def test_guard_hard_exit_after_readiness_terminates_worker_tree(workload: str) -> None:
+        if sys.platform != "win32":
+            from ai_intel.infrastructure import process_limits
+    
+            with pytest.raises(OSError):
+                process_limits._start_windows_cpu_guard(1, 0)
+            return
+    
+        import ctypes
+        from ctypes import wintypes
+    
+        code = (
+            "import ctypes,os,sys,time,subprocess\n"
+            "from ai_intel.infrastructure import process_limits as limits\n"
+            "limits._WINDOWS_CPU_GUARD_CODE=limits._WINDOWS_CPU_GUARD_CODE.replace("
+            "'    while True:\\n','    import time,os\\n    time.sleep(0.4)\\n"
+            "    os._exit(99)\\n    while True:\\n')\n"
+            "handle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\n"
+            "leaf=subprocess.Popen([os.path.join(sys.base_prefix,'python.exe'),'-I','-S','-c',"
+            "'import time;time.sleep(10)'],creationflags=0x08000000)\n"
+            "print('TREE',os.getpid(),limits._WINDOWS_CPU_GUARDS[0].pid,leaf.pid,flush=True)\n"
+            + workload
+            + "print('UNSUPERVISED_RESULT',flush=True)\n"
+        )
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.WaitForSingleObject.restype = wintypes.DWORD
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.c_void_p] * 4
+        handles: list[int] = []
+        with subprocess.Popen(
+            [sys.executable, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        ) as worker:
+            ready: queue.Queue[bytes] = queue.Queue()
+    
+            def read_tree() -> None:
+                assert worker.stdout is not None
+                ready.put(worker.stdout.readline())
+    
+            threading.Thread(target=read_tree, daemon=True).start()
+            try:
+                first_line = ready.get(timeout=8)
+                assert first_line.startswith(b"TREE "), first_line
+                for pid in first_line.split()[1:]:
+                    handle = kernel.OpenProcess(0x100000 | 0x1000, False, int(pid))
+                    assert handle is not None
+                    handles.append(handle)
+                stdout, stderr = worker.communicate(timeout=8)
+                assert b"UNSUPERVISED_RESULT" not in stdout
+                assert b"Traceback" not in stderr
+                assert all(kernel.WaitForSingleObject(handle, 1000) == 0 for handle in handles)
+                times = [ctypes.c_ulonglong() for _ in range(4)]
+                assert kernel.GetProcessTimes(handles[0], *(ctypes.byref(value) for value in times))
+>               assert times[2].value + times[3].value < 10_000_000
+E               assert (4687500 + 6562500) < 10000000
+E                +  where 4687500 = c_ulonglong(4687500).value
+E                +  and   6562500 = c_ulonglong(6562500).value
+
+tests\unit\test_r20_native_cpu_guard.py:154: AssertionError
+- generated xml file: D:\wt\r20-early-review1\reports\runs\recovery_r20_early_bootstrap_review1_20261016\original_four.xml -
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.12.13-final-0 _______________
+
+Name                                                     Stmts   Miss  Cover   Missing
+--------------------------------------------------------------------------------------
+src\ai_intel\__init__.py                                     0      0   100%
+src\ai_intel\answering\__init__.py                           0      0   100%
+src\ai_intel\answering\contracts.py                         64     64     0%   3-98
+src\ai_intel\answering\grounding.py                        144    144     0%   3-264
+src\ai_intel\answering\service.py                          169    169     0%   3-416
+src\ai_intel\api\__init__.py                                 0      0   100%
+src\ai_intel\api\app.py                                    139    139     0%   3-250
+src\ai_intel\api\auth_routes.py                             86     86     0%   3-207
+src\ai_intel\api\auth_state.py                             106    106     0%   3-301
+src\ai_intel\api\authentication.py                         214    214     0%   3-439
+src\ai_intel\api\document_contracts.py                      74     74     0%   3-109
+src\ai_intel\api\document_read_service.py                  147    147     0%   3-308
+src\ai_intel\api\document_routes.py                         63     63     0%   3-129
+src\ai_intel\api\knowledge_contracts.py                     96     96     0%   3-134
+src\ai_intel\api\knowledge_read_service.py                 244    244     0%   3-674
+src\ai_intel\api\knowledge_routes.py                        59     59     0%   3-113
+src\ai_intel\api\problems.py                                 6      6     0%   3-14
+src\ai_intel\api\question_contracts.py                      56     56     0%   3-70
+src\ai_intel\api\question_routes.py                         68     68     0%   3-152
+src\ai_intel\api\source_routes.py                          118    118     0%   3-219
+src\ai_intel\domain\__init__.py                              0      0   100%
+src\ai_intel\domain\access.py                               42     42     0%   3-86
+src\ai_intel\domain\enrichment_values.py                   109    109     0%   3-199
+src\ai_intel\domain\enums.py                                79     79     0%   7-133
+src\ai_intel\domain\records.py                             104    104     0%   7-228
+src\ai_intel\domain\schema_export.py                        15     15     0%   6-49
+src\ai_intel\domain\values.py                               47     47     0%   7-88
+src\ai_intel\infrastructure\__init__.py                      0      0   100%
+src\ai_intel\infrastructure\_worker_bootstrap.py            26     26     0%   3-39
+src\ai_intel\infrastructure\content_storage_factory.py      10     10     0%   3-21
+src\ai_intel\infrastructure\content_store.py                58     58     0%   3-100
+src\ai_intel\infrastructure\database.py                     48     30    38%   30-35, 52-61, 66-69, 74-77, 82-91
+src\ai_intel\infrastructure\dns_resolver.py                 45     45     0%   3-78
+src\ai_intel\infrastructure\http_transport.py              176    176     0%   3-264
+src\ai_intel\infrastructure\minio_store.py                  71     71     0%   3-127
+src\ai_intel\infrastructure\models\__init__.py               0      0   100%
+src\ai_intel\infrastructure\models\clients.py               82     82     0%   3-164
+src\ai_intel\infrastructure\models\generation.py           299    299     0%   3-547
+src\ai_intel\infrastructure\models\json_output.py           39     39     0%   3-50
+src\ai_intel\infrastructure\models\semantic.py             314    314     0%   3-504
+src\ai_intel\infrastructure\network.py                     286    286     0%   3-586
+src\ai_intel\infrastructure\outbox.py                       59     59     0%   3-168
+src\ai_intel\infrastructure\process_limits.py              267    267     0%   3-499
+src\ai_intel\infrastructure\runtime_observations.py         18     18     0%   3-38
+src\ai_intel\infrastructure\settings.py                    116     68    41%   69-99, 104-134, 139-156, 161-176, 181-194, 199-204
+--------------------------------------------------------------------------------------
+TOTAL                                                     4163   4097     2%
+Coverage JSON written to file D:\wt\r20-early-review1\reports\runs\recovery_r20_early_bootstrap_review1_20261016\original_four.coverage.json
+FAIL Required test coverage of 60% not reached. Total coverage: 1.59%
+=========================== short test summary info ===========================
+FAILED tests/unit/test_r20_native_cpu_guard.py::test_short_cpu_task_keeps_its_result
+FAILED tests/unit/test_r20_native_cpu_guard.py::test_guard_hard_exit_after_readiness_terminates_worker_tree[python-gil-held]
+FAILED tests/unit/test_r20_native_cpu_guard.py::test_guard_hard_exit_after_readiness_terminates_worker_tree[native-cpu]
+========================= 3 failed, 1 passed in 7.05s =========================

@@ -1,0 +1,786 @@
+# 哨望 ShaoWang 权威设计资料包（design-dossier）
+
+> 作品全称：哨望 ShaoWang：智能体驱动的 AI 安全知识情报系统——多源实时监测、可解释关联推理与开放插件生态
+> 赛题：中国电子杯 赛题九「智能体驱动的 AI 安全知识情报系统」（奇安信命题），防御侧。
+> 版本：v1.0（2026-10-16，北京时间）。本文件把 MASTER-PLAN、architecture、connectors-spec、plugin-sdk-spec、agent-integration-research、exposure-data-plan、appendix-practice-plan、ui-design、diagram-design、demo-script、technical-report（91 页版）、backfill-checklist 以及 evidence/ 目录中的实测记录融合为一份。
+> **用途：重写技术报告时唯一的事实来源。** 章节号 D0–D22、图号 F-xx、表号 T-xx、代码号 C-xx、截图号 S-xx 都是稳定编号，astra-prompt.md 按这些编号引用，后续修订只追加、不改号。
+
+---
+
+## D0 使用规则
+
+### D0.1 优先级
+1. evidence/ 下的实测记录（带时间戳与 SHA-256）高于任何文档中的描述。
+2. 文档之间冲突时，以 MASTER-PLAN.md 与 architecture.md 的最新口径为准；数据模型字段以 plugin-sdk-spec.md 为准（architecture 自己声明如此）；数据源细节以 connectors-spec.md 为准。
+3. exposure-data-plan、demo-script、ui-design、diagram-design 中与上面冲突的内容，一律按 D20 的裁决处理。
+4. 本文件没有写到的事实，不得在报告里出现。
+
+### D0.2 状态标签
+| 标签 | 含义 | 报告里怎么写 |
+|---|---|---|
+| 【已定】 | 设计参数，文档已确定 | 直接作为设计写，不说成实测结果 |
+| 【已实测】 | 有真实测量和证据文件 | 可以写具体数字，注明日期 |
+| 【待测】 | 指标还没测 | 保留占位“【待测：指标名，目标值 X】” |
+| 【截图待补】 | 界面截图还没有 | 保留占位“【截图待补 S-xx：要求】” |
+| 【待确认】 | 团队尚未拍板或外部信息未核实 | 不写进正文，或写成“计划/拟” |
+| 【规划扩展】 | 后续扩展，不计入核心口径 | 只能放在展望或“可扩展”语句里 |
+
+### D0.3 红线（对所有产出生效）
+- 不出现任何 API key、token、口令、账号邮箱，也不出现 key 的环境变量取值。
+- 不出现任何 IP、主机名、资产明细；暴露面只有计数和分布。
+- 不出现 PoC 代码、利用步骤、payload；PoC 只说“是否存在公开链接”。
+- 不编造实测数字。性能、准确率、时延、自愈率等没有证据的，一律【待测】。
+
+---
+
+## D1 作品定位与赛题对应
+
+### D1.1 一句话定位
+哨望是一个防御侧的 AI 安全知识情报系统：从 9 类来源持续发现 AI 基础设施（推理框架、模型服务、智能体平台、向量数据库等）的漏洞与风险，自动补全 9 个维度的画像并建立可解释的关联，再用带引用的问答和版本自查回答“哪些漏洞与我有关、该怎么处置”。内部 9 个智能体协作，对外通过 MCP、OpenAPI、命令行和插件开放，Claude Code、Codex、Cursor 等编码智能体可以直接调用。【已定】
+
+### D1.2 要解决的三个挑战（报告 1.1 使用）
+1. **来源分散，权威库有时效缺口**：AI 组件漏洞散落在 NVD/GHSA/OSV、厂商 GitHub 公告与 Release、huntr/AVID、论文和博客四类地方；很多厂商公告公开时没有 CVE。NVD 自 2024-02-12 起放缓分析，VulnCheck 统计截至 2024-05-20 有 93.4%（11 885/12 720）新增 CVE 未分析，2024-09-21 仍有 72.4%（18 358 个），10 月初积压超过 17 000；2024 年 CVE 发布 40 009 个，比 2023 年的 28 818 个增长 38.83%。（均为文献事实，见 D21）
+2. **多源说法不一致，关联难以自动建立**：例如 vLLM CVE-2025-32444（Mooncake 集成 pickle 反序列化，影响 0.6.5 至 0.8.5 之前，CWE-502），GHSA-hj4w-hm2g-p6w5 给 CVSS 10.0，NVD 给 9.8，OSV 侧还有 PYSEC-2025-42；Ollama CVE-2024-37032 在 GitHub 公告中为中危，而 Wiz 描述为严重 RCE（0.1.34 修复）。
+3. **情报回答不了具体问题，也进不了开发流程**：防守方的问题是多跳的（“近 90 天影响 vLLM、已有公开 PoC 链接的漏洞有哪些，对应 ATLAS 什么技术，升到哪个版本”）；开发者在编码智能体里选依赖，情报若只在网页上就无法及时提醒。
+
+### D1.3 背景案例（文献事实，见 D21）
+- Ollama CVE-2024-37032（Wiz，2024-06）：模型拉取接口 digest 未校验导致路径穿越，Docker 默认部署下可致 RCE，0.1.34 修复。
+- ShadowRay（Oligo，2024-03）：Ray 的 CVE-2023-48022 未授权任务提交接口自 2023-09 起被在野利用，厂商对该编号有异议；MITRE 收录为 ATT&CK 战役 C0045。
+- Cisco Talos（2025）：用 Shodan 发现 1139 个公网暴露的 Ollama 服务，其中 214 个无需认证。
+- 政策：OWASP LLM Top 10 2025、NIST AI RMF 与 AI 600-1、《生成式人工智能服务管理暂行办法》、《网络产品安全漏洞管理规定》。
+
+### D1.4 用户与场景
+1. 企业安全运营团队：大屏发现→详情卡研判→资产清单自查→按 KEV/EPSS/CVSS 和暴露面排优先级。
+2. AI 应用开发团队：在编码智能体中接入 MCP，添加或升级依赖时得到提示；`shaowang check` 作为 CI 门禁。
+3. 安全研究与教学：沿 MAPS_TO、DISCUSSED_IN 统计 ATLAS 技术在漏洞和论文中的出现频率。
+
+### D1.5 防御侧边界【已定】
+不做渗透，不执行、不保存、不分发利用代码；不做主动扫描；暴露面只读测绘平台的计数；对外接口以只读为主。
+
+### D1.6 评分项对应（满分 100）
+| 评分项 | 分值 | 优秀档要求 | 我们的做法 | 证据/演示 | 状态 |
+|---|---|---|---|---|---|
+| 功能·监测 | 15 | ≥7 类且含实时监测 | 9 类通道；P0 厂商公告 5 分钟轮询；演示注入秒级；无 CVE 公告入库 | 大屏、list_sources、现场注入 | 已接入类别数【待测】 |
+| 功能·富化 | 15 | 富化准确且含自动关联推理 | 9 维富化；六类自动关联；边带理由和置信度；Critic 抽检 | 详情卡、图谱“因何关联”、get_vuln | 准确率【待测】 |
+| 功能·问答 | 15 | 跨文档推理与深度分析 | 三路混合检索、显式多跳 GraphRAG、逐句引用、Critic | 多跳问答、引用侧栏 | 100 题评测【待测】 |
+| 性能·时效 | 5 | 延迟 ≤6 h | 五段时间戳，P50/P95 上大屏 | 时延曲线、list_sources | P95【待测】 |
+| 性能·富化准确 | 5 | 准确 | 规则优先、三级可信度、逐字段裁决、200 条金标 | 混淆矩阵 | 目标 ≥95%【待测】 |
+| 性能·问答准确 | 5 | 准确 | 约 100 题三组对照 | 评测表 | 【待测】 |
+| Agent 架构 | 15 | 精良可扩展 | 有状态图编排 9 角色；插件化；MCP 开放 | 协作图、任务树 | 设计完成 |
+| 自动化 | 10 | 端到端自动、能自愈 | 退避重试、死信重放、熔断降级、备用通道 | 自愈录屏、故障注入 | 【待测】 |
+| 文档 | 15 | 完整规范 | 技术报告、Schema 与插件文档、接入文档、评测报告、附录实录 | 本报告 | 进行中 |
+
+---
+
+## D2 统一口径
+
+### D2.1 命名
+| 对象 | 统一写法 | 禁止写法 |
+|---|---|---|
+| 系统名 | 中文“哨望”，英文“ShaoWang”，首次出现写“哨望（ShaoWang）”；代码与命令中小写 `shaowang` | 其他译名 |
+| 内部情报编号 | `SW-YYYY-NNNN`（无任何外部编号时使用） | AISI-、AISV-（与英国 AI Security Institute 缩写冲突，已废弃） |
+| 规范标识 | `vuln_uid`，优先级 CVE > GHSA > OSV > huntr > SW | — |
+| 演示数据 | 带 `DEMO` 标记，如 `DEMO-GHSA-0000-0000-0001` | 把演示数据说成真实漏洞 |
+| 服务层 | `intel-core` | — |
+| CLI | `shaowang`（`shaowang check / search / get / ask / sources / task / mcp serve`） | — |
+| SDK | `shaowang-sdk`（Python，Apache-2.0） | — |
+| MCP 端点 | 远程 `/mcp`（Streamable HTTP），本地 `shaowang mcp serve`（stdio） | SSE 作为主传输 |
+| REST | OpenAPI 3.1，根路径 `/api/v1`，错误格式 RFC 9457 | — |
+| 示例域名 | `intel.example.com`（占位） | 任何真实部署地址 |
+
+### D2.2 固定数字
+9 类数据源 · 三级可信度 · 9 维富化 · 六类自动关联 · 9 个智能体角色 · 7 个 MCP 工具（6 只读 + 1 可选写）· 8 类公开 JSON Schema · 三类扩展点 · 五段时间戳 · 七项创新点 · 200 条金标集 · 约 100 题问答评测集 · 4 种接入方式（MCP、OpenAPI、CLI、插件包）。
+
+### D2.3 九个智能体（顺序固定）
+Orchestrator、Collector、Triage、Enricher、GraphWriter、Assessor、QA、Critic、Reporter。中文说明可写“编排、采集、分诊、富化、图谱写入、评估、问答、校验、报告”，但角色名保持英文。
+
+### D2.4 七个 MCP 工具（顺序固定）
+`search_vulns`、`get_vuln`、`check_stack`、`ask`、`get_task_result`、`list_sources`、`subscribe_alerts`（唯一非只读，可选实现）。`exposure_stats` 为【规划扩展】，见 D20-1。
+
+### D2.5 九维富化（顺序固定）
+① CVSS 评分 ② EPSS 利用概率 ③ KEV 在野利用 ④ CWE 弱点类型 ⑤ ATLAS 技术映射 ⑥ 受影响与修复版本 ⑦ 相关论文与文章 ⑧ PoC 与检测模板存在性（只存链接）⑨ 公网暴露面（只存聚合计数）。Schema 键名：`cvss、epss、kev、cwe、atlas、versions、related_docs、poc_refs、exposure`。
+
+### D2.6 九类数据源（顺序固定）
+① NVD ② GHSA + OSV ③ 厂商 GitHub 安全公告与 Release ④ huntr + AVID ⑤ CISA KEV + FIRST EPSS ⑥ 安全博客 RSS ⑦ arXiv（含 Semantic Scholar 补漏）⑧ CNNVD（主力）+ CNVD（加分项，人工/半自动导入）⑨ 标准法规（MITRE ATLAS、OWASP LLM Top 10、NIST AI RMF、TC260、生成式 AI 办法）。测绘平台不算数据源类别，它是第 9 维富化的数据提供方。
+
+### D2.7 图谱节点与边（以 architecture §4.1 + plugin-sdk §1.8 为准）
+- 节点：`Vulnerability`、`Advisory`、`Component`、`Version`、`CWE`、`AtlasTechnique`、`Paper`、`Article`、`PocRef`、`Regulation`、`RiskCategory`。
+- 边（图库大写，Schema 中为小写 `relationship_type`）：`DESCRIBES`、`AFFECTS`、`HAS_CWE`、`MAPS_TO`、`DISCUSSED_IN`、`HAS_POC_REF`、`IN_CATEGORY`、`GOVERNED_BY`，以及候选/通用边 `DUPLICATE_OF`、`RELATED_TO`。
+- 每条边必带：`reason`（人类可读理由）、`confidence`（0–1）、`method`（rule / llm / human / source）、`created_by_agent`；可带 `evidence`、`critic.verdict`。
+- 禁用旧边名：`TAGGED`、`RELATED_PAPER`（demo-script 旧写法）；`HAS_EXPOSURE` / `ExposureSnapshot` 为【规划扩展】。
+
+### D2.8 时间戳与时延
+- 五段时间戳：`source_published_at`、`first_seen_at`、`normalized_at`、`enriched_at`、`queryable_at`。另存 `source_modified_at`（只用于冲突裁决第三级）。
+- 采集时延 `ingest_latency_sec = first_seen_at − source_published_at`。
+- 端到端时延 = `queryable_at − source_published_at`；**6 h 指标只统计端到端时延，且只统计“漏洞类首次发现”（NVD、GHSA、OSV、厂商公告、huntr）**；EPSS、arXiv、CNNVD 等日更源单独统计；DEMO 数据不计入。
+
+### D2.9 枚举
+- 可信度 `tier`：1 官方 / 2 专业平台 / 3 研究资讯；默认权重 1.0 / 0.7 / 0.4。
+- 漏洞状态：`confirmed` / `unconfirmed`（只有三级来源）/ `withdrawn`。
+- 对外任务状态：`queued` / `running` / `succeeded` / `failed` / `expired`（内部 retrying 与死信对外显示为 running）。
+- Critic 结论：问答为 `pass` / `partial` / `fail`；关系边为 `pass` / `reject` / `pending`。
+- 版本自查结果：受影响 `vulnerable`、未发现已知影响 `clean`、组件未收录 `unknown_component`（另有“受影响但来源有分歧”提示）。
+- PocRef.kind：`exploit` / `detection_template` / `writeup`。
+- remediation.category：`vendor_fix` / `workaround` / `mitigation` / `no_fix_planned` / `none_available`。
+
+### D2.10 书写约定
+- 数字与单位之间留空格：5 min、6 h、8k tokens；百分号紧贴：95%。
+- 大数用中文万位或千分空格，报告正文统一“约 17.2 万（172 411）”这种写法。
+- 时间一律北京时间（UTC+8），写作“2026 年 10 月 15 日”或“2026-10-15”。
+- 英文术语首次出现给中文全称：模型上下文协议（Model Context Protocol，MCP）。
+
+---
+
+## D3 总体架构
+
+### D3.1 六层 + 四项横切【已定】（图 F-01）
+| 层 | 组成 | 说明 |
+|---|---|---|
+| 数据源层 | 9 类来源（D5） | 按三级可信度管理 |
+| 采集层 | Source Connector 插件 × N；自有仓库 webhook 接收器 | 每源一个插件，统一 `poll(ctx, cursor)` 与 `backfill(ctx, since, until)`；webhook 只由平台接收、验签后触发立即 poll |
+| 知识层 | PostgreSQL 16 + pgvector（事实源）、Neo4j 5（图谱）、OpenSearch 2.x + IK（全文/BM25）、MinIO（原始载荷与报告）、Redis Streams 或 NATS JetStream（消息与死信） | 以 PostgreSQL 为准，outbox 同步到图库与全文索引 |
+| 智能体编排层 | Orchestrator（LangGraph 有状态图）+ 8 个角色 | 状态写 `agent_tasks`，可检查点恢复与回放 |
+| 服务层 | `intel-core` 只读服务；GraphRAG 检索 | 统一鉴权、限流、审计、结果裁剪（≤8k tokens）、长任务句柄 |
+| 接入层 | Web 态势大屏、MCP Server、OpenAPI、`shaowang` CLI、Agent Plugins 插件包 | 面向分析师与编码智能体 |
+| 横切 | 可观测（五段时间戳、Langfuse、Prometheus、Grafana）；可信与冲突裁决（三级可信度、provenance）；合规边界（PoC 仅链接、暴露面仅计数、默认只读）；开放生态（8 Schema、三类扩展点、签名索引） | — |
+
+分层的出发点：把变化快的部分（数据源接口）封装在采集插件里，用公开 Schema 固定知识层契约，编排层只依赖契约，服务层把对外能力收拢到 `intel-core`。
+
+### D3.2 端到端数据流六阶段（图 F-03）
+采集 → 归一 → 富化 → 校验 → 存储 → 服务。
+1. 采集：Collector 按来源节奏发条件请求（ETag / If-Modified-Since），生成 `RawEvent{source, external_id, fetched_at, payload, etag}`，幂等键 `(source, external_id)`，写 `first_seen_at`；原始 JSON 存 MinIO `raw/{source}/{date}/{id}.json`，投递到 `raw.{source}` 主题。
+2. 归一：Triage 用关键词与组件字典初筛 AI 相关性，边界情况交大模型复核；转成 `NormalizedIntel`；别名并查集合并到 `vuln_uid`；写 `normalized_at`。
+3. 富化：Enricher 把 9 维拆成并行子任务，单维失败只重试该维；写 `enriched_at`。
+4. 校验：Critic 对规则产出做格式与一致性检查，对大模型产出按 20% 抽检。
+5. 存储：GraphWriter upsert 到三类存储，边带理由与置信度。
+6. 服务：写 `queryable_at`，可被检索、问答、自查使用。
+
+### D3.3 写入与查询分离【已定】
+写入由 Orchestrator 驱动的流水线完成；查询只读取已通过 Critic、写入 `queryable_at` 的数据。外部调用的异常不影响流水线。唯一会写数据的外部工具是 `subscribe_alerts`，只写调用者自己的订阅。
+
+### D3.4 查询请求路径（图 F-05）
+以 `check_stack` 为例：请求进入 `/mcp` → `intel-core` 校验凭据、scope、限流，写审计日志 → 估计耗时（小清单同步，大清单/预计 >60 s 转异步返回 TaskHandle）→ 依赖解析为 purl → 在 PostgreSQL 查 AFFECTS 区间逐一求解 → 读取富化与修复建议、按严重度排序 → 合规过滤（删除形似利用代码或 IP 的内容）→ 大小裁剪（>8k tokens 分页给 `next_cursor`）。`ask` 同理，中间由 QA 和 Critic 完成。
+
+### D3.5 部署【已定】（图 F-23）
+docker compose 单机：应用容器 `api`、`mcp`、`workers`（9 个智能体）、`scheduler`（按来源节奏触发、每 15 min 重放死信）、`web`；数据容器 `postgres`（pgvector）、`neo4j`、`opensearch`（IK）、`redis` 或 `nats`、`minio`；可观测容器 `langfuse`、`prometheus`、`grafana`。服务间只通过网络和消息队列交互，可平移到 Kubernetes/Helm。凭据通过环境变量和机密管理注入，代码、配置、日志、测试夹具中不出现真实值，CI 用 gitleaks 扫描。
+
+---
+
+## D4 智能体方案
+
+### D4.1 九个角色（表 T-02，图 F-06）
+| 角色 | 输入 | 输出 | 关键约束 |
+|---|---|---|---|
+| Orchestrator | 定时器、自有仓库/演示注入事件、死信队列 | 任务 DAG 与状态（`agent_tasks`） | LangGraph 有状态图；按源设并发上限与令牌桶限速；SLA 超时告警 |
+| Collector | 来源接口 | RawEvent | 每源一个插件；幂等键 `(source, external_id)`；`content_hash` 只做变更检测；不处理 webhook |
+| Triage | RawEvent | NormalizedIntel | 规则初筛 + 大模型复核；别名并查集；分到赛题四类风险与 ATLAS 候选 |
+| Enricher | NormalizedIntel | 9 维富化结果 | 维度级并行与重试；每个字段带 provenance |
+| GraphWriter | 已校验记录 | 节点、边、向量、索引 | upsert；每条边带 reason 与 confidence；outbox 保证最终一致 |
+| Assessor | new_vuln 事件 | 影响评估与处置建议 | KEV 收录、EPSS > 0.5 或 CVSS ≥ 9 升为高危；只有三级来源的不升级 |
+| QA | 自然语言问题 | 答案、推理步骤、引用 | 三路混合检索；逐句 `[n]` 引用 |
+| Critic | 任一角色的产出 | pass / reject（问答为 fail）/ partial | 引用可回溯；LLM 产出 20% 抽检；置信度 < 0.6 不入图；金标集回归防漂移 |
+| Reporter | 图谱与指标 | 日报、周报、告警、大屏指标 | P50/P95 时延、源健康度、新增高危清单 |
+
+### D4.2 协作原则【已定】
+- 角色之间不直接对话，通过统一格式数据和任务状态交接，每步可审计，每个角色可替换为规则实现、换模型或由插件扩展。
+- Critic 位于所有对外可见产出的必经路径：富化入图前、评估生效前、答案返回前、报告发布前。
+- 确定性优先：GHSA aliases 含 CVE、OSV 给出明确修复版本等由规则完成，置信度 1.0；只有 ATLAS 映射、论文关联等弱关联由大模型判断，附置信度与理由。
+
+### D4.3 任务状态机（图 F-07）
+queued →（派发）running →（成功）succeeded →（保留期满，结果保留 24 h）expired；不可重试错误（429 以外的 4xx）→ failed。可重试错误（429、5xx、超时）→ 内部 retrying，指数退避，超过 6 次进入死信队列，Orchestrator 每 15 min 重放。retrying 与死信对外均显示为 running。预计超过 60 s 的 `ask`/大清单 `check_stack` 立即返回 TaskHandle `{task_id, status, poll_with:"get_task_result", eta_sec}`。
+
+### D4.4 Critic 校验闭环（图 F-08）
+检查三件事：①引用能否回溯到库内文档；②置信度是否达到写入门槛；③是否含利用代码或 IP。结果：通过→写入/返回；驳回→重新检索或重新富化；部分通过→校准置信度并在 `unsupported_claims` 中标注不受支持的论断（不悄悄删除）。问答判定：任一引用指向不存在文档即 fail；不受支持句子占比 ≤30% 为 partial，否则 fail；出现利用代码或 IP 直接 fail。Critic 引用核验准确率【待测】。
+
+### D4.5 大模型调用策略【已定】
+只有 4 处调用大模型：Triage 相关性复核、Enricher 弱关联判断、QA 规划与生成、Critic 支撑性判断。其余为规则和数据库查询。
+- 成本与时效：规则先筛；每个插件/智能体有每日 token 预算，超出降级为只做规则并在任务树标注。
+- 可控性：结构化输出，按 JSON Schema 返回，必含置信度与理由；不符 Schema 视为失败重试；模型置信度由 Critic 依据金标集校准。
+- 可替换性：统一模型网关，默认国产大模型 API（Qwen / DeepSeek，【建议】），可切换私有化部署；提示词与输出 Schema 带版本号，换模型后用金标集与问答集回归；调用全部记录在 Langfuse。
+
+---
+
+## D5 数据源与监测
+
+### D5.1 三级可信度（图 F-09）
+| 等级 | 含义 | 来源 | 权重 |
+|---|---|---|---|
+| 一级（官方） | 编号机构、政府、官方数据库、组件厂商 | NVD、GHSA（reviewed）、OSV、CISA KEV、FIRST EPSS、MITRE ATLAS、CNNVD、CNVD、厂商官方 GitHub Security Advisory 与 Release、标准法规原文 | 1.0 |
+| 二级（专业平台） | 有审核流程的专业平台 | huntr、AVID、GHSA unreviewed 条目；测绘平台（Hunter、Quake 首选，FOFA、ZoomEye 备选，仅用于暴露面统计） | 0.7 |
+| 三级（研究资讯） | 论文、博客、新闻 | arXiv、安全博客 RSS | 0.4 |
+
+插件可自报等级，平台审核只可下调、不可上调。只有三级来源支撑的漏洞记为 `unconfirmed`，不进高危告警，问答提示“仅有资讯报道，尚未经官方确认”。
+
+### D5.2 九类来源与采集方式（表 T-03，图 F-10）
+| # | 来源 | 等级 | 采集方式 | 频率 | 目标 P95 |
+|---|---|---|---|---|---|
+| — | 自有仓库与演示注入 | — | webhook 验签后触发立即 poll | 事件 | ≤1 min |
+| ③ | 厂商 GitHub 公告（第三方）与 Release | 1 | 增量轮询（ETag，304 不计配额） | P0 5 min / P1 30 min | P0 ≤10 min，P1 ≤40 min |
+| ② | GHSA | 1/2 | 增量轮询（modified 游标 + ETag） | 10 min | ≤15 min |
+| ① | NVD（CVE API 2.0） | 1 | 按 lastModified 增量轮询，窗口前移 5 min 重叠 | 10 min | ≤30 min |
+| ② | OSV | 1 | 拉各生态 modified_id.csv 比对后逐条取 | 15 min | ≤30 min |
+| ⑥ | 安全博客 RSS | 3 | 条件请求轮询（feedparser + trafilatura） | 10 min | ≤30 min |
+| ④ | huntr | 2 | 公开页面解析（无公开 API）+ GHSA/NVD 引用间接通道 | 1 h | ≤2 h |
+| ⑤ | CISA KEV | 1 | 全量比对 | 1 h | ≤2 h |
+| ④ | AVID | 2 | avid-db 仓库增量拉取（API 返回 403，不用） | 6 h | ≤6 h |
+| ⑤⑦⑧ | EPSS、arXiv、CNNVD | 1/3/1 | 日更批处理 | 1 d | ≤24 h（不计入 6 h 指标） |
+| ⑧ | CNVD | 1 | 人工导入或有头浏览器半自动（人完成验证，≤每周 1 次） | ≤每周 | 不计 |
+| ⑨ | 标准法规 | 1 | 版本监测（ETag / 正文 hash）；ATLAS 跟踪 atlas-data 仓库 | 1 周（ATLAS 每日检查） | — |
+| （富化） | 暴露面（测绘平台） | 2 | 按组件缓存、周快照 | 7 d | —（富化类） |
+
+P0 仓库：vLLM、Ollama、Triton、Dify、LangChain、llama.cpp、ComfyUI 等。
+
+### D5.3 “实时”的含义【已定】
+第三方厂商仓库无法安装我方 webhook，因此一律轮询；“实时”在工程上落实为“P0 来源分钟级发现”。webhook 只用于我方自有仓库、可安装我方 GitHub App 的仓库和答辩演示注入接口（`/internal/webhooks/github` 校验 `X-Hub-Signature-256`；`/internal/simulate` 仅 admin）。厂商 Release 正文出现 security / CVE / GHSA / fix 等关键词时生成 `kind=advisory` 弱信号交 Triage，覆盖“先发版修复、后补公告”的情况。
+
+### D5.4 去重与合并三层（图 F-11）
+1. 同源幂等：主键 `(source, external_id)`；`content_hash` 只判断内容是否变化。
+2. 跨源别名合并：GHSA aliases、OSV aliases、CNNVD“CVE 编号”进入并查集，连通即合并，规范标识按 CVE > GHSA > OSV > huntr > SW 选取。
+3. 无编号相似匹配：组件 purl 相同 + 标题 SimHash ≥ 0.9 + 发布日期 ±3 天 → 生成候选交 Critic 复核，不自动合并。
+特例：别名同时指向两个不同 CVE 时不合并，生成 `DUPLICATE_OF` 候选等待复核。
+
+### D5.5 典型连接器要点
+- NVD：单次时间窗 ≤120 天，每页 ≤2000；分别记录“CVE 首见时间”和“NVD 评分补全时间”；评分暂缺时由 GHSA/OSV 补齐；长时间不可用降级到 CVE 官方 cvelistV5。
+- GHSA/OSV：GHSA 读限流头决定等待；OSV 区间原样保留，是版本自查主依据；`check_stack` 可用 OSV querybatch 补充。
+- 厂商公告：以 vllm-project/vllm 实测过仓库级安全公告接口【已实测，2026-10-14 境外 box】；仓库关闭 Security 页或 404 时降级为 releases.atom + 关键词。
+- huntr：每小时解析公开披露页并遵守站点规则；失败告警并退回 GHSA/NVD 间接通道。
+- KEV/EPSS：KEV 新增条目立即触发富化更新和 Assessor 升级告警；EPSS 分数变化 >0.1 触发重评；EPSS 失败沿用前一天并标 `stale`。
+- RSS：只存摘要和切片向量，不对外整篇返回；单 feed 连续 3 次失败自动禁用，每 6 h 探活。
+- arXiv：主通道 RSS（rss.arxiv.org/rss/cs.CR），export API 关键词补漏，失败再用 Semantic Scholar bulk 检索。
+- CNNVD：每日一次，只采元数据（编号、标题、CVE 对应、危害等级、日期、链接），≤1 req/5 s；数据接口【待确认】。
+- CNVD：不做验证码破解或反爬绕过；`shaowang import --source cnvd file.csv` 人工导入；`list_sources` 显示 `mode=on_demand`。
+
+### D5.6 国内来源调整（实测驱动）
+原方案以 CNVD 为国内主力；2026-10-14 境内复测三个入口均返回 HTTP 521（JS 挑战式反爬），因此改为 CNNVD 主力（境内首页 200），CNVD 降为加分项。详见 D18。
+
+---
+
+## D6 富化、关联与评估
+
+### D6.1 九维富化（表 T-04，图 F-12）
+| # | 维度 | 主要来源 | 方法与约束 |
+|---|---|---|---|
+| 1 | CVSS | NVD、GHSA、CNNVD 等级 | 多源评分全部保留，按 D6.4 裁决主值，详情卡并列展示向量串 |
+| 2 | EPSS | FIRST EPSS | 每日更新，用于排序 |
+| 3 | KEV | CISA KEV | 只有 KEV 能置位在野利用标志（取并集，不撤销）；三级来源的“在野”说法只作 `exploitation_rumor` 提示 |
+| 4 | CWE | NVD、GHSA、规则映射 | CNNVD 漏洞类型经规则映射，低置信 |
+| 5 | ATLAS | MITRE ATLAS | 关键词规则召回候选 + 大模型选最匹配项，须过 Critic |
+| 6 | 受影响与修复版本 | OSV、GHSA、厂商公告 | OSV 区间结构（introduced / fixed / last_affected / limit） |
+| 7 | 相关论文与文章 | arXiv、安全博客 | 嵌入相似度 + 组件共现，弱关联 |
+| 8 | PoC 与检测模板存在性 | 公开仓库、检测模板库 | 只存 `PocRef{url,title,kind,source}`；API 层再过滤代码块与 payload |
+| 9 | 公网暴露面 | Hunter、Quake（首选），FOFA、ZoomEye（备选） | 只存 `provider、query_id、total、by_country、by_version、vulnerable_estimate、measured_at、ttl_sec`；Schema `additionalProperties:false`；输出层 IP/域名正则拦截 |
+
+前 6 维以确定性数据为主（置信度通常 1.0）；第 5、7 维中大模型判断属于弱关联，必带置信度与理由；第 8、9 维直接涉及合规，见 D13。
+
+### D6.2 第 9 维暴露面细则
+- 只读计数，资产明细在内存中立即丢弃，不落盘、不写日志、不进 MinIO；不做任何主动探测。
+- 语法上线门槛：每组件抽样 50 条元数据（只看标题、端口、响应特征），精确率 ≥80% 才能 `verified`；宽口径只作 `upper_bound`，不进大屏和富化主值。
+- 缓存以组件为单位，同一组件的多个漏洞共享一次计数；出现新 KEV 或 CVSS ≥9 漏洞时允许插队刷新一次。
+- 平台主次：Hunter 可用且 verified 时取 Hunter 为主值、Quake 对照；Hunter 未实测前以 Quake 为主值；不同平台不相加、不平均，界面始终标 provider 与时间。
+- 文案模板：“全球暴露约 N（国内约 M），其中可识别为受影响版本约 K；数据来源：{provider}，{snapshot_id} 周快照，置信度 {confidence}”，N/M 取两位有效数字避免伪精确；`version_coverage < 0.3` 时不展示 K。
+- 实测数据见 D18.2；周更计划见 D15。
+
+### D6.3 六类自动关联（图 F-14）
+| # | 关联 | 边 | 方法 | 置信度 |
+|---|---|---|---|---|
+| 1 | 多源合并 | Advisory -DESCRIBES→ Vulnerability | 规则（别名并查集） | 1.0 |
+| 2 | 组件影响 | Vulnerability -AFFECTS{range, fixed}→ Component | 规则（OSV 区间） | 1.0 |
+| 3 | ATLAS 映射 | Vulnerability -MAPS_TO→ AtlasTechnique | 规则召回 + 大模型判断 + Critic | 模型给值并校准，<0.6 不入图 |
+| 4 | 论文与文章关联 | Vulnerability -DISCUSSED_IN→ Paper/Article | 摘要嵌入相似度 + 组件共现 | 同上 |
+| 5 | 处置关联 | 修复版本 + 缓解模板 → 升级建议（remediation） | 规则 + 模板 | — |
+| 6 | 版本求解 | 用户依赖清单 × AFFECTS 区间 | 约束求解（运行时计算） | — |
+此外：HAS_CWE、HAS_POC_REF、IN_CATEGORY，以及 AtlasTechnique / RiskCategory -GOVERNED_BY→ Regulation。理由示例：“GHSA aliases 字段包含该 CVE 编号”“摘要嵌入相似度 0.86 且共现组件 vllm”（理由写法示例，非实测统计）。
+
+### D6.4 逐字段冲突裁决（图 F-15）
+- 以字段为单位。先判四类特例：①在野利用只能由 KEV 设置；②任一一级来源撤回（GHSA withdrawn_at、CVE REJECTED）即 `withdrawn`，低等级来源不能撤销；③两个一级来源版本区间互斥时取并集、标 `conflict=true`，版本自查附分歧提示；④别名指向两个 CVE 时生成 `DUPLICATE_OF` 候选，不合并。
+- 未命中特例时三级比较：可信度等级高者胜 → 置信度高者胜 → `source_modified_at` 新者胜。
+- 集合型字段（CWE、别名）先取并集，矛盾时才裁决；中文描述只在 CNNVD、CNVD 与机器翻译之间裁决，机器翻译兜底；EPSS 只有 FIRST，取最新。
+- 胜出值写入字段和 provenance；落选值连同裁决规则写入 `conflicts[]{field, values, winner_source, rule}`，`get_vuln(include=["conflicts"])` 与详情卡展示。
+- 例：CVE-2025-32444 的 10.0 与 9.8 都来自一级来源，按规则取更新较晚者为主值，同时展示两个向量串，帮助用户理解差异来自“作用域是否改变”的不同判断。
+- 实现参考：代码 C-01（三元组排序键 + 特例字典）。
+
+### D6.5 版本自查（图 F-16）
+- 输入：组件版本清单，或 requirements.txt、pyproject.toml、package.json、go.mod、docker-compose.yml。
+- 流程：解析为 purl 与生态 → 按 OSV 事件语义扫描（状态机，正确处理多段引入与修复）→ 按生态比较版本（PEP 440、SemVer、Go 伪版本，不按字符串比较）→ 输出受影响 / 未发现已知影响 / 组件未收录（单独列出，避免虚假安全感），区间有分歧时附提示。
+- 三种入口：Web 自查页、MCP `check_stack`、CLI `shaowang check -f requirements.txt --min-severity high`（发现高危退出码 1，可做 CI 门禁）。
+- 实现参考：代码 C-02。
+
+### D6.6 影响评估与处置建议
+- 升级规则透明：KEV 收录、EPSS > 0.5 或 CVSS ≥ 9 → 高危并告警，理由可直接写成“因已列入 KEV 而升级为高危”。
+- 处置两部分：官方修复（裁决后的修复版本，分歧以一级来源为准并提示）+ 通用缓解模板（与 CWE、ATLAS 关联，例如推理服务未授权访问类建议关闭公网监听、启用认证代理；反序列化类建议限制模型文件来源、关闭不必要的远程加载接口），建议同样过 Critic。满足“同步提供修补或防范措施”的要求。
+
+---
+
+## D7 问答设计
+
+### D7.1 三路混合检索（图 F-17）
+- BM25（OpenSearch + IK）：对编号、组件名、版本号最敏感。
+- 向量（bge-m3 嵌入，pgvector，top-k = 50）：语义召回，中英混合稳定。
+- 图扩展（Neo4j）：从前两路识别出的实体出发扩展 1–2 跳，找回文本不相似但逻辑相关的证据（如修复版本、同一 ATLAS 技术下的其他漏洞）。
+- 融合：倒数排名融合 RRF，k = 60（原论文推荐），只依赖排名、无需训练；融合后前 50 个候选经 bge-reranker 交叉编码器重排，保留 8–12 个证据块（下限保证多跳中间证据，上限控制噪声与成本）。实现参考代码 C-03。
+
+### D7.2 显式多跳推理（图 F-18）
+规划器把问题拆成子问题并指定检索方式。示例“近 90 天影响 vLLM、已有公开 PoC 链接的漏洞有哪些，分别对应 ATLAS 的什么技术”拆为四步：①沿 AFFECTS 找影响 vLLM 的漏洞 ②沿 HAS_POC_REF 筛出有 PoC 引用的 ③按发布时间过滤近 90 天 ④沿 MAPS_TO 取 ATLAS 技术。每步的子问题、检索方式、查询语句、命中数写入 `reasoning_steps`，用户可见。思路借鉴 IRCoT，但把“下一步检索什么”变成可审计的结构化计划。
+
+### D7.3 引用与校验
+每句结论带 `[n]`，引用指向证据块并标注来源 tier；生成后 Critic 逐条检查存在性、支撑性（蕴含判断）、合规性；fail 时带 Critic 意见重新规划检索，有限次数后返回当前最好答案并标注置信度。参考 ALCE 的引用质量思路，区别是校验发生在返回之前。实现参考代码 C-04。
+
+### D7.4 多轮与中文
+会话级实体上下文只保存实体与关键约束（不拼接前几轮完整答案），解析“其中”“这个版本”等指代。中文支持：bge-m3 跨语言、IK 分词并保留英文词项、CNNVD 中文描述优先、机器翻译兜底；答案按提问语言生成，引用片段保留原文。
+
+### D7.5 安全约束
+系统提示禁止生成利用步骤；对“写利用脚本”“列出暴露 IP”类请求直接拒绝；外部正文作为数据放在 `untrusted_text` 字段，不拼进指令文本，防间接提示注入（Greshake 等）。
+
+---
+
+## D8 对外接口：MCP、OpenAPI、CLI、插件包
+
+### D8.1 统一服务层
+四种接入方式共用 `intel-core`，鉴权、限流、审计只实现一次。MCP 两种传输：Streamable HTTP（`/mcp`，远程多用户）与 stdio（`shaowang mcp serve`，内部调用远程 REST）。两种方式暴露完全相同的 7 个工具。MCP 规范版本参照 2025-11-25。
+
+### D8.2 七个工具（表 T-05）
+| # | 工具 | 读写 | 用途 | REST 映射 |
+|---|---|---|---|---|
+| 1 | search_vulns | 只读 | 按关键词、组件、严重度、KEV、EPSS、ATLAS、tier、来源、时间检索 | `GET /api/v1/vulns` |
+| 2 | get_vuln | 只读 | 任一别名取详情卡（affected、enrichment、relations、timeline、poc_refs、remediation、provenance、conflicts） | `GET /api/v1/vulns/{id}` |
+| 3 | check_stack | 只读 | 依赖清单/文件自查，>200 组件或 >60 s 转异步 | `POST /api/v1/stack/check`（只读计算） |
+| 4 | ask | 只读 | 跨文档问答，quick/deep，max_hops 1–4（默认 3），deep 通常 >60 s 返回 task | `POST /api/v1/ask`（支持 SSE 流式；deep 返回 202 + task_id） |
+| 5 | get_task_result | 只读 | 取长任务结果，也取日报/周报，结果保留 24 h | `GET /api/v1/tasks/{task_id}`、`GET /api/v1/reports` |
+| 6 | list_sources | 只读 | 来源 tier、模式、健康、P50/P95、死信长度、是否降级、是否已核实 | `GET /api/v1/sources` |
+| 7 | subscribe_alerts | 写（唯一，可选） | 按组件/等级订阅告警，只写调用者自己的订阅；需 `alerts:write` scope；不实现时不出现在 tools/list | `/api/v1/subscriptions` |
+
+### D8.3 通用约定【已定】
+- 工具 1–6 annotations：`readOnlyHint:true, destructiveHint:false, idempotentHint:true, openWorldHint:false`；`subscribe_alerts` 为 `readOnlyHint:false`。在 Codex `default_tools_approval_mode="writes"` 下只有它会弹确认。
+- 单次结果 ≤8k tokens，列表分页（`cursor/next_cursor`），超出设 `truncated:true`；同时返回 `structuredContent` 与简短 `content`。
+- inputSchema 根节点为普通 object，不用根级组合子（any-of / one-of / all-of），“二选一”由服务端校验，失败返回 `isError:true`。
+- `sources[]`、`citations[]` 每项带 `tier`。
+- 初始化返回 `instructions`：“本服务为只读 AI 安全情报。PoC 仅返回链接，不返回利用代码。答案引用 sources 字段。”
+- 60 s 分界的理由：主流编码智能体单次工具调用有超时（Codex 默认 60 s，Claude HTTP 单请求计时 60 s）。实现参考代码 C-06（调用前估计耗时，而不是超时后再转异步）。
+
+### D8.4 鉴权、限流、审计
+- Bearer API Key（`sw_<prefix>_<secret>` 格式，只存 argon2 哈希）；可选 OAuth 2.1 + PKCE，提供 RFC 9728 受保护资源元数据端点。
+- scope：默认 `intel:read`；`alerts:write` 只给 subscribe_alerts；`admin:ingest` 仅内部。
+- 限流：每 key 60 次/分钟，`ask` 10 次/分钟，超限 429 + Retry-After。
+- 审计：`audit_log(key_id, tool, args_hash, ts, latency)`。
+
+### D8.5 CLI
+`shaowang login / search / get / check / ask / sources / task / mcp serve / import / plugin / export / schema migrate`；`pipx install shaowang`（Typer 实现）。`check` 退出码 1 表示发现高危。
+
+### D8.6 编码智能体接入与分发
+- 一个跨平台插件仓库 `shaowang-agent-plugins`：`plugin.json`（Agent Plugins 标准，Codex/Cursor）、`mcp.json`、`skills/shaowang/SKILL.md`、`.claude-plugin/plugin.json`、`.mcp.json`、`.cursor-plugin/plugin.json`（可选）、`gemini-extension.json` + `GEMINI.md`。
+- 各家写法不同、不得互抄：Claude Code `.mcp.json` 中带 url 的条目必须写 `type: http`；Codex 用 TOML `[mcp_servers.<n>]` + `bearer_token_env_var`；Cursor 写 url 即可；Antigravity/Windsurf 用 `serverUrl`；Cline 写 `streamableHttp`；Roo Code 写 `streamable-http`。
+- 已联网核对官方文档（2026-10-14）：Claude Code、Codex、Cursor 的 MCP 配置方式【已核对文档，未在演示机实测】；Gemini 远程字段、Antigravity 插件、Kimi 插件格式【待确认】。
+- A2A Agent Card：【规划扩展】，用于展示“智能体对智能体”的协作，不是主入口。
+- 30 秒演示：在 Claude Code 中问“我们项目的 requirements.txt 有没有受已知 AI 框架漏洞影响？”→ 依次调用 check_stack、get_vuln、ask（deep 时用 get_task_result）→ 返回修复版本与引用。
+
+---
+
+## D9 插件 SDK 与数据标准
+
+### D9.1 8 类公开 JSON Schema（draft 2020-12，`schema_version: 1.2.0`）
+`common`（公共定义：Timestamp、Confidence、Method、Provenance、TrustTier、TaskHandle 等）、`normalized-intel`（全项目唯一权威的统一情报结构）、`vulnerability`、`advisory`、`component`（与 OSV affected 同构）、`enrichment`（9 维）、`relation`（必须带理由与置信度）、`qa-answer`（含 Citation）。
+- SemVer：PATCH 改描述；MINOR 只增可选字段或枚举值（消费者忽略未知字段）；MAJOR 删改字段且 URL 升级到 /v2/，平台同时支持当前和上一个 MAJOR ≥6 个月，提供 `shaowang schema migrate`。
+- 第三方私有字段放 `x_<vendor>_*` 或 `extensions`。
+
+### D9.2 标准映射（图 F-21）
+| 本项目 | OSV | STIX 2.1 | CSAF 2.0 |
+|---|---|---|---|
+| vuln_uid / aliases | id / aliases | vulnerability + external_references | vulnerabilities[].cve / ids[] |
+| severity[] | severity[] | x_cvss 扩展 | scores[] |
+| Affected / 区间 | affected[].package / ranges[].events | software SCO + relationship | product_tree / product_status |
+| Remediation | references[type=FIX] | course-of-action + relationship(mitigates) | remediations[] |
+| enrichment.kev | database_specific | x_kev | threats[category=exploit_status] |
+| enrichment.atlas | 无 | attack-pattern（mitre-atlas） | notes[] |
+| Relation | 无 | relationship（confidence ×100 取整） | 无 |
+| poc_refs | references[type=EVIDENCE]（只放链接） | external_references | references[] |
+| Advisory | 每源一份记录 | report SDO | 整份 CSAF 文档 |
+导出器 `shaowang export --format osv|stix|csaf` 以插件形式实现。
+
+### D9.3 三类扩展点（图 F-19）
+- Source Connector：必须实现 `poll` 与 `backfill`（可选 `healthcheck`），输出过 normalized-intel 校验，必填 `source_published_at`，遇 429 抛 `RateLimited(retry_after)` 交平台退避，不处理 webhook。
+- Enricher：输入只读 Vulnerability，输出 EnrichmentPatch + Relation[]；不能改其他插件写的维度；method=llm 自动进 Critic 抽检，<0.6 进候选区；超时抛 Deferred(TaskHandle)。
+- Tool/Skill：组合只读查询发布为新 MCP 工具，附 `skills/<name>/SKILL.md`（name ≤64 字符，description ≤1024 字符）；第三方工具一律只读；结果 ≤8k tokens；>60 s 必须返回 TaskHandle；PoC 只给链接；外部文本只作数据。
+
+### D9.4 plugin.yaml 权限：默认全部拒绝
+`network.egress` 域名白名单（市场插件禁止通配符）；`secrets` 逐项注入、拿不到其他变量；`storage` none 或私有 KV（≤10 MB）；`graph` 只能 none 或 read（任何插件都没有写图权限，写图统一由 GraphWriter）；`llm` none 或每日 token 预算；`max_rps`；`trust_tier` 平台审核只降不升；`resources` 超时与内存。
+
+### D9.5 沙箱
+独立子进程、非 root、seccomp、只读文件系统 + 私有 tmp；出站经平台代理、白名单与限速、默认拒绝内网与元数据地址；插件不连数据库，只通过 ctx 的 RPC；所有输出做 Schema 校验和 PoC 过滤，exposure 维度另加 IP/域名正则拦截；审计 `audit_log(plugin_id, version, action, bytes, latency)`。
+
+### D9.6 生命周期（图 F-20）
+Discovered →（清单、Schema、签名校验）Validated →（管理员审批权限）Installed →（沙箱启动 init）Loaded →（调度器/智能体/MCP 调用）Running；连续失败 ≥3 或 Schema 违规率 >5% → Degraded；healthcheck 恢复 → Running；24 h 未恢复或 Critic 判违规 → Disabled；MINOR 热升级，MAJOR 重新审批。
+
+### D9.7 注册、发现与贡献
+- 本地目录或 Python entry points（`shaowang.connectors / enrichers / tools`）；远程索引 `shaowang-plugins/registry` 的 `index.json`，每项带 sha256 与 sigstore 签名；新工具加载后 MCP 发送 `notifications/tools/list_changed`。
+- 贡献 CI 六项：清单结构与权限检查 → 夹具回放并断言输出过 Schema → 工具类检查只读标注、根 Schema、结果大小、60 s 句柄 → SKILL.md 元数据 → 依赖漏洞、代码安全、许可证、PoC 与 IP 泄露扫描 → 构建产物签名与 SBOM。富化类插件须在 200 条金标集回归，<95% 不得“推荐”标签。索引分官方维护 / 审核签名 / 社区贡献三档；DCO 签署，不另签 CLA；许可证 Apache-2.0。
+
+---
+
+## D10 技术选型（表 T-06，图 F-22）
+
+| 层次 | 选型 | 理由 | 备选 |
+|---|---|---|---|
+| 智能体编排 | LangGraph 有状态图 | 节点状态持久化、检查点与回放，便于审计 | AutoGen、CrewAI |
+| 消息与调度 | Redis Streams 或 NATS JetStream；APScheduler / Celery Beat【建议】 | 演示规模最轻，原生消费组与死信 | Kafka |
+| 采集 | Python 插件、httpx【建议】、feedparser + trafilatura、ETag/Last-Modified | 增量、幂等 | requests、Scrapy |
+| 主存储 | PostgreSQL 16 + pgvector | 事实源与向量同库，事务一致 | Milvus 2.x |
+| 知识图谱 | Neo4j 5 | Cypher 表达多跳直观，可视化成熟 | Apache AGE |
+| 全文检索 | OpenSearch 2.x + IK | BM25 稳定，中文分词成熟 | Meilisearch |
+| 嵌入与重排 | bge-m3、bge-reranker | 中英双语，可私有化 | 商用嵌入 API |
+| 大模型 | 国产大模型 API（Qwen / DeepSeek）【建议】 | 中文能力好，可替换为私有化部署 | 本地 vLLM 部署 |
+| 后端 | FastAPI + pydantic v2 | 与 Python 栈统一，自动生成 OpenAPI | Litestar |
+| MCP 服务 | 官方 Python MCP SDK | 同时支持 Streamable HTTP 与 stdio | FastMCP |
+| 前端 | React + TypeScript、ECharts、Cytoscape.js | 图表与图谱组件丰富 | Vue 3、AntV G6 |
+| 可观测 | Langfuse、Prometheus、Grafana | 调用链追踪与时延指标统一展示 | OpenTelemetry 后端 |
+| 部署 | docker compose | 单机一键启动，便于评审复现 | Kubernetes、Helm |
+| 评测 | 金标集 + 问答集 + 阶段时间戳；RAGAS 辅助 | 可复现 | — |
+
+四个需要展开的取舍：①有状态图而非对话式多智能体——情报流水线大部分步骤确定，需要的是可审计、可重放；②pgvector 与事实源同库——演示和中等规模下保证事务一致，规模增长再迁移；③图库与关系库并存——多跳用 SQL 需多层自连接，Cypher 直接表达路径并便于前端渲染子图，代价是一致性维护，以 PostgreSQL 为准通过 outbox 同步；④MCP 双传输——远程适合团队共享与评审，本地 stdio 适合企业代理环境，工具定义只维护一套。
+
+---
+
+## D11 数据模型与存储
+
+### D11.1 存储分工
+| 存储 | 存什么 | 用途 |
+|---|---|---|
+| PostgreSQL 16 | normalized_intel、enrichment、agent_tasks、source_state（游标、ETag、last_modified、last_success_at）、conflicts、api_keys、audit_log；关系边事实表 | 事实源、事务、游标 |
+| pgvector | 漏洞描述、论文摘要、博客正文、法规条款切片嵌入 | 语义检索、论文关联 |
+| Neo4j 5 | 实体与关系（边属性含 reason、confidence、method、created_by_agent） | 多跳推理、可视化 |
+| OpenSearch 2.x | 标题、描述、CVE/GHSA ID、组件名（IK 分词） | BM25、ID 精确检索 |
+| MinIO | 原始载荷、报告 PDF | 回放、审计 |
+
+### D11.2 图模型（图 F-24）
+节点属性：`Vulnerability{vuln_uid, cve_id, ghsa_id, title, cvss, epss, kev, published}`、`Advisory{source, external_id, url}`、`Component{purl, name, ecosystem}`、`Version{purl, range, fixed}`、`CWE`、`AtlasTechnique{id, name}`、`Paper{arxiv_id, title}`、`Article{url, source}`、`PocRef{url, title, kind}`、`Regulation{doc_id, clause}`、`RiskCategory`（赛题四类）。
+“公告”与“漏洞”分为两类节点是多源融合的关键：公告保留各源原始说法，漏洞保存裁决后的结论。
+示例多跳查询（Cypher）：近 90 天影响 vllm 且有 PoC 引用的漏洞及其 ATLAS 技术（MATCH AFFECTS → 过滤 published → MATCH HAS_POC_REF → OPTIONAL MATCH MAPS_TO）。
+
+---
+
+## D12 可靠性与可观测
+
+### D12.1 自愈（图 F-25，代码 C-05）
+- 429、5xx、超时：优先遵守 Retry-After；否则指数退避，1 s 起翻倍，上限 5 min，±20% 抖动，最多 6 次 → 死信队列，Orchestrator 每 15 min 重放。
+- 429 以外的 4xx：不重试，直接进死信并告警。
+- 来源连续 3 个周期失败：熔断，`list_sources` 标 `degraded`，切换降级通道。
+- 重试放在平台运行时而非各插件内，统一参数与排查口径。
+- 富化维度级隔离：单维失败只重试该维，其余维度照常完成。
+- 智能体进程崩溃：从 `agent_tasks` 检查点恢复。
+
+### D12.2 降级通道
+| 来源 | 降级 |
+|---|---|
+| NVD | CVE 官方 cvelistV5 仓库 / CVE 服务单条查询；CVSS 由 GHSA/OSV 补 |
+| GHSA/OSV | OSV 改用 GCS 全量 zip 每日一次 |
+| 厂商公告 | releases.atom + 关键词 |
+| huntr | GHSA/NVD references 间接发现 |
+| KEV | NVD 记录中的 CISA 利用标记字段 |
+| EPSS | API 分批；都失败沿用前一天，`stale=true` |
+| arXiv | RSS → export API → Semantic Scholar bulk；全失败次日补拉 2 天窗口 |
+| CNNVD | 连续 3 天失败转人工导入；答辩前准备离线快照 |
+| 测绘 | Hunter → Quake → FOFA → ZoomEye；全失败沿用缓存/上周快照，`stale=true` |
+| RSS | 单 feed 3 次失败禁用，每 6 h 探活 |
+
+### D12.3 三层可观测
+情报级（五段时间戳 → 按源聚合 P50/P95 → Prometheus 指标 + list_sources）；任务级（agent_tasks：任务树、输入输出摘要、状态变化、耗时，前端任务树直接读取）；调用级（Langfuse：提示、输出、token，可从任务树节点跳转）。
+告警：源新鲜度滞后 > 轮询间隔 3 倍、某类来源 P95 超目标、死信队列持续增长、插件 Schema 违规率 >5%。
+
+---
+
+## D13 安全合规边界（图 F-26）
+| 约束 | 系统做法 | 对应依据 |
+|---|---|---|
+| 不发布在用系统漏洞细节 | 暴露面只给聚合计数与分布，不给 IP/主机/端口明细；ask 拒答“列出 IP” | 《网络产品安全漏洞管理规定》第九条（报告已引用；正文引条款时以原文为准） |
+| 不提供利用程序和工具 | PoC 只存链接与标题；API 层删代码块与 payload；Critic 拦截 | 同上 |
+| 同步提供修补或防范措施 | 每条漏洞有修复版本与缓解建议 | 同上 |
+| 不做主动扫描 | 测绘只读计数，不对任何目标发包 | 赛题防御侧要求 |
+| 对外默认只读 | 6/7 工具只读；无写情报、触发采集或执行能力 | — |
+| 防间接提示注入 | 外部正文进 untrusted 字段，不拼入指令；输出长度上限 | Greshake 等 |
+| 机密管理 | 环境变量与机密管理注入；代码/日志/夹具不出现真实值；gitleaks；证据目录脱敏扫描 | — |
+| 平台条款 | 测绘调用 ≤1 req/s，只用于研究统计，不转售、不再分发原始结果 | 各平台 ToS |
+
+---
+
+## D14 界面设计（截图 S-01–S-09）
+- 风格：工作台本身为深色“控制台”主题，另有浅色主题；**报告中统一使用浅色主题截图**，宽度 ≥1600 px、浏览器 100% 缩放。演示数据带 DEMO 标记，默认不计入时效统计（大屏有口径开关）。
+- 页面：态势大屏、情报列表、情报详情卡、知识图谱、问答侧栏、版本自查、智能体任务树、插件与 MCP 状态、报告、设置（凭据只显示“已配置”，不回显 key；暴露面仅计数与 PoC 仅外链两个开关锁定）。
+
+| 截图 | 页面 | 必须出现的要素 |
+|---|---|---|
+| S-01 | 态势大屏 | KPI 卡（P95/P50、24 h 新增、富化完成率、活跃智能体）；9 个数据源状态灯（CNVD 显示人工导入）；实时情报流中一条无 CVE 的厂商公告；时延分布 6 h 阈值线；ATLAS 热力图；暴露面趋势（仅计数） |
+| S-02 | 情报详情卡 | 以 CVE-2025-32444 或演示公告为例；GHSA 与 NVD 两个 CVSS 的冲突记录；9 维逐项点亮；暴露面“仅计数”提示；来源 tier 徽章 |
+| S-03 | 知识图谱 | 以新漏洞为中心 2 跳子图；AFFECTS、MAPS_TO、DISCUSSED_IN 同时出现；实线=规则、虚线=LLM、点线=待审；右侧面板展开一条 LLM 边的理由与置信度 |
+| S-04 | 问答侧栏 | 多跳问题完整问答；4 步推理链；引用片段；Critic 结论 pass 或 partial |
+| S-05 | 版本自查 | 含 vllm 与 ollama 旧版本的示例 requirements；受影响 / 未发现已知影响 / 组件未收录各至少一行；底部等价 CLI |
+| S-06 | 智能体任务树 | 一次演示注入触发的运行；Critic 驳回一次后重写通过；暴露面维度“等待配额”；触发来源标签 |
+| S-07 | 插件与 MCP 状态 | MCP 工具页（7 个工具，6 只读、1 可选写）与接入客户端页 |
+| S-08 | Claude Code 调用 | 只读工具免确认、结构化结果、带链接回答；配置中的凭据打码 |
+| S-09 | CLI / CI | `shaowang check -f requirements.txt --min-severity high` 输出与非零退出码 |
+
+---
+
+## D15 测绘数据生产计划（第 9 维的数据来源）
+- 原则：一次付费、多次得分——同一份聚合计数同时服务富化维度、大屏、报告小节、评测和（规划中的）MCP 工具。
+- 覆盖 10 个组件：Ollama、vLLM、Dify、ComfyUI、Gradio、Open WebUI、NVIDIA Triton、Langflow、Flowise、Ray Dashboard。除 Ollama 的 Quake 收窄语法外，其余语法均【待验证】；vLLM 与 Triton 指纹最没把握；Gradio 与 Langflow 同为 7860、vLLM 与 Triton 同为 8000，必须带响应或标题特征区分。
+- 平台分工：Quake 主力攒底库（已跑通）；鹰图 Hunter 首选主值与交叉校验（待境内实测，出题方奇安信系，叙事优先）；FOFA 充值后补指纹与分布；ZoomEye 鉴权核实前禁用。
+- 校准流程：size=1 取总数 → 50 条只读元数据判断真假阳性（不落盘 IP，只记“命中 n/50”）→ ≥80% 置 verified，否则收窄重测，3 轮不过 deprecated。
+- 周更任务（周一凌晨，北京时间）：EX-01 额度检查、EX-02 Quake 底库、EX-03 Hunter 主值、EX-04 FOFA 补分布、EX-05 ZoomEye（默认禁用）、EX-06 版本分条件计数、EX-07 交叉校验、EX-08 快照封存（manifest + SHA-256 + PII 扫描）、EX-09 每月校准、EX-10 新 KEV/CVSS≥9 插队刷新。周更任务自身的重试：30 s、2 min、10 min，最多 3 次。
+- 交叉校验：ratio ∈ [0.5, 2.0] 为 high；≤5 倍为 medium；>5 倍为 low；周环比 >300% 且无解释判定疑似口径变化、暂停告警。置信度还受快照新旧影响（≤7 天、8–14 天、>14 天 stale）。
+- 离线快照：`data/exposure/snapshots/YYYY-WW/`，答辩前冻结，演示机 `SHAOWANG_EXPOSURE_MODE=offline` 零外呼、零积分，页面角标如实标注快照周号；可现场 `sha256sum -c` 证明未改动。
+- 告警规则（规划，经 subscribe_alerts）：R1 暴露数突增（周环比 ≥50% 且增量 ≥500）、R2 新高危版本出现、R3 高危版本占比上升，阈值【待测】。
+- 报告可新增小节“国内 AI 推理栈暴露面观测”（第四章末，约 1.5–2 页）：动机、方法、观测结果、案例、局限；目前只有 Ollama 一组实测数据（D18.2），其余全部【待测】。
+- 覆盖提升评测：A 仅 NVD / B NVD + 厂商公告与 huntr 等 / C B + 暴露面；指标为事件覆盖率、无 CVE 事件占比、首见时间提前量、暴露面挂载率、优先级排序一致性、交叉校验一致率，全部【待测】，结论只写实测。
+
+---
+
+## D16 评测方案
+### D16.1 原则
+分项而非只给总分；设置对照（问答三组、Critic 前后）；数据可复现（金标集、评测集、脚本、原始结果一并保存，数字可从原始记录复算）。
+
+### D16.2 指标与目标（表 T-09）
+| 类别 | 指标 | 目标 | 状态 |
+|---|---|---|---|
+| 监测时效 | 漏洞类端到端时延 P95 | ≤6 h | 【待测】 |
+| 监测时效 | P0 厂商公告采集时延 P95 | ≤10 min | 【待测】 |
+| 监测覆盖 | 已实现并稳定运行的来源类别数 | ≥7 | 【待测】 |
+| 富化准确 | 200 条金标集富化与关联准确率 | ≥95% | 【待测】 |
+| 问答质量 | 100 题答案准确率 / 引用正确率 / 多跳题准确率 | 团队待定（报告写“目标值 xx%”） | 【待测】 |
+| 编排可靠 | 故障注入自愈成功率、平均恢复时间 | 待定 | 【待测】 |
+| 接口性能 | 只读 MCP 工具同步调用 P95 | 待定 | 【待测】 |
+
+### D16.3 各项方法
+- 时效：五段时间戳；只精确到日的来源按当日零点计（保守高估）；DEMO 不计；连续运行 ≥7 天（不足如实写天数）；各来源 P50/P95 表 T-10 与箱线图 F-28。
+- 富化：200 条金标，覆盖多源合并、ATLAS 映射、版本区间三类判断，加入困难样本（无 CVE 公告、别名指向多 CVE、CVSS 不一致、版本号不规范）；双人独立标注、第三人仲裁，Cohen's κ 目标 ≥0.8；按关联类型出混淆矩阵（表 T-11）；单独统计 Critic 校验前后 ATLAS 准确率与 Critic 误拦率。
+- 问答：约 100 题四种题型（单文档事实、跨文档检索、多跳推理、深度分析），每题有参考答案与支撑证据；三组对照（向量 RAG / BM25+向量 / 三路+Critic），同模型同提示；指标为答案准确率、引用正确率、引用覆盖率，RAGAS 忠实度辅助（表 T-12）。
+- 故障注入 6 场景（表 T-13）：429 限流、连续 503、连续 3 周期 5xx、400 参数错误、暴露面查询超时（维度隔离）、强制终止 workers 容器（检查点恢复）。
+- 编码智能体兼容性（表 T-14）：Claude Code、Codex（远程 + stdio）、Cursor（远程）、Gemini CLI（stdio 扩展）；检查工具加载、只读免确认、长任务续取。
+- 覆盖提升 A/B/C：见 D15。
+
+---
+
+## D17 七项创新点（与评分对应）
+| # | 创新点 | 现有不足 | 我们的做法 | 证据 | 主要对应评分 |
+|---|---|---|---|---|---|
+| 1 | 面向 AI 基础设施的垂直多源融合 | 以 CVE 为中心，无 CVE 公告漏收；NVD 积压 | 厂商公告作一级来源，P0 5 min 轮询，SW 编号入库后自动合并；三级可信度 + 逐字段裁决 | 大屏、list_sources、覆盖评测 A/B/C【待测】 | 监测 15、时效 5 |
+| 2 | 可解释的自动关联推理引擎 | 关联靠人工或源自带；LLM 关联有幻觉边 | 确定性优先；弱关联须过 Critic 且 ≥0.6；每条边强制带理由、置信度、方法、智能体，写进 Schema | 图谱“因何关联”、金标评测【待测】 | 富化 15、准确 5 |
+| 3 | 从依赖文件出发的“我受不受影响”自查 | 情报只回答“有哪些漏洞” | 读依赖文件按 OSV 语义求解，区分三种结果，CLI 退出码接 CI | S-05、S-09 | 富化 15、Agent 15 |
+| 4 | 可解释 GraphRAG 问答 | 通用 RAG 不敏感于编号和版本，引用事后附加 | 三路召回 + RRF + 重排；显式多跳计划可见；返回前 Critic 核验 | S-04、100 题对照【待测】 | 问答 15、问答准确 5 |
+| 5 | 内部多智能体编排与外部 MCP 开放统一 | 对话式协作难审计；情报进不了开发工具 | 有状态图编排 9 角色、全程落库；同一服务层以 MCP/OpenAPI/CLI/插件开放，6/7 工具只读，统一任务句柄 | 任务树 S-06、Claude Code S-08、兼容性【待测】 | Agent 15 |
+| 6 | 时效可观测与故障自愈 | 宣称“实时”却说不清花了多久 | 五段时间戳 + P50/P95 公开；退避、死信、熔断、降级通道 | 大屏、故障注入【待测】 | 时效 5、自动化 10 |
+| 7 | 开放的插件生态 | 扩展门槛高、权限不受限 | 8 类 Schema 映射 OSV/STIX/CSAF；三类扩展点；权限默认全拒、沙箱、签名索引；Apache-2.0 SDK | 插件页 S-07、示例插件 | Agent 15、文档 15 |
+
+报告第五章、概述与 F-29 都按这 7 条，顺序和名称一致。
+
+---
+
+## D18 已实测事实与待测项
+
+### D18.1 境内网络连通性（2026-10-14，用户在境内网络实测；表 T-07）
+| 来源/平台 | 结果 | 处理 |
+|---|---|---|
+| NVD、GitHub、OSV、CISA KEV、FIRST EPSS、huntr、MITRE ATLAS | 均 HTTP 200 | 直连，部署无需代理 |
+| CNNVD | 首页 200 | 国内主力，数据接口待确认 |
+| TC260 | 200 | 标准版本监测；具体标准文件 URL 待补 |
+| CNVD（列表、网站信息、RSS 三入口） | 均 521（境内外一致） | 判定反爬，降为加分项，人工/半自动导入 |
+| arXiv export API | 502 | 改以 RSS 为主，Semantic Scholar 备选；境内 RSS 连通性【待测】 |
+| 360 Quake 查询接口 | 调用成功 | 见 D18.2 |
+| 奇安信鹰图 Hunter | 境内首页 200；境外访问被拦截 | API 待境内申请凭据后实测【待测】 |
+| FOFA | 接口可达，返回 820031（积分不足） | 备选，需积分后启用 |
+| ZoomEye | 鉴权方式与官方文档不一致，未核实 | 备选，核实前不启用 |
+- 证据缺口：10-14 原始终端输出未存档为文件，附录 A 需在境内重跑一次 `cn-network-test.sh` 补证据。
+- 补充（2026-10-15 15:57，境外 box 侧，**不能当作境内结果**）：arXiv RSS 200；Semantic Scholar bulk 429（无 key 限流）；avid-db 仓库 200；Hunter 首页 403。证据 `evidence/20261015/A-connectivity/box-reachability.log`。
+
+### D18.2 测绘计数校准（Quake，Ollama；表 T-16，图 F-13）
+| 时间（北京） | 语法 | 结果 | 说明 |
+|---|---|---|---|
+| 2026-10-14 | `app:"Ollama"` | 约 82 万 | 首次实测，判定过宽 |
+| 2026-10-15 15:57 | `app:"Ollama"`（宽口径） | 823 690 | 只作上限参考，不展示 |
+| 2026-10-15 15:57 | `port:11434 AND response:"Ollama is running"`（收窄） | 172 411（约 17.2 万） | 全球 |
+| 2026-10-15 15:57 | 收窄 + `country:"China"` | 51 612（约 5.2 万） | 国内（以平台国家字段为准） |
+| 2026-10-15 19:55 | 收窄语法 50 条元数据抽样 | 44/50 命中，精确率 88% | ≥80% 门槛，状态 verified（抽样时平台返回总数为 172 401） |
+- 对照文献：Cisco Talos 用 Shodan 识别出 1139 个暴露 Ollama（214 个无认证），与宽口径相差近三个数量级，说明宽泛应用指纹会把大量无关资产算进去；平台覆盖与口径不同，数字不可直接比较。
+- 全程只取 total，响应中的资产列表立即丢弃；证据 `evidence/20261015/B-exposure/`，含 SHA256SUMS；脱敏扫描 0 secret、0 IPv4 命中（`evidence/_audit/scan-20261015.txt`）。
+- 其余 9 个组件及 Hunter/FOFA 计数全部【待测】。
+
+### D18.3 其他已完成的工程事实
+- 2026-10-14 境外 box 实测：NVD CVE API 2.0 与变更历史、cvelistV5 deltaLog、GHSA 全局接口与 advisory-database 仓库、OSV 各接口与 GCS 导出、vllm 仓库级安全公告接口、huntr hacktivity 页、avid-db 仓库与展示页、KEV JSON、EPSS API 与 CSV、Wiz/Embrace The Red/Simon Willison/The Hacker News 四个 RSS、OWASP/NIST/ATLAS 数据/生成式 AI 办法页面均返回 200；huntr 无公开 API；AVID API 403；Protect AI、HiddenLayer RSS 404。
+- 2026-10-14 联网核对 Claude Code、Codex、Cursor 官方 MCP 文档，并据此写出接入配置（未在演示机实测）。
+- 方案文档统一了 13 条口径不一致（含编号由 AISI-/AISV- 统一为 SW-）。
+- 已有 91 页技术报告初稿、86 处占位（【待测】76、【截图待补】9、【图待补】1）及回填清单。
+- 3.2 节 6 段核心代码（C-01–C-06）为按设计写出的参考实现节选，**文件路径与函数名须与仓库最终代码对齐**；系统编码、截图与各项评测按里程碑 M1–M7 推进，实际完成度以仓库为准。
+
+### D18.4 待测项总表（与 backfill-checklist 编号对应）
+摘要 #1–3；Critic 引用核验 #8；富化准确率 #10；问答 #11–12；自愈 #13；测试环境 #14–16；指标表 #17–24；各来源时延 #25–36；κ #37；富化评测 #38–46；问答评测 #47–55；故障注入 #56–62；兼容性 #63–74；Hunter #76；截图 S-01–S-09；箱线图 F-28。#9、#75（Quake 收窄）已回填为实测值。
+
+---
+
+## D19 附录“真实实践记录”计划（排在参考文献之后）
+| 附录 | 主题 | 现在能写 | 内容要点 |
+|---|---|---|---|
+| A | 数据源连通性实测 | 能（需境内重跑补日志） | 表 A-1：来源、类别、公开入口、HTTP 状态、时间、网络环境、结论与处置；两轮对比 |
+| B | 测绘平台查询记录（仅计数） | 部分能 | 表 B-1 查询记录；表 B-2 语法校准（D18.2 已有 Ollama 一行）；抽样只记“第 k 条 是/否” |
+| C | 端到端运行追踪 | 不能 | 一条真实样本 + 一条演示注入样本分开；时间线表 C-1；Langfuse trace 截图；冲突记录、LLM 边理由、问答摘录 |
+| D | 外部智能体调用实录 | 不能 | 兼容性矩阵 D-1；各客户端对话摘录与截图（凭据打码）；CLI 退出码 |
+| E | 性能与延迟原始记录 | 不能 | 环境表 E-1；各来源时延表 E-2；时延 CSV 与复算脚本 |
+| F | 故障与修复记录 / 开发日志 | 部分能 | 事件卡：CNVD 521、arXiv 502、Quake 语法过宽→收窄→88%、FOFA 820031 / Hunter 境外拦截 / ZoomEye 鉴权不一致；13 条口径统一；故障注入表 F-2 |
+| G | 评测集与评测运行记录 | 不能 | 金标集说明与 κ；运行表（commit、模型版本、配置、结果文件）；错例分析 |
+- 写法：以叙述为主，交代“要验证什么、怎么做、发现什么、因此改了什么”，不套“实验目的/步骤/结论”模板；保留失败；每张表和截图下注证据文件名、采集时间、哈希前 12 位；没采到的写“【实录待补】”或“未测”并说明原因。
+- 编号：附录标题“附录 A …”，图表“图 A-1”“表 A-1”，进入图表目录；新增截图编号 AS-01 起。
+- 篇幅：合计约 8–12 页、6000–9000 字。
+- 证据目录：`evidence/YYYYMMDD/{A-connectivity,B-exposure,C-e2e,D-agents,E-perf,F-devlog,G-eval}`、`_audit/`、`scripts/`；只追加不改写。
+
+---
+
+## D20 文档冲突与裁决记录
+| # | 冲突 | 来源 | 裁决（统一口径） |
+|---|---|---|---|
+| 1 | MCP 工具 7 个 vs 加 `exposure_stats` 为 8 个 | architecture/MASTER-PLAN/报告 vs exposure-data-plan、appendix-plan | **7 个**。`exposure_stats` 为【规划扩展】（只读、读本地快照），团队确认前不计入工具数，不出现在表 T-05；可在 2.7 或 6.2 用一句话提及 |
+| 2 | 图谱边名 `TAGGED`、`RELATED_PAPER` | demo-script | 改为 `MAPS_TO`、`DISCUSSED_IN` |
+| 3 | `HAS_EXPOSURE` 边与 `ExposureSnapshot` 节点 | exposure-data-plan | 【规划扩展】；核心口径为暴露面是 Vulnerability 的 enrichment.exposure 字段（按组件缓存） |
+| 4 | “九类通道中三类是事件驱动实时通道” | demo-script | 以 architecture 为准：第三方一律轮询，webhook 只用于自有仓库与演示注入；“实时”= P0 分钟级 |
+| 5 | 创新点 6 条 vs 7 条 | demo-script、excellence-plan vs MASTER-PLAN/报告 | **7 条**（D17） |
+| 6 | 编号 AISI-/AISV- | 早期文档 | 统一 `SW-YYYY-NNNN` |
+| 7 | 边 method 三值（rule/llm/human）vs 四值（含 source） | architecture vs plugin-sdk | 四值（数据模型以 plugin-sdk 为准） |
+| 8 | 图示深色主题 | diagram-design、ui-design | 报告图改为白底论文风格（见 D22.1）；界面截图用浅色主题 |
+| 9 | 暴露面缓存“按组件 7 天 TTL” vs “周快照 + 14 天过期” | connectors-spec vs exposure-data-plan | 兼容：周快照为生产方式，≤7 天 high，8–14 天降级，>14 天 stale |
+| 10 | 通用重试（1 s 起 6 次）vs 测绘周更重试（30 s/2 min/10 min 3 次） | connectors-spec vs exposure-data-plan | 前者用于连接器与智能体任务，后者仅用于测绘周更任务 |
+| 11 | `ingest_latency_sec` 与“端到端时延”混用 | architecture §1 vs 报告 | 见 D2.8：前者是采集时延，6 h 指标用端到端时延 |
+| 12 | Hunter 首选主值 vs 目前只有 Quake 实测 | MASTER-PLAN vs evidence | 设计口径“Hunter 首选 + Quake 对照”；当前所有实测数字均来自 Quake，报告如实写明 |
+| 13 | ATLAS 归入“标准法规”类 vs 单列 | MASTER-PLAN 图 vs connectors-spec | ATLAS 属第 ⑨ 类“标准法规与知识库”，tier 1 |
+| 14 | 报告“概述”页曾配“表 0 核心内容与章节对照（重要内容预览）” | 现报告 | 新报告“概述”按官方十项写成 1–2 页叙述，可配缩略图与紧凑索引表，不叫“重要内容预览” |
+| 15 | 现报告表 1.1 前有一句重复导语 | 现报告 | 删除重复句 |
+| 16 | demo-script 说“P50 和 P95 按最近 N 条情报实时计算” | demo-script | 统计窗口以 list_sources 的 `window`（1h/24h/7d）为准 |
+
+---
+
+## D21 参考文献池（GB/T 7714—2015，只用真实文献；以下 40 条已在现报告中使用并核对）
+引用时按正文首次出现顺序编号。不得新增无法核实的文献；如需新增，必须给出可访问的官方页面或 DOI。
+1. VulnCheck. The real danger lurking in the NVD backlog[EB/OL]. (2024-05-23)[2026-10-15]. https://www.vulncheck.com/blog/nvd-backlog-exploitation.
+2. OWASP Foundation. OWASP Top 10 for LLM applications 2025[EB/OL]. (2024-11-18)[2026-10-15]. https://genai.owasp.org/llm-top-10/.
+3. National Institute of Standards and Technology. Artificial intelligence risk management framework (AI RMF 1.0): NIST AI 100-1[R]. Gaithersburg: NIST, 2023. DOI: 10.6028/NIST.AI.100-1.
+4. National Institute of Standards and Technology. Artificial intelligence risk management framework: generative artificial intelligence profile: NIST AI 600-1[R]. Gaithersburg: NIST, 2024. DOI: 10.6028/NIST.AI.600-1.
+5. 国家互联网信息办公室, 国家发展和改革委员会, 教育部, 等. 生成式人工智能服务管理暂行办法[EB/OL]. (2023-07-13)[2026-10-15]. https://www.cac.gov.cn/2023-07/13/c_1690898327029107.htm.
+6. Wiz Research. Probllama: Ollama remote code execution vulnerability (CVE-2024-37032): overview and mitigations[EB/OL]. (2024-06-24)[2026-10-15]. https://www.wiz.io/blog/probllama-ollama-vulnerability-cve-2024-37032.
+7. Oligo Security. ShadowRay: first known attack campaign targeting AI workloads exploited in the wild[EB/OL]. (2024-03-26)[2026-10-15]. https://www.oligo.security/blog/shadowray-attack-ai-workloads-actively-exploited-in-the-wild.
+8. TZIAKOURIS G, BIASIOTTO E. Detecting exposed LLM servers: a Shodan case study on Ollama[EB/OL]. Cisco Blogs, (2025-09)[2026-10-15]. https://blogs.cisco.com/security/detecting-exposed-llm-servers-shodan-case-study-on-ollama.
+9. National Institute of Standards and Technology. NVD vulnerability APIs (CVE API 2.0)[EB/OL]. [2026-10-15]. https://nvd.nist.gov/developers/vulnerabilities.
+10. Open Source Security Foundation. Open Source Vulnerability (OSV) schema[EB/OL]. [2026-10-15]. https://ossf.github.io/osv-schema/.
+11. MITRE. ATLAS: adversarial threat landscape for artificial-intelligence systems[EB/OL]. [2026-10-15]. https://atlas.mitre.org/.
+12. National Institute of Standards and Technology. NVD news: program announcement[EB/OL]. (2024-04-25)[2026-10-15]. https://nvd.nist.gov/general/news.
+13. VulnCheck. Danger is still lurking in the NVD backlog[EB/OL]. (2024-09-30)[2026-10-15]. https://www.vulncheck.com/blog/nvd-backlog-exploitation-lurking.
+14. LYONS J. NIST's security flaw database still backlogged with 17K+ unprocessed bugs. Not great[EB/OL]. The Register, (2024-10-02)[2026-10-15]. https://www.theregister.com/security/2024/10/02/nvd-still-backlogged-with-17k-unprocessed-bugs/675161.
+15. GAMBLIN J. 2024 CVE data review[EB/OL]. (2025-01-05)[2026-10-15]. https://www.jerrygamblin.com/2025/01/05/2024-cve-data-review/.
+16. GitHub. GHSA-hj4w-hm2g-p6w5: vLLM vulnerable to remote code execution via Mooncake integration[EB/OL]. (2025-04-29)[2026-10-15]. https://github.com/advisories/GHSA-hj4w-hm2g-p6w5.
+17. Model Context Protocol. Specification, version 2025-11-25[EB/OL]. (2025-11-25)[2026-10-15]. https://modelcontextprotocol.io/specification/2025-11-25.
+18. Cybersecurity and Infrastructure Security Agency. Known exploited vulnerabilities catalog[EB/OL]. [2026-10-15]. https://www.cisa.gov/known-exploited-vulnerabilities-catalog.
+19. JACOBS J, ROMANOSKY S, EDWARDS B, et al. Exploit prediction scoring system (EPSS)[J]. Digital Threats: Research and Practice, 2021, 2(3): 1-17.
+20. OASIS. STIX version 2.1[S]. OASIS Standard, 2021.
+21. OASIS. Common security advisory framework version 2.0[S]. OASIS Standard, 2022.
+22. 工业和信息化部, 国家互联网信息办公室, 公安部. 网络产品安全漏洞管理规定: 工信部联网安〔2021〕66号[A/OL]. (2021-07-12)[2026-10-15]. https://www.gov.cn/zhengce/zhengceku/2021-07/14/content_5624965.htm.
+23. WAGNER C, DULAUNOY A, WAGENER G, et al. MISP: the design and implementation of a collaborative threat intelligence sharing platform[C]//Proceedings of the 2016 ACM Workshop on Information Sharing and Collaborative Security. New York: ACM, 2016: 49-56.
+24. Filigran. OpenCTI: open cyber threat intelligence platform[CP/OL]. [2026-10-15]. https://github.com/OpenCTI-Platform/opencti.
+25. MITRE. Common weakness enumeration (CWE)[EB/OL]. [2026-10-15]. https://cwe.mitre.org/.
+26. ALAM M T, BHUSAL D, NGUYEN L, et al. CTIBench: a benchmark for evaluating LLMs in cyber threat intelligence[C]//Advances in Neural Information Processing Systems 37: Datasets and Benchmarks Track. 2024.
+27. LIU X, LIANG J, YAN Q, et al. CyLens: towards reinventing cyber threat intelligence in the paradigm of agentic large language models[EB/OL]. arXiv: 2502.20791, 2025.
+28. PAUL S, ALEMI F, MACWAN R. LLM-assisted proactive threat intelligence for automated reasoning[EB/OL]. arXiv: 2504.00428, 2025.
+29. LEWIS P, PEREZ E, PIKTUS A, et al. Retrieval-augmented generation for knowledge-intensive NLP tasks[C]//Advances in Neural Information Processing Systems 33. 2020: 9459-9474.
+30. EDGE D, TRINH H, CHENG N, et al. From local to global: a graph RAG approach to query-focused summarization[EB/OL]. arXiv: 2404.16130, 2024.
+31. TRIVEDI H, BALASUBRAMANIAN N, KHOT T, et al. Interleaving retrieval with chain-of-thought reasoning for knowledge-intensive multi-step questions[C]//Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics. Toronto: ACL, 2023: 10014-10037.
+32. GAO T, YEN H, YU J, et al. Enabling large language models to generate text with citations[C]//Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing. Singapore: ACL, 2023: 6465-6488.
+33. ES S, JAMES J, ESPINOSA-ANKE L, et al. RAGAs: automated evaluation of retrieval augmented generation[C]//Proceedings of the 18th Conference of the European Chapter of the Association for Computational Linguistics: System Demonstrations. St. Julians: ACL, 2024: 150-158.
+34. CORMACK G V, CLARKE C L A, BUETTCHER S. Reciprocal rank fusion outperforms condorcet and individual rank learning methods[C]//Proceedings of the 32nd International ACM SIGIR Conference on Research and Development in Information Retrieval. New York: ACM, 2009: 758-759.
+35. CHEN J, XIAO S, ZHANG P, et al. BGE M3-embedding: multi-lingual, multi-functionality, multi-granularity text embeddings through self-knowledge distillation[EB/OL]. arXiv: 2402.03216, 2024.
+36. YAO S, ZHAO J, YU D, et al. ReAct: synergizing reasoning and acting in language models[C]//International Conference on Learning Representations. 2023.
+37. WU Q, BANSAL G, ZHANG J, et al. AutoGen: enabling next-gen LLM applications via multi-agent conversation[EB/OL]. arXiv: 2308.08155, 2023.
+38. LangChain. LangGraph documentation[EB/OL]. [2026-10-15]. https://langchain-ai.github.io/langgraph/.
+39. Linux Foundation. Agent2Agent (A2A) protocol specification[EB/OL]. [2026-10-15]. https://a2a-protocol.org/latest/specification/.
+40. GRESHAKE K, ABDELNABI S, MISHRA S, et al. Not what you've signed up for: compromising real-world LLM-integrated applications with indirect prompt injection[C]//Proceedings of the 16th ACM Workshop on Artificial Intelligence and Security. New York: ACM, 2023: 79-90.
+
+---
+
+## D22 图表清单（供用 PPT 重绘）
+
+### D22.1 统一视觉规范（所有 F 图）
+- 白底（#FFFFFF），分组底色只用极浅灰蓝 #F4F7FA；不用渐变、阴影、3D、霓虹、深色背景。
+- 克制配色（同一张图主色不超过 3 种）：
+  - 主色 深蓝 #1F3A5F（主链路、标题条、主节点描边）
+  - 辅色 青灰 #2E7D8C（对外接口、生态）
+  - 智能体色 灰紫 #5B4E8C（Agent、LLM、推理、Critic 点划线）
+  - 存储色 中蓝 #3E6E9E（数据库圆柱）
+  - 状态色（只在需要表达状态时用）：通过 #2F7D4F、警示/待测 #B7791F、失败/禁止 #A33A3A、弱化/加分项 #8A94A6
+  - 文字 #1A1A1A，次要文字 #555555；线条 #4A5568
+- 字体：图中中文一律宋体（SimSun），英文、数字、符号一律 Times New Roman；代码标识（如 `check_stack`）也用 Times New Roman，不用等宽或黑体。字号：节点 10.5–12 pt，注释 9 pt，图内最小 8 pt。
+- 线型语义：主数据流 1.5 pt 实线实心箭头；控制/调度 1 pt 实线；失败/重试/死信 1 pt 红色虚线；Critic 校验 1 pt 灰紫点划线；可选/规划 0.75 pt 灰色虚线。
+- 形状语义：Agent 圆角矩形（左侧灰紫色窄条）；调度中枢六边形；插件平行四边形；存储圆柱；对外接口双线框矩形；外部来源胶囊形；判断菱形；“待测”指标位为琥珀色虚线框，内写“目标值 X（待测）”。
+- 版式：报告页面版心约 15.5 cm 宽；“通栏”= 15–15.5 cm 宽，“半栏”= 7.5–10 cm。PPT 画布建议设为 16 cm × 按内容高度（或 16:9 后裁切），导出 PNG ≥300 dpi，同时导出 EMF/SVG 或 PDF 矢量。
+- 图中不写图号和图题（图题由 Word 题注给出）；图中不出现 IP、key、PoC 代码；DEMO 数据要带 DEMO 标记；指标一律“目标值 X（待测）”，唯一可写的实测数字是 D18。
+- 每张图左下角可加一行 8 pt 灰字“口径：D 章节号”，正式导出时可保留或删去，但全书保持一致。
+
+### D22.2 图清单（F 图需用 PPT 重绘；“原图”指 build/fig 现有文件）
+| 图号 | 建议位置（新报告） | 图题 | 要表达的核心意思 | 关键元素 | 建议版式 | 原图 | 依据 |
+|---|---|---|---|---|---|---|---|
+| F-01 | 概述（缩略版）+ 2.1 | 哨望总体架构 | 六层分工 + 四项横切能力，变化快的部分被隔离在采集层 | 自下而上：数据源层（9 类，标 tier 与轮询频率）、采集层（Connector×N、自有仓库 webhook）、知识层（PG+pgvector、Neo4j、OpenSearch、MinIO、Redis/NATS）、智能体编排层（Orchestrator + 8 角色）、服务层（intel-core、GraphRAG）、接入层（Web、MCP 7 工具、OpenAPI、CLI、Agent Plugins）；右侧竖排四个横切框 | 通栏；概述用同图缩小或简化版（≤12 cm） | r01.png | D3.1 |
+| F-02 | 1.3 | 监测—富化—问答闭环 | 三大功能如何首尾相接，并由评估与开放把结果送到用户手上 | 环形三段（监测/富化/问答）+ 中心“知识图谱与事实库”+ 外圈“版本自查、MCP 开放、Critic 校验、时效可观测” | 半栏 | 新绘 | D1.1、D3.2 |
+| F-03 | 2.2.1 | 端到端数据流与阶段时间戳 | 六阶段流水线，五个时间戳把时延拆成可定位的几段 | 采集→归一→富化→校验→存储→服务，下方时间轴标 source_published_at、first_seen_at、normalized_at、enriched_at、queryable_at，括号标“采集时延”“处理时延”“端到端 ≤6 h 目标（待测）” | 通栏横向 | r04.png（竖向，需改横向） | D3.2、D2.8 |
+| F-04 | 2.2.2 | 一条新公告从发布到可问答的时序 | 智能体间的交接顺序；第三方轮询与演示注入两条触发路径 | 泳道：厂商仓库、Orchestrator、Collector、Triage、Enricher、Critic、GraphWriter、Assessor、编码智能体；注释框“演示时改由注入接口/自有仓库 webhook 触发” | 通栏时序图 | r08.png | D3.2、D5.3 |
+| F-05 | 2.2.3 | 查询请求的处理路径 | 读路径与写路径分离；鉴权、限流、审计、异步分流、合规过滤、裁剪的顺序 | 编码智能体 → /mcp → intel-core（凭据/scope/限流/审计）→ 耗时估计菱形（≤60 s 同步 / >60 s TaskHandle）→ 版本求解或 QA+Critic → 合规过滤 → ≤8k tokens 裁剪 → 返回 | 通栏 | 新绘 | D3.3、D3.4 |
+| F-06 | 2.3.1 | 九个智能体的协作关系 | Critic 位于所有对外产出的必经路径；死信回到 Orchestrator | 9 个角色节点；主链路 Collector→Triage→Enricher→Critic→GraphWriter→Assessor；QA 与 Reporter 经 Critic 输出；虚线：失败→DLQ→Orchestrator | 通栏 | r07.png | D4.1、D4.2 |
+| F-07 | 2.3.2 | 任务状态机 | 对外五种状态，内部 retrying 与死信对外显示为 running | queued、running、succeeded、failed、expired；内部虚框 retrying、DLQ；边上标“429/5xx/超时”“>6 次”“每 15 min 重放”“4xx（非 429）” | 半栏 | r09.png | D4.3 |
+| F-08 | 2.3.3 | Critic 校验闭环 | 三项检查与三种结论 | 输入（Enricher/Assessor/QA/Reporter）→ 引用可回溯？→ 置信度 ≥0.6？→ 无利用代码/IP？→ pass / partial（标注 unsupported_claims）/ reject（重检索或重富化）；角标“LLM 产出 20% 抽检，金标集回归” | 半栏 | r11.png | D4.4 |
+| F-09 | 2.4.1 | 九类数据源与三级可信度 | 来源按可信度分层，权重 1.0/0.7/0.4 | 三层同心或三栏：一级（NVD、GHSA reviewed、OSV、KEV、EPSS、ATLAS、CNNVD、CNVD、厂商公告、标准法规）、二级（huntr、AVID、GHSA unreviewed、测绘平台“仅暴露面”）、三级（arXiv、RSS）；CNVD 标“加分项·人工导入” | 通栏 | r12.png | D5.1 |
+| F-10 | 2.4.2 | 各来源采集节奏与目标时延 | 分级轮询的阶梯，6 h 口径只含漏洞类首次发现 | 横向阶梯或水平条：事件 ≤1 min → 5 min → 10 min → 15 min → 1 h → 6 h → 1 d → 1 周；每级列来源名与目标 P95；用括号框出“计入 6 h 指标”的五类 | 通栏 | r14.png | D5.2 |
+| F-11 | 2.4.3 | 去重与合并的三层处理 | 幂等、别名合并、相似候选三层；双 CVE 不合并 | 三级漏斗：①(source, external_id) 幂等 ②别名并查集→vuln_uid（优先级 CVE>GHSA>OSV>huntr>SW）③purl+SimHash≥0.9+±3 天→Critic 复核；旁支“别名指向两个 CVE→DUPLICATE_OF 候选” | 半栏 | 新绘 | D5.4 |
+| F-12 | 2.5.1 | 九维富化画像 | 一条原始情报如何被补全为 9 个维度，哪些是规则、哪些是弱关联、哪些有合规约束 | 中心“漏洞实体”卡片，9 个维度格子（3×3），每格写来源与方法；用颜色区分“规则/确定性”“LLM 弱关联须 Critic”“合规约束（仅链接/仅计数）” | 通栏 | 新绘（不用雷达图） | D6.1 |
+| F-13 | 2.5.1 或 4.6.2 | 暴露面计数的语法校准 | 宽口径会严重高估，收窄并抽样校准后才可用 | 漏斗：宽口径 823 690（仅上限）→ 收窄 172 411（全球）→ 51 612（国内）；侧框“50 条抽样命中 44 条，精确率 88% ≥80%，verified”；脚注“Quake，2026-10-15；只取计数，不含任何资产明细；文献对照：Talos 经 Shodan 识别 1139 个” | 半栏 | 新绘 | D18.2 |
+| F-14 | 2.5.2 | 六类自动关联 | 规则边与 LLM 边的区分，每条边带理由与置信度 | 以 Vulnerability 为中心的子图：Advisory（DESCRIBES）、Component（AFFECTS{range,fixed}）、AtlasTechnique（MAPS_TO）、Paper/Article（DISCUSSED_IN）、PocRef（HAS_POC_REF）、CWE、RiskCategory→Regulation（GOVERNED_BY）；实线=规则、点划线=LLM；挑两条边挂理由气泡 | 通栏 | r17.png | D6.3 |
+| F-15 | 2.5.3 | 多源冲突的逐字段裁决 | 先特例后三级比较，落选值留痕 | 决策流：字段候选 → 四个特例菱形（KEV 专属、一级撤回、一级区间互斥取并集、双 CVE 不合并）→ 等级 → 置信度 → 更新时间 → 写主值 + provenance；旁路“落选值→conflicts[]”；右下示例 CVSS 10.0 vs 9.8 | 通栏 | r18.png | D6.4 |
+| F-16 | 2.5.4 | 版本自查流程 | 三种输入、OSV 语义求解、三种结果、三种入口 | 依赖文件/清单 → purl 解析 → 区间求解（introduced/fixed/last_affected/limit）→ 受影响 / 未发现已知影响 / 组件未收录（+分歧提示）→ Web、check_stack、shaowang check（退出码 1 接 CI） | 通栏 | r20.png | D6.5 |
+| F-17 | 2.6.1 | 三路混合检索与 GraphRAG 问答流程 | 三路召回、RRF、重排、多跳、生成、Critic | 问题 → 规划器 → BM25 / 向量 top-50 / 图扩展 1–2 跳 → RRF（k=60）→ 重排 → 8–12 证据块 → 生成（逐句 [n]）→ Critic → 答案；fail 回到规划器 | 通栏（横向） | r21.png（竖向，建议改横向） | D7.1–D7.3 |
+| F-18 | 2.6.2 | 多跳问答的推理链示例 | 让读者看到“显式多跳”具体长什么样 | 4 个步骤卡片串联：①AFFECTS→vllm ②HAS_POC_REF ③近 90 天 ④MAPS_TO→ATLAS；每张卡写子问题、检索方式、命中数（命中数写“n”占位，不写假数字） | 通栏 | 新绘 | D7.2 |
+| F-19 | 2.7.1 / 2.7.3 | MCP 与插件生态全景 | 内层数据面插件、外层智能体面工具，一个仓库覆盖多家编码智能体 | 左：三类扩展点 → shaowang-sdk → 签名索引 → intel-core；右：MCP/OpenAPI/CLI → Agent Plugins 包 → Claude Code、Codex、Cursor、Gemini CLI（Kimi 等标“待核实”） | 通栏 | r24.png | D8、D9.3 |
+| F-20 | 2.7.3 | 插件生命周期 | 校验、审批、沙箱、降级、禁用 | 状态图：Discovered→Validated→Installed→Loaded→Running⇄Degraded→Disabled；Upgrading（MINOR 热升级/MAJOR 重审） | 半栏 | r26.png | D9.6 |
+| F-21 | 2.7.3 | 公开 Schema 与 OSV / STIX 2.1 / CSAF 2.0 的对应 | 数据可无损进出其他平台 | 左列 8 类 Schema，右三列标准，用连线或矩阵点表示字段映射（取 D9.2 中 6–8 行） | 通栏 | 新绘 | D9.1、D9.2 |
+| F-22 | 2.8 | 技术栈分层 | 每层选了什么、备选是什么 | 分层条：采集、消息调度、编排、模型、存储、检索、后端、MCP、前端、可观测、部署；每层主选 + 灰色备选 | 通栏 | 新绘 | D10 |
+| F-23 | 3.1.1 | docker compose 单机部署结构 | 应用、数据、可观测三组容器与交互 | 三个分组框；容器名与端点（/api/v1、/mcp）；不写任何 IP | 通栏 | r03.png | D3.5 |
+| F-24 | 3.1.2 | 知识图谱数据模型 | 11 类节点、边名与边属性 | 实体关系图；边属性框：reason、confidence、method、created_by_agent | 通栏 | r05.png | D11.2、D2.7 |
+| F-25 | 3.1.3 | 失败重试、死信重放与熔断降级 | 错误分类处理与降级通道 | 请求 → 错误类型菱形（429/5xx/超时 → 退避 1 s 起 ×2 上限 5 min ±20%，≤6 次；4xx 非 429 → 直接死信+告警）→ DLQ（15 min 重放）；连续 3 周期失败 → degraded → 降级通道表（NVD→cvelistV5 等） | 半栏或通栏 | r29.png | D12.1、D12.2 |
+| F-26 | 3.1.5 | 对外合规边界 | 什么能给、什么不给 | 左“提供”：计数与分布、PoC 链接与标题、修复版本与缓解；右“不提供（禁止框）”：IP/主机明细、利用代码、执行能力、主动扫描；中间“只读服务层 + Critic + 输出过滤” | 通栏 | r30.png | D13 |
+| F-27 | 4.2.1 | 时效统计的时间戳定义 | 指标口径 | 时间轴五点 + 区间标注；“只统计漏洞类首次发现；日更源单列；DEMO 不计；只精确到日按零点计” | 通栏 | r15.png | D2.8、D16.3 |
+| F-28 | 4.2.2 | 各来源时延分布箱线图 | 实测结果 | 由实测 CSV 用脚本生成（不是 PPT 手绘）；6 h 红色阈值线；【图待补】 | 通栏 | 无（待补） | D16.3 |
+| F-29 | 第五章开头 | 七项创新点总览 | 7 条创新点与对应评分项 | 7 张等宽卡片或 7 格环：编号、标题、一句话做法、评分标签 | 通栏 | 新绘 | D17 |
+| F-30 | 4.1 | 评测体系总览 | 四类测试问题 + 兼容性，各自数据集、对照与指标 | 五列：时效 / 富化 / 问答 / 自愈 / 兼容；每列写数据集（时间戳、200 金标、100 题、6 场景、4 客户端）、对照设置、指标、目标值（待测） | 通栏 | 新绘 | D16 |
+
+### D22.3 截图（不重绘，只替换真实截图）
+S-01–S-09 见 D14，位于新报告 3.3 节；当前 build/fig/S-01.png…S-09.png 为灰色占位图。截图统一加 0.5 pt 浅灰边框，宽度 12–15 cm。附录新增截图编号 AS-01 起。
+
+### D22.4 表清单
+| 表号 | 位置 | 表题 | 内容来源 |
+|---|---|---|---|
+| T-01 | 1.4.2 | 哨望与典型方案的定位对比 | 现表 1.1（通用漏洞库 / 开源情报平台 / 通用 RAG / 哨望；六个维度） |
+| T-02 | 2.3.1 | 九个智能体角色的职责划分 | D4.1 |
+| T-03 | 2.4.2 | 各类来源的采集方式与时效目标 | D5.2 |
+| T-04 | 2.5.1 | 九个富化维度及其来源 | D6.1 |
+| T-05 | 2.7.2 | MCP 工具一览 | D8.2 |
+| T-06 | 2.8 | 关键技术选型 | D10 |
+| T-07 | 3.1.6 | 境内网络连通性实测结果 | D18.1 |
+| T-08 | 4.1 | 测试环境 | D16（硬件、规模、周期【待测】） |
+| T-09 | 4.1 | 测试指标与设计目标 | D16.2 |
+| T-10 | 4.2.2 | 各来源时延统计 | D16.3（P50/P95【待测】） |
+| T-11 | 4.3.2 | 富化与关联准确率评测 | D16.3 |
+| T-12 | 4.4.2 | 问答质量评测结果（三组对照） | D16.3 |
+| T-13 | 4.5 | 故障注入测试场景 | D16.3 |
+| T-14 | 4.6.1 | 编码智能体兼容性测试 | D16.3 |
+| T-15 | 4.7 | 与相关方案的定性对比 | 现表 4.8 |
+| T-16 | 4.6.2 | 暴露面查询语法校准记录（Quake，Ollama） | D18.2 |
+| T-17 | 2.5.3（可选） | 字段级裁决特例 | D6.4 |
+| 附录表 | 附录 A–G | 表 A-1、B-1、B-2、C-1、D-1、E-1、E-2、F-2 等 | D19 |
+
+### D22.5 代码清单（报告 3.2 节，节选主干逻辑，每段配“设计意图”说明）
+| 代码号 | 内容 | 参考文件名（须与仓库对齐） | 说明要点 |
+|---|---|---|---|
+| C-01 | 逐字段冲突裁决 | enricher/resolve.py | 三元组排序键；特例字典先于通用规则；落选值写冲突记录；仅三级来源→unconfirmed |
+| C-02 | OSV 版本区间求解 | check/ranges.py | 事件扫描状态机；按生态比较版本；四种结果 |
+| C-03 | 三路检索 RRF 融合 | qa/retrieve.py | k=60；图扩展输入是实体；前 50 重排保留 8–12 |
+| C-04 | 答案引用逐句校验 | agents/critic.py | 存在性→支撑性→合规性；partial ≤30% |
+| C-05 | 退避重试与死信 | runtime/retry.py | 优先 Retry-After；可/不可重试区分；±20% 抖动；3 次失败熔断 |
+| C-06 | ask 同步/异步分流 | mcp/tools/ask.py | 调用前估计耗时；统一编排路径；fit 到 8k tokens；poll_with 固定 |

@@ -1,0 +1,87 @@
+.F.....                                                                  [100%]
+================================== FAILURES ===================================
+_ test_actual_writers_get_lock_not_available_while_authorized_audit_is_open[source_response] _
+audit_engine = Engine([redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]_r01:***[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]16?options=-c+search_path%3Dtest_r07[redacted test credential fragment]_fix1_de3c4e7d22e848e8a7b4ee5bb865cdc0+-c+statement_timeout%3D15000+-c+lock_timeout%3D3000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-941/test_actual_writers_get_lock_n1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024612736510>
+writer_path = 'source_response'
+
+    @pytest.mark.parametrize('writer_path', ['source_registration', 'source_response', 'catalog_document', 'revision_save', 'event_publish', 'enrichment_publication'])
+    def test_actual_writers_get_lock_not_available_while_authorized_audit_is_open(audit_engine, tmp_path, monkeypatch, writer_path):
+        if writer_path == 'source_response':
+            service, scope, session_hash, receipt, step = nvd_recorded(audit_engine, tmp_path, monkeypatch)
+        else:
+            service, scope, session_hash, receipt, step, _ = private_recorded_workflow(audit_engine, tmp_path, monkeypatch)
+        with Session(audit_engine) as session:
+            workflow = session.execute(select(enrichment_workflows).where(enrichment_workflows.c.workflow_id == str(receipt.workflow_id))).mappings().one()
+        frozen = FrozenEnrichmentInputs.model_validate_json(__import__('json').dumps(workflow['input_context']))
+        document = frozen.documents[0]
+        with Session(audit_engine) as reader, reader.begin():
+            result = service.read_input_audit(reader, scope, UUID(step['job_id']), actor_session_hash=session_hash, at=service.clock())
+            with pytest.raises(OperationalError) as blocked, Session(audit_engine) as writer, writer.begin():
+                writer.execute(text("SET LOCAL lock_timeout='250ms'"))
+                if writer_path == 'source_registration':
+                    ensure_source_registration(writer, ADMIN, 'arxiv_security', service.clock())
+                elif writer_path == 'source_response':
+                    body, _ = source_response('nvd_ollama')
+                    response = SourceResponse('nvd_ollama', body, 'https://services.nvd.nist.gov/rest/json/cves/2.0', service.clock())
+>                   persist_source_response(writer, service.store, ADMIN, response, ingested_at=service.clock())
+
+..\reports\runs\recovery_r07_input[redacted test credential fragment][redacted test credential fragment]ix1_20261016\probes\test_real_writer_paths.py:63: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\ingestion\source_documents.py:408: in persist_source_response
+    members = _prepare_documents(response)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\ingestion\source_documents.py:221: in _prepare_documents
+    parameters = _request_parameters(response)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = SourceResponse(source_kind='nvd_ollama', body=b'{"resultsPerPage":1,"startIndex":0,"totalResults":45,"format":"NVD_CVE....gov/rest/json/cves/2.0', observed_at=datetime.datetime(2026, 10, 16, 1, 44, 11, 712161, tzinfo=datetime.timezone.utc))
+
+    def _request_parameters(response: SourceResponse) -> dict[str, str]:
+        if response.source_kind not in SOURCE_DEFINITIONS:
+            raise SourceDocumentError("unsupported source kind")
+        if (
+            not isinstance(response.request_url, str)
+            or len(response.request_url) > (6500 if response.source_kind == "vllm_vendor" else 2000)
+            or response.request_url != response.request_url.strip()
+            or any(ord(character) < 32 or ord(character) == 127 for character in response.request_url)
+        ):
+            raise SourceDocumentError("invalid source request URL")
+        try:
+            parts = urlsplit(response.request_url)
+            pairs = parse_qsl(parts.query, strict_parsing=True, keep_blank_values=True, errors="strict")
+        except (ValueError, UnicodeError):
+            raise SourceDocumentError("invalid source request URL") from None
+        parameters = dict(pairs)
+        if parts.fragment or len(parameters) != len(pairs):
+            raise SourceDocumentError("invalid source request URL")
+        if response.source_kind == "nvd_ollama":
+            base = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+            allowed = {"keywordSearch", "resultsPerPage", "startIndex"}
+            fixed = parameters.get("keywordSearch") == "ollama"
+            count_key, position_key, minimum = "resultsPerPage", "startIndex", 0
+        else:
+            base = "https://api.github.com/repos/vllm-project/vllm/security-advisories"
+            allowed = {"per_page", "state"}
+            if "after" in parameters:
+                allowed.add("after")
+                validate_vendor_after(parameters["after"])
+            elif "page" in parameters:
+                allowed.add("page")
+            fixed = parameters.get("state") == "published"
+            count_key, position_key, minimum = "per_page", "page", 1
+        if (
+            f"{parts.scheme}://{parts.netloc}{parts.path}" != base
+            or set(parameters) != allowed
+            or not fixed
+        ):
+>           raise SourceDocumentError("source request URL is outside approved scope")
+E           ai_intel.ingestion.source_documents.SourceDocumentError: source request URL is outside approved scope
+
+src\ai_intel\ingestion\source_documents.py:169: SourceDocumentError
+- generated xml file: D:\wt\r07-input-audit-review1-fix1\reports\runs\recovery_r07_input_audit_review1_fix1_20261016\real_writer_paths_second.xml -
+=========================== short test summary info ===========================
+FAILED ..\reports\runs\recovery_r07_input_audit_review1_fix1_20261016\probes\test_real_writer_paths.py::test_actual_writers_get_lock_not_available_while_authorized_audit_is_open[source_response]
+1 failed, 6 passed in 17.15s

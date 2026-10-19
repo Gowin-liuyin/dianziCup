@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="7" time="2.758" timestamp="2026-10-16T06:18:01.259907+08:00" hostname="yin"><testcase classname="reports.runs.recovery_r07_input_review1_20261016.test_review_probe_pg" name="test_all_parent_changes_block_while_loader_transaction_holds_share[source]" time="1.388" /><testcase classname="reports.runs.recovery_r07_input_review1_20261016.test_review_probe_pg" name="test_all_parent_changes_block_while_loader_transaction_holds_share[document]" time="0.276" /><testcase classname="reports.runs.recovery_r07_input_review1_20261016.test_review_probe_pg" name="test_all_parent_changes_block_while_loader_transaction_holds_share[revision]" time="0.272" /><testcase classname="reports.runs.recovery_r07_input_review1_20261016.test_review_probe_pg" name="test_object_failures_are_distinct_and_never_empty_success[missing]" time="0.092" /><testcase classname="reports.runs.recovery_r07_input_review1_20261016.test_review_probe_pg" name="test_object_failures_are_distinct_and_never_empty_success[unavailable]" time="0.095" /><testcase classname="reports.runs.recovery_r07_input_review1_20261016.test_review_probe_pg" name="test_pg_object_size_mismatch_is_integrity_error" time="0.096" /><testcase classname="reports.runs.recovery_r07_input_review1_20261016.test_review_probe_pg" name="test_malformed_saved_uri_returns_typed_error" time="0.095"><failure message="AssertionError: Regex pattern did not match.&#10; Regex: 'taxonomy_source_uri_invalid'&#10; Input: 'taxonomy_object_integrity_invalid'">migrated_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_input_review1_1016_061759_49485)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-765/test_malformed_saved_uri_retur0')
+
+    def test_malformed_saved_uri_returns_typed_error(migrated_engine, tmp_path):
+        store, revision, _, _ = seed_catalogue(migrated_engine, tmp_path)
+        with migrated_engine.begin() as connection:
+            connection.execute(update(document_revisions).where(document_revisions.c.revision_id == str(revision)).values(canonical_uri="https://cwe.mitre.org:bad/data/xml/cwec_v4.19.xml"))
+        with Session(migrated_engine) as session, pytest.raises(TaxonomyInputError, match="taxonomy_source_uri_invalid"):
+&gt;           load_taxonomy_catalogue(session, store, ADMIN, PUBLIC, revision, "cwe")
+
+..\reports\runs\recovery_r07_input_review1_20261016\test_review_probe_pg.py:70: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+session = &lt;sqlalchemy.orm.session.Session object at 0x0000020090E3FCB0&gt;
+store = &lt;ai_intel.infrastructure.content_store.ContentStore object at 0x0000020090E3F740&gt;
+access_scope = AccessScope(user_id='fixture-loader', tenant_id=None, role=&lt;Role.SYSTEM_ADMIN: 'system_admin'&gt;, permissions=frozenset(...ad:public', 'manage:users', 'manage:public_sources', 'write:asset', 'read:audit', 'read:asset'}), permission_version=1)
+scope = VisibilityScope(visibility='public', tenant_id=None)
+revision_id = UUID('b9557a0b-a2f7-4a12-ae83-6b77cb63b88b'), kind = 'cwe'
+
+    def load_taxonomy_catalogue(
+        session: Session,
+        store: ContentStorage,
+        access_scope: AccessScope,
+        scope: VisibilityScope,
+        revision_id: UUID,
+        kind: Literal["cwe", "atlas"],
+    ) -&gt; TaxonomyCatalogue:
+        """Read only an already persisted current catalogue after source/document/revision ACLs.
+    
+        The caller registers official catalogue sources and persists raw bytes and version
+        metadata. This loader adds no catalogue URL fetching or public context fields.
+        Publication must still recheck every returned source revision against PostgreSQL.
+        """
+        access_scope.requires(READ_PUBLIC)
+        _require_input_scopes(session, access_scope, scope, (str(revision_id),))
+        row = (
+            session.execute(
+                select(
+                    document_revisions,
+                    documents.c.source_id,
+                    content_objects.c.size_bytes,
+                    sources.c.category.label("source_category"),
+                )
+                .join(documents, documents.c.document_id == document_revisions.c.document_id)
+                .join(sources, sources.c.source_id == documents.c.source_id)
+                .join(
+                    content_objects, content_objects.c.content_hash == document_revisions.c.content_hash
+                )
+                .where(document_revisions.c.revision_id == str(revision_id))
+                .with_for_update(read=True, of=(document_revisions, documents, sources))
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None or not row["is_current"]:
+            raise TaxonomyInputError("taxonomy_revision_not_current")
+        metadata = row["source_metadata"]
+        if (
+            metadata.get("content_coverage") != "full_text"
+            or row["source_category"] != "technical_standard"
+            or row["parse_status"] not in {"parsed", "partial"}
+            or not 1 &lt;= row["size_bytes"] &lt;= MAX_CATALOGUE_BYTES
+        ):
+            raise TaxonomyInputError("taxonomy_source_incomplete")
+        try:
+            provenance = CatalogueProvenance(
+                kind=kind,
+                canonical_uri=row["canonical_uri"],
+                snapshot_version=metadata.get("taxonomy_version"),
+                content_sha256=row["content_hash"],
+                revision_id=revision_id,
+                document_id=UUID(row["document_id"]),
+                source_id=UUID(row["source_id"]),
+            )
+        except (ValidationError, ValueError):
+            raise TaxonomyInputError("taxonomy_provenance_invalid") from None
+        _require_input_scopes(session, access_scope, scope, (str(revision_id),))
+        try:
+            raw = store.read_verified(row["content_hash"])
+        except FileNotFoundError:
+            raise TaxonomyInputError("taxonomy_object_missing") from None
+        except OSError:
+            raise TaxonomyInputError("taxonomy_object_unavailable") from None
+        except ValueError:
+            raise TaxonomyInputError("taxonomy_object_integrity_invalid") from None
+        if len(raw) != row["size_bytes"]:
+&gt;           raise TaxonomyInputError("taxonomy_object_integrity_invalid")
+E           ai_intel.enrichment.taxonomy_inputs.TaxonomyInputError: taxonomy_object_integrity_invalid
+
+src\ai_intel\enrichment\taxonomy_inputs.py:392: TaxonomyInputError
+
+During handling of the above exception, another exception occurred:
+
+migrated_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_input_review1_1016_061759_49485)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-765/test_malformed_saved_uri_retur0')
+
+    def test_malformed_saved_uri_returns_typed_error(migrated_engine, tmp_path):
+        store, revision, _, _ = seed_catalogue(migrated_engine, tmp_path)
+        with migrated_engine.begin() as connection:
+            connection.execute(update(document_revisions).where(document_revisions.c.revision_id == str(revision)).values(canonical_uri="https://cwe.mitre.org:bad/data/xml/cwec_v4.19.xml"))
+&gt;       with Session(migrated_engine) as session, pytest.raises(TaxonomyInputError, match="taxonomy_source_uri_invalid"):
+                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E        Regex: 'taxonomy_source_uri_invalid'
+E        Input: 'taxonomy_object_integrity_invalid'
+
+..\reports\runs\recovery_r07_input_review1_20261016\test_review_probe_pg.py:69: AssertionError</failure></testcase></testsuite></testsuites>

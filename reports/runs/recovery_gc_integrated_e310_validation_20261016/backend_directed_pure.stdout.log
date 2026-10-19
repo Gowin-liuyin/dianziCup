@@ -1,0 +1,61 @@
+........................................................................ [  4%]
+........................................................................ [  9%]
+........................................................................ [ 14%]
+........................................................................ [ 19%]
+........................................................................ [ 24%]
+........................................................................ [ 28%]
+........................................................................ [ 33%]
+........................................................................ [ 38%]
+........................................................................ [ 43%]
+........................................................................ [ 48%]
+........................................................................ [ 53%]
+........................................................................ [ 57%]
+........................................................................ [ 62%]
+........................................................................ [ 67%]
+........................................................................ [ 72%]
+........................................................................ [ 77%]
+........................................................................ [ 81%]
+........................................................................ [ 86%]
+........................................................................ [ 91%]
+........................................................................ [ 96%]
+...........................................F.........                    [100%]
+================================== FAILURES ===================================
+____________ test_audit_and_sources_carry_no_secret_values_t06_c06 ____________
+
+    def test_audit_and_sources_carry_no_secret_values_t06_c06() -> None:
+        """T06-C06: ����¼���Դ��/��־ɨ�������롢cookie��token ����ʵ��Կֵ��"""
+        service = build_service()
+        service.create_precreated_user("analyst-a", "Str0ng-Passphrase!", "tenant-alpha", Role.ANALYST)
+        session_token, _ = service.login("analyst-a", "Str0ng-Passphrase!", ALLOWED_ORIGIN, "client-1")
+        service.logout(session_token)
+        for event in service.audit_events():
+            serialized = str(event).lower()
+            assert "str0ng-passphrase!" not in serialized
+            assert session_token not in str(event)
+            assert "trace_id" in event
+        with pytest.raises(AuditEventError):
+            service._append_audit("manual_probe", {"password": "should-not-be-logged"})
+        classifications = load_fixture_classifications(
+            REPO_ROOT, REPO_ROOT / "reports/security/recovery_fixture_false_positives.json"
+        )
+        findings = scan_repository(REPO_ROOT, classifications)
+        rejected = [finding for finding in findings if finding.category not in SAFE_CATEGORIES]
+>       assert not rejected, rejected
+E       AssertionError: [ScanFinding(path='reports/runs/recovery_gc_integrated_e310_validation_20261016/.venv/Lib/site-packages/alembic/script...fastapi/openapi/models.py', pattern_id='original_secret_value_pattern', category='unclassified_credential_shape'), ...]
+E       assert not [ScanFinding(path='reports/runs/recovery_gc_integrated_e310_validation_20261016/.venv/Lib/site-packages/alembic/script...fastapi/openapi/models.py', pattern_id='original_secret_value_pattern', category='unclassified_credential_shape'), ...]
+
+tests\security\test_t06_authentication_and_scope.py:162: AssertionError
+============================== warnings summary ===============================
+..\reports\runs\recovery_gc_integrated_e310_validation_20261016\.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\wt\gc-e310-regression\reports\runs\recovery_gc_integrated_e310_validation_20261016\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/security/test_r11_inventory_boundary.py::test_unconfigured_router_does_not_fallback_to_fixture_or_parse_private_input
+  D:\wt\gc-e310-regression\reports\runs\recovery_gc_integrated_e310_validation_20261016\.venv\Lib\site-packages\starlette\testclient.py:463: DeprecationWarning: Setting per-request cookies=<...> is being deprecated, because the expected behaviour on cookie persistence is ambiguous. Set cookies directly on the client instance instead.
+    return super().request(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\gc-e310-regression\reports\runs\recovery_gc_integrated_e310_validation_20261016\backend_directed_pure.xml -
+=========================== short test summary info ===========================
+FAILED tests/security/test_t06_authentication_and_scope.py::test_audit_and_sources_carry_no_secret_values_t06_c06
+1 failed, 1492 passed, 12 deselected, 2 warnings in 76.43s (0:01:16)

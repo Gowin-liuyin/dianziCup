@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="18" time="6.451" timestamp="2026-10-16T06:35:29.464757+08:00" hostname="yin"><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_raw_bytes_update_and_delete_are_rejected[cyclonedx_json]" time="0.193" /><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_raw_bytes_update_and_delete_are_rejected[spdx_json]" time="0.047" /><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_sidecar_physical_checks_and_fk_are_effective[adapter_version--23514]" time="0.101" /><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_sidecar_physical_checks_and_fk_are_effective[spec_version--23514]" time="0.095" /><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_sidecar_physical_checks_and_fk_are_effective[adapter_version-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-23514]" time="0.113" /><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_sidecar_physical_checks_and_fk_are_effective[spec_version-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-23514]" time="0.089" /><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_sidecar_physical_checks_and_fk_are_effective[sidecar_sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA-23514]" time="0.086" /><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_sidecar_physical_checks_and_fk_are_effective[combined_semantic_sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-23514]" time="0.084" /><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_sidecar_physical_checks_and_fk_are_effective[canonical_payload-value6-23514]" time="0.077" /><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_sidecar_physical_checks_and_fk_are_effective[adapter_version-None-23502]" time="0.081" /><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_sidecar_physical_checks_and_fk_are_effective[snapshot_id-unbound-23503]" time="0.104" /><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_sidecar_physical_checks_and_fk_are_effective[tenant_id-foreign-23503]" time="0.072" /><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_receipt_failure_rolls_back_every_publication_and_asset" time="0.046" /><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_10000_components_use_constant_sql_count" time="3.053" /><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_sidecar_http_does_not_expose_protected_uri_values[postgresql://synthetic_user:synthetic_password@db.internal:5432/private]" time="0.343"><failure message="assert 'postgresql:...5432/private' not in '{&quot;schema_ve...dLocation&quot;]}'&#10;  &#10;  'postgresql://synth...ternal:5432/private' is contained here:&#10;    ent_uri&quot;:&quot;postgresql://synthetic_user:synthetic_password@db.internal:5432/private&quot;,&quot;checksum&quot;:{&quot;algorithm&quot;:&quot;SHA256&quot;,&quot;checksum_value&quot;:&quot;cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&quot;,&quot;source_field_locator&quot;:&quot;/externalDocumentRefs/0/checksum&quot;},&quot;source_field_locator&quot;:&quot;/externalDocumentRefs/0&quot;}],&quot;unmapped_field_locators&quot;:[&quot;/SPDXID&quot;,&quot;/creationInfo&quot;,&quot;/dataLicense&quot;,&quot;/documentNamespace&quot;,&quot;/name&quot;,&quot;/packages/0/downloadLocation&quot;]}&#10;  ?           +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++">sbom_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_sbom_review_20261016_063526)
+sbom_api = (&lt;function sbom_api.&lt;locals&gt;.login at 0x000001E8C8AFACA0&gt;, &lt;ai_intel.api.authentication.AuthenticationSessionService object at 0x000001E8C5CA4CB0&gt;)
+private_uri = 'postgresql://synthetic_user:synthetic_password@db.internal:5432/private'
+
+    @pytest.mark.parametrize("private_uri", [
+        "postgresql://synthetic_user:synthetic_password@db.internal:5432/private",
+        "file:///C:/private/synthetic-parent",
+        "https://synthetic_user:synthetic_password@example.test/sbom",
+    ])
+    def test_sidecar_http_does_not_expose_protected_uri_values(sbom_engine, sbom_api, private_uri):
+        login, _ = sbom_api
+        client, headers, _ = login()
+        value = resource.spdx_document()
+        value["externalDocumentRefs"][0]["spdxDocument"] = private_uri
+        response = resource.upload(client, headers, resource.raw_document(value), manifest_format="spdx_json")
+        if response.status_code in {400, 422}:
+            return
+        assert response.status_code == 201
+        snapshot = response.json()["snapshot"]["snapshot_id"]
+        sidecar = client.get(f"/api/assets/{response.json()['asset_id']}/snapshots/{snapshot}/sbom")
+        assert sidecar.status_code == 200
+&gt;       assert private_uri not in sidecar.text
+E       assert 'postgresql:...5432/private' not in '{"schema_ve...dLocation"]}'
+E         
+E         'postgresql://synth...ternal:5432/private' is contained here:
+E           ent_uri":"postgresql://synthetic_user:synthetic_password@db.internal:5432/private","checksum":{"algorithm":"SHA256","checksum_value":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","source_field_locator":"/externalDocumentRefs/0/checksum"},"source_field_locator":"/externalDocumentRefs/0"}],"unmapped_field_locators":["/SPDXID","/creationInfo","/dataLicense","/documentNamespace","/name","/packages/0/downloadLocation"]}
+E         ?           +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+..\reports\runs\recovery_r11_sbom_inventory_review1_20261016\test_review_probes.py:155: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_sidecar_http_does_not_expose_protected_uri_values[file:///C:/private/synthetic-parent]" time="0.223"><failure message="assert 'file:///C:/...hetic-parent' not in '{&quot;schema_ve...dLocation&quot;]}'&#10;  &#10;  'file:///C:/private/synthetic-parent' is contained here:&#10;    ent_uri&quot;:&quot;file:///C:/private/synthetic-parent&quot;,&quot;checksum&quot;:{&quot;algorithm&quot;:&quot;SHA256&quot;,&quot;checksum_value&quot;:&quot;cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&quot;,&quot;source_field_locator&quot;:&quot;/externalDocumentRefs/0/checksum&quot;},&quot;source_field_locator&quot;:&quot;/externalDocumentRefs/0&quot;}],&quot;unmapped_field_locators&quot;:[&quot;/SPDXID&quot;,&quot;/creationInfo&quot;,&quot;/dataLicense&quot;,&quot;/documentNamespace&quot;,&quot;/name&quot;,&quot;/packages/0/downloadLocation&quot;]}&#10;  ?           +++++++++++++++++++++++++++++++++++">sbom_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_sbom_review_20261016_063526)
+sbom_api = (&lt;function sbom_api.&lt;locals&gt;.login at 0x000001E8C8BB7100&gt;, &lt;ai_intel.api.authentication.AuthenticationSessionService object at 0x000001E8C8B10AA0&gt;)
+private_uri = 'file:///C:/private/synthetic-parent'
+
+    @pytest.mark.parametrize("private_uri", [
+        "postgresql://synthetic_user:synthetic_password@db.internal:5432/private",
+        "file:///C:/private/synthetic-parent",
+        "https://synthetic_user:synthetic_password@example.test/sbom",
+    ])
+    def test_sidecar_http_does_not_expose_protected_uri_values(sbom_engine, sbom_api, private_uri):
+        login, _ = sbom_api
+        client, headers, _ = login()
+        value = resource.spdx_document()
+        value["externalDocumentRefs"][0]["spdxDocument"] = private_uri
+        response = resource.upload(client, headers, resource.raw_document(value), manifest_format="spdx_json")
+        if response.status_code in {400, 422}:
+            return
+        assert response.status_code == 201
+        snapshot = response.json()["snapshot"]["snapshot_id"]
+        sidecar = client.get(f"/api/assets/{response.json()['asset_id']}/snapshots/{snapshot}/sbom")
+        assert sidecar.status_code == 200
+&gt;       assert private_uri not in sidecar.text
+E       assert 'file:///C:/...hetic-parent' not in '{"schema_ve...dLocation"]}'
+E         
+E         'file:///C:/private/synthetic-parent' is contained here:
+E           ent_uri":"file:///C:/private/synthetic-parent","checksum":{"algorithm":"SHA256","checksum_value":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","source_field_locator":"/externalDocumentRefs/0/checksum"},"source_field_locator":"/externalDocumentRefs/0"}],"unmapped_field_locators":["/SPDXID","/creationInfo","/dataLicense","/documentNamespace","/name","/packages/0/downloadLocation"]}
+E         ?           +++++++++++++++++++++++++++++++++++
+
+..\reports\runs\recovery_r11_sbom_inventory_review1_20261016\test_review_probes.py:155: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_sidecar_http_does_not_expose_protected_uri_values[https://synthetic_user:synthetic_password@example.test/sbom]" time="0.246"><failure message="assert 'https://syn...le.test/sbom' not in '{&quot;schema_ve...dLocation&quot;]}'&#10;  &#10;  'https://synthetic_...d@example.test/sbom' is contained here:&#10;    ent_uri&quot;:&quot;https://synthetic_user:synthetic_password@example.test/sbom&quot;,&quot;checksum&quot;:{&quot;algorithm&quot;:&quot;SHA256&quot;,&quot;checksum_value&quot;:&quot;cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&quot;,&quot;source_field_locator&quot;:&quot;/externalDocumentRefs/0/checksum&quot;},&quot;source_field_locator&quot;:&quot;/externalDocumentRefs/0&quot;}],&quot;unmapped_field_locators&quot;:[&quot;/SPDXID&quot;,&quot;/creationInfo&quot;,&quot;/dataLicense&quot;,&quot;/documentNamespace&quot;,&quot;/name&quot;,&quot;/packages/0/downloadLocation&quot;]}&#10;  ?           +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++">sbom_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_sbom_review_20261016_063526)
+sbom_api = (&lt;function sbom_api.&lt;locals&gt;.login at 0x000001E8C8BDA840&gt;, &lt;ai_intel.api.authentication.AuthenticationSessionService object at 0x000001E8C8BE0BC0&gt;)
+private_uri = 'https://synthetic_user:synthetic_password@example.test/sbom'
+
+    @pytest.mark.parametrize("private_uri", [
+        "postgresql://synthetic_user:synthetic_password@db.internal:5432/private",
+        "file:///C:/private/synthetic-parent",
+        "https://synthetic_user:synthetic_password@example.test/sbom",
+    ])
+    def test_sidecar_http_does_not_expose_protected_uri_values(sbom_engine, sbom_api, private_uri):
+        login, _ = sbom_api
+        client, headers, _ = login()
+        value = resource.spdx_document()
+        value["externalDocumentRefs"][0]["spdxDocument"] = private_uri
+        response = resource.upload(client, headers, resource.raw_document(value), manifest_format="spdx_json")
+        if response.status_code in {400, 422}:
+            return
+        assert response.status_code == 201
+        snapshot = response.json()["snapshot"]["snapshot_id"]
+        sidecar = client.get(f"/api/assets/{response.json()['asset_id']}/snapshots/{snapshot}/sbom")
+        assert sidecar.status_code == 200
+&gt;       assert private_uri not in sidecar.text
+E       assert 'https://syn...le.test/sbom' not in '{"schema_ve...dLocation"]}'
+E         
+E         'https://synthetic_...d@example.test/sbom' is contained here:
+E           ent_uri":"https://synthetic_user:synthetic_password@example.test/sbom","checksum":{"algorithm":"SHA256","checksum_value":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","source_field_locator":"/externalDocumentRefs/0/checksum"},"source_field_locator":"/externalDocumentRefs/0"}],"unmapped_field_locators":["/SPDXID","/creationInfo","/dataLicense","/documentNamespace","/name","/packages/0/downloadLocation"]}
+E         ?           +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+..\reports\runs\recovery_r11_sbom_inventory_review1_20261016\test_review_probes.py:155: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_probes" name="test_opaque_internal_values_stay_private_and_digest_mismatch_is_503" time="0.284" /></testsuite></testsuites>

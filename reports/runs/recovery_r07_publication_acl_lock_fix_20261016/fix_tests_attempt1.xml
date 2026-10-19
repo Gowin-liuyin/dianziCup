@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="14" time="25.349" timestamp="2026-10-16T03:06:55.244826+08:00" hostname="yin"><testcase classname="tests.integration.test_r07_publication_acl_lock_fix_pg" name="test_entire_roster_acl_precedes_the_first_object_read[source]" time="2.316" /><testcase classname="tests.integration.test_r07_publication_acl_lock_fix_pg" name="test_entire_roster_acl_precedes_the_first_object_read[document]" time="2.176" /><testcase classname="tests.integration.test_r07_publication_acl_lock_fix_pg" name="test_entire_roster_acl_precedes_the_first_object_read[revision]" time="2.369" /><testcase classname="tests.integration.test_r07_publication_acl_lock_fix_pg" name="test_failed_empty_candidate_revalidates_every_input_acl[source]" time="2.398" /><testcase classname="tests.integration.test_r07_publication_acl_lock_fix_pg" name="test_failed_empty_candidate_revalidates_every_input_acl[document]" time="1.780" /><testcase classname="tests.integration.test_r07_publication_acl_lock_fix_pg" name="test_failed_empty_candidate_revalidates_every_input_acl[revision]" time="1.839" /><testcase classname="tests.integration.test_r07_publication_acl_lock_fix_pg" name="test_historical_receipt_still_requires_current_parent_permissions[source]" time="1.225" /><testcase classname="tests.integration.test_r07_publication_acl_lock_fix_pg" name="test_historical_receipt_still_requires_current_parent_permissions[document]" time="1.297" /><testcase classname="tests.integration.test_r07_publication_acl_lock_fix_pg" name="test_historical_receipt_still_requires_current_parent_permissions[revision]" time="1.456" /><testcase classname="tests.integration.test_r07_publication_acl_lock_fix_pg" name="test_visible_tenant_input_cannot_be_derived_into_a_public_event" time="1.475" /><testcase classname="tests.integration.test_r07_publication_acl_lock_fix_pg" name="test_real_source_writer_and_publisher_complete_in_both_start_orders[False-writer]" time="1.592" /><testcase classname="tests.integration.test_r07_publication_acl_lock_fix_pg" name="test_real_source_writer_and_publisher_complete_in_both_start_orders[False-publisher]" time="1.533" /><testcase classname="tests.integration.test_r07_publication_acl_lock_fix_pg" name="test_real_source_writer_and_publisher_complete_in_both_start_orders[True-writer]" time="1.389" /><testcase classname="tests.integration.test_r07_publication_acl_lock_fix_pg" name="test_real_source_writer_and_publisher_complete_in_both_start_orders[True-publisher]" time="1.831"><failure message="AssertionError: assert ['stale_snaps..., 'completed'] == ['completed', 'completed']&#10;  &#10;  At index 0 diff: 'stale_snapshot_rejected' != 'completed'&#10;  Use -v to get more diff">catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_pub_fix_20261016?options=-c+search_path%3Dtest_r06_catalog_6c3796a8635743629d89f7fd7d46f4d7+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-652/test_real_source_writer_and_pu3')
+first_actor = 'publisher', paired = True
+
+    @pytest.mark.parametrize("first_actor", ["writer", "publisher"])
+    @pytest.mark.parametrize("paired", [False, True])
+    def test_real_source_writer_and_publisher_complete_in_both_start_orders(
+        catalog_engine, tmp_path, first_actor, paired
+    ):
+        store, loaded = inputs(catalog_engine, tmp_path, paired=paired)
+        if paired:
+            loaded = replace(loaded, documents=tuple(reversed(loaded.documents)))
+        attempts = enrich_structured_fields(loaded.context, loaded.documents)
+        request_id = uuid4()
+        payload = json.loads(source_response("nvd_ollama")[0])
+        payload["vulnerabilities"][0]["cve"]["descriptions"][0]["value"] += " Synthetic lock revision."
+        response = SourceResponse(
+            "nvd_ollama",
+            json.dumps(payload).encode(),
+            "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=ollama&amp;resultsPerPage=20&amp;startIndex=0",
+            loaded.documents[0].observed_at + timedelta(seconds=1),
+        )
+        first_has_lock = Event()
+        second_attempted_lock = Event()
+        locks = {"writer": [], "publisher": []}
+    
+        def before_execute(connection, cursor, statement, parameters, context, executemany):
+            actor = connection.info.get("acl_lock_actor")
+            if actor is not None and "pg_advisory_xact_lock" in statement:
+                key = next(iter(parameters.values()))
+                if isinstance(key, str) and key.startswith("source:"):
+                    locks[actor].append(key)
+                    if actor != first_actor:
+                        second_attempted_lock.set()
+    
+        def after_execute(connection, cursor, statement, parameters, context, executemany):
+            actor = connection.info.get("acl_lock_actor")
+            if (
+                actor == first_actor
+                and "pg_advisory_xact_lock" in statement
+                and not first_has_lock.is_set()
+            ):
+                first_has_lock.set()
+                assert second_attempted_lock.wait(3), "second actor never attempted its source lock"
+    
+        def invoke(actor):
+            try:
+                with Session(catalog_engine) as session, session.begin():
+                    session.connection().info["acl_lock_actor"] = actor
+                    if actor == "writer":
+                        persist_source_response(
+                            session, store, ADMIN, response, ingested_at=response.observed_at
+                        )
+                    else:
+                        publish_enrichment_attempts(
+                            session,
+                            ADMIN,
+                            loaded,
+                            attempts,
+                            request_id=request_id,
+                            recorded_at=response.observed_at,
+                        )
+                return "completed"
+            except EnrichmentPublicationError as failure:
+                assert str(failure) in {
+                    "enrichment_event_inputs_changed",
+                    "enrichment_source_revision_changed",
+                }
+                return "stale_snapshot_rejected"
+            finally:
+                with catalog_engine.connect() as connection:
+                    connection.info.pop("acl_lock_actor", None)
+    
+        event.listen(catalog_engine, "before_cursor_execute", before_execute)
+        event.listen(catalog_engine, "after_cursor_execute", after_execute)
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                first = pool.submit(invoke, first_actor)
+                assert first_has_lock.wait(3), "first actor never acquired its advisory lock"
+                second = pool.submit(invoke, "publisher" if first_actor == "writer" else "writer")
+                outcomes = [first.result(timeout=12), second.result(timeout=12)]
+        finally:
+            event.remove(catalog_engine, "before_cursor_execute", before_execute)
+            event.remove(catalog_engine, "after_cursor_execute", after_execute)
+&gt;       assert outcomes == (
+            ["completed", "stale_snapshot_rejected"]
+            if first_actor == "writer"
+            else ["completed", "completed"]
+        )
+E       AssertionError: assert ['stale_snaps..., 'completed'] == ['completed', 'completed']
+E         
+E         At index 0 diff: 'stale_snapshot_rejected' != 'completed'
+E         Use -v to get more diff
+
+tests\integration\test_r07_publication_acl_lock_fix_pg.py:275: AssertionError</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,138 @@
+E501 Line too long (102 > 100)
+  --> backend\src\ai_intel\answering\conversation_context.py:78:101
+   |
+76 | def validate_context_integrity(context: ResolvedQuestionContext) -> None:
+77 |     """Every consumer verifies the saved canonical digest before using context identity."""
+78 |     if _digest(context.model_dump(mode="json", exclude={"context_sha256"})) != context.context_sha256:
+   |                                                                                                     ^^
+79 |         raise ConversationFailure("context_integrity_unavailable", 503)
+   |
+
+E501 Line too long (102 > 100)
+   --> backend\src\ai_intel\answering\conversation_context.py:368:101
+    |
+366 |             raise CrossTenantAccessError("resource not found")
+367 |         try:
+368 |             context = ResolvedQuestionContext.model_validate_json(json.dumps(row["resolved_context"]))
+    |                                                                                                     ^^
+369 |         except ValueError:
+370 |             raise ConversationFailure("context_integrity_unavailable", 503) from None
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> backend\tests\integration\test_r12_conversation_boundary_fix1_pg.py:3:1
+   |
+ 1 |   """Real PG boundary regressions; synthetic receipts never claim model or live evidence."""
+ 2 |
+ 3 | / import hashlib
+ 4 | | import json
+ 5 | | from datetime import UTC, datetime, timedelta
+ 6 | | from uuid import UUID, uuid4
+ 7 | |
+ 8 | | import pytest
+ 9 | | from sqlalchemy import delete, func, select, update
+10 | | from sqlalchemy.exc import IntegrityError
+11 | | from tests.integration.test_r12_conversation_assets_pg import import_snapshot
+12 | | from tests.integration.test_r12_conversation_context_pg import admit
+13 | | from tests.r12_conversation_fixtures import context_identity as context_identity
+14 | | from tests.r12_conversation_fixtures import conversation_database as conversation_database
+15 | | from tests.r12_conversation_fixtures import record_synthetic_completion
+16 | | from tests.r12_hybrid_fixtures import seed_fact
+17 | |
+18 | | from ai_intel.answering.conversation_context import ConversationContextService
+19 | | from ai_intel.answering.conversation_contracts import ConversationFailure
+20 | | from ai_intel.answering.conversation_models import qa_conversation_turns, qa_conversations
+21 | | from ai_intel.api.question_contracts import QuestionRequest
+22 | | from ai_intel.domain.access import CrossTenantAccessError, Role
+23 | | from ai_intel.knowledge.persistence_models import events
+24 | | from ai_intel.retrieval.persistence_models import grounded_answers
+   | |__________________________________________________________________^
+25 |
+26 |   pytestmark = pytest.mark.real_pg
+   |
+help: Organize imports
+   |
+8  | import pytest
+9  + from ai_intel.answering.conversation_context import ConversationContextService
+10 + from ai_intel.answering.conversation_contracts import ConversationFailure
+11 + from ai_intel.answering.conversation_models import qa_conversation_turns, qa_conversations
+12 + from ai_intel.api.question_contracts import QuestionRequest
+13 + from ai_intel.domain.access import CrossTenantAccessError, Role
+14 + from ai_intel.knowledge.persistence_models import events
+15 + from ai_intel.retrieval.persistence_models import grounded_answers
+16 | from sqlalchemy import delete, func, select, update
+--------------------------------------------------------------------------------
+23 | from tests.r12_hybrid_fixtures import seed_fact
+   -
+   - from ai_intel.answering.conversation_context import ConversationContextService
+   - from ai_intel.answering.conversation_contracts import ConversationFailure
+   - from ai_intel.answering.conversation_models import qa_conversation_turns, qa_conversations
+   - from ai_intel.api.question_contracts import QuestionRequest
+   - from ai_intel.domain.access import CrossTenantAccessError, Role
+   - from ai_intel.knowledge.persistence_models import events
+   - from ai_intel.retrieval.persistence_models import grounded_answers
+24 |
+   |
+
+SIM117 Use a single `with` statement with multiple contexts instead of nested `with` statements
+   --> backend\tests\integration\test_r12_conversation_boundary_fix1_pg.py:120:5
+    |
+118 |       engine = context_identity[0]
+119 |       turn = admit(context_identity)
+120 | /     with pytest.raises(IntegrityError, match="conversation turns are immutable"):
+121 | |         with engine.begin() as connection:
+    | |__________________________________________^
+122 |               if operation == "update":
+123 |                   statement = update(qa_conversation_turns).values(context_sha256="a" * 64)
+    |
+help: Combine `with` statements
+
+E501 Line too long (101 > 100)
+   --> backend\tests\integration\test_r12_conversation_boundary_fix1_pg.py:145:101
+    |
+143 |         canonical = {name: value for name, value in context.items() if name != "context_sha256"}
+144 |         digest = hashlib.sha256(
+145 |             json.dumps(canonical, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+    |                                                                                                     ^
+146 |         ).hexdigest()
+147 |         context["context_sha256"] = digest
+    |
+
+E501 Line too long (103 > 100)
+   --> backend\tests\integration\test_r12_conversation_boundary_fix1_pg.py:214:101
+    |
+212 |             version=turn.conversation_version,
+213 |         )
+214 |     assert [item.state for item in service.read_history(scope, turn.turn_id, session_token=token)] == [
+    |                                                                                                     ^^^
+215 |         "pending",
+216 |         "completed",
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> backend\tests\unit\test_r12_conversation_boundary_fix1.py:3:1
+   |
+ 1 |   """Unbound references clarify; explicit first questions preserve bounded input semantics."""
+ 2 |
+ 3 | / from datetime import UTC, datetime
+ 4 | | from uuid import UUID
+ 5 | |
+ 6 | | import pytest
+ 7 | |
+ 8 | | from ai_intel.answering.conversation_context import resolve_question_context
+ 9 | | from ai_intel.answering.conversation_contracts import EventReference
+10 | | from ai_intel.api.question_contracts import QuestionRequest
+11 | | from ai_intel.domain.access import AccessScope, Role
+   | |____________________________________________________^
+12 |
+13 |   SCOPE = AccessScope.for_authenticated_user("synthetic-owner", "tenant-a", Role.ANALYST)
+   |
+help: Organize imports
+  |
+6 | import pytest
+  -
+7 | from ai_intel.answering.conversation_context import resolve_question_context
+  |
+
+Found 7 errors.
+[*] 2 fixable with the `--fix` option.

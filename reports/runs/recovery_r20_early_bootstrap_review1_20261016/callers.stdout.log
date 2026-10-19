@@ -1,0 +1,84 @@
+backend/tests\unit\test_r04_real_parsing.py:12:from ai_intel.ingestion.parsing.parsers import parse_json_document, parse_pdf_text_layer
+backend/tests\unit\test_r04_real_parsing.py:48:    outcome = parse_pdf_text_layer(source.read_bytes())
+backend/tests\unit\test_r04_real_parsing.py:61:    outcome = parse_pdf_text_layer(make_pdf(("first evidence", None, "third evidence")))
+backend/tests\unit\test_r04_real_parsing.py:69:    empty = parse_pdf_text_layer(make_pdf((None,)))
+backend/tests\unit\test_r04_real_parsing.py:71:    encrypted = parse_pdf_text_layer(make_pdf(("protected evidence",), encrypted=True))
+backend/tests\unit\test_r04_real_parsing.py:85:    result = parse_pdf_text_layer(content)
+backend/tests\unit\test_r04_real_parsing.py:90:    result = parse_pdf_text_layer(make_pdf((None,) * 301))
+backend/tests\unit\test_r04_real_parsing.py:175:    assert parse_pdf_text_layer(b"%PDF-1.4" + b"x" * pdf_text.MAX_PDF_BYTES).notes == (
+backend/tests\unit\test_r04_real_parsing.py:181:        assert parse_pdf_text_layer(b"%PDF-1.4").notes == ("pdf parser capacity reached",)
+backend/tests\unit\test_r04_real_parsing.py:241:            pdf_text, "_launch_windows_worker", lambda *args, **kwargs: (ChildFixture(), None)
+backend/tests\unit\test_r04_real_parsing.py:245:    outcome = parse_pdf_text_layer(b"%PDF-1.4")
+backend/tests\unit\test_r04_real_parsing.py:283:        monkeypatch.setattr(pdf_text, "_launch_windows_worker", early_spawn)
+backend/tests\unit\test_r04_real_parsing.py:286:    assert parse_pdf_text_layer(b"%PDF-1.4").notes == ("pdf extraction timed out",)
+backend/src\ai_intel\infrastructure\process_limits.py:205:def bound_process_resources(*, memory_bytes: int, cpu_seconds: int) -> int | None:
+backend/src\ai_intel\infrastructure\process_limits.py:298:class _WindowsWorkerSupervisor:
+backend/src\ai_intel\infrastructure\process_limits.py:386:def _launch_windows_worker(
+backend/src\ai_intel\infrastructure\process_limits.py:393:) -> tuple[subprocess.Popen[bytes], _WindowsWorkerSupervisor]:
+backend/src\ai_intel\infrastructure\process_limits.py:420:    supervisor: _WindowsWorkerSupervisor | None = None
+backend/src\ai_intel\infrastructure\process_limits.py:483:        supervisor = _WindowsWorkerSupervisor(process_handle, guard, cpu_seconds)
+backend/src\ai_intel\infrastructure\models\semantic.py:23:    from ai_intel.infrastructure.process_limits import _WindowsWorkerSupervisor
+backend/src\ai_intel\infrastructure\models\semantic.py:40:class _EarlySemanticProcess(SpawnProcess):
+backend/src\ai_intel\infrastructure\models\semantic.py:43:    _supervisor: _WindowsWorkerSupervisor | None = None
+backend/src\ai_intel\infrastructure\models\semantic.py:53:        from ai_intel.infrastructure.process_limits import _launch_windows_worker
+backend/src\ai_intel\infrastructure\models\semantic.py:63:                        worker, supervisor = _launch_windows_worker(
+backend/src\ai_intel\infrastructure\models\semantic.py:89:                        if isinstance(process_object, _EarlySemanticProcess):
+backend/src\ai_intel\infrastructure\models\semantic.py:106:                supervisor: _WindowsWorkerSupervisor,
+backend/src\ai_intel\infrastructure\models\semantic.py:298:        payload = _run_worker(self, E5_MODEL, prefix, texts, None)
+backend/src\ai_intel\infrastructure\models\semantic.py:309:        payload = _run_worker(self, RERANK_MODEL, "rerank", passages, query)
+backend/src\ai_intel\infrastructure\models\semantic.py:318:def _run_worker(
+backend/src\ai_intel\infrastructure\models\semantic.py:337:                _EarlySemanticProcess
+backend/src\ai_intel\infrastructure\models\semantic.py:360:        if isinstance(process, _EarlySemanticProcess) and process.supervision_error is not None:
+backend/src\ai_intel\infrastructure\models\semantic.py:401:                        if isinstance(process, _EarlySemanticProcess):
+backend/src\ai_intel\infrastructure\models\semantic.py:428:        _bound_worker_memory()
+backend/src\ai_intel\infrastructure\models\semantic.py:500:def _bound_worker_memory() -> None:
+backend/src\ai_intel\infrastructure\models\semantic.py:502:    from ai_intel.infrastructure.process_limits import bound_process_resources
+backend/src\ai_intel\infrastructure\models\semantic.py:504:    bound_process_resources(memory_bytes=MAX_MEMORY_BYTES, cpu_seconds=30)
+backend/tests\contract\test_t09_document_parsing.py:13:    parse_pdf_text_layer,
+backend/tests\contract\test_t09_document_parsing.py:63:    outcome = parse_pdf_text_layer(
+backend/tests\unit\test_r05_semantic.py:74:    monkeypatch.setattr(semantic, "_run_worker", run)
+backend/tests\unit\test_r05_semantic.py:101:    monkeypatch.setattr(semantic, "_run_worker", lambda *args: payload)
+backend/tests\unit\test_r05_semantic.py:109:    monkeypatch.setattr(semantic, "_run_worker", lambda *args: [[-2.0], [3.0], [3.0], [-2.0]])
+backend/tests\unit\test_r05_semantic.py:124:    monkeypatch.setattr(semantic, "_run_worker", lambda *args: payload)
+backend/tests\unit\test_r05_semantic.py:408:    monkeypatch.setattr(semantic, "_bound_worker_memory", bounded)
+backend/tests\contract\test_r05_semantic_contract.py:27:    monkeypatch.setattr(semantic, "_run_worker", lambda *args: [row])
+backend/tests\unit\test_r05_process_limits.py:9:from ai_intel.infrastructure.process_limits import bound_process_resources
+backend/tests\unit\test_r05_process_limits.py:15:        bound_process_resources(memory_bytes=memory_bytes, cpu_seconds=1)
+backend/tests\unit\test_r05_process_limits.py:21:        bound_process_resources(memory_bytes=100 * 1024**2, cpu_seconds=cpu_seconds)
+backend/tests\unit\test_r05_process_limits.py:29:            "from ai_intel.infrastructure.process_limits import bound_process_resources; "
+backend/tests\unit\test_r05_process_limits.py:30:            "handle = bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=5); "
+backend/tests\unit\test_r05_process_limits.py:46:        "from ai_intel.infrastructure.process_limits import bound_process_resources\n"
+backend/tests\unit\test_r05_process_limits.py:47:        "handle = bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\n"
+backend/tests\unit\test_r05_process_limits.py:63:        bound_process_resources(memory_bytes=100 * 1024**2, cpu_seconds=1)
+backend/tests\unit\test_r05_process_limits.py:75:    monkeypatch.setattr(_pdf_worker, "bound_process_resources", bound)
+backend/src\ai_intel\ingestion\catalog_pages.py:24:    parse_pdf_text_layer,
+backend/src\ai_intel\ingestion\catalog_pages.py:578:    parsed = parse_pdf_text_layer(body)
+backend/src\ai_intel\ingestion\parsing\parsers.py:9:from ai_intel.ingestion.parsing.pdf_text import PDF_PARSER_VERSION, parse_pdf_text_layer
+backend/src\ai_intel\ingestion\parsing\parsers.py:19:    "parse_pdf_text_layer",
+backend/src\ai_intel\ingestion\parsing\pdf_text.py:12:from ai_intel.infrastructure.process_limits import _launch_windows_worker
+backend/src\ai_intel\ingestion\parsing\pdf_text.py:24:def parse_pdf_text_layer(content: bytes) -> ParseOutcome:
+backend/src\ai_intel\ingestion\parsing\pdf_text.py:49:            process, supervisor = _launch_windows_worker(
+backend/src\ai_intel\ingestion\parsing\_pdf_worker.py:10:from ai_intel.infrastructure.process_limits import bound_process_resources
+backend/src\ai_intel\ingestion\parsing\_pdf_worker.py:20:    return bound_process_resources(memory_bytes=MAX_MEMORY_BYTES, cpu_seconds=15)
+backend/tests\unit\test_r20_early_cpu_bootstrap.py:117:    process = semantic._EarlySemanticProcess(
+backend/tests\unit\test_r20_early_cpu_bootstrap.py:225:        process_limits._launch_windows_worker(
+backend/tests\unit\test_r20_early_cpu_bootstrap.py:245:    monkeypatch.setattr(semantic, "_EarlySemanticProcess", LateFailedProcess)
+backend/tests\unit\test_r20_early_cpu_bootstrap.py:286:    process = semantic._EarlySemanticProcess(
+backend/tests\unit\test_r20_early_cpu_bootstrap.py:350:        "handle=process_limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\n"
+backend/tests\unit\test_r20_native_cpu_guard.py:16:    "from ai_intel.infrastructure.process_limits import bound_process_resources\n"
+backend/tests\unit\test_r20_native_cpu_guard.py:17:    "handle=bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\n"
+backend/tests\unit\test_r20_native_cpu_guard.py:31:    handle = process_limits.bound_process_resources(memory_bytes=100 * 1024**2, cpu_seconds=1)
+backend/tests\unit\test_r20_native_cpu_guard.py:116:        "handle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\n"
+backend/tests\unit\test_r20_native_cpu_guard.py:172:        "try: process_limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=5)\n"
+backend/tests\unit\test_r20_native_cpu_guard.py:197:        "handle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\n"
+backend/tests\unit\test_r20_native_cpu_guard.py:239:    monkeypatch.setattr(pdf_text, "_launch_windows_worker", launch_early_fault_fixture)
+backend/tests\unit\test_r20_native_cpu_guard.py:240:    result = pdf_text.parse_pdf_text_layer(b"%PDF-1.7\n")
+backend/tests\unit\test_r20_native_cpu_guard.py:255:        semantic._run_worker(
+backend/tests\unit\test_r20_native_cpu_guard.py:269:            else "from ai_intel.infrastructure.models.semantic import _bound_worker_memory\n"
+backend/tests\unit\test_r20_native_cpu_guard.py:270:            "_bound_worker_memory()\n"
+backend/tests\unit\test_r20_native_cpu_guard.py:349:        "    try: process_limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=5)\n"
+backend/tests\unit\test_r20_native_cpu_guard.py:382:    monkeypatch.setattr(process_limits, "bound_process_resources", record_limit)
+backend/tests\unit\test_r20_native_cpu_guard.py:383:    semantic._bound_worker_memory()
+backend/tests\unit\test_r20_process_startup.py:44:    monkeypatch.setattr(process_limits, "bound_process_resources", apply_limit)
+backend/tests\unit\test_r20_process_startup.py:125:        monkeypatch.setattr(pdf_text, "_launch_windows_worker", early_launch)
+backend/tests\unit\test_r20_process_startup.py:128:    result = pdf_text.parse_pdf_text_layer(b"%PDF-1.4\n")

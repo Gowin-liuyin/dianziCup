@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="9" time="20.948" timestamp="2026-10-16T03:16:10.130934+08:00" hostname="yin"><testcase classname="reports.runs.recovery_r07_publication_acl_lock_fix_20261016.byteblob.test_independent_publication_pg" name="test_parent_acl_revocation_is_checked_before_object_io[source]" time="0.986" /><testcase classname="reports.runs.recovery_r07_publication_acl_lock_fix_20261016.byteblob.test_independent_publication_pg" name="test_parent_acl_revocation_is_checked_before_object_io[document]" time="0.860" /><testcase classname="reports.runs.recovery_r07_publication_acl_lock_fix_20261016.byteblob.test_independent_publication_pg" name="test_failed_attempt_cannot_bypass_revoked_source_scope" time="0.977" /><testcase classname="reports.runs.recovery_r07_publication_acl_lock_fix_20261016.byteblob.test_independent_publication_pg" name="test_invalid_candidate_after_success_rolls_back_all_tables" time="0.933" /><testcase classname="reports.runs.recovery_r07_publication_acl_lock_fix_20261016.byteblob.test_independent_publication_pg" name="test_duplicate_context_revision_cannot_bypass_full_roster" time="0.930" /><testcase classname="reports.runs.recovery_r07_publication_acl_lock_fix_20261016.byteblob.test_independent_publication_pg" name="test_cvss_parallel_authorities_vs_same_authority_conflict[different-available]" time="1.286"><failure message="AssertionError: {'authority_relation': 'different', 'new_claim_count': 2, 'source_scores': [9.8, 8.1], 'status': &lt;DimensionStatus.CONFLICT: 'conflict'&gt;}&#10;assert &lt;DimensionSta...T: 'conflict'&gt; == 'available'&#10;  &#10;  - available&#10;  + conflict">catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_pub_fix_20261016?options=-c+search_path%3Dtest_r06_catalog_5e56613fd04a4750849b57a60513a85d+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-665/test_cvss_parallel_authorities0')
+authority_relation = 'different', expected = 'available'
+
+    @pytest.mark.parametrize("authority_relation,expected", [("different", "available"), ("same", "conflict")])
+    def test_cvss_parallel_authorities_vs_same_authority_conflict(catalog_engine, tmp_path, authority_relation, expected):
+        store, loaded = loaded_inputs(catalog_engine, tmp_path)
+        body = json.loads(source_response("nvd_ollama")[0])
+        cve = body["vulnerabilities"][0]["cve"]
+        first = {"source": "review-first@example.invalid", "type": "Primary", "cvssData": {
+            "version": "3.1", "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "baseScore": 9.8}}
+        second = deepcopy(first)
+        second["source"] = first["source"] if authority_relation == "same" else "review-second@example.invalid"
+        second["cvssData"]["vectorString"] = "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H"
+        second["cvssData"]["baseScore"] = 8.1
+        cve["metrics"] = {"cvssMetricV31": [first, second]}
+        response = SourceResponse("nvd_ollama", json.dumps(body).encode(),
+            "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=ollama&amp;resultsPerPage=20&amp;startIndex=0",
+            loaded.documents[0].observed_at + timedelta(seconds=1))
+        with Session(catalog_engine) as session, session.begin():
+            persist_source_response(session, store, ADMIN, response, ingested_at=response.observed_at)
+        with Session(catalog_engine) as session:
+            current = load_event_enrichment_inputs(session, store, ADMIN, loaded.context.event_id, "independent-review-1")
+        attempts = enrich_structured_fields(current.context, current.documents)
+        publish(catalog_engine, current, (attempts[0],))
+        with Session(catalog_engine) as session:
+            detail = KnowledgeReadService(session, ADMIN, "fixture").event_detail(current.context.event_id)
+            cvss = next(item for item in detail.dimensions if item.dimension == "cvss")
+            observed = {"authority_relation": authority_relation, "status": cvss.status, "new_claim_count": len(cvss.claim_ids), "source_scores": [9.8, 8.1]}
+            (RAW / ("cvss_" + authority_relation + "_outcome" + RUN_SUFFIX + ".json")).write_text(json.dumps(observed, indent=2), encoding="utf-8")
+            assert len(cvss.claim_ids) == 2
+&gt;           assert cvss.status == expected, observed
+E           AssertionError: {'authority_relation': 'different', 'new_claim_count': 2, 'source_scores': [9.8, 8.1], 'status': &lt;DimensionStatus.CONFLICT: 'conflict'&gt;}
+E           assert &lt;DimensionSta...T: 'conflict'&gt; == 'available'
+E             
+E             - available
+E             + conflict
+
+..\reports\runs\recovery_r07_publication_acl_lock_fix_20261016\byteblob\test_independent_publication_pg.py:146: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r07_publication_acl_lock_fix_20261016.byteblob.test_independent_publication_pg" name="test_cvss_parallel_authorities_vs_same_authority_conflict[same-conflict]" time="1.253" /><testcase classname="reports.runs.recovery_r07_publication_acl_lock_fix_20261016.byteblob.test_independent_publication_pg" name="test_multisource_model_candidate_returns_both_exact_visible_citations" time="1.578" /><testcase classname="reports.runs.recovery_r07_publication_acl_lock_fix_20261016.byteblob.test_independent_publication_pg" name="test_source_revision_and_publication_share_non_deadlocking_lock_order" time="11.131"><failure message="AssertionError: [{'actor': 'writer', 'outcome': 'AssertionError', 'sqlstate': None}, {'actor': 'publisher', 'outcome': 'OperationalError', 'sqlstate': '55P03'}]&#10;assert {'AssertionEr...ationalError'} &lt;= {'EnrichmentP..., 'completed'}&#10;  &#10;  Extra items in the left set:&#10;  'AssertionError'&#10;  'OperationalError'">catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_pub_fix_20261016?options=-c+search_path%3Dtest_r06_catalog_1cb4a181c5344db69a589526bbe4c950+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-665/test_source_revision_and_publi0')
+
+    def test_source_revision_and_publication_share_non_deadlocking_lock_order(catalog_engine, tmp_path):
+        store, loaded = loaded_inputs(catalog_engine, tmp_path)
+        attempts = enrich_structured_fields(loaded.context, loaded.documents)
+        body = json.loads(source_response("nvd_ollama")[0])
+        body["vulnerabilities"][0]["cve"]["descriptions"][0]["value"] += " Synthetic review revision."
+        response = SourceResponse("nvd_ollama", json.dumps(body).encode(),
+            "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=ollama&amp;resultsPerPage=20&amp;startIndex=0",
+            loaded.documents[0].observed_at + timedelta(seconds=1))
+        writer_locked = Event()
+        publisher_locked = Event()
+    
+        def synchronize(connection, cursor, statement, parameters, context, executemany):
+            actor = connection.info.get("review_actor")
+            if actor == "writer" and "SELECT documents." in statement and "FOR UPDATE" in statement and not writer_locked.is_set():
+                writer_locked.set()
+                assert publisher_locked.wait(10), "publisher did not acquire scope lock"
+            if actor == "publisher" and "pg_advisory_xact_lock" in statement:
+                publisher_locked.set()
+    
+        def invoke(actor):
+            try:
+                with Session(catalog_engine) as session, session.begin():
+                    session.connection().info["review_actor"] = actor
+                    if actor == "writer":
+                        persist_source_response(session, store, ADMIN, response, ingested_at=response.observed_at)
+                    else:
+                        publish_enrichment_attempts(session, ADMIN, loaded, attempts, request_id=uuid4(), recorded_at=response.observed_at)
+                return {"actor": actor, "outcome": "completed", "sqlstate": None}
+            except Exception as failure:
+                cause = getattr(failure, "orig", None)
+                return {"actor": actor, "outcome": type(failure).__name__, "sqlstate": getattr(cause, "sqlstate", None)}
+    
+        event.listen(catalog_engine, "after_cursor_execute", synchronize)
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                writer = pool.submit(invoke, "writer")
+                assert writer_locked.wait(10), "writer did not acquire document lock"
+                publisher = pool.submit(invoke, "publisher")
+                outcomes = [writer.result(timeout=25), publisher.result(timeout=25)]
+        finally:
+            event.remove(catalog_engine, "after_cursor_execute", synchronize)
+        (RAW / ("concurrent_source_publication_outcomes" + RUN_SUFFIX + ".json")).write_text(json.dumps(outcomes, indent=2), encoding="utf-8")
+        assert all(outcome["sqlstate"] != "40P01" for outcome in outcomes), outcomes
+&gt;       assert {outcome["outcome"] for outcome in outcomes} &lt;= {"completed", "EnrichmentPublicationError"}, outcomes
+E       AssertionError: [{'actor': 'writer', 'outcome': 'AssertionError', 'sqlstate': None}, {'actor': 'publisher', 'outcome': 'OperationalError', 'sqlstate': '55P03'}]
+E       assert {'AssertionEr...ationalError'} &lt;= {'EnrichmentP..., 'completed'}
+E         
+E         Extra items in the left set:
+E         'AssertionError'
+E         'OperationalError'
+
+..\reports\runs\recovery_r07_publication_acl_lock_fix_20261016\byteblob\test_independent_publication_pg.py:224: AssertionError</failure></testcase></testsuite></testsuites>

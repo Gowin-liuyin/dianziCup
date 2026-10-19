@@ -1,0 +1,2430 @@
+diff --git a/backend/src/ai_intel/investigation/capabilities.py b/backend/src/ai_intel/investigation/capabilities.py
+new file mode 100644
+index 00000000..38cde197
+--- /dev/null
++++ b/backend/src/ai_intel/investigation/capabilities.py
+@@ -0,0 +1,213 @@
++"""W10 responsibilities share one frozen tool catalog across B2, B2b and B3."""
++
++from dataclasses import dataclass
++from enum import StrEnum
++from types import MappingProxyType
++
++from ai_intel.investigation.tool_contracts import ToolName
++
++POLICY_VERSION = "r14-tool-gateway-1"
++
++
++class AgentRole(StrEnum):
++    ORCHESTRATOR = "orchestrator"
++    COLLECTOR = "collector"
++    TRIAGE = "triage"
++    ENRICHER = "enricher"
++    GRAPH_WRITER = "graph_writer"
++    ASSESSOR = "assessor"
++    QA = "qa"
++    CRITIC = "critic"
++    REPORTER = "reporter"
++
++
++@dataclass(frozen=True)
++class RoleCapability:
++    responsibility: str
++    allowed_tools: frozenset[ToolName]
++    output_requirement: str
++    unavailable_work: str
++
++
++@dataclass(frozen=True)
++class ToolSpec:
++    name: ToolName
++    fills: tuple[str, ...]
++    input_schema: str | None
++    output_schema: str | None
++    configured: bool
++    cache_policy: str
++    permission: str
++    timeout_seconds: float = 5.0
++
++
++TOOL_SPECS = MappingProxyType(
++    {
++        ToolName.SEARCH_INTELLIGENCE: ToolSpec(
++            ToolName.SEARCH_INTELLIGENCE,
++            ("event", "mechanism"),
++            None,
++            None,
++            False,
++            "none",
++            "read:public",
++        ),
++        ToolName.GET_ADVISORY: ToolSpec(
++            ToolName.GET_ADVISORY,
++            ("official_description", "remediation"),
++            None,
++            None,
++            False,
++            "none",
++            "read:public",
++        ),
++        ToolName.GET_INVENTORY: ToolSpec(
++            ToolName.GET_INVENTORY,
++            ("asset_version", "configuration"),
++            None,
++            None,
++            False,
++            "none",
++            "read:asset",
++        ),
++        ToolName.GET_PUBLIC_OBSERVATIONS: ToolSpec(
++            ToolName.GET_PUBLIC_OBSERVATIONS,
++            ("passive_observation",),
++            None,
++            None,
++            False,
++            "none",
++            "read:asset",
++        ),
++        ToolName.COMPARE_VERSIONS: ToolSpec(
++            ToolName.COMPARE_VERSIONS,
++            ("version_ordering",),
++            "CompareVersionsArguments",
++            "VersionComparison",
++            True,
++            "pure_result",
++            "read:public",
++        ),
++        ToolName.EVALUATE_RULE: ToolSpec(
++            ToolName.EVALUATE_RULE,
++            ("condition_evaluation",),
++            None,
++            None,
++            False,
++            "none",
++            "read:asset",
++        ),
++        ToolName.SEARCH_PAPERS: ToolSpec(
++            ToolName.SEARCH_PAPERS,
++            ("paper_candidate", "mechanism"),
++            None,
++            None,
++            False,
++            "none",
++            "read:public",
++        ),
++        ToolName.READ_EVIDENCE: ToolSpec(
++            ToolName.READ_EVIDENCE,
++            ("source_span", "current_support"),
++            "ReadEvidenceArguments",
++            "EvidenceResponse",
++            True,
++            "revalidate_every_read",
++            "read:public",
++        ),
++        ToolName.FIND_CHANGES: ToolSpec(
++            ToolName.FIND_CHANGES, ("historical_change",), None, None, False, "none", "read:public"
++        ),
++    }
++)
++
++
++def _tools(*names: ToolName) -> frozenset[ToolName]:
++    return frozenset(names)
++
++
++ROLE_CAPABILITIES = MappingProxyType(
++    {
++        AgentRole.ORCHESTRATOR: RoleCapability(
++            "可检查目标、预算与停止",
++            _tools(),
++            "目标、缺口、候选 action ID 与停止原因",
++            "持久化编排和缺口选择尚未接线",
++        ),
++        AgentRole.COLLECTOR: RoleCapability(
++            "受控来源采集",
++            _tools(ToolName.GET_ADVISORY),
++            "注册来源与不可变 revision 引用",
++            "采集服务尚未接入本网关",
++        ),
++        AgentRole.TRIAGE: RoleCapability(
++            "相关性与归并候选",
++            _tools(ToolName.READ_EVIDENCE, ToolName.SEARCH_INTELLIGENCE),
++            "候选事件与证据引用，线索不能写成确认",
++            "相关性/归并模型节点尚未接线",
++        ),
++        AgentRole.ENRICHER: RoleCapability(
++            "九维富化",
++            _tools(ToolName.READ_EVIDENCE, ToolName.GET_ADVISORY, ToolName.SEARCH_PAPERS),
++            "维度状态、字段来源与缺失原因",
++            "九维富化服务尚未接入本网关",
++        ),
++        AgentRole.GRAPH_WRITER: RoleCapability(
++            "仅投影已核验关系",
++            _tools(ToolName.READ_EVIDENCE),
++            "已核验关系 ID 与原文版本",
++            "无图写工具，投影服务尚未接线",
++        ),
++        AgentRole.ASSESSOR: RoleCapability(
++            "授权快照与条件执行",
++            _tools(
++                ToolName.GET_INVENTORY,
++                ToolName.GET_PUBLIC_OBSERVATIONS,
++                ToolName.COMPARE_VERSIONS,
++                ToolName.EVALUATE_RULE,
++                ToolName.READ_EVIDENCE,
++            ),
++            "固定快照、条件结果与未知项",
++            "清单/FOFA/规则服务尚未接线；版本排序不是资产适用性",
++        ),
++        AgentRole.QA: RoleCapability(
++            "组织检索与回答",
++            _tools(ToolName.SEARCH_INTELLIGENCE, ToolName.READ_EVIDENCE, ToolName.SEARCH_PAPERS),
++            "带支持引用的回答草案与范围限制",
++            "真实检索/回答生成尚未接入本网关",
++        ),
++        AgentRole.CRITIC: RoleCapability(
++            "核验关键论断及引用支持",
++            _tools(ToolName.READ_EVIDENCE, ToolName.COMPARE_VERSIONS),
++            "当前支持与未解决证据缺口",
++            "引用存在不等于任意论断被支持",
++        ),
++        AgentRole.REPORTER: RoleCapability(
++            "从有效事实生成报告",
++            _tools(ToolName.READ_EVIDENCE, ToolName.FIND_CHANGES),
++            "事实引用、时刻与限制",
++            "报告生成/导出服务尚未接线",
++        ),
++    }
++)
++
++B2_ROLE_MAP = MappingProxyType(
++    {
++        "planner": (AgentRole.ORCHESTRATOR,),
++        "intelligence_agent": (
++            AgentRole.COLLECTOR,
++            AgentRole.TRIAGE,
++            AgentRole.ENRICHER,
++            AgentRole.GRAPH_WRITER,
++        ),
++        "asset_agent": (AgentRole.ASSESSOR,),
++        "answer_agent": (AgentRole.QA, AgentRole.CRITIC, AgentRole.REPORTER),
++    }
++)
++
++
++def available_tools(strategy: str) -> frozenset[ToolName]:
++    """Strategies change scheduling only; none can add a configured tool or permission."""
++    if strategy not in {"B2", "B2b", "B3"}:
++        raise ValueError("unknown investigation strategy")
++    return frozenset(name for name, spec in TOOL_SPECS.items() if spec.configured)
+diff --git a/backend/src/ai_intel/investigation/tool_contracts.py b/backend/src/ai_intel/investigation/tool_contracts.py
+new file mode 100644
+index 00000000..0a90ebeb
+--- /dev/null
++++ b/backend/src/ai_intel/investigation/tool_contracts.py
+@@ -0,0 +1,121 @@
++"""Internal investigation inputs retain existing business DTOs and reject model authority."""
++
++from __future__ import annotations
++
++import json
++from enum import StrEnum
++from typing import Annotated, Literal
++from uuid import UUID
++
++from pydantic import ConfigDict, Field, TypeAdapter
++
++from ai_intel.api.knowledge_contracts import EvidenceResponse
++from ai_intel.assessment.version_ranges import VersionComparison
++from ai_intel.domain.enums import ToolStatus
++from ai_intel.domain.records import StrictRecord
++from ai_intel.domain.values import UtcTimestamp
++from ai_intel.infrastructure.models.json_output import strict_json_object
++
++
++class ToolName(StrEnum):
++    SEARCH_INTELLIGENCE = "search_intelligence"
++    GET_ADVISORY = "get_advisory"
++    GET_INVENTORY = "get_inventory"
++    GET_PUBLIC_OBSERVATIONS = "get_public_observations"
++    COMPARE_VERSIONS = "compare_versions"
++    EVALUATE_RULE = "evaluate_rule"
++    SEARCH_PAPERS = "search_papers"
++    READ_EVIDENCE = "read_evidence"
++    FIND_CHANGES = "find_changes"
++
++
++class ToolInput(StrictRecord):
++    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
++
++
++class ReadEvidenceArguments(ToolInput):
++    event_id: UUID
++    evidence_id: UUID
++    revision_id: UUID
++
++
++class CompareVersionsArguments(ToolInput):
++    left_version: str | None = Field(max_length=128)
++    right_version: str | None = Field(max_length=128)
++    scheme: Literal["pep440", "semver", "osv_ecosystem", "unknown"]
++    ecosystem: str = Field(min_length=1, max_length=100)
++
++
++class ReadEvidenceCall(ToolInput):
++    tool_name: Literal["read_evidence"]
++    arguments: ReadEvidenceArguments
++    goal_id: UUID
++
++
++class CompareVersionsCall(ToolInput):
++    tool_name: Literal["compare_versions"]
++    arguments: CompareVersionsArguments
++    goal_id: UUID
++
++
++class UnconfiguredArguments(ToolInput):
++    """Unavailable tools accept no speculative URL, query or authority contract."""
++
++
++class UnconfiguredCall(ToolInput):
++    tool_name: Literal[
++        "search_intelligence",
++        "get_advisory",
++        "get_inventory",
++        "get_public_observations",
++        "evaluate_rule",
++        "search_papers",
++        "find_changes",
++    ]
++    arguments: UnconfiguredArguments
++    goal_id: UUID
++
++
++ToolCall = ReadEvidenceCall | CompareVersionsCall | UnconfiguredCall
++TOOL_CALL_ADAPTER: TypeAdapter[ToolCall] = TypeAdapter(
++    Annotated[ToolCall, Field(discriminator="tool_name")]
++)
++
++
++def parse_tool_call(raw: bytes, maximum_bytes: int) -> ToolCall:
++    """The shared JSON boundary checks duplicate keys, depth and Unicode before schemas."""
++    payload = strict_json_object(raw, maximum_bytes, maximum_nodes=100)
++    return TOOL_CALL_ADAPTER.validate_json(json.dumps(payload, ensure_ascii=False))
++
++
++class ToolUsage(StrictRecord):
++    request_bytes: int = Field(strict=True, ge=0)
++    result_bytes: int = Field(strict=True, ge=0)
++    service_calls: int = Field(strict=True, ge=0)
++    cached: bool
++
++
++class SearchedScope(StrictRecord):
++    """Identifiers describe a bounded read, never a claim about worldwide absence."""
++
++    goal_id: UUID | None
++    scope_kind: Literal["public", "tenant", "local", "none"]
++    event_id: UUID | None = None
++    revision_id: UUID | None = None
++
++
++class ToolResult(StrictRecord):
++    tool_run_id: UUID
++    call_key: str = Field(pattern=r"^[0-9a-f]{64}$")
++    tool_name: ToolName | None
++    status: ToolStatus
++    data: EvidenceResponse | VersionComparison | None
++    evidence_ids: tuple[UUID, ...] = Field(max_length=1)
++    searched_scope: SearchedScope
++    observed_at: UtcTimestamp | None
++    executed_at: UtcTimestamp
++    retryable: bool
++    error_code: str | None = Field(max_length=80)
++    usage: ToolUsage
++    is_synthetic: bool
++    limitations: tuple[str, ...] = Field(max_length=3)
+diff --git a/backend/src/ai_intel/investigation/tool_gateway.py b/backend/src/ai_intel/investigation/tool_gateway.py
+new file mode 100644
+index 00000000..ec9be262
+--- /dev/null
++++ b/backend/src/ai_intel/investigation/tool_gateway.py
+@@ -0,0 +1,621 @@
++"""Request-local bounded gateway; durable investigation state remains the caller's PG job."""
++
++from __future__ import annotations
++
++import hashlib
++import json
++import math
++import time
++from collections.abc import Callable
++from dataclasses import dataclass, replace
++from datetime import UTC, datetime
++from threading import RLock, get_ident
++from typing import Literal, Protocol
++from uuid import UUID, uuid4
++
++from pydantic import Field, ValidationError
++from sqlalchemy import event, select
++from sqlalchemy.engine import Connection, ExecutionContext
++from sqlalchemy.engine.interfaces import DBAPICursor
++from sqlalchemy.exc import DBAPIError, SQLAlchemyError
++from sqlalchemy.orm import Session
++
++from ai_intel.api.auth_state import lock_authenticated_scope
++from ai_intel.api.authentication import Principal, SessionExpiredError
++from ai_intel.api.knowledge_contracts import DataMode, EvidenceResponse
++from ai_intel.api.knowledge_read_service import KnowledgeProjectionError, KnowledgeReadService
++from ai_intel.assessment.version_ranges import VersionComparison, compare_versions
++from ai_intel.domain.access import (
++    READ_PUBLIC,
++    AccessScope,
++    CrossTenantAccessError,
++    PermissionDeniedError,
++    Role,
++)
++from ai_intel.domain.enums import ToolStatus
++from ai_intel.investigation.capabilities import (
++    POLICY_VERSION,
++    ROLE_CAPABILITIES,
++    TOOL_SPECS,
++    AgentRole,
++)
++from ai_intel.investigation.tool_contracts import (
++    CompareVersionsCall,
++    ReadEvidenceArguments,
++    ReadEvidenceCall,
++    SearchedScope,
++    ToolCall,
++    ToolInput,
++    ToolName,
++    ToolResult,
++    ToolUsage,
++    UnconfiguredCall,
++    parse_tool_call,
++)
++from ai_intel.knowledge.evidence_graph import EvidenceGraphReadService, GraphSnapshotChangedError
++from ai_intel.knowledge.models import document_revisions, documents
++from ai_intel.knowledge.models import evidence as evidence_table
++
++
++class BudgetLimits(ToolInput):
++    max_calls: int = Field(strict=True, ge=1, le=8)
++    max_concurrent_calls: int = Field(strict=True, ge=1, le=4)
++    max_request_bytes: int = Field(strict=True, ge=1, le=65536)
++    max_total_input_bytes: int = Field(strict=True, ge=1, le=524288)
++    max_result_bytes: int = Field(strict=True, ge=1024, le=1048576)
++    max_total_output_bytes: int = Field(strict=True, ge=1024, le=8388608)
++    deadline_monotonic: float = Field(gt=0, allow_inf_nan=False)
++
++
++class GatewayStoppedError(RuntimeError):
++    """No result envelope fits the remaining bytes; callers must stop this invocation."""
++
++
++class ToolNotConfiguredError(RuntimeError):
++    """The server did not provide a safe executor; there is no synthetic fallback."""
++
++
++@dataclass(frozen=True)
++class EvidenceRead:
++    evidence: EvidenceResponse
++    current_supported: bool
++
++
++class EvidenceReader(Protocol):
++    @property
++    def data_mode(self) -> DataMode: ...
++
++    def read_evidence(
++        self,
++        principal: Principal,
++        scope: AccessScope,
++        arguments: ReadEvidenceArguments,
++        deadline_monotonic: float,
++    ) -> EvidenceRead: ...
++
++
++class PostgresEvidenceReader:
++    """Uses one already connected caller-owned connection, with auth and graph validity locks.
++
++    Connection/pool acquisition belongs to the caller's overall budget. This executor never
++    acquires a connection or accepts an active transaction. It performs no business writes;
++    PostgreSQL READ ONLY cannot be used because the existing fences require FOR SHARE locks.
++    """
++
++    def __init__(self, connection: Connection, session_token: str, data_mode: DataMode) -> None:
++        if connection.dialect.name != "postgresql" or not session_token:
++            raise ValueError("authenticated connected PostgreSQL executor required")
++        if data_mode not in {"live", "fixture"}:
++            raise ValueError("explicit data mode required")
++        self._connection = connection
++        self._session_token = session_token
++        self._data_mode = data_mode
++        self._owner_thread = get_ident()
++
++    @property
++    def data_mode(self) -> DataMode:
++        return self._data_mode
++
++    @staticmethod
++    def _evidence_parent_ids(
++        session: Session, arguments: ReadEvidenceArguments
++    ) -> tuple[str, str, str, str, str | None]:
++        """Only identity for existing fences; the business reader still owns ACL and projection."""
++        row = session.execute(
++            select(
++                documents.c.source_id,
++                documents.c.document_id,
++                document_revisions.c.revision_id,
++                evidence_table.c.evidence_id,
++                evidence_table.c.block_id,
++            )
++            .select_from(evidence_table.join(document_revisions).join(documents))
++            .where(
++                evidence_table.c.evidence_id == str(arguments.evidence_id),
++                evidence_table.c.revision_id == str(arguments.revision_id),
++            )
++        ).one_or_none()
++        if row is None:
++            raise GraphSnapshotChangedError("evidence parent identity missing")
++        identifiers: list[str] = []
++        for value in row[:4]:
++            if not isinstance(value, str):
++                raise GraphSnapshotChangedError("evidence parent identity invalid")
++            UUID(value)
++            identifiers.append(value)
++        block_id: object = row[4]
++        if block_id is not None:
++            if not isinstance(block_id, str):
++                raise GraphSnapshotChangedError("evidence block identity invalid")
++            UUID(block_id)
++        return identifiers[0], identifiers[1], identifiers[2], identifiers[3], block_id
++
++    def read_evidence(
++        self,
++        principal: Principal,
++        scope: AccessScope,
++        arguments: ReadEvidenceArguments,
++        deadline_monotonic: float,
++    ) -> EvidenceRead:
++        connection = self._connection
++        if (
++            get_ident() != self._owner_thread
++            or connection.closed
++            or connection.invalidated
++            or connection.in_transaction()
++        ):
++            raise ToolNotConfiguredError("connected executor unavailable")
++
++        def bound_statement(
++            connection: Connection,
++            cursor: DBAPICursor,
++            statement: str,
++            parameters: object,
++            context: ExecutionContext,
++            executemany: bool,
++        ) -> None:
++            remaining = deadline_monotonic - time.monotonic()
++            if remaining <= 0:
++                raise TimeoutError("tool deadline exhausted")
++            milliseconds = max(1, math.floor(remaining * 1000))
++            cursor.execute(f"SET LOCAL statement_timeout = '{milliseconds}ms'")
++            cursor.execute(f"SET LOCAL lock_timeout = '{milliseconds}ms'")
++            if not statement.lstrip().upper().startswith("SELECT"):
++                raise ToolNotConfiguredError("read executor received a non-read statement")
++
++        event.listen(connection, "before_cursor_execute", bound_statement)
++        try:
++            connection.execution_options(isolation_level="READ COMMITTED")
++            with connection.begin(), Session(bind=connection) as session:
++                expected = AccessScope.for_authenticated_user(
++                    principal.user_id, principal.tenant_id, principal.role
++                )
++                authenticated = lock_authenticated_scope(
++                    connection, self._session_token, datetime.now(UTC)
++                )
++                if authenticated != expected:
++                    raise PermissionDeniedError("authenticated scope changed")
++                graph_reader = EvidenceGraphReadService(session, scope)
++                epochs = graph_reader.read_scope_epochs()
++                candidate = graph_reader.event_graph(arguments.event_id)
++                inputs = graph_reader.read_inputs
++                input_digest = graph_reader.input_sha256
++                if inputs is None:
++                    raise GraphSnapshotChangedError("graph inputs missing")
++                reader = KnowledgeReadService(session, scope, self._data_mode)
++                candidate_evidence = reader.read_evidence(arguments.evidence_id)
++                if candidate_evidence.revision_id != arguments.revision_id:
++                    raise ValueError("evidence revision mismatch")
++                identities = self._evidence_parent_ids(session, arguments)
++                source_id, document_id, revision_id, evidence_id, block_id = identities
++                inputs = replace(
++                    inputs,
++                    source_ids=tuple(sorted({*inputs.source_ids, source_id})),
++                    document_ids=tuple(sorted({*inputs.document_ids, document_id})),
++                    revision_ids=tuple(sorted({*inputs.revision_ids, revision_id})),
++                    evidence_ids=tuple(sorted({*inputs.evidence_ids, evidence_id})),
++                    block_ids=tuple(sorted({*inputs.block_ids, block_id}))
++                    if block_id is not None
++                    else inputs.block_ids,
++                )
++                graph_reader.lock_graph_inputs(arguments.event_id, inputs)
++                if self._evidence_parent_ids(session, arguments) != identities:
++                    raise GraphSnapshotChangedError("evidence parent identity changed")
++                current = graph_reader.event_graph(arguments.event_id)
++                if (
++                    graph_reader.input_sha256 != input_digest
++                    or candidate.content_sha256 != current.content_sha256
++                    or graph_reader.read_scope_epochs(lock=True) != epochs
++                ):
++                    raise GraphSnapshotChangedError("graph inputs changed")
++                evidence = reader.read_evidence(arguments.evidence_id)
++                if evidence.revision_id != arguments.revision_id:
++                    raise ValueError("evidence revision mismatch")
++                supported = evidence.verified_at is not None and any(
++                    arguments.evidence_id in edge.evidence_span_ids
++                    and arguments.revision_id in edge.source_revision_ids
++                    for edge in current.edges
++                )
++                if (
++                    lock_authenticated_scope(connection, self._session_token, datetime.now(UTC))
++                    != expected
++                ):
++                    raise PermissionDeniedError("authenticated scope changed")
++                if time.monotonic() >= deadline_monotonic:
++                    raise TimeoutError("tool deadline exhausted")
++                return EvidenceRead(evidence, supported)
++        finally:
++            event.remove(connection, "before_cursor_execute", bound_statement)
++
++
++class ToolGateway:
++    """Finite local dispatch and redacted traces, without claiming durable budget/replay state.
++
++    The server supplies Principal, AgentRole and limits. Only Assessor may read tenant evidence.
++    Evidence-bearing reads revalidate ACL/facts; pure comparisons can reuse results. A failed
++    key without evidence is terminal and cannot be retried by another role.
++    """
++
++    def __init__(
++        self,
++        principal: Principal,
++        investigation_id: UUID,
++        limits: BudgetLimits,
++        *,
++        evidence_reader: EvidenceReader | None = None,
++        monotonic: Callable[[], float] = time.monotonic,
++    ) -> None:
++        if not isinstance(principal, Principal) or not isinstance(principal.role, Role):
++            raise ValueError("server authenticated principal required")
++        if not isinstance(investigation_id, UUID):
++            raise ValueError("investigation UUID required")
++        self._principal = principal
++        self._investigation_id = investigation_id
++        self._limits = limits
++        self._reader = evidence_reader
++        self._clock = monotonic
++        self._lock = RLock()
++        self._calls = 0
++        self._active = 0
++        self._input_bytes = 0
++        self._output_bytes = 0
++        self._reserved_output_bytes = 0
++        self._inflight: set[str] = set()
++        self._outcomes: dict[str, ToolResult] = {}
++        self._runs: list[ToolResult] = []
++        self._stopped = False
++
++    @property
++    def runs(self) -> tuple[ToolResult, ...]:
++        with self._lock:
++            return tuple(self._runs)
++
++    @property
++    def configured_tools(self) -> frozenset[ToolName]:
++        return frozenset(
++            {ToolName.COMPARE_VERSIONS}
++            | ({ToolName.READ_EVIDENCE} if self._reader is not None else set())
++        )
++
++    def _scope(self, role: AgentRole) -> AccessScope:
++        return AccessScope.for_authenticated_user(
++            self._principal.user_id,
++            self._principal.tenant_id if role == AgentRole.ASSESSOR else None,
++            self._principal.role,
++        )
++
++    def _emit(self, result: ToolResult) -> ToolResult:
++        with self._lock:
++            for _ in range(4):
++                size = len(result.model_dump_json().encode("utf-8"))
++                if result.usage.result_bytes == size:
++                    break
++                result = result.model_copy(
++                    update={"usage": result.usage.model_copy(update={"result_bytes": size})}
++                )
++            if size > self._limits.max_result_bytes and result.data is not None:
++                return self._emit(
++                    result.model_copy(
++                        update={
++                            "status": ToolStatus.PARTIAL,
++                            "data": None,
++                            "error_code": "output_limit",
++                            "limitations": (
++                                "完整工具数据超过输出上限；保留引用，不能据此否定事实。",
++                            ),
++                            "usage": result.usage.model_copy(update={"result_bytes": 0}),
++                        }
++                    )
++                )
++            if (
++                size > self._limits.max_result_bytes
++                or self._output_bytes + self._reserved_output_bytes + size
++                > self._limits.max_total_output_bytes
++            ):
++                self._stopped = True
++                raise GatewayStoppedError("output_budget_exhausted")
++            self._output_bytes += size
++            self._runs.append(result)
++            return result
++
++    def execute(self, agent_role: AgentRole, raw_call: bytes) -> ToolResult:
++        request_bytes = len(raw_call) if type(raw_call) is bytes else 0
++        raw_digest = (
++            hashlib.sha256(raw_call[: self._limits.max_request_bytes]).hexdigest()
++            if type(raw_call) is bytes
++            else "0" * 64
++        )
++        result = ToolResult(
++            tool_run_id=uuid4(),
++            call_key=raw_digest,
++            tool_name=None,
++            status=ToolStatus.DENIED,
++            data=None,
++            evidence_ids=(),
++            searched_scope=SearchedScope(goal_id=None, scope_kind="none"),
++            observed_at=None,
++            executed_at=datetime.now(UTC),
++            retryable=False,
++            error_code="invalid_tool_input",
++            usage=ToolUsage(
++                request_bytes=request_bytes, result_bytes=0, service_calls=0, cached=False
++            ),
++            is_synthetic=False,
++            limitations=(),
++        )
++        with self._lock:
++            if self._stopped:
++                raise GatewayStoppedError("output_budget_exhausted")
++            if type(raw_call) is not bytes or not isinstance(agent_role, AgentRole):
++                return self._emit(result)
++            if (
++                request_bytes > self._limits.max_request_bytes
++                or self._input_bytes + request_bytes > self._limits.max_total_input_bytes
++            ):
++                return self._emit(
++                    result.model_copy(
++                        update={
++                            "status": ToolStatus.BUDGET_EXHAUSTED,
++                            "error_code": "input_budget_exhausted",
++                        }
++                    )
++                )
++            self._input_bytes += request_bytes
++        try:
++            call = parse_tool_call(raw_call, self._limits.max_request_bytes)
++        except (ValueError, UnicodeError, RecursionError):
++            return self._emit(result)
++        scope = self._scope(agent_role)
++        key_payload = [
++            str(self._investigation_id),
++            self._principal.user_id,
++            self._principal.tenant_id,
++            self._principal.role.value,
++            scope.tenant_id if isinstance(call, ReadEvidenceCall) else None,
++            scope.permission_version,
++            POLICY_VERSION,
++            call.model_dump(mode="json"),
++        ]
++        call_key = hashlib.sha256(
++            json.dumps(key_payload, sort_keys=True, separators=(",", ":")).encode()
++        ).hexdigest()
++        scope_kind: Literal["local", "tenant", "public"]
++        if isinstance(call, CompareVersionsCall):
++            scope_kind = "local"
++        elif scope.tenant_id:
++            scope_kind = "tenant"
++        else:
++            scope_kind = "public"
++        result = result.model_copy(
++            update={
++                "call_key": call_key,
++                "tool_name": ToolName(call.tool_name),
++                "searched_scope": SearchedScope(
++                    goal_id=call.goal_id,
++                    scope_kind=scope_kind,
++                    event_id=call.arguments.event_id
++                    if isinstance(call, ReadEvidenceCall)
++                    else None,
++                    revision_id=call.arguments.revision_id
++                    if isinstance(call, ReadEvidenceCall)
++                    else None,
++                ),
++            }
++        )
++        if result.tool_name not in ROLE_CAPABILITIES[agent_role].allowed_tools:
++            return self._emit(result.model_copy(update={"error_code": "role_tool_denied"}))
++        try:
++            scope.requires(READ_PUBLIC)
++        except PermissionDeniedError:
++            return self._emit(result.model_copy(update={"error_code": "permission_denied"}))
++        if isinstance(call, UnconfiguredCall) or result.tool_name not in self.configured_tools:
++            return self._emit(
++                result.model_copy(
++                    update={
++                        "status": ToolStatus.NOT_CONFIGURED,
++                        "error_code": "tool_not_configured",
++                    }
++                )
++            )
++        with self._lock:
++            if self._clock() >= self._limits.deadline_monotonic:
++                return self._emit(
++                    result.model_copy(
++                        update={
++                            "status": ToolStatus.BUDGET_EXHAUSTED,
++                            "error_code": "deadline_exhausted",
++                        }
++                    )
++                )
++            previous = self._outcomes.get(call_key)
++            if previous is not None and (
++                isinstance(call, CompareVersionsCall)
++                or (previous.data is None and not previous.evidence_ids)
++            ):
++                return self._emit(
++                    previous.model_copy(
++                        update={
++                            "tool_run_id": result.tool_run_id,
++                            "executed_at": result.executed_at,
++                            "usage": result.usage.model_copy(update={"cached": True}),
++                        }
++                    )
++                )
++            reason = None
++            if call_key in self._inflight:
++                reason = "duplicate_inflight"
++            elif self._calls >= self._limits.max_calls:
++                reason = "call_budget_exhausted"
++            elif self._active >= self._limits.max_concurrent_calls:
++                reason = "concurrency_exhausted"
++            if reason:
++                return self._emit(
++                    result.model_copy(
++                        update={
++                            "status": ToolStatus.PARTIAL
++                            if reason == "duplicate_inflight"
++                            else ToolStatus.BUDGET_EXHAUSTED,
++                            "error_code": reason,
++                        }
++                    )
++                )
++            if (
++                self._limits.max_total_output_bytes
++                - self._output_bytes
++                - self._reserved_output_bytes
++                < self._limits.max_result_bytes
++            ):
++                self._stopped = True
++                raise GatewayStoppedError("output_budget_exhausted")
++            self._calls += 1
++            self._active += 1
++            self._reserved_output_bytes += self._limits.max_result_bytes
++            self._inflight.add(call_key)
++        reservation_held = True
++        try:
++            result = result.model_copy(
++                update={
++                    "usage": result.usage.model_copy(update={"service_calls": 1}),
++                    "is_synthetic": isinstance(call, ReadEvidenceCall)
++                    and self._reader is not None
++                    and self._reader.data_mode == "fixture",
++                }
++            )
++            call_deadline = min(
++                self._limits.deadline_monotonic,
++                self._clock() + TOOL_SPECS[ToolName(call.tool_name)].timeout_seconds,
++            )
++            try:
++                result = self._dispatch(call, scope, result, call_deadline)
++                if self._clock() >= call_deadline:
++                    result = result.model_copy(
++                        update={
++                            "status": ToolStatus.BUDGET_EXHAUSTED,
++                            "data": None,
++                            "evidence_ids": (),
++                            "observed_at": None,
++                            "error_code": "deadline_exhausted",
++                        }
++                    )
++            except (CrossTenantAccessError, PermissionDeniedError, SessionExpiredError):
++                result = result.model_copy(
++                    update={"status": ToolStatus.DENIED, "error_code": "resource_unavailable"}
++                )
++            except ToolNotConfiguredError:
++                result = result.model_copy(
++                    update={
++                        "status": ToolStatus.NOT_CONFIGURED,
++                        "error_code": "executor_unavailable",
++                    }
++                )
++            except TimeoutError:
++                result = result.model_copy(
++                    update={
++                        "status": ToolStatus.BUDGET_EXHAUSTED,
++                        "error_code": "deadline_exhausted",
++                    }
++                )
++            except GraphSnapshotChangedError:
++                result = result.model_copy(
++                    update={"status": ToolStatus.PARTIAL, "error_code": "graph_snapshot_changed"}
++                )
++            except (ValidationError, ValueError, KnowledgeProjectionError):
++                result = result.model_copy(
++                    update={"status": ToolStatus.FAILED, "error_code": "tool_output_invalid"}
++                )
++            except DBAPIError as database_error:
++                sqlstate: object = getattr(database_error.orig, "sqlstate", None)
++                timeout = isinstance(sqlstate, str) and sqlstate in {"57014", "55P03"}
++                result = result.model_copy(
++                    update={
++                        "status": ToolStatus.BUDGET_EXHAUSTED if timeout else ToolStatus.FAILED,
++                        "error_code": "deadline_exhausted" if timeout else "tool_database_failed",
++                    }
++                )
++            except SQLAlchemyError:
++                result = result.model_copy(
++                    update={"status": ToolStatus.FAILED, "error_code": "tool_database_failed"}
++                )
++            except Exception:
++                result = result.model_copy(
++                    update={"status": ToolStatus.FAILED, "error_code": "tool_execution_failed"}
++                )
++            with self._lock:
++                self._reserved_output_bytes -= self._limits.max_result_bytes
++                reservation_held = False
++                result = self._emit(result)
++                self._outcomes[call_key] = result
++                return result
++        finally:
++            with self._lock:
++                if reservation_held:
++                    self._reserved_output_bytes -= self._limits.max_result_bytes
++                self._active -= 1
++                self._inflight.remove(call_key)
++
++    def _dispatch(
++        self, call: ToolCall, scope: AccessScope, result: ToolResult, call_deadline: float
++    ) -> ToolResult:
++        if isinstance(call, CompareVersionsCall):
++            arguments = call.arguments
++            comparison: VersionComparison = compare_versions(
++                arguments.left_version,
++                arguments.right_version,
++                scheme=arguments.scheme,
++                ecosystem=arguments.ecosystem,
++            )
++            return result.model_copy(
++                update={
++                    "status": ToolStatus.SUCCEEDED
++                    if comparison.status == "comparable"
++                    else ToolStatus.PARTIAL,
++                    "data": comparison,
++                    "error_code": None if comparison.status == "comparable" else comparison.reason,
++                    "limitations": ("版本排序只比较输入版本，不是资产适用性或修复结论。",),
++                }
++            )
++        if not isinstance(call, ReadEvidenceCall) or self._reader is None:
++            raise ToolNotConfiguredError("evidence reader missing")
++        read = self._reader.read_evidence(self._principal, scope, call.arguments, call_deadline)
++        if not isinstance(read, EvidenceRead) or type(read.current_supported) is not bool:
++            raise ValueError("invalid typed evidence outcome")
++        evidence = EvidenceResponse.model_validate(read.evidence.model_dump())
++        if (
++            evidence.span_id != call.arguments.evidence_id
++            or evidence.revision_id != call.arguments.revision_id
++        ):
++            raise ValueError("evidence identity mismatch")
++        supported = read.current_supported and evidence.verified_at is not None
++        return result.model_copy(
++            update={
++                "status": ToolStatus.SUCCEEDED if supported else ToolStatus.PARTIAL,
++                "data": evidence,
++                "evidence_ids": (evidence.span_id,),
++                "observed_at": evidence.first_observed_at,
++                "is_synthetic": evidence.data_mode == "fixture",
++                "error_code": None if supported else "evidence_not_current_supported",
++                "limitations": ("引文存在不等于任意论断被支持；仅核验指定事件的当前支持关系。",)
++                if supported
++                else ("引文可读，但未取得指定事件的当前有效支持；不等于否定。",),
++            }
++        )
+diff --git a/backend/tests/contract/test_r14_tool_gateway_contract.py b/backend/tests/contract/test_r14_tool_gateway_contract.py
+new file mode 100644
+index 00000000..ef694b33
+--- /dev/null
++++ b/backend/tests/contract/test_r14_tool_gateway_contract.py
+@@ -0,0 +1,184 @@
++"""The internal gateway accepts only approved fixed tools and complete bounded results."""
++
++import json
++from uuid import uuid4
++
++import pytest
++from pydantic import ValidationError
++from test_r14_tool_gateway import (
++    FixtureEvidenceReader,
++    comparison_call,
++    evidence_call,
++    evidence_response,
++    gateway,
++    limits,
++)
++
++from ai_intel.investigation.capabilities import (
++    B2_ROLE_MAP,
++    ROLE_CAPABILITIES,
++    TOOL_SPECS,
++    AgentRole,
++    available_tools,
++)
++from ai_intel.investigation.tool_contracts import ToolName, ToolResult
++from ai_intel.investigation.tool_gateway import EvidenceRead
++
++
++@pytest.mark.parametrize(
++    "field", ["tenant_id", "role", "authorization", "skip_validation", "url", "sql", "shell"]
++)
++@pytest.mark.parametrize("position", ["call", "arguments"])
++def test_t32_c02_and_c06_model_and_material_cannot_add_authority(field: str, position: str) -> None:
++    payload = json.loads(evidence_call())
++    (payload if position == "call" else payload["arguments"])[field] = "malicious material"
++    reader = FixtureEvidenceReader()
++    result = gateway(reader).execute(AgentRole.ASSESSOR, json.dumps(payload).encode())
++    assert result.status == "denied" and result.error_code == "invalid_tool_input"
++    assert result.data is None and reader.calls == 0
++
++
++@pytest.mark.parametrize(
++    "name", ["shell", "execute_sql", "fetch_url", "delete_assets", "READ_EVIDENCE"]
++)
++def test_t32_c06_unregistered_tool_names_never_dispatch(name: str) -> None:
++    payload = json.loads(evidence_call())
++    payload["tool_name"] = name
++    reader = FixtureEvidenceReader()
++    result = gateway(reader).execute(AgentRole.ASSESSOR, json.dumps(payload).encode())
++    assert result.status == "denied" and reader.calls == 0
++
++
++@pytest.mark.parametrize(
++    "raw",
++    [
++        b"[]",
++        b'{"tool_name":"read_evidence","tool_name":"shell"}',
++        b'{"x":NaN}',
++        b'{"x":"\\ud800"}',
++        b"{",
++    ],
++)
++def test_invalid_json_is_a_failure_not_an_empty_search(raw: bytes) -> None:
++    result = gateway().execute(AgentRole.QA, raw)
++    assert result.status == "denied" and result.error_code == "invalid_tool_input"
++    assert result.status != "no_result"
++
++
++def test_role_is_injected_by_server_and_cannot_be_a_model_string() -> None:
++    reader = FixtureEvidenceReader()
++    result = gateway(reader).execute("assessor", evidence_call())
++    assert result.status == "denied" and reader.calls == 0
++
++
++def test_orchestrator_cannot_call_a_tool_even_if_principal_is_analyst() -> None:
++    assert (
++        gateway().execute(AgentRole.ORCHESTRATOR, comparison_call()).error_code
++        == "role_tool_denied"
++    )
++
++
++def test_registered_unavailable_tool_has_explicit_status_and_no_fallback() -> None:
++    result = gateway().execute(
++        AgentRole.ASSESSOR,
++        json.dumps(
++            {
++                "tool_name": "get_public_observations",
++                "goal_id": str(uuid4()),
++                "arguments": {},
++            }
++        ).encode(),
++    )
++    assert result.status == "not_configured" and result.error_code == "tool_not_configured"
++    assert result.usage.service_calls == 0 and not result.is_synthetic
++
++
++def test_oversized_evidence_preserves_full_reference_and_drops_complete_data() -> None:
++    reader = FixtureEvidenceReader()
++    reader.outcome = EvidenceRead(evidence_response("中" * 4000), True)
++    result = gateway(reader, max_result_bytes=1024).execute(AgentRole.ASSESSOR, evidence_call())
++    assert (
++        result.status == "partial" and result.error_code == "output_limit" and result.data is None
++    )
++    assert result.evidence_ids == (reader.outcome.evidence.span_id,)
++    assert result.searched_scope.revision_id == reader.outcome.evidence.revision_id
++    assert result.usage.result_bytes == len(result.model_dump_json().encode()) <= 1024
++
++
++def test_byte_limit_counts_utf8_and_blocks_before_io() -> None:
++    reader = FixtureEvidenceReader()
++    subject = gateway(reader, max_request_bytes=100)
++    result = subject.execute(AgentRole.ASSESSOR, evidence_call())
++    assert result.status == "budget_exhausted" and result.error_code == "input_budget_exhausted"
++    assert reader.calls == 0
++
++
++def test_total_input_bytes_prevent_unlimited_replay() -> None:
++    subject = gateway(max_total_input_bytes=len(comparison_call()))
++    assert subject.execute(AgentRole.ASSESSOR, comparison_call()).status == "succeeded"
++    assert (
++        subject.execute(AgentRole.ASSESSOR, comparison_call()).error_code
++        == "input_budget_exhausted"
++    )
++
++
++@pytest.mark.parametrize(
++    "change",
++    [
++        {"max_calls": True},
++        {"max_calls": 0},
++        {"max_calls": 9},
++        {"max_concurrent_calls": 0},
++        {"max_result_bytes": 100},
++        {"deadline_monotonic": float("inf")},
++        {"deadline_monotonic": float("nan")},
++    ],
++)
++def test_server_budget_itself_is_strict_and_finite(change: dict[str, int | float]) -> None:
++    with pytest.raises(ValidationError):
++        limits(**change)
++
++
++def test_nine_w10_responsibilities_and_nine_tool_names_are_immutable_and_honest() -> None:
++    assert len(ROLE_CAPABILITIES) == 9 and set(ROLE_CAPABILITIES) == set(AgentRole)
++    assert len(TOOL_SPECS) == 9 and set(TOOL_SPECS) == set(ToolName)
++    assert (
++        available_tools("B2")
++        == available_tools("B2b")
++        == available_tools("B3")
++        == {
++            ToolName.READ_EVIDENCE,
++            ToolName.COMPARE_VERSIONS,
++        }
++    )
++    assert {role for roles in B2_ROLE_MAP.values() for role in roles} == set(AgentRole)
++    assert all(
++        capability.responsibility and capability.output_requirement and capability.unavailable_work
++        for capability in ROLE_CAPABILITIES.values()
++    )
++    assert all(
++        spec.input_schema is None and spec.output_schema is None
++        for spec in TOOL_SPECS.values()
++        if not spec.configured
++    )
++    with pytest.raises(TypeError):
++        TOOL_SPECS[ToolName.GET_PUBLIC_OBSERVATIONS] = TOOL_SPECS[ToolName.READ_EVIDENCE]
++
++
++def test_tool_result_retains_all_original_05_fields_and_existing_business_models() -> None:
++    fields = ToolResult.model_json_schema()["properties"]
++    assert {
++        "tool_run_id",
++        "status",
++        "data",
++        "evidence_ids",
++        "searched_scope",
++        "observed_at",
++        "executed_at",
++        "retryable",
++        "error_code",
++        "usage",
++        "is_synthetic",
++    } <= set(fields)
++    assert "EvidenceResponse" in ToolResult.model_json_schema()["$defs"]
++    assert "VersionComparison" in ToolResult.model_json_schema()["$defs"]
+diff --git a/backend/tests/contract/test_r14_tool_gateway_pg.py b/backend/tests/contract/test_r14_tool_gateway_pg.py
+new file mode 100644
+index 00000000..1db62f70
+--- /dev/null
++++ b/backend/tests/contract/test_r14_tool_gateway_pg.py
+@@ -0,0 +1,432 @@
++"""Real isolated PostgreSQL services with synthetic source facts, never external live evidence."""
++
++import hashlib
++import secrets
++import time
++from collections.abc import Callable, Iterator
++from datetime import UTC, datetime, timedelta
++from pathlib import Path
++from uuid import UUID, uuid4
++
++import pytest
++from pydantic import SecretStr
++from sqlalchemy import create_engine, event, select, text, update
++from sqlalchemy.engine import Engine, make_url
++from sqlalchemy.exc import DBAPIError
++from sqlalchemy.pool import NullPool
++from sqlalchemy.schema import CreateSchema, DropSchema
++from test_r10_evidence_graph_pg import VERSION, publish_event, publish_fact
++
++from ai_intel.api.auth_state import auth_sessions
++from ai_intel.api.authentication import Principal
++from ai_intel.api.knowledge_read_service import sources
++from ai_intel.domain.access import Role
++from ai_intel.domain.values import VisibilityScope
++from ai_intel.infrastructure.database import run_migrations
++from ai_intel.investigation.capabilities import AgentRole
++from ai_intel.investigation.tool_contracts import ReadEvidenceArguments, ReadEvidenceCall
++from ai_intel.investigation.tool_gateway import BudgetLimits, PostgresEvidenceReader, ToolGateway
++from ai_intel.knowledge.models import document_revisions, documents, evidence, users
++from ai_intel.knowledge.persistence_models import claims
++
++pytestmark = pytest.mark.real_pg
++
++
++@pytest.fixture()
++def r14_engine(
++    isolated_test_database_url: str,
++    register_sensitive_failure_value: Callable[[SecretStr], None],
++) -> Iterator[Engine]:
++    register_sensitive_failure_value(SecretStr(isolated_test_database_url))
++    url = make_url(isolated_test_database_url)
++    if url.password:
++        register_sensitive_failure_value(SecretStr(url.password))
++    assert url.database == "test_dianzi_r14_tools_fix1_20261016"
++    schema = "test_r14_tools_fix1_" + uuid4().hex
++    base = create_engine(url, poolclass=NullPool, hide_parameters=True)
++    with base.begin() as connection:
++        connection.execute(CreateSchema(schema))
++    isolated = url.update_query_dict(
++        {"options": f"-c search_path={schema} -c statement_timeout=15000 -c lock_timeout=5000"}
++    )
++    run_migrations(isolated.render_as_string(hide_password=False))
++    engine = create_engine(isolated, poolclass=NullPool, hide_parameters=True)
++    try:
++        yield engine
++    finally:
++        engine.dispose()
++        with base.begin() as connection:
++            connection.execute(DropSchema(schema, cascade=True))
++        base.dispose()
++
++
++def seed_principal(
++    engine: Engine,
++    register_sensitive_failure_value: Callable[[SecretStr], None],
++    *,
++    tenant: str = "owner",
++    role: Role = Role.ANALYST,
++) -> tuple[Principal, str]:
++    user_id = str(uuid4())
++    token = secrets.token_urlsafe(32)
++    register_sensitive_failure_value(SecretStr(token))
++    now = datetime.now(UTC)
++    with engine.begin() as connection:
++        connection.execute(
++            users.insert().values(
++                user_id=user_id,
++                username="fixture-r14-" + uuid4().hex,
++                password_hash="fixture-unused-password-hash",
++                tenant_id=tenant,
++                role=role.value,
++                created_at=now,
++            )
++        )
++        connection.execute(
++            auth_sessions.insert().values(
++                session_hash=hashlib.sha256(token.encode()).hexdigest(),
++                user_id=user_id,
++                csrf_token="fixture-unused-csrf",
++                issued_at=now,
++                expires_at=now + timedelta(minutes=5),
++            )
++        )
++    return Principal(user_id, tenant, role), token
++
++
++def limits(seconds: float = 8) -> BudgetLimits:
++    return BudgetLimits(
++        max_calls=8,
++        max_concurrent_calls=1,
++        max_request_bytes=4096,
++        max_total_input_bytes=32768,
++        max_result_bytes=8192,
++        max_total_output_bytes=65536,
++        deadline_monotonic=time.monotonic() + seconds,
++    )
++
++
++def source_call(engine: Engine, path: Path, *, private: bool = False) -> tuple[bytes, str]:
++    event_id = uuid4()
++    visibility = VisibilityScope(visibility="tenant", tenant_id="owner") if private else None
++    submission = publish_fact(engine, path, event_id, VERSION, scope=visibility)
++    publish_event(engine, event_id, [submission], scope=visibility)
++    span_id = submission.evidence_links[0].evidence_id.value
++    call = ReadEvidenceCall(
++        tool_name="read_evidence",
++        goal_id=uuid4(),
++        arguments=ReadEvidenceArguments(
++            event_id=event_id,
++            evidence_id=UUID(span_id),
++            revision_id=UUID(submission.revision_id.value),
++        ),
++    )
++    return call.model_dump_json().encode(), submission.record.claim_id.value
++
++
++def test_real_pg_current_supported_read_uses_both_business_services(
++    r14_engine,
++    tmp_path,
++    register_sensitive_failure_value,
++) -> None:
++    call, _ = source_call(r14_engine, tmp_path)
++    principal, token = seed_principal(r14_engine, register_sensitive_failure_value)
++    with r14_engine.connect() as connection:
++        subject = ToolGateway(
++            principal,
++            uuid4(),
++            limits(),
++            evidence_reader=PostgresEvidenceReader(connection, token, "fixture"),
++        )
++        result = subject.execute(AgentRole.QA, call)
++        assert result.status == "succeeded" and result.data is not None and result.is_synthetic
++        assert result.evidence_ids and result.observed_at == result.data.first_observed_at
++        assert result.observed_at is None
++        assert not connection.in_transaction()
++
++
++def test_real_pg_private_read_is_only_available_to_asset_role(
++    r14_engine,
++    tmp_path,
++    register_sensitive_failure_value,
++) -> None:
++    call, _ = source_call(r14_engine, tmp_path, private=True)
++    principal, token = seed_principal(r14_engine, register_sensitive_failure_value)
++    with r14_engine.connect() as connection:
++        subject = ToolGateway(
++            principal,
++            uuid4(),
++            limits(),
++            evidence_reader=PostgresEvidenceReader(connection, token, "fixture"),
++        )
++        assert subject.execute(AgentRole.ASSESSOR, call).status == "succeeded"
++        result = subject.execute(AgentRole.QA, call)
++        assert result.status == "denied" and result.data is None and result.evidence_ids == ()
++
++
++@pytest.mark.parametrize("tenant,role", [("other", Role.ANALYST), ("owner", Role.VIEWER)])
++def test_real_pg_cross_tenant_and_missing_permission_never_return_private_fields(
++    r14_engine,
++    tmp_path,
++    register_sensitive_failure_value,
++    tenant,
++    role,
++) -> None:
++    call, _ = source_call(r14_engine, tmp_path, private=True)
++    principal, token = seed_principal(
++        r14_engine, register_sensitive_failure_value, tenant=tenant, role=role
++    )
++    with r14_engine.connect() as connection:
++        subject = ToolGateway(
++            principal,
++            uuid4(),
++            limits(),
++            evidence_reader=PostgresEvidenceReader(connection, token, "fixture"),
++        )
++        result = subject.execute(AgentRole.ASSESSOR, call)
++        assert result.status == "denied" and result.data is None and result.evidence_ids == ()
++        assert "fixture-package" not in result.model_dump_json()
++
++
++@pytest.mark.parametrize("partial", [False, True])
++def test_real_pg_success_or_partial_replay_rechecks_current_authentication(
++    r14_engine,
++    tmp_path,
++    register_sensitive_failure_value,
++    partial,
++) -> None:
++    call, claim_id = source_call(r14_engine, tmp_path, private=True)
++    if partial:
++        with r14_engine.begin() as connection:
++            connection.execute(
++                update(claims).where(claims.c.claim_id == claim_id).values(is_current=False)
++            )
++    principal, token = seed_principal(r14_engine, register_sensitive_failure_value)
++    with r14_engine.connect() as connection:
++        subject = ToolGateway(
++            principal,
++            uuid4(),
++            limits(),
++            evidence_reader=PostgresEvidenceReader(connection, token, "fixture"),
++        )
++        first = subject.execute(AgentRole.ASSESSOR, call)
++        assert first.status == ("partial" if partial else "succeeded")
++        assert first.data is not None
++        with r14_engine.begin() as writer:
++            writer.execute(
++                update(users).where(users.c.user_id == principal.user_id).values(role="viewer")
++            )
++        result = subject.execute(AgentRole.ASSESSOR, call)
++        assert result.status == "denied" and result.data is None and result.evidence_ids == ()
++
++
++def test_real_pg_revision_withdrawal_yields_historical_partial_and_not_a_current_fact(
++    r14_engine,
++    tmp_path,
++    register_sensitive_failure_value,
++) -> None:
++    call, _ = source_call(r14_engine, tmp_path)
++    principal, token = seed_principal(r14_engine, register_sensitive_failure_value)
++    with r14_engine.connect() as connection:
++        subject = ToolGateway(
++            principal,
++            uuid4(),
++            limits(),
++            evidence_reader=PostgresEvidenceReader(connection, token, "fixture"),
++        )
++        assert subject.execute(AgentRole.QA, call).status == "succeeded"
++        revision_id = str(ReadEvidenceCall.model_validate_json(call).arguments.revision_id)
++        with r14_engine.begin() as writer:
++            writer.execute(
++                update(document_revisions)
++                .where(document_revisions.c.revision_id == revision_id)
++                .values(is_current=False)
++            )
++        result = subject.execute(AgentRole.QA, call)
++        assert result.status == "partial" and result.data is not None
++        assert result.error_code == "evidence_not_current_supported"
++
++
++def test_real_pg_corrupt_evidence_hash_is_failed_and_failure_is_not_retried(
++    r14_engine,
++    tmp_path,
++    register_sensitive_failure_value,
++) -> None:
++    call, _ = source_call(r14_engine, tmp_path)
++    span_id = str(ReadEvidenceCall.model_validate_json(call).arguments.evidence_id)
++    with r14_engine.begin() as writer:
++        writer.execute(
++            update(evidence).where(evidence.c.evidence_id == span_id).values(quote_sha256="0" * 64)
++        )
++    principal, token = seed_principal(r14_engine, register_sensitive_failure_value)
++    with r14_engine.connect() as connection:
++        subject = ToolGateway(
++            principal,
++            uuid4(),
++            limits(),
++            evidence_reader=PostgresEvidenceReader(connection, token, "fixture"),
++        )
++        first = subject.execute(AgentRole.QA, call)
++        assert first.status == "failed" and first.error_code == "tool_output_invalid"
++        replay = subject.execute(AgentRole.CRITIC, call)
++        assert replay.status == "failed" and replay.usage.cached and replay.usage.service_calls == 0
++
++
++def test_real_pg_wrong_revision_is_failed_without_returning_the_other_revision(
++    r14_engine,
++    tmp_path,
++    register_sensitive_failure_value,
++) -> None:
++    original, _ = source_call(r14_engine, tmp_path)
++    parsed = ReadEvidenceCall.model_validate_json(original)
++    changed = parsed.model_copy(
++        update={"arguments": parsed.arguments.model_copy(update={"revision_id": uuid4()})}
++    )
++    principal, token = seed_principal(r14_engine, register_sensitive_failure_value)
++    with r14_engine.connect() as connection:
++        subject = ToolGateway(
++            principal,
++            uuid4(),
++            limits(),
++            evidence_reader=PostgresEvidenceReader(connection, token, "fixture"),
++        )
++        result = subject.execute(AgentRole.QA, changed.model_dump_json().encode())
++        assert result.status == "failed" and result.data is None and result.evidence_ids == ()
++
++
++def test_real_pg_revoked_session_never_serves_evidence(
++    r14_engine,
++    tmp_path,
++    register_sensitive_failure_value,
++) -> None:
++    call, _ = source_call(r14_engine, tmp_path)
++    principal, token = seed_principal(r14_engine, register_sensitive_failure_value)
++    with r14_engine.begin() as writer:
++        writer.execute(
++            update(auth_sessions)
++            .where(auth_sessions.c.user_id == principal.user_id)
++            .values(revoked_at=datetime.now(UTC))
++        )
++    with r14_engine.connect() as connection:
++        subject = ToolGateway(
++            principal,
++            uuid4(),
++            limits(),
++            evidence_reader=PostgresEvidenceReader(connection, token, "fixture"),
++        )
++        result = subject.execute(AgentRole.QA, call)
++        assert result.status == "denied" and result.data is None
++
++
++def test_real_pg_active_transaction_is_not_silently_reused(
++    r14_engine,
++    tmp_path,
++    register_sensitive_failure_value,
++) -> None:
++    call, _ = source_call(r14_engine, tmp_path)
++    principal, token = seed_principal(r14_engine, register_sensitive_failure_value)
++    with r14_engine.connect() as connection, connection.begin():
++        subject = ToolGateway(
++            principal,
++            uuid4(),
++            limits(),
++            evidence_reader=PostgresEvidenceReader(connection, token, "fixture"),
++        )
++        result = subject.execute(AgentRole.QA, call)
++        assert result.status == "not_configured" and result.data is None
++
++
++def test_real_pg_lock_wait_is_interrupted_by_remaining_deadline(
++    r14_engine,
++    tmp_path,
++    register_sensitive_failure_value,
++) -> None:
++    call, _ = source_call(r14_engine, tmp_path)
++    principal, token = seed_principal(r14_engine, register_sensitive_failure_value)
++    with r14_engine.connect() as holder, holder.begin(), r14_engine.connect() as connection:
++        holder.execute(
++            select(users.c.user_id).where(users.c.user_id == principal.user_id).with_for_update()
++        ).all()
++        subject = ToolGateway(
++            principal,
++            uuid4(),
++            limits(0.15),
++            evidence_reader=PostgresEvidenceReader(connection, token, "fixture"),
++        )
++        started = time.monotonic()
++        result = subject.execute(AgentRole.QA, call)
++        elapsed = time.monotonic() - started
++        assert result.status == "budget_exhausted" and result.error_code == "deadline_exhausted"
++        assert elapsed < 0.7 and result.data is None and not connection.in_transaction()
++
++
++@pytest.mark.parametrize("parent", ["source", "document"])
++@pytest.mark.parametrize("timing", ["before_fence", "after_fence"])
++def test_real_pg_historical_parent_acl_is_rechecked_and_locked(
++    r14_engine,
++    tmp_path,
++    register_sensitive_failure_value,
++    parent,
++    timing,
++) -> None:
++    call, claim_id = source_call(r14_engine, tmp_path, private=True)
++    parsed = ReadEvidenceCall.model_validate_json(call)
++    with r14_engine.begin() as writer:
++        writer.execute(update(claims).where(claims.c.claim_id == claim_id).values(is_current=False))
++        row = writer.execute(
++            select(documents.c.document_id, documents.c.source_id)
++            .select_from(document_revisions.join(documents))
++            .where(document_revisions.c.revision_id == str(parsed.arguments.revision_id))
++        ).one()
++    relation, predicate = (
++        (sources, sources.c.source_id == row.source_id)
++        if parent == "source"
++        else (documents, documents.c.document_id == row.document_id)
++    )
++    principal, token = seed_principal(r14_engine, register_sensitive_failure_value)
++    metadata_reads = 0
++    evidence_reads = 0
++    outcomes: list[str] = []
++
++    def mutate_parent(connection, cursor, statement, parameters, context, executemany):
++        nonlocal metadata_reads, evidence_reads
++        metadata_query = statement.startswith("SELECT documents.source_id, documents.document_id,")
++        evidence_query = statement.startswith("SELECT evidence.evidence_id,")
++        if metadata_query:
++            metadata_reads += 1
++        if evidence_query:
++            evidence_reads += 1
++        before_fence = timing == "before_fence" and evidence_query and evidence_reads == 1
++        after_fence = timing == "after_fence" and metadata_query and metadata_reads == 2
++        if not before_fence and not after_fence:
++            return
++        try:
++            with r14_engine.begin() as writer:
++                writer.execute(text("SET LOCAL lock_timeout = '100ms'"))
++                writer.execute(
++                    update(relation).where(predicate).values(visibility="tenant", tenant_id="other")
++                )
++                outcomes.append("changed")
++        except DBAPIError as blocked:
++            outcomes.append(str(getattr(blocked.orig, "sqlstate", None)))
++
++    with r14_engine.connect() as connection:
++        event.listen(connection, "after_cursor_execute", mutate_parent)
++        try:
++            subject = ToolGateway(
++                principal,
++                uuid4(),
++                limits(),
++                evidence_reader=PostgresEvidenceReader(connection, token, "fixture"),
++            )
++            result = subject.execute(AgentRole.ASSESSOR, call)
++        finally:
++            event.remove(connection, "after_cursor_execute", mutate_parent)
++    assert evidence_reads >= 1 and metadata_reads == 2
++    if timing == "before_fence":
++        assert outcomes == ["changed"] and result.status == "denied"
++        assert result.data is None and result.evidence_ids == ()
++        assert "fixture-package" not in result.model_dump_json()
++    else:
++        assert outcomes == ["55P03"] and result.status == "partial"
++        assert result.data is not None and result.error_code == "evidence_not_current_supported"
+diff --git a/backend/tests/contract/test_r14_tool_gateway_review_negative.py b/backend/tests/contract/test_r14_tool_gateway_review_negative.py
+new file mode 100644
+index 00000000..f58c8ddb
+--- /dev/null
++++ b/backend/tests/contract/test_r14_tool_gateway_review_negative.py
+@@ -0,0 +1,131 @@
++"""Reviewer-authored adverse inputs; expected values follow contracts rather than implementation."""
++
++import json
++from asyncio import CancelledError
++from concurrent.futures import ThreadPoolExecutor
++from threading import Barrier
++from uuid import uuid4
++
++import pytest
++from pydantic import ValidationError
++from test_r14_tool_gateway import (
++    FixtureEvidenceReader,
++    comparison_call,
++    evidence_call,
++    evidence_response,
++    gateway,
++    limits,
++)
++
++from ai_intel.api.authentication import Principal
++from ai_intel.domain.access import Role
++from ai_intel.domain.enums import ToolStatus
++from ai_intel.investigation.capabilities import AgentRole
++from ai_intel.investigation.tool_gateway import EvidenceRead, GatewayStoppedError, ToolGateway
++
++
++def test_review_budget_result_uses_the_frozen_domain_tool_status() -> None:
++    reader = FixtureEvidenceReader()
++    subject = gateway(reader, max_calls=1)
++    subject.execute(AgentRole.ASSESSOR, evidence_call())
++    blocked = subject.execute(AgentRole.ASSESSOR, evidence_call(goal_id=uuid4()))
++    assert reader.calls == 1
++    assert ToolStatus(blocked.status) == ToolStatus.BUDGET_EXHAUSTED
++
++
++@pytest.mark.parametrize(
++    "role",
++    [
++        AgentRole.ORCHESTRATOR,
++        AgentRole.COLLECTOR,
++        AgentRole.TRIAGE,
++        AgentRole.ENRICHER,
++        AgentRole.GRAPH_WRITER,
++        AgentRole.QA,
++        AgentRole.REPORTER,
++    ],
++)
++def test_review_disallowed_pure_comparison_never_spends_a_service_call(role) -> None:
++    result = gateway().execute(role, comparison_call())
++    assert result.status == "denied" and result.error_code == "role_tool_denied"
++    assert result.usage.service_calls == 0 and result.data is None
++
++
++@pytest.mark.parametrize(
++    "payload_update",
++    [
++        {"tool_name": "read_evidence; SELECT pg_sleep(10)"},
++        {
++            "tool_name": "read_evidence",
++            "arguments": {
++                "event_id": str(uuid4()),
++                "evidence_id": str(uuid4()),
++                "revision_id": str(uuid4()),
++                "tool_name": "shell",
++            },
++        },
++        {"tool_name": "read_evidence", "role": "assessor"},
++    ],
++)
++def test_review_allowlist_and_nested_authority_injection_remain_closed(payload_update) -> None:
++    payload = json.loads(evidence_call())
++    payload.update(payload_update)
++    reader = FixtureEvidenceReader()
++    result = gateway(reader).execute(AgentRole.QA, json.dumps(payload).encode())
++    assert result.status == "denied" and result.error_code == "invalid_tool_input"
++    assert reader.calls == 0 and result.data is None
++
++
++@pytest.mark.parametrize("error", [KeyboardInterrupt(), SystemExit(17), CancelledError()])
++def test_review_control_exceptions_propagate_and_release_output_reservation(error) -> None:
++    reader = FixtureEvidenceReader()
++    reader.error = error
++    subject = gateway(reader, max_result_bytes=4096, max_total_output_bytes=4096)
++    with pytest.raises(type(error)):
++        subject.execute(AgentRole.ASSESSOR, evidence_call())
++    assert subject.runs == ()
++    reader.error = None
++    assert subject.execute(AgentRole.ASSESSOR, evidence_call()).status == "succeeded"
++
++
++def test_review_parallel_results_do_not_share_mutable_budget_or_result_objects() -> None:
++    rendezvous = Barrier(2)
++
++    class ParallelReader:
++        data_mode = "fixture"
++
++        def read_evidence(self, principal, scope, arguments, deadline_monotonic):
++            rendezvous.wait(timeout=2)
++            return EvidenceRead(evidence_response(), True)
++
++    subject = ToolGateway(
++        Principal("review-user", "owner", Role.ANALYST),
++        uuid4(),
++        limits(max_concurrent_calls=2, max_total_output_bytes=8192),
++        evidence_reader=ParallelReader(),
++    )
++    first_goal, second_goal = uuid4(), uuid4()
++    with ThreadPoolExecutor(max_workers=2) as workers:
++        futures = [
++            workers.submit(subject.execute, AgentRole.ASSESSOR, evidence_call(goal_id=goal))
++            for goal in (first_goal, second_goal)
++        ]
++        first, second = [future.result(timeout=3) for future in futures]
++    assert first.status == second.status == "succeeded"
++    assert first.call_key != second.call_key and first.tool_run_id != second.tool_run_id
++    assert {result.searched_scope.goal_id for result in subject.runs} == {first_goal, second_goal}
++    assert sum(result.usage.result_bytes for result in subject.runs) <= 8192
++    with pytest.raises(ValidationError):
++        first.usage.result_bytes = 0
++    with pytest.raises(ValidationError):
++        first.data.quote_text = "altered by another caller"
++
++
++def test_review_total_output_stop_is_terminal_and_does_not_reset_on_new_role() -> None:
++    subject = gateway(max_result_bytes=1024, max_total_output_bytes=1024)
++    first = subject.execute(AgentRole.CRITIC, comparison_call())
++    assert first.status == "succeeded"
++    with pytest.raises(GatewayStoppedError, match="output_budget_exhausted"):
++        subject.execute(AgentRole.ASSESSOR, comparison_call())
++    with pytest.raises(GatewayStoppedError, match="output_budget_exhausted"):
++        subject.execute(AgentRole.CRITIC, comparison_call())
+diff --git a/backend/tests/contract/test_r14_tool_gateway_review_pg.py b/backend/tests/contract/test_r14_tool_gateway_review_pg.py
+new file mode 100644
+index 00000000..929ba6f0
+--- /dev/null
++++ b/backend/tests/contract/test_r14_tool_gateway_review_pg.py
+@@ -0,0 +1,159 @@
++"""Reviewer real-PG negatives pass through actual auth, graph and knowledge services."""
++
++import time
++from uuid import uuid4
++
++import pytest
++from sqlalchemy import event, select, text, update
++from test_r14_tool_gateway_pg import limits, seed_principal, source_call
++from test_r14_tool_gateway_pg import r14_engine as r14_engine
++
++from ai_intel.investigation.capabilities import AgentRole
++from ai_intel.investigation.tool_contracts import ReadEvidenceCall
++from ai_intel.investigation.tool_gateway import PostgresEvidenceReader, ToolGateway
++from ai_intel.knowledge.models import document_revisions, documents
++from ai_intel.knowledge.persistence_models import claims
++
++pytestmark = pytest.mark.real_pg
++
++
++def test_review_real_pg_fresh_claim_change_before_fence_never_emits_stale_success(
++    r14_engine, tmp_path, register_sensitive_failure_value
++) -> None:
++    call, claim_id = source_call(r14_engine, tmp_path)
++    principal, token = seed_principal(r14_engine, register_sensitive_failure_value)
++    changed = False
++
++    def change_after_evidence_read(connection, cursor, statement, parameters, context, executemany):
++        nonlocal changed
++        if not changed and statement.startswith("SELECT evidence.evidence_id,"):
++            changed = True
++            with r14_engine.begin() as writer:
++                writer.execute(
++                    update(claims).where(claims.c.claim_id == claim_id).values(is_current=False)
++                )
++
++    with r14_engine.connect() as connection:
++        event.listen(connection, "after_cursor_execute", change_after_evidence_read)
++        try:
++            subject = ToolGateway(
++                principal,
++                uuid4(),
++                limits(),
++                evidence_reader=PostgresEvidenceReader(connection, token, "fixture"),
++            )
++            result = subject.execute(AgentRole.QA, call)
++        finally:
++            event.remove(connection, "after_cursor_execute", change_after_evidence_read)
++        assert not connection.in_transaction()
++    assert changed and result.status == "partial" and result.error_code == "graph_snapshot_changed"
++    assert result.data is None and result.evidence_ids == ()
++
++
++def test_review_real_pg_replay_denied_after_parent_acl_change_and_public_role_downgrade(
++    r14_engine, tmp_path, register_sensitive_failure_value
++) -> None:
++    call, _ = source_call(r14_engine, tmp_path, private=True)
++    principal, token = seed_principal(r14_engine, register_sensitive_failure_value)
++    parsed = ReadEvidenceCall.model_validate_json(call)
++    with r14_engine.connect() as connection:
++        subject = ToolGateway(
++            principal,
++            uuid4(),
++            limits(),
++            evidence_reader=PostgresEvidenceReader(connection, token, "fixture"),
++        )
++        assert subject.execute(AgentRole.ASSESSOR, call).status == "succeeded"
++        public = subject.execute(AgentRole.CRITIC, call)
++        assert public.status == "denied" and public.data is None and public.evidence_ids == ()
++        with r14_engine.begin() as writer:
++            writer.execute(
++                update(document_revisions)
++                .where(document_revisions.c.revision_id == str(parsed.arguments.revision_id))
++                .values(visibility="tenant", tenant_id="other")
++            )
++        replay = subject.execute(AgentRole.ASSESSOR, call)
++        assert replay.status == "denied" and replay.data is None and not replay.usage.cached
++        assert "fixture-package" not in replay.model_dump_json()
++
++
++def test_review_real_pg_unknown_parent_identity_is_not_treated_as_authorized_evidence(
++    r14_engine, tmp_path, register_sensitive_failure_value
++) -> None:
++    call, claim_id = source_call(r14_engine, tmp_path)
++    parsed = ReadEvidenceCall.model_validate_json(call)
++    with r14_engine.begin() as writer:
++        writer.execute(update(claims).where(claims.c.claim_id == claim_id).values(is_current=False))
++        source_id = writer.scalar(
++            select(documents.c.source_id)
++            .select_from(document_revisions.join(documents))
++            .where(document_revisions.c.revision_id == str(parsed.arguments.revision_id))
++        )
++        row = (
++            writer.execute(
++                text("SELECT * FROM sources WHERE source_id=:source_id"), {"source_id": source_id}
++            )
++            .mappings()
++            .one()
++        )
++        copied = dict(row)
++        copied["source_id"] = "review-invalid-parent"
++        copied["name"] = "review-invalid-parent"
++        columns = ", ".join(copied)
++        parameters = ", ".join(":" + key for key in copied)
++        writer.execute(
++            text("INSERT INTO sources (" + columns + ") VALUES (" + parameters + ")"), copied
++        )
++        writer.execute(
++            update(documents)
++            .where(documents.c.source_id == source_id)
++            .values(source_id="review-invalid-parent")
++        )
++    principal, token = seed_principal(r14_engine, register_sensitive_failure_value)
++    with r14_engine.connect() as connection:
++        subject = ToolGateway(
++            principal,
++            uuid4(),
++            limits(),
++            evidence_reader=PostgresEvidenceReader(connection, token, "fixture"),
++        )
++        result = subject.execute(AgentRole.QA, call)
++        assert result.status == "failed" and result.error_code == "tool_output_invalid"
++        assert result.data is None and result.evidence_ids == ()
++        assert not connection.in_transaction()
++
++
++def test_review_real_pg_query_time_is_bounded_not_only_lock_time(
++    r14_engine, tmp_path, register_sensitive_failure_value
++) -> None:
++    call, _ = source_call(r14_engine, tmp_path)
++    principal, token = seed_principal(r14_engine, register_sensitive_failure_value)
++    injected = False
++
++    def slow_auth_query(connection, cursor, statement, parameters, context, executemany):
++        nonlocal injected
++        if not injected and statement.startswith("SELECT auth_sessions.user_id,"):
++            injected = True
++            return "SELECT pg_sleep(1)", ()
++        return statement, parameters
++
++    with r14_engine.connect() as connection:
++        reader = PostgresEvidenceReader(connection, token, "fixture")
++        subject = ToolGateway(principal, uuid4(), limits(0.15), evidence_reader=reader)
++        event.listen(connection, "before_cursor_execute", slow_auth_query, retval=True)
++        try:
++            started = time.monotonic()
++            result = subject.execute(AgentRole.QA, call)
++            elapsed = time.monotonic() - started
++        finally:
++            event.remove(connection, "before_cursor_execute", slow_auth_query)
++        assert (
++            injected
++            and result.status == "budget_exhausted"
++            and result.error_code == "deadline_exhausted"
++        )
++        assert elapsed < 0.7 and result.data is None and not connection.in_transaction()
++        assert (
++            connection.scalar(text("SELECT version_num FROM alembic_version"))
++            == "0022_sbom_sidecars"
++        )
+diff --git a/backend/tests/unit/test_r14_tool_gateway.py b/backend/tests/unit/test_r14_tool_gateway.py
+new file mode 100644
+index 00000000..9e1d6292
+--- /dev/null
++++ b/backend/tests/unit/test_r14_tool_gateway.py
+@@ -0,0 +1,304 @@
++"""Explicit fixture readers isolate request-local budgets without claiming external live IO."""
++
++import hashlib
++import json
++import time
++from concurrent.futures import ThreadPoolExecutor
++from datetime import UTC, datetime
++from threading import Event
++from uuid import UUID, uuid4
++
++import pytest
++
++from ai_intel.api.authentication import Principal
++from ai_intel.api.knowledge_contracts import EvidenceResponse
++from ai_intel.domain.access import AccessScope, CrossTenantAccessError, Role
++from ai_intel.investigation.capabilities import AgentRole
++from ai_intel.investigation.tool_contracts import ReadEvidenceArguments, ToolName
++from ai_intel.investigation.tool_gateway import (
++    BudgetLimits,
++    EvidenceRead,
++    GatewayStoppedError,
++    ToolGateway,
++)
++
++NOW = datetime(2026, 10, 16, tzinfo=UTC)
++GOAL_ID, EVENT_ID, SPAN_ID, REVISION_ID = (uuid4() for _ in range(4))
++
++
++def evidence_response(
++    quote: str = "fixture evidence", *, verified: bool = True
++) -> EvidenceResponse:
++    return EvidenceResponse(
++        span_id=SPAN_ID,
++        revision_id=REVISION_ID,
++        block_id=uuid4(),
++        start_offset=0,
++        end_offset=len(quote),
++        quote_text=quote,
++        quote_sha256=hashlib.sha256(quote.encode()).hexdigest(),
++        locator_kind="text" if verified else "legacy_unverified",
++        page_number=None,
++        json_pointer=None,
++        verified_at=NOW if verified else None,
++        source_uri=None,
++        source_published_at=None,
++        source_modified_at=None,
++        first_observed_at=NOW,
++        ingested_at=NOW,
++        data_mode="fixture",
++    )
++
++
++class FixtureEvidenceReader:
++    data_mode = "fixture"
++
++    def __init__(self) -> None:
++        self.calls = 0
++        self.scopes: list[AccessScope] = []
++        self.outcome = EvidenceRead(evidence_response(), True)
++        self.error: BaseException | None = None
++        self.started: Event | None = None
++        self.release: Event | None = None
++
++    def read_evidence(
++        self,
++        principal: Principal,
++        scope: AccessScope,
++        arguments: ReadEvidenceArguments,
++        deadline_monotonic: float,
++    ) -> EvidenceRead:
++        self.calls += 1
++        self.scopes.append(scope)
++        if self.started is not None:
++            self.started.set()
++        if self.release is not None:
++            assert self.release.wait(timeout=2)
++        if self.error is not None:
++            raise self.error
++        return self.outcome
++
++
++def limits(**changes: int | float) -> BudgetLimits:
++    return BudgetLimits.model_validate(
++        {
++            "max_calls": 8,
++            "max_concurrent_calls": 1,
++            "max_request_bytes": 4096,
++            "max_total_input_bytes": 32768,
++            "max_result_bytes": 4096,
++            "max_total_output_bytes": 32768,
++            "deadline_monotonic": time.monotonic() + 10,
++            **changes,
++        }
++    )
++
++
++def gateway(reader: FixtureEvidenceReader | None = None, **changes: int | float) -> ToolGateway:
++    return ToolGateway(
++        Principal("fixture-user", "owner", Role.ANALYST),
++        uuid4(),
++        limits(**changes),
++        evidence_reader=reader,
++    )
++
++
++def evidence_call(*, goal_id: UUID = GOAL_ID) -> bytes:
++    return json.dumps(
++        {
++            "tool_name": "read_evidence",
++            "goal_id": str(goal_id),
++            "arguments": {
++                "event_id": str(EVENT_ID),
++                "evidence_id": str(SPAN_ID),
++                "revision_id": str(REVISION_ID),
++            },
++        }
++    ).encode()
++
++
++def comparison_call(left: str | None = "1.10", right: str | None = "1.9") -> bytes:
++    return json.dumps(
++        {
++            "tool_name": "compare_versions",
++            "goal_id": str(GOAL_ID),
++            "arguments": {
++                "left_version": left,
++                "right_version": right,
++                "scheme": "pep440",
++                "ecosystem": "PyPI",
++            },
++        }
++    ).encode()
++
++
++def test_t32_c01_evidence_trace_retains_identity_scope_time_and_fixture_marker() -> None:
++    reader = FixtureEvidenceReader()
++    subject = gateway(reader)
++    result = subject.execute(AgentRole.ASSESSOR, evidence_call())
++    assert result.status == "succeeded" and result.data == reader.outcome.evidence
++    assert result.evidence_ids == (SPAN_ID,) and result.observed_at == NOW
++    assert result.searched_scope.event_id == EVENT_ID
++    assert result.searched_scope.revision_id == REVISION_ID
++    assert result.searched_scope.scope_kind == "tenant" and result.is_synthetic
++    assert result.usage.service_calls == 1 and not result.usage.cached
++    assert result.usage.result_bytes == len(result.model_dump_json().encode())
++    assert subject.runs == (result,)
++
++
++@pytest.mark.parametrize("agent_role", [AgentRole.TRIAGE, AgentRole.QA, AgentRole.CRITIC])
++def test_t32_c02_public_research_roles_do_not_receive_private_scope(agent_role: AgentRole) -> None:
++    reader = FixtureEvidenceReader()
++    assert gateway(reader).execute(agent_role, evidence_call()).status == "succeeded"
++    assert reader.scopes[0].tenant_id is None
++
++
++def test_t32_c03_call_budget_exhaustion_prevents_service_io() -> None:
++    reader = FixtureEvidenceReader()
++    subject = gateway(reader, max_calls=1)
++    assert subject.execute(AgentRole.ASSESSOR, evidence_call()).status == "succeeded"
++    result = subject.execute(AgentRole.ASSESSOR, evidence_call(goal_id=uuid4()))
++    assert result.status == "budget_exhausted" and result.error_code == "call_budget_exhausted"
++    assert reader.calls == 1
++
++
++def test_t32_c04_pure_result_replay_preserves_call_key_without_double_count() -> None:
++    subject = gateway(max_calls=1)
++    first = subject.execute(AgentRole.ASSESSOR, comparison_call())
++    second = subject.execute(AgentRole.CRITIC, comparison_call())
++    assert first.status == second.status == "succeeded"
++    assert first.data == second.data and first.call_key == second.call_key
++    assert first.tool_run_id != second.tool_run_id
++    assert second.usage.cached and second.usage.service_calls == 0
++
++
++@pytest.mark.parametrize("supported,verified", [(False, True), (True, False), (False, False)])
++def test_historical_or_unverified_evidence_remains_partial(supported: bool, verified: bool) -> None:
++    reader = FixtureEvidenceReader()
++    reader.outcome = EvidenceRead(evidence_response(verified=verified), supported)
++    result = gateway(reader).execute(AgentRole.ASSESSOR, evidence_call())
++    assert result.status == "partial" and result.error_code == "evidence_not_current_supported"
++    assert result.data is not None and result.evidence_ids == (SPAN_ID,)
++
++
++def test_t32_c05_failed_input_is_terminal_across_public_roles_and_error_is_redacted() -> None:
++    reader = FixtureEvidenceReader()
++    reader.error = ValueError("password=fixture-sensitive-error-material")
++    subject = gateway(reader)
++    first = subject.execute(AgentRole.QA, evidence_call())
++    second = subject.execute(AgentRole.CRITIC, evidence_call())
++    assert first.status == second.status == "failed" and reader.calls == 1
++    assert first.error_code == "tool_output_invalid" and second.usage.cached
++    assert "fixture-sensitive" not in json.dumps(
++        [run.model_dump(mode="json") for run in subject.runs]
++    )
++
++
++@pytest.mark.parametrize("supported", [True, False])
++def test_evidence_replay_revalidates_acl_for_success_and_partial(supported: bool) -> None:
++    reader = FixtureEvidenceReader()
++    reader.outcome = EvidenceRead(evidence_response(), supported)
++    subject = gateway(reader)
++    assert subject.execute(AgentRole.ASSESSOR, evidence_call()).data is not None
++    reader.error = CrossTenantAccessError("resource not found")
++    replay = subject.execute(AgentRole.ASSESSOR, evidence_call())
++    assert reader.calls == 2 and replay.status == "denied" and replay.data is None
++    assert replay.evidence_ids == () and not replay.usage.cached
++
++
++def test_missing_executor_is_not_configured_and_never_an_empty_search() -> None:
++    subject = gateway()
++    result = subject.execute(AgentRole.QA, evidence_call())
++    assert result.status == "not_configured" and result.data is None
++    assert ToolName.READ_EVIDENCE not in subject.configured_tools
++
++
++@pytest.mark.parametrize("left,right", [(None, "1.0"), ("invalid", "1.0")])
++def test_missing_or_invalid_version_is_unknown_without_fabricated_ordering(
++    left: str | None,
++    right: str | None,
++) -> None:
++    result = gateway().execute(AgentRole.ASSESSOR, comparison_call(left, right))
++    assert result.status == "partial" and result.data is not None
++    assert not isinstance(result.data, EvidenceResponse) and result.data.ordering is None
++    assert result.data.status == "unknown"
++
++
++def test_deadline_exhaustion_prevents_dispatch() -> None:
++    reader = FixtureEvidenceReader()
++    result = gateway(reader, deadline_monotonic=time.monotonic() - 1).execute(
++        AgentRole.ASSESSOR, evidence_call()
++    )
++    assert result.status == "budget_exhausted" and result.error_code == "deadline_exhausted"
++    assert reader.calls == 0
++
++
++def test_concurrent_call_and_duplicate_are_rejected_without_waiting() -> None:
++    reader = FixtureEvidenceReader()
++    reader.started, reader.release = Event(), Event()
++    subject = gateway(reader)
++    with ThreadPoolExecutor(max_workers=1) as workers:
++        first = workers.submit(subject.execute, AgentRole.ASSESSOR, evidence_call())
++        assert reader.started.wait(timeout=2)
++        duplicate = subject.execute(AgentRole.ASSESSOR, evidence_call())
++        different = subject.execute(AgentRole.ASSESSOR, evidence_call(goal_id=uuid4()))
++        reader.release.set()
++        assert first.result(timeout=2).status == "succeeded"
++    assert duplicate.error_code == "duplicate_inflight"
++    assert different.error_code == "concurrency_exhausted" and reader.calls == 1
++
++
++def test_output_budget_is_reserved_before_service_dispatch_and_stops_replays() -> None:
++    reader = FixtureEvidenceReader()
++    subject = gateway(reader, max_result_bytes=4096, max_total_output_bytes=1024)
++    with pytest.raises(GatewayStoppedError, match="output_budget_exhausted"):
++        subject.execute(AgentRole.ASSESSOR, evidence_call())
++    with pytest.raises(GatewayStoppedError):
++        subject.execute(AgentRole.ASSESSOR, evidence_call())
++    assert reader.calls == 0
++
++
++def test_unexpected_tool_failure_is_explicit_redacted_and_terminal() -> None:
++    reader = FixtureEvidenceReader()
++    reader.error = RuntimeError("fixture private internal material")
++    subject = gateway(reader)
++    first = subject.execute(AgentRole.QA, evidence_call())
++    replay = subject.execute(AgentRole.CRITIC, evidence_call())
++    assert first.status == replay.status == "failed"
++    assert first.error_code == "tool_execution_failed" and first.is_synthetic
++    assert reader.calls == 1 and replay.usage.cached
++    assert "private internal" not in first.model_dump_json()
++
++
++def test_denied_calls_cannot_spend_an_active_call_output_reservation() -> None:
++    reader = FixtureEvidenceReader()
++    reader.started, reader.release = Event(), Event()
++    subject = gateway(reader, max_result_bytes=4096, max_total_output_bytes=4096)
++    with ThreadPoolExecutor(max_workers=1) as workers:
++        first = workers.submit(subject.execute, AgentRole.ASSESSOR, evidence_call())
++        assert reader.started.wait(timeout=2)
++        with pytest.raises(GatewayStoppedError, match="output_budget_exhausted"):
++            subject.execute(AgentRole.QA, b"invalid")
++        reader.release.set()
++        result = first.result(timeout=2)
++    assert result.status == "succeeded" and result.usage.result_bytes <= 4096
++
++
++def test_per_tool_deadline_is_supplied_to_the_trusted_reader() -> None:
++    reader = FixtureEvidenceReader()
++    received: list[float] = []
++    original = reader.read_evidence
++
++    def capture(
++        principal: Principal,
++        scope: AccessScope,
++        arguments: ReadEvidenceArguments,
++        deadline_monotonic: float,
++    ) -> EvidenceRead:
++        received.append(deadline_monotonic)
++        return original(principal, scope, arguments, deadline_monotonic)
++
++    reader.read_evidence = capture
++    before = time.monotonic()
++    assert gateway(reader).execute(AgentRole.QA, evidence_call()).status == "succeeded"
++    assert before < received[0] <= time.monotonic() + 5
+diff --git a/backend/tests/unit/test_r14_tool_gateway_fix1.py b/backend/tests/unit/test_r14_tool_gateway_fix1.py
+new file mode 100644
+index 00000000..e712ff04
+--- /dev/null
++++ b/backend/tests/unit/test_r14_tool_gateway_fix1.py
+@@ -0,0 +1,211 @@
++"""Control interruption releases only its own reservation; consumed budgets stay consumed."""
++
++from asyncio import CancelledError
++from concurrent.futures import ThreadPoolExecutor
++from threading import Event
++from uuid import UUID, uuid4
++
++import pytest
++from sqlalchemy.exc import DBAPIError
++from test_r14_tool_gateway import (
++    FixtureEvidenceReader,
++    comparison_call,
++    evidence_call,
++    evidence_response,
++    gateway,
++    limits,
++)
++
++from ai_intel.api.authentication import Principal
++from ai_intel.api.knowledge_contracts import DataMode
++from ai_intel.domain.access import AccessScope, Role
++from ai_intel.domain.enums import ToolStatus
++from ai_intel.investigation.capabilities import AgentRole
++from ai_intel.investigation.tool_contracts import ReadEvidenceArguments, ToolResult
++from ai_intel.investigation.tool_gateway import EvidenceRead, GatewayStoppedError, ToolGateway
++
++
++@pytest.mark.parametrize("error", [KeyboardInterrupt(), SystemExit(17), CancelledError()])
++def test_control_exception_during_preparation_releases_resources(error: BaseException) -> None:
++    class InterruptedPreparationReader(FixtureEvidenceReader):
++        pending: BaseException | None = error
++
++        @property
++        def data_mode(self) -> DataMode:
++            if self.pending is not None:
++                interruption, self.pending = self.pending, None
++                raise interruption
++            return "fixture"
++
++    reader = InterruptedPreparationReader()
++    subject = gateway(reader, max_result_bytes=4096, max_total_output_bytes=4096)
++    with pytest.raises(type(error)) as raised:
++        subject.execute(AgentRole.ASSESSOR, evidence_call())
++    assert raised.value is error and subject.runs == () and reader.calls == 0
++    assert subject.execute(AgentRole.ASSESSOR, evidence_call()).status is ToolStatus.SUCCEEDED
++    assert reader.calls == 1
++
++
++@pytest.mark.parametrize("error", [KeyboardInterrupt(), SystemExit(17), CancelledError()])
++def test_control_exception_before_emission_releases_resources(
++    error: BaseException,
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    reader = FixtureEvidenceReader()
++    subject = gateway(reader, max_result_bytes=4096, max_total_output_bytes=4096)
++    original_emit = subject._emit
++    pending = True
++
++    def interrupt_emission(result: ToolResult) -> ToolResult:
++        nonlocal pending
++        if pending:
++            pending = False
++            raise error
++        return original_emit(result)
++
++    monkeypatch.setattr(subject, "_emit", interrupt_emission)
++    with pytest.raises(type(error)) as raised:
++        subject.execute(AgentRole.ASSESSOR, evidence_call())
++    assert raised.value is error and subject.runs == ()
++    assert subject.execute(AgentRole.ASSESSOR, evidence_call()).status is ToolStatus.SUCCEEDED
++    assert reader.calls == 2
++
++
++@pytest.mark.parametrize("error", [KeyboardInterrupt(), SystemExit(17), CancelledError()])
++def test_control_exception_after_emission_does_not_refund_written_bytes(
++    error: BaseException,
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    reader = FixtureEvidenceReader()
++    subject = gateway(reader, max_result_bytes=4096, max_total_output_bytes=4096)
++    original_emit = subject._emit
++
++    def emit_then_interrupt(result: ToolResult) -> ToolResult:
++        original_emit(result)
++        raise error
++
++    monkeypatch.setattr(subject, "_emit", emit_then_interrupt)
++    with pytest.raises(type(error)) as raised:
++        subject.execute(AgentRole.ASSESSOR, evidence_call())
++    assert raised.value is error and len(subject.runs) == 1
++    assert subject.runs[0].usage.result_bytes > 0
++    monkeypatch.setattr(subject, "_emit", original_emit)
++    with pytest.raises(GatewayStoppedError, match="output_budget_exhausted"):
++        subject.execute(AgentRole.ASSESSOR, evidence_call())
++    assert reader.calls == 1
++
++
++@pytest.mark.parametrize("error", [KeyboardInterrupt(), SystemExit(17), CancelledError()])
++@pytest.mark.parametrize("budget", ["calls", "input"])
++def test_control_exception_preserves_already_consumed_call_and_input_budgets(
++    error: BaseException,
++    budget: str,
++) -> None:
++    reader = FixtureEvidenceReader()
++    reader.error = error
++    changes = (
++        {"max_calls": 1} if budget == "calls" else {"max_total_input_bytes": len(evidence_call())}
++    )
++    subject = gateway(reader, **changes)
++    with pytest.raises(type(error)) as raised:
++        subject.execute(AgentRole.ASSESSOR, evidence_call())
++    assert raised.value is error and subject.runs == ()
++    reader.error = None
++    result = subject.execute(AgentRole.ASSESSOR, evidence_call())
++    assert result.status is ToolStatus.BUDGET_EXHAUSTED
++    expected = "call_budget_exhausted" if budget == "calls" else "input_budget_exhausted"
++    assert result.error_code == expected and reader.calls == 1
++
++
++@pytest.mark.parametrize("error", [KeyboardInterrupt(), SystemExit(17), CancelledError()])
++def test_cancelled_call_does_not_release_another_inflight_call_or_reset_shared_counts(
++    error: BaseException,
++) -> None:
++    first_goal, cancelled_goal, third_goal, fourth_goal = (uuid4() for _ in range(4))
++    first_started, third_started, release = Event(), Event(), Event()
++    calls: list[UUID] = []
++
++    class SharedReader:
++        data_mode = "fixture"
++
++        def read_evidence(
++            self,
++            principal: Principal,
++            scope: AccessScope,
++            arguments: ReadEvidenceArguments,
++            deadline_monotonic: float,
++        ) -> EvidenceRead:
++            calls.append(arguments.event_id)
++            if len(calls) == 1:
++                first_started.set()
++                assert release.wait(timeout=3)
++            elif len(calls) == 2:
++                raise error
++            elif len(calls) == 3:
++                third_started.set()
++                assert release.wait(timeout=3)
++            return EvidenceRead(evidence_response(), True)
++
++    subject = ToolGateway(
++        Principal("fixture-shared", "owner", Role.ANALYST),
++        uuid4(),
++        limits(max_calls=4, max_concurrent_calls=2, max_total_output_bytes=12288),
++        evidence_reader=SharedReader(),
++    )
++    with ThreadPoolExecutor(max_workers=2) as workers:
++        first = workers.submit(
++            subject.execute, AgentRole.ASSESSOR, evidence_call(goal_id=first_goal)
++        )
++        assert first_started.wait(timeout=3)
++        with pytest.raises(type(error)) as raised:
++            subject.execute(AgentRole.ASSESSOR, evidence_call(goal_id=cancelled_goal))
++        assert raised.value is error and subject.runs == ()
++        third = workers.submit(
++            subject.execute, AgentRole.ASSESSOR, evidence_call(goal_id=third_goal)
++        )
++        assert third_started.wait(timeout=3)
++        duplicate = subject.execute(AgentRole.ASSESSOR, evidence_call(goal_id=first_goal))
++        assert (
++            duplicate.status is ToolStatus.PARTIAL and duplicate.error_code == "duplicate_inflight"
++        )
++        capacity = subject.execute(AgentRole.ASSESSOR, evidence_call(goal_id=fourth_goal))
++        assert capacity.status is ToolStatus.BUDGET_EXHAUSTED
++        assert capacity.error_code == "concurrency_exhausted" and len(calls) == 3
++        release.set()
++        assert first.result(timeout=3).status is ToolStatus.SUCCEEDED
++        assert third.result(timeout=3).status is ToolStatus.SUCCEEDED
++    assert (
++        subject.execute(AgentRole.ASSESSOR, evidence_call(goal_id=fourth_goal)).status
++        is ToolStatus.SUCCEEDED
++    )
++    spent = subject.execute(AgentRole.ASSESSOR, evidence_call(goal_id=uuid4()))
++    assert (
++        spent.status is ToolStatus.BUDGET_EXHAUSTED and spent.error_code == "call_budget_exhausted"
++    )
++    assert len(calls) == 4 and sum(run.usage.result_bytes for run in subject.runs) <= 12288
++
++
++@pytest.mark.parametrize("sqlstate", ["57014", "55P03", "08006"])
++def test_database_error_status_is_the_original_enum(sqlstate: str) -> None:
++    class FixtureDatabaseError(Exception):
++        pass
++
++    error = FixtureDatabaseError()
++    error.sqlstate = sqlstate
++    reader = FixtureEvidenceReader()
++    reader.error = DBAPIError("fixture statement", (), error, False)
++    result = gateway(reader).execute(AgentRole.ASSESSOR, evidence_call())
++    expected = ToolStatus.FAILED if sqlstate == "08006" else ToolStatus.BUDGET_EXHAUSTED
++    assert result.status is expected
++
++
++def test_tool_result_schema_and_normal_results_reuse_the_frozen_status_enum() -> None:
++    assert ToolResult.model_fields["status"].annotation is ToolStatus
++    assert ToolResult.model_json_schema()["$defs"]["ToolStatus"]["enum"] == [
++        item.value for item in ToolStatus
++    ]
++    assert gateway().execute(AgentRole.ASSESSOR, comparison_call()).status is ToolStatus.SUCCEEDED
++    assert gateway().execute(AgentRole.ASSESSOR, comparison_call(None)).status is ToolStatus.PARTIAL
++    reader = FixtureEvidenceReader()
++    reader.outcome = EvidenceRead(evidence_response(), False)
++    assert gateway(reader).execute(AgentRole.ASSESSOR, evidence_call()).status is ToolStatus.PARTIAL

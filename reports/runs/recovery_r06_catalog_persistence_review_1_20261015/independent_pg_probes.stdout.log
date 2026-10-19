@@ -1,0 +1,191 @@
+........................................................................ [  4%]
+........................................................................ [  9%]
+........................................................................ [ 14%]
+........................................................................ [ 19%]
+........................................................................ [ 24%]
+........................................................................ [ 29%]
+........................................................................ [ 34%]
+........................................................................ [ 39%]
+........................................................................ [ 44%]
+........................................................................ [ 49%]
+........................................................................ [ 54%]
+........................................................................ [ 58%]
+........................................................................ [ 63%]
+........................................................................ [ 68%]
+........................................................................ [ 73%]
+........................................................................ [ 78%]
+........................................................................ [ 83%]
+........................................................................ [ 88%]
+........................................................................ [ 93%]
+........................................................................ [ 98%]
+....................FFF...                                               [100%]
+================================== FAILURES ===================================
+____ test_sensitive_canonical_query_is_rejected_before_public_persistence _____
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_review_814d44cd?options=-c+search_path%3Dtest_review_5d018a72b58d4dd5bc453d485ec134e1%2Cpublic+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-507/test_sensitive_canonical_query0')
+
+    def test_sensitive_canonical_query_is_rejected_before_public_persistence(engine, tmp_path):
+        item = replace(member(), canonical_uri="https://arxiv.org/abs/2601.00001?access_token=synthetic")
+        with Session(engine) as session, session.begin():
+>           with pytest.raises(SourceCatalogError):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           Failed: DID NOT RAISE <class 'ai_intel.ingestion.source_catalog.SourceCatalogError'>
+
+..\reports\runs\recovery_r06_catalog_persistence_review_1_20261015\test_review_pg_probes.py:67: Failed
+__ test_caught_midpage_storage_error_does_not_leave_committable_first_member __
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_review_814d44cd?options=-c+search_path%3Dtest_review_0af04ea8dc1b40a5aed13afd8db2f55a%2Cpublic+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-507/test_caught_midpage_storage_er0')
+
+    def test_caught_midpage_storage_error_does_not_leave_committable_first_member(engine, tmp_path):
+        class FaultyStore(ContentStore):
+            def store_bytes(self, payload):
+                if payload == b'{"abstract":"second content"}':
+                    raise OSError("synthetic bounded storage failure")
+                return super().store_bytes(payload)
+    
+        first = member()
+        second = member("review-b", b'{"abstract":"second content"}')
+        with Session(engine) as session, session.begin():
+            try:
+                persist(session, FaultyStore(tmp_path / "raw"), (first, second))
+            except OSError:
+                pass
+>           count = session.scalar(select(func.count()).select_from(document_revisions))
+E           AssertionError: assert 1 == 0
+E            +  where 1 = scalar(<sqlalchemy.sql.selectable.Select object at 0x000001CF1341F470>)
+E            +    where scalar = <sqlalchemy.orm.session.Session object at 0x000001CF1348CE60>.scalar
+E            +    and   <sqlalchemy.sql.selectable.Select object at 0x000001CF1341F470> = select_from(Table('document_revisions', MetaData(), Column('revision_id', Text(), table=<document_revisions>, primary_key=True, nu...ext()), table=<document_revisions>, nullable=False, server_default=DefaultClause('{}', for_update=False)), schema=None))
+E            +      where select_from = <sqlalchemy.sql.selectable.Select object at 0x000001CF1341EDE0>.select_from
+E            +        where <sqlalchemy.sql.selectable.Select object at 0x000001CF1341EDE0> = select(<sqlalchemy.sql.functions.count at 0x1cf13456810; count>)
+E            +          where <sqlalchemy.sql.functions.count at 0x1cf13456810; count> = <sqlalchemy.sql.functions._FunctionGenerator object at 0x000001CF1348E6C0>()
+E            +            where <sqlalchemy.sql.functions._FunctionGenerator object at 0x000001CF1348E6C0> = func.count
+
+..\reports\runs\recovery_r06_catalog_persistence_review_1_20261015\test_review_pg_probes.py:86: AssertionError
+____ test_prevalidation_rejects_all_members_even_when_caller_catches_error ____
+
+engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_review_814d44cd?options=-c+search_path%3Dtest_review_de6f0a05aef94c0eaa6f6035085408e5%2Cpublic+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-507/test_prevalidation_rejects_all0')
+
+    
+    def test_prevalidation_rejects_all_members_even_when_caller_catches_error(engine, tmp_path):
+        with Session(engine) as session, session.begin():
+            with pytest.raises(SourceCatalogError):
+                persist(session, ContentStore(tmp_path / "raw"),
+>                   (member(), replace(member("review-b"), title="")))
+E               AssertionError: assert 1 == 0
+E                +  where 1 = scalar(<sqlalchemy.sql.selectable.Select object at 0x000001CF134669C0>)
+E                +    where scalar = <sqlalchemy.orm.session.Session object at 0x000001CF1341D1C0>.scalar
+E                +    and   <sqlalchemy.sql.selectable.Select object at 0x000001CF134669C0> = select_from(Table('document_revisions', MetaData(), Column('revision_id', Text(), table=<document_revisions>, primary_key=True, nu...ext()), table=<document_revisions>, nullable=False, server_default=DefaultClause('{}', for_update=False)), schema=None))
+E                +      where select_from = <sqlalchemy.sql.selectable.Select object at 0x000001CF13467020>.select_from
+E                +        where <sqlalchemy.sql.selectable.Select object at 0x000001CF13467020> = select(<sqlalchemy.sql.functions.count at 0x1cf134bd580; count>)
+E                +          where <sqlalchemy.sql.functions.count at 0x1cf134bd580; count> = <sqlalchemy.sql.functions._FunctionGenerator object at 0x000001CF134BD7F0>()
+E                +            where <sqlalchemy.sql.functions._FunctionGenerator object at 0x000001CF134BD7F0> = func.count
+
+..\reports\runs\recovery_r06_catalog_persistence_review_1_20261015\test_review_pg_probes.py:95: AssertionError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\wt\r06-catalog-review-final\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\r06-catalog-review-final\reports\runs\recovery_r06_catalog_persistence_review_1_20261015\independent_pg_probes.xml -
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.12.13-final-0 _______________
+
+Name                                                     Stmts   Miss  Cover   Missing
+--------------------------------------------------------------------------------------
+src\ai_intel\__init__.py                                     0      0   100%
+src\ai_intel\answering\__init__.py                           0      0   100%
+src\ai_intel\answering\contracts.py                         64      3    95%   24, 27-28
+src\ai_intel\answering\grounding.py                        144      4    97%   106-107, 263-264
+src\ai_intel\answering\service.py                          169    128    24%   70-74, 81-106, 127-133, 139-175, 189-195, 205-416
+src\ai_intel\api\__init__.py                                 0      0   100%
+src\ai_intel\api\app.py                                    135     23    83%   47, 54, 68, 70, 152-163, 169-172, 216-220, 226, 228
+src\ai_intel\api\auth_routes.py                             86      8    91%   54, 63, 101, 114, 141, 151, 168, 188
+src\ai_intel\api\auth_state.py                             106     11    90%   80-97, 133, 191, 208, 231, 233, 235
+src\ai_intel\api\authentication.py                         214     11    95%   95, 107, 145-146, 164-174, 350, 435
+src\ai_intel\api\document_contracts.py                      74      1    99%   102
+src\ai_intel\api\knowledge_contracts.py                     96      0   100%
+src\ai_intel\api\knowledge_read_service.py                 231    147    36%   86-92, 105, 107, 133-134, 141-144, 147-155, 158, 163, 173-243, 250-288, 311-373, 382, 399-431, 434-437, 440-469, 495-620
+src\ai_intel\api\knowledge_routes.py                        59     32    46%   51-83, 97-103, 107, 111
+src\ai_intel\api\problems.py                                 6      0   100%
+src\ai_intel\api\question_contracts.py                      56      8    86%   31-32, 43-45, 65, 67, 69
+src\ai_intel\api\question_routes.py                         68     12    82%   46-54, 80, 92, 99, 109-111, 133-135
+src\ai_intel\api\source_routes.py                          117     49    58%   54, 56, 81-93, 98-108, 113-126, 130-140, 150, 153-184, 201-208
+src\ai_intel\domain\__init__.py                              0      0   100%
+src\ai_intel\domain\access.py                               42      0   100%
+src\ai_intel\domain\enums.py                                79      0   100%
+src\ai_intel\domain\records.py                              94      0   100%
+src\ai_intel\domain\schema_export.py                        15      5    67%   45-49
+src\ai_intel\domain\values.py                               47      3    94%   31-33
+src\ai_intel\enrichment\dimensions.py                       18      0   100%
+src\ai_intel\enrichment\extraction.py                       61      2    97%   58, 74
+src\ai_intel\enrichment\impact.py                           36      1    97%   77
+src\ai_intel\enrichment\knowledge_cards.py                  46      2    96%   52, 65
+src\ai_intel\enrichment\persistence.py                     128     56    56%   99, 105, 109-113, 116-189, 197-272, 279-282
+src\ai_intel\enrichment\persistence_models.py                4      0   100%
+src\ai_intel\enrichment\poc.py                              31      2    94%   34, 39
+src\ai_intel\enrichment\relevance.py                        37      2    95%   47, 56
+src\ai_intel\enrichment\research_links.py                   24      0   100%
+src\ai_intel\enrichment\structured.py                       44      0   100%
+src\ai_intel\infrastructure\__init__.py                      0      0   100%
+src\ai_intel\infrastructure\content_storage_factory.py      10      1    90%   20
+src\ai_intel\infrastructure\content_store.py                58      5    91%   66, 79-82
+src\ai_intel\infrastructure\database.py                     48     22    54%   30-35, 52-61, 82-91
+src\ai_intel\infrastructure\dns_resolver.py                 45      3    93%   61, 64, 74
+src\ai_intel\infrastructure\http_transport.py              176      5    97%   45, 138, 167, 203, 205
+src\ai_intel\infrastructure\minio_store.py                  71      4    94%   45, 89-90, 116
+src\ai_intel\infrastructure\models\__init__.py               0      0   100%
+src\ai_intel\infrastructure\models\clients.py               82      1    99%   76
+src\ai_intel\infrastructure\models\generation.py           296     10    97%   150, 157, 173, 211, 295, 301, 322, 383, 398, 542
+src\ai_intel\infrastructure\models\json_output.py           37      0   100%
+src\ai_intel\infrastructure\models\semantic.py             241     37    85%   269, 290-291, 294, 297-298, 318-328, 330, 332, 358-386, 391-393
+src\ai_intel\infrastructure\network.py                     286     27    91%   129-130, 156-159, 174, 177, 207, 213, 226, 238, 242, 292, 318-319, 334, 340, 368, 401, 408, 413, 430, 440, 463, 491-493
+src\ai_intel\infrastructure\outbox.py                       59     26    56%   47-69, 114-168
+src\ai_intel\infrastructure\process_limits.py               44      9    80%   17-21, 78, 84-85, 87-88
+src\ai_intel\infrastructure\runtime_observations.py         18     10    44%   16-22, 32-38
+src\ai_intel\infrastructure\settings.py                    115     20    83%   112, 139, 154, 162-175, 189-190, 192-193, 198-203
+src\ai_intel\ingestion\catalog_documents.py                119     18    85%   57, 74, 78, 84, 97-98, 105, 107, 112, 114, 124, 127, 132, 135, 167, 170, 172, 213
+src\ai_intel\ingestion\connectors.py                        34      0   100%
+src\ai_intel\ingestion\cursor_repository.py                337    198    41%   60, 96, 98, 163, 185-226, 231, 236-239, 243, 247-250, 282-301, 304, 310-313, 337, 345-403, 412-426, 429-438, 443, 452-469, 473-484, 489-497, 502-575, 590-723, 727-730
+src\ai_intel\ingestion\parsing\__init__.py                   0      0   100%
+src\ai_intel\ingestion\parsing\_pdf_worker.py               54     16    70%   52-54, 68-87, 91
+src\ai_intel\ingestion\parsing\parsers.py                   99      5    95%   39, 42, 44, 46, 132
+src\ai_intel\ingestion\parsing\pdf_text.py                  57      3    95%   62, 90-91
+src\ai_intel\ingestion\parsing\text_blocks.py               30      0   100%
+src\ai_intel\ingestion\scheduler.py                         90     17    81%   59, 61, 65, 84, 105, 121-131, 137
+src\ai_intel\ingestion\source_catalog.py                    77     14    82%   140, 143-144, 152, 158, 179, 184, 194, 196-197, 213, 216-218
+src\ai_intel\ingestion\source_documents.py                 335    114    66%   133, 144-145, 213, 232, 235, 252, 259, 277, 323-326, 338, 370, 391, 407, 409-439, 458-603, 616-724, 737-755
+src\ai_intel\ingestion\source_jobs.py                      226     39    83%   74, 141-142, 166-169, 171, 197, 265-284, 306, 315, 326, 334, 346-399, 401, 403, 405
+src\ai_intel\ingestion\sources\__init__.py                   0      0   100%
+src\ai_intel\ingestion\sources\academic.py                  41      0   100%
+src\ai_intel\ingestion\sources\cve.py                       80      5    94%   39, 56, 68, 97, 102
+src\ai_intel\ingestion\sources\feed.py                      52      0   100%
+src\ai_intel\ingestion\sources\nvd.py                      156     23    85%   71, 74-75, 77, 97, 103, 134, 150, 153, 162, 165, 168, 176-178, 206, 208, 212, 216, 220, 228, 231, 234
+src\ai_intel\ingestion\sources\osv.py                       80      5    94%   65, 73, 85, 96, 135
+src\ai_intel\ingestion\sources\repository.py                66     11    83%   50, 52, 56, 76, 79, 99, 101, 110, 116-118
+src\ai_intel\ingestion\sources\standards.py                 55      3    95%   47, 54, 87
+src\ai_intel\ingestion\sources\vendor_advisories.py        110      0   100%
+src\ai_intel\knowledge\claims.py                            75     35    53%   25-26, 61-72, 78-81, 85-87, 91-93, 99-115, 119
+src\ai_intel\knowledge\entities.py                          31     13    58%   23, 37, 42-48, 53-56
+src\ai_intel\knowledge\event_linking.py                    198     97    51%   102, 136-283, 307-394, 409-494, 507-516, 559
+src\ai_intel\knowledge\evidence.py                          51      7    86%   35, 49, 56, 61, 64, 85, 90
+src\ai_intel\knowledge\models.py                            21      0   100%
+src\ai_intel\knowledge\persistence.py                      313    134    57%   226-279, 323, 357, 376, 388, 404-443, 456-541, 544, 557-651, 654-680, 689-804
+src\ai_intel\knowledge\persistence_models.py                16      0   100%
+src\ai_intel\knowledge\revisions.py                        138     37    73%   81, 90, 95, 97, 119-120, 126, 129, 131, 211, 218, 251, 258, 261, 263, 266, 278, 280, 285, 287-289, 322-333, 338-343, 372-382
+src\ai_intel\retrieval\persistence_models.py                 6      0   100%
+src\ai_intel\retrieval\service.py                          155     84    46%   104, 108-137, 166-170, 177-178, 181-299, 311-313, 319-327, 339-368
+src\ai_intel\workers\executor.py                            96     10    90%   51, 69, 99, 130, 146-147, 167, 178-189
+src\ai_intel\workers\jobs.py                               147     49    67%   31, 47, 79, 111-125, 196, 208-209, 232, 274, 320, 324, 329, 332-346, 352, 358-411, 420-438, 448
+src\ai_intel\workers\runtime.py                             67     30    55%   67-76, 83-85, 106-115, 120-128, 133
+--------------------------------------------------------------------------------------
+TOTAL                                                     7329   1657    77%
+Required test coverage of 60% reached. Total coverage: 77.39%
+=========================== short test summary info ===========================
+FAILED ::test_sensitive_canonical_query_is_rejected_before_public_persistence
+FAILED ::test_caught_midpage_storage_error_does_not_leave_committable_first_member
+FAILED ::test_prevalidation_rejects_all_members_even_when_caller_catches_error
+3 failed, 1463 passed, 1 warning in 104.58s (0:01:44)

@@ -1,0 +1,93 @@
+src\ai_intel\assets\quake_aggregate.py:31:class QuakeAggregateConnector:
+src\ai_intel\assets\hunter_aggregate.py:32:class HunterAggregateConnector:
+src\ai_intel\assets\aggregate_service.py:23:from ai_intel.assets.aggregate_repository import (
+src\ai_intel\assets\aggregate_service.py:24:    AggregatePersistenceError,
+src\ai_intel\assets\aggregate_service.py:25:    AggregateServerPolicy,
+src\ai_intel\assets\aggregate_service.py:26:    StoredAggregate,
+src\ai_intel\assets\aggregate_service.py:27:    aggregate_call_key,
+src\ai_intel\assets\aggregate_service.py:28:    aggregate_scope_key,
+src\ai_intel\assets\aggregate_service.py:29:    canonical_observation,
+src\ai_intel\assets\aggregate_service.py:59:class AggregateConnector(Protocol):
+src\ai_intel\assets\aggregate_service.py:67:class AggregateRepository(Protocol):
+src\ai_intel\assets\aggregate_service.py:68:    def save_observation(
+src\ai_intel\assets\aggregate_service.py:72:        policy: AggregateServerPolicy,
+src\ai_intel\assets\aggregate_service.py:76:    ) -> StoredAggregate: ...
+src\ai_intel\assets\aggregate_service.py:78:    def read_latest(
+src\ai_intel\assets\aggregate_service.py:83:        policy: AggregateServerPolicy,
+src\ai_intel\assets\aggregate_service.py:87:    ) -> StoredAggregate | None: ...
+src\ai_intel\assets\aggregate_service.py:90:class SafeAggregateCache(Protocol):
+src\ai_intel\assets\aggregate_service.py:99:class AggregateProviderResult:
+src\ai_intel\assets\aggregate_service.py:109:    cache_identity: str | None = None
+src\ai_intel\assets\aggregate_service.py:111:    previous_available: StoredAggregate | None = None
+src\ai_intel\assets\aggregate_service.py:115:def safe_cache_payload(stored: StoredAggregate) -> str:
+src\ai_intel\assets\aggregate_service.py:139:class AggregateService:
+src\ai_intel\assets\aggregate_service.py:149:        repository: AggregateRepository,
+src\ai_intel\assets\aggregate_service.py:150:        connectors: dict[AggregateProvider, AggregateConnector],
+src\ai_intel\assets\aggregate_service.py:151:        server_policy: AggregateServerPolicy,
+src\ai_intel\assets\aggregate_service.py:153:        safe_cache: SafeAggregateCache | None = None,
+src\ai_intel\assets\aggregate_service.py:167:    def _cache(self, stored: StoredAggregate, now: datetime, *, write: bool) -> CacheStatus:
+src\ai_intel\assets\aggregate_service.py:175:        expected = safe_cache_payload(stored)
+src\ai_intel\assets\aggregate_service.py:186:                self.safe_cache.set(stored.cache_identity, expected, remaining)
+src\ai_intel\assets\aggregate_service.py:188:            cached = self.safe_cache.get(stored.cache_identity)
+src\ai_intel\assets\aggregate_service.py:199:        stored: StoredAggregate,
+src\ai_intel\assets\aggregate_service.py:204:    ) -> AggregateProviderResult:
+src\ai_intel\assets\aggregate_service.py:224:            previous = self.repository.read_latest(
+src\ai_intel\assets\aggregate_service.py:232:        return AggregateProviderResult(
+src\ai_intel\assets\aggregate_service.py:242:            stored.cache_identity,
+src\ai_intel\assets\aggregate_service.py:247:    def read_current_provider_aggregate(
+src\ai_intel\assets\aggregate_service.py:254:    ) -> AggregateProviderResult:
+src\ai_intel\assets\aggregate_service.py:256:        aggregate_scope_key(scope, self.server_policy)
+src\ai_intel\assets\aggregate_service.py:260:            return AggregateProviderResult(provider, None, "unknown", "missing_product_query")
+src\ai_intel\assets\aggregate_service.py:263:            stored = self.repository.read_latest(
+src\ai_intel\assets\aggregate_service.py:267:                return AggregateProviderResult(provider, query_id, "unknown", "no_observation")
+src\ai_intel\assets\aggregate_service.py:269:        except AggregatePersistenceError:
+src\ai_intel\assets\aggregate_service.py:270:            return AggregateProviderResult(
+src\ai_intel\assets\aggregate_service.py:274:    def collect_provider_aggregate_observation(
+src\ai_intel\assets\aggregate_service.py:281:    ) -> AggregateProviderResult:
+src\ai_intel\assets\aggregate_service.py:283:        existing = self.read_current_provider_aggregate(provider, query_id, scope, now=evaluated_at)
+src\ai_intel\assets\aggregate_service.py:289:            return AggregateProviderResult(
+src\ai_intel\assets\aggregate_service.py:297:            return AggregateProviderResult(
+src\ai_intel\assets\aggregate_service.py:302:        scope_key = aggregate_scope_key(scope, self.server_policy)
+src\ai_intel\assets\aggregate_service.py:304:            (aggregate_call_key(provider, query_id, self.server_policy) + scope_key).encode()
+src\ai_intel\assets\aggregate_service.py:308:                return AggregateProviderResult(
+src\ai_intel\assets\aggregate_service.py:313:            current = self.read_current_provider_aggregate(
+src\ai_intel\assets\aggregate_service.py:328:                canonical_observation(observation)
+src\ai_intel\assets\aggregate_service.py:355:                stored = self.repository.save_observation(
+src\ai_intel\assets\aggregate_service.py:359:            except AggregatePersistenceError:
+src\ai_intel\assets\aggregate_service.py:360:                return AggregateProviderResult(
+src\ai_intel\assets\aggregate_service.py:372:    def collect_product_aggregate_observations(
+src\ai_intel\assets\aggregate_service.py:374:    ) -> tuple[AggregateProviderResult, ...]:
+src\ai_intel\assets\aggregate_service.py:377:            self.collect_provider_aggregate_observation(provider, query_id, scope, now=now)
+src\ai_intel\assets\aggregate_repository.py:27:from ai_intel.assets.aggregate_persistence_models import aggregate_observations
+src\ai_intel\assets\aggregate_repository.py:37:class AggregatePersistenceError(RuntimeError):
+src\ai_intel\assets\aggregate_repository.py:41:class AggregateIdentityCollision(AggregatePersistenceError):
+src\ai_intel\assets\aggregate_repository.py:46:class AggregateServerPolicy:
+src\ai_intel\assets\aggregate_repository.py:66:class StoredAggregate:
+src\ai_intel\assets\aggregate_repository.py:76:    def cache_identity(self) -> str:
+src\ai_intel\assets\aggregate_repository.py:80:def aggregate_scope_key(scope: AccessScope, policy: AggregateServerPolicy) -> str:
+src\ai_intel\assets\aggregate_repository.py:90:def aggregate_call_key(
+src\ai_intel\assets\aggregate_repository.py:91:    provider: AggregateProvider, query_id: AggregateQueryId, policy: AggregateServerPolicy
+src\ai_intel\assets\aggregate_repository.py:100:def canonical_observation(observation: AggregateObservation) -> tuple[str, str]:
+src\ai_intel\assets\aggregate_repository.py:120:def stored_aggregate(row: RowMapping) -> StoredAggregate:
+src\ai_intel\assets\aggregate_repository.py:123:    _, digest = canonical_observation(observation)
+src\ai_intel\assets\aggregate_repository.py:154:        raise AggregatePersistenceError("aggregate storage integrity failed")
+src\ai_intel\assets\aggregate_repository.py:155:    return StoredAggregate(
+src\ai_intel\assets\aggregate_repository.py:165:class PostgresAggregateRepository:
+src\ai_intel\assets\aggregate_repository.py:173:    def save_observation(
+src\ai_intel\assets\aggregate_repository.py:177:        policy: AggregateServerPolicy,
+src\ai_intel\assets\aggregate_repository.py:181:    ) -> StoredAggregate:
+src\ai_intel\assets\aggregate_repository.py:182:        canonical, digest = canonical_observation(observation)
+src\ai_intel\assets\aggregate_repository.py:185:        scope_key = aggregate_scope_key(scope, policy)
+src\ai_intel\assets\aggregate_repository.py:195:            "call_key": aggregate_call_key(observation.provider, observation.query_id, policy),
+src\ai_intel\assets\aggregate_repository.py:232:                    raise AggregateIdentityCollision("aggregate observation identity collision")
+src\ai_intel\assets\aggregate_repository.py:233:                stored = stored_aggregate(row)
+src\ai_intel\assets\aggregate_repository.py:236:            raise AggregatePersistenceError("aggregate persistence failed") from None
+src\ai_intel\assets\aggregate_repository.py:238:    def read_latest(
+src\ai_intel\assets\aggregate_repository.py:243:        policy: AggregateServerPolicy,
+src\ai_intel\assets\aggregate_repository.py:247:    ) -> StoredAggregate | None:
+src\ai_intel\assets\aggregate_repository.py:248:        call_key = aggregate_call_key(provider, query_id, policy)
+src\ai_intel\assets\aggregate_repository.py:249:        scope_key = aggregate_scope_key(scope, policy)
+src\ai_intel\assets\aggregate_repository.py:269:                stored = stored_aggregate(row)
+src\ai_intel\assets\aggregate_repository.py:272:                    aggregate_call_key(
+src\ai_intel\assets\aggregate_repository.py:278:                    raise AggregatePersistenceError("aggregate storage identity failed")
+src\ai_intel\assets\aggregate_repository.py:281:            raise AggregatePersistenceError("aggregate persistence read failed") from None

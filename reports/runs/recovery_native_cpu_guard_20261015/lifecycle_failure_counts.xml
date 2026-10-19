@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="3.426" timestamp="2026-10-15T20:19:59.548551+08:00" hostname="yin"><testcase classname="tests.unit.test_r20_native_cpu_guard" name="test_failed_guard_readiness_reaps_child_and_closes_setup_handles" time="3.164"><failure message="AssertionError: b'Traceback (most recent call last):\r&#10;    File &quot;&lt;string&gt;&quot;, line 28, in &lt;module&gt;\r&#10;  AssertionError: setup handle count 132 -&gt; 134\r&#10;  '&#10;assert 1 == 0&#10; +  where 1 = CompletedProcess(args=['D:\\dianzi\\backend\\.venv\\Scripts\\python.exe', '-c', &quot;import ctypes,gc,os\nfrom ai_intel.in...st recent call last):\r\n  File &quot;&lt;string&gt;&quot;, line 28, in &lt;module&gt;\r\nAssertionError: setup handle count 132 -&gt; 134\r\n').returncode">def test_failed_guard_readiness_reaps_child_and_closes_setup_handles() -&gt; None:
+        code = (
+            "import ctypes,gc,os\n"
+            "from ai_intel.infrastructure import process_limits\n"
+            "if os.name=='nt':\n"
+            "    from ctypes import wintypes\n"
+            "    kernel=ctypes.WinDLL('kernel32')\n"
+            "    kernel.GetCurrentProcess.restype=wintypes.HANDLE\n"
+            "    kernel.GetProcessHandleCount.argtypes=[wintypes.HANDLE,ctypes.c_void_p]\n"
+            "    def count_handles():\n"
+            "        count=wintypes.DWORD()\n"
+            "        assert kernel.GetProcessHandleCount(kernel.GetCurrentProcess(),ctypes.byref(count))\n"
+            "        return count.value\n"
+            "    original_popen=process_limits.subprocess.Popen\n"
+            "    guards=[]\n"
+            "    def record_guard(*args,**kwargs):\n"
+            "        guard=original_popen(*args,**kwargs)\n"
+            "        guards.append(guard)\n"
+            "        return guard\n"
+            "    process_limits.subprocess.Popen=record_guard\n"
+            "    process_limits._WINDOWS_CPU_GUARD_CODE='import time; time.sleep(20)'\n"
+            "    before=count_handles()\n"
+            "    try: process_limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=5)\n"
+            "    except OSError: pass\n"
+            "    else: raise AssertionError('unready guard allowed work')\n"
+            "    assert len(guards)==1 and guards[0].poll() is not None\n"
+            "    guards.clear()\n"
+            "    gc.collect()\n"
+            "    after=count_handles()\n"
+            "    assert after==before, f'setup handle count {before} -&gt; {after}'\n"
+            "else:\n"
+            "    try: process_limits._start_windows_cpu_guard(5)\n"
+            "    except OSError: pass\n"
+            "    else: raise AssertionError('Windows guard started on another platform')\n"
+            "print('FAILURE_CLEANED',flush=True)\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, timeout=8, check=False
+        )
+&gt;       assert result.returncode == 0, result.stderr
+E       AssertionError: b'Traceback (most recent call last):\r
+E           File "&lt;string&gt;", line 28, in &lt;module&gt;\r
+E         AssertionError: setup handle count 132 -&gt; 134\r
+E         '
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['D:\\dianzi\\backend\\.venv\\Scripts\\python.exe', '-c', "import ctypes,gc,os\nfrom ai_intel.in...st recent call last):\r\n  File "&lt;string&gt;", line 28, in &lt;module&gt;\r\nAssertionError: setup handle count 132 -&gt; 134\r\n').returncode
+
+tests\unit\test_r20_native_cpu_guard.py:196: AssertionError</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,23 @@
+def test_parent_acl_writer_cannot_commit_between_acl_check_and_private_audit_return(audit_engine, tmp_path, monkeypatch, parent):
+    service, scope, session_hash, _, step, _ = private_recorded_workflow(audit_engine, tmp_path, monkeypatch)
+    original = service._read_input_audit_record
+    observed = {'writer_blocked': False, 'writer_committed': False, 'reader_denied': False}
+    table = {'source': 'sources', 'document': 'documents', 'revision': 'document_revisions'}[parent]
+    def concurrent_writer(session, workflow, step_row):
+        try:
+            with audit_engine.begin() as connection:
+                connection.execute(text("SET LOCAL lock_timeout='300ms'"))
+                connection.execute(text('UPDATE ' + table + " SET visibility='tenant',tenant_id='synthetic-independent-revoked-parent'"))
+            observed['writer_committed'] = True
+        except OperationalError:
+            observed['writer_blocked'] = True
+        return original(session, workflow, step_row)
+    monkeypatch.setattr(service, '_read_input_audit_record', concurrent_writer)
+    with Session(audit_engine) as session, session.begin():
+        try:
+            result = service.read_input_audit(session, scope, UUID(step['job_id']), actor_session_hash=session_hash, at=service.clock())
+            observed['returned_texts'] = bool(result.record.input_selections[0].texts)
+        except PermissionError:
+            observed['reader_denied'] = True
+    (RUN / ('independent_parent_acl_race_' + parent + '.json')).write_bytes(json.dumps(observed, indent=2).encode())
+    assert observed['writer_blocked'] or observed['reader_denied'], observed

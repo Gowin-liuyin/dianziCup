@@ -1,0 +1,137 @@
+"""Record the fixed source tree, unchanged upstream probes and actual command outcomes."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import subprocess
+import xml.etree.ElementTree as element_tree
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+RUN = Path(__file__).resolve().parent
+ROOT = RUN.parents[2]
+SOURCE = "6d85742b0114cc5e304e88b2aa930755ccce9bc9"
+REPORT = ROOT / "reports/tasks/R18-sdk-client-fix1.md"
+
+
+def now() -> str:
+    return datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="seconds")
+
+
+def git_bytes(*arguments: str) -> bytes:
+    return subprocess.run(
+        ["git", *arguments], cwd=ROOT, check=True, capture_output=True, timeout=30
+    ).stdout
+
+
+if __name__ == "__main__":
+    started = now()
+    assert not REPORT.exists()
+    assert git_bytes("rev-parse", "HEAD").decode().strip() == SOURCE
+    source_files = (
+        git_bytes("diff-tree", "--no-commit-id", "--name-only", "-r", SOURCE).decode().splitlines()
+    )
+    identities = []
+    for name in source_files:
+        raw = (ROOT / name).read_bytes()
+        blob = git_bytes("show", SOURCE + ":" + name)
+        assert raw.replace(b"\r\n", b"\n") == blob
+        identities.append(
+            {
+                "path": name,
+                "raw_sha256": hashlib.sha256(raw).hexdigest(),
+                "git_blob_sha256": hashlib.sha256(blob).hexdigest(),
+            }
+        )
+    tree = git_bytes("rev-parse", SOURCE + "^{tree}").decode().strip()
+    (RUN / "source_identity.json").write_text(
+        json.dumps(
+            {"observed_at": now(), "source_sha": SOURCE, "tree": tree, "files": identities},
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    suites = element_tree.parse(RUN / "original99_plus9_plus65_and_new.xml").getroot()
+    counts = {
+        name: sum(int(s.attrib.get(name, "0")) for s in suites.iter("testsuite"))
+        for name in ("tests", "failures", "errors", "skipped")
+    }
+    assert counts == {"tests": 230, "failures": 0, "errors": 0, "skipped": 0}
+    upstream = json.loads((RUN / "protected_upstream.json").read_bytes())
+    assert [entry["member_count"] for entry in upstream["protected"]] == [86, 83]
+    command_rows = []
+    for path in sorted(RUN.glob("*.json")):
+        value = json.loads(path.read_bytes())
+        if "command" not in value:
+            continue
+        command_rows.append(
+            f"| {path.stem} | `{' '.join(value['command'])}` | {value['started_at']} / {value['finished_at']} | {value['exit_code']} | [log](../runs/{RUN.name}/{value['log_path']}) |"
+        )
+    finished = now()
+    REPORT.write_text(
+        f"""# R18 · SDK/CLI 定向修复 1
+
+文档首次创建时间：{started}
+本次写作开始/结束：{started} / {finished}
+最后更新时间/证据截止：{finished}
+业务代码编写起止：历史未记录；不由文件 mtime 或测试时长推算。
+作者：/root/r18_protocol_sdk_contract_preparation；状态：awaiting_review；实现：partial（当前修复片完整，整R18保持partial）。
+工作树/分支：D:/wt/r18-sdk-client-fix1 / codex/r18-sdk-client-fix1。
+基线：d1c30d27dee54bb7895c0860c6a3ce18ea4d4632；已测/冻结代码：{SOURCE}；tree：{tree}；已审修复SHA：尚未独立复核。
+material提交、manifest和推送以实际收据为准；本Agent未push，未改accepted或全局进度。
+
+## 1. 具体问题与修复
+
+依据 [独立初审](D:/wt/r18-sdk-client-review1/reports/reviews/recovery/G-E-R18-sdk-cli-review-1.md)，报告SHA b3d9c3cfe11ac84e6f1b39db6c025309b016fed67f40ea7676cf663d06b70527。原作者86材料与reviewer83材料均逐raw hash核对未变，见 [protected_upstream.json](../runs/{RUN.name}/protected_upstream.json)；原65 probe逐字复制未改断言。
+Must1：三种无连字符/花括号/urn UUID、空格日期、短偏移格式、逗号秒、epoch字符串被Pydantic JSON strict路径接受并规范化；冻结FormatChecker拒绝。现共享PublicUuid/PublicDateTime在转换前检验原始字形，覆盖所有既有UUID/aware字段和数组，成熟Pydantic仍负责typed UUID、日历和时间解析。JSON模式明确委托原strict AwareDatetime TypeAdapter；普通Python UUID/aware datetime仍支持，无新依赖。
+Must2：合法中文emoji QAAnswer在PYTHONIOENCODING=ascii实际进程UnicodeEncodeError，stdout空、exit1。现wire_json增加兼容可选ensure_ascii=False，CLI ask/check用True保留JSON解析后的全字符；普通REST默认序列化不变。执行/输出错误保留3，旧风险未完整仍2，未据自然语言或202推0/1。
+新增2共享字形guard及兼容序列化参数是修复共同根因所需；没有逐对象拷贝校验、另造JSON/RPC、额外输出框架、业务数据库或根依赖。只修改models.py/cli.py与自有回归/仪器；client.py、原99/9、公共schema/auth/locks/package metadata/LICENSE/build/progress均未改。
+
+## 2. 时序、调用方与冻结
+
+新WT基线d1c30d27，首次业务修改前独立CBM index与全UUID/AwareDatetime/wire_json/stdout调用搜索exit0；原旧WT/d1c/f17目录未改。
+调用链：CLI→strict输入DTO→DianziClient固定POST→typed返回→CLI ASCII JSON；格式guard为八对象/common共享，HTTP返回违规变ResponseContractError，输入违规在IO前拒绝。wire_json默认保持原调用兼容，当前额外调用仅CLI。
+独立project=dianzi_r18_sdk_fix1_20261016，索引范围sdk/python，未包含秘密/holdout；freeze后refresh绑定{SOURCE}，wire/CLI trace与rg交叉核实。图零边不代表无调用；fixtures排除由源码和真实子进程补证。
+MCP f17使用原models，缺陷传播仍阻断其验收。必须在另新组合WT复用固定源码+f17后跑原114和新格式MCP测试，再新非作者审查；本修复不改f17冻结目录或拿其旧绿给新代码背书。
+
+## 3. 实际验证
+
+最终组合230 / 230passed / 0failed/error/skip：原SDK99、原公共合同9、逐字原review65、新格式46、新CLI11。新CLI在临时loopback fixture真实子进程验证ASCII/UTF8 ask/check/queued完整JSON、2；401和输入格式错3；输出sink失败3。Fixture均显式synthetic，零产品/付费外调；临时服务器有100调用/60秒边界和join关闭，实际network收据在run，不能称PG/model/live。
+strict mypy4产品源文件exit0；项目backend Ruff/format现改文件和自有仪器exit0；staged diff check0。
+unit/contract/security边界passed（仅列出范围）；integration仅临时HTTP/实际CLI传输passed；frontend/e2e/manual not_run；产品PG、Key撤销/租户隔离、六工具/正式预算/安装包/插件/live blocked或not_run。本片未验证官方评测、准确率或完整系统时效。
+
+| 标签 | 实际argv | 开始 / 结束（Asia/Shanghai） | exit | 原日志 |
+|---|---|---|---|---|
+{chr(10).join(command_rows)}
+
+## 4. 原红与修复台账
+
+| 触发 | 实际/根因 | 修复/复验 | 状态 |
+|---|---|---|---|
+| 原65同输入 | 57pass8fail，确认7格式+ASCII输出失败 | 共享字形与ASCII输出；原65后65/65 | 已修，待独立复核 |
+| 首版BeforeValidator | 合法日期在Pydantic前置Python路径误拒，原65有5红、原99有6红 | JSON模式委托原strict datetime adapter；全230通过 | 已修，原红保留 |
+| 新格式仪器 | 把inline AnswerClaim/Assessment误作$defs独立项，2失败 | 使用合同实际JSON Pointer，不改样例/预期；46通过 | 已修，仪器 |
+| 新CLI仪器 | pytest参数名request保留，collection exit2 | 改自有变量名input_value；11通过 | 已修，仪器 |
+| 样式/仪器 | 新行超项目100列、helper格式；Ruff/format红 | 项目格式化后lint/format0 | 已修，仪器 |
+| PowerShell树读取 | 未引用HEAD^{{tree}}造成参数解析错误，未保存该交互raw文件 | 引用或Python argv取得实际tree {tree} | 已修，定位仪器；不伪称有原raw收据 |
+
+实际发现/关闭时点见首红/复验JSON；没有独立逐编辑时钟者标历史未记录，不拿test时间冒充写作时间。修复源码均冻结于{SOURCE}。
+
+## 5. 合同、限制与交接
+
+没有新重大决策、评分/金标/阈值/分母/失败skip变动；没有项目外用户文件、凭据/产品key/holdout读取与提交。原86+83材料和copy65精确hash保护。代码回滚为仅回退本片models/cli及自有测试，保留所有历史；不迁移/downgrade/drop。CLI输出转义是JSON表示变化，解析值保持一致；需消费者按JSON解析。
+依据：[Pydantic严格JSON说明](https://pydantic.dev/docs/validation/latest/concepts/strict_mode/)、[jsonschema格式校验](https://python-jsonschema.readthedocs.io/en/stable/validate/#validating-formats)、[RFC3339](https://www.rfc-editor.org/info/rfc3339/)。当前范围仍使用冻结FormatChecker的无闰秒支持，不宣称覆盖其未支持形式。
+费用：编程Agent费用unknown；未产品API/模型/测绘付费调用，不虚填0。本片尚未独立accepted、未push；整R18/T04/T32/T35/T51/G-E不因这230绿而过门。
+
+## 6. 修订记录
+
+{finished} · 首次落盘；两Must、真实首红/回归、7文件source identity、83+86保护与依赖传播记录。后续独立复核由root登记，不由作者自签。
+""",
+        encoding="utf-8",
+    )
+    print(
+        json.dumps({"source": SOURCE, "tree": tree, "report": str(REPORT), "test_counts": counts})
+    )

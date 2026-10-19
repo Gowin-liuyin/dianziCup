@@ -1,0 +1,221 @@
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection_models.py-13-from sqlalchemy.dialects.postgresql import JSONB
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection_models.py-14-
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection_models.py-15-from ai_intel.knowledge.models import metadata
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection_models.py-16-
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection_models.py:17:graph_projection_batches = Table(
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection_models.py:18:    "graph_projection_batches",
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection_models.py-19-    metadata,
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection_models.py-20-    Column("batch_id", Text, primary_key=True),
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection_models.py-21-    Column("namespace", Text, nullable=False),
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection_models.py-22-    Column("partition_key", Text, nullable=False),
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection_models.py-23-    Column("generation_id", Text, nullable=False),
+--
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-35-    GraphSnapshotChangedError,
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-36-    RelationType,
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-37-)
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-38-from ai_intel.knowledge.graph_projection_models import (
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:39:    graph_projection_batches,
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-40-    graph_projection_state,
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-41-)
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-42-from ai_intel.knowledge.persistence_models import events
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-43-from ai_intel.workers.executor import (
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-44-    JobExecutionContext,
+--
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-747-                captured_at=captured_at,
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-748-            )
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-749-        payload, digest = encode_projection_batch(batch)
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-750-        session.execute(
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:751:            insert(graph_projection_batches).values(
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-752-                batch_id=str(batch.batch_id),
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-753-                namespace=namespace,
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-754-                partition_key=partition,
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-755-                generation_id=str(generation_id),
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-756-                event_id=str(event_id),
+--
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-799-    batch_id: UUID,
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-800-) -> tuple[GraphProjectionBatch, str]:
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-801-    row = (
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-802-        session.execute(
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:803:            select(graph_projection_batches).where(
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:804:                graph_projection_batches.c.batch_id == str(batch_id),
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:805:                graph_projection_batches.c.partition_key == partition_for_scope(scope),
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-806-            )
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-807-        )
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-808-        .mappings()
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-809-        .first()
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-810-    )
+--
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-941-        rows = (
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-942-            session.execute(
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-943-                select(
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-944-                    graph_projection_state,
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:945:                    graph_projection_batches.c.batch_id.label("trusted_batch_id"),
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:946:                    graph_projection_batches.c.sequence.label("trusted_sequence"),
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:947:                    graph_projection_batches.c.payload_sha256.label("trusted_digest"),
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:948:                    graph_projection_batches.c.kind.label("trusted_kind"),
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-949-                )
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-950-                .select_from(
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-951-                    graph_projection_state.join(
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:952:                        graph_projection_batches,
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-953-                        and_(
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:954:                            graph_projection_batches.c.batch_id
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-955-                            == graph_projection_state.c.body["batch_id"].astext,
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:956:                            graph_projection_batches.c.namespace
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-957-                            == graph_projection_state.c.namespace,
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:958:                            graph_projection_batches.c.partition_key
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-959-                            == graph_projection_state.c.partition_key,
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:960:                            graph_projection_batches.c.generation_id
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-961-                            == graph_projection_state.c.generation_id,
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:962:                            graph_projection_batches.c.event_id
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-963-                            == graph_projection_state.c.event_id,
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-964-                        ),
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-965-                    )
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-966-                )
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-967-                .where(
+--
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1033-        "kind",
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1034-        "captured_at",
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1035-        "payload_sha256",
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1036-    )
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:1037:    query = select(*(graph_projection_batches.c[key] for key in fields)).where(
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:1038:        graph_projection_batches.c.namespace == namespace,
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:1039:        graph_projection_batches.c.partition_key == partition_for_scope(scope),
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:1040:        graph_projection_batches.c.event_id == str(event_id),
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1041-    )
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1042-    if after is not None:
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1043-        timestamp, identifier = after
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1044-        if timestamp.tzinfo is None or type(identifier) is not UUID:
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1045-            raise ValueError("invalid projection history cursor")
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1046-        query = query.where(
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:1047:            tuple_(graph_projection_batches.c.captured_at, graph_projection_batches.c.batch_id)
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1048-            > (timestamp, str(identifier))
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1049-        )
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1050-    query = query.order_by(
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py:1051:        graph_projection_batches.c.captured_at, graph_projection_batches.c.batch_id
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1052-    ).limit(limit)
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1053-    return tuple(
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1054-        ProjectionHistoryEntry.model_validate_json(
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1055-            json.dumps(
+D:/wt/r10-neo4j-projection-fix2/backend/src\ai_intel\knowledge\graph_projection.py-1056-                dict(row),
+--
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-39-        name="ck_qa_conversation_status",
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-40-    ),
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-41-    ForeignKeyConstraint(
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-42-        ["conversation_id", "active_turn_id"],
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py:43:        ["qa_conversation_turns.conversation_id", "qa_conversation_turns.turn_id"],
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-44-        name="fk_qa_active_turn",
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-45-        deferrable=True,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-46-        initially="DEFERRED",
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-47-        use_alter=True,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-48-    ),
+--
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-54-    qa_conversations.c.updated_at,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-55-    qa_conversations.c.conversation_id,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-56-)
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-57-
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py:58:qa_conversation_turns = Table(
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py:59:    "qa_conversation_turns",
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-60-    metadata,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-61-    Column("turn_id", UUID(as_uuid=True), primary_key=True),
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-62-    Column("schema_version", Integer, nullable=False),
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-63-    Column(
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-64-        "conversation_id",
+--
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-94-  target_turn uuid;
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-95-  target_conversation uuid;
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-96-  target_answer text;
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-97-BEGIN
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py:98:  IF TG_TABLE_NAME='qa_conversation_turns' THEN target_turn := NEW.turn_id;
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-99-  ELSIF TG_TABLE_NAME='qa_conversations' THEN target_conversation := NEW.conversation_id;
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-100-  ELSE target_answer := NEW.answer_id;
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-101-  END IF;
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-102-  IF EXISTS (
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py:103:    SELECT 1 FROM qa_conversation_turns t
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-104-    JOIN qa_conversations c USING (conversation_id)
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-105-    JOIN grounded_answers a USING (answer_id)
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-106-    WHERE (t.turn_id=target_turn OR t.conversation_id=target_conversation
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-107-           OR t.answer_id=target_answer)
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-108-      AND (t.user_id IS DISTINCT FROM c.user_id OR t.user_id IS DISTINCT FROM a.user_id
+--
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-117-
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-118-OWNERSHIP_TRIGGER_DDLS = tuple(
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-119-    f"CREATE CONSTRAINT TRIGGER qa_owner_{table} AFTER INSERT OR UPDATE ON {table} "
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-120-    "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION qa_validate_turn_ownership()"
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py:121:    for table in ("qa_conversation_turns", "qa_conversations", "grounded_answers")
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-122-)
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-123-
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py:124:event.listen(qa_conversation_turns, "after_create", DDL(OWNERSHIP_FUNCTION_DDL))
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py-125-for ownership_ddl in OWNERSHIP_TRIGGER_DDLS:
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_models.py:126:    event.listen(qa_conversation_turns, "after_create", DDL(ownership_ddl))
+--
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-27-    QuestionEvidenceBundle,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-28-    ResolvedQuestionContext,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-29-    TurnHistoryEvent,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-30-)
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py:31:from ai_intel.answering.conversation_models import qa_conversation_turns, qa_conversations
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-32-from ai_intel.api.auth_state import lock_authenticated_scope
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-33-from ai_intel.api.knowledge_contracts import DataMode
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-34-from ai_intel.api.question_contracts import QuestionAnswerResponse, QuestionRequest
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-35-from ai_intel.assets.inventory import InventoryService
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-36-from ai_intel.assets.inventory_models import assets
+--
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-329-    ) -> ConversationTurn:
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-330-        row = (
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-331-            session.execute(
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-332-                select(
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py:333:                    qa_conversation_turns,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-334-                    grounded_answers.c.model_trace,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-335-                    grounded_answers.c.response,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-336-                )
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-337-                .join(
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-338-                    grounded_answers,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py:339:                    grounded_answers.c.answer_id == qa_conversation_turns.c.answer_id,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-340-                )
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-341-                .where(
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py:342:                    qa_conversation_turns.c.turn_id == turn_id,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py:343:                    _owner(scope, qa_conversation_turns),
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-344-                    _owner(scope, grounded_answers),
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-345-                )
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-346-            )
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-347-            .mappings()
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-348-            .first()
+--
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-461-            ):
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-462-                raise ConversationFailure("conversation_version_conflict")
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-463-            prior_row = (
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-464-                session.execute(
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py:465:                    select(qa_conversation_turns)
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-466-                    .join(
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-467-                        grounded_answers,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py:468:                        grounded_answers.c.answer_id == qa_conversation_turns.c.answer_id,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-469-                    )
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-470-                    .where(
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py:471:                        qa_conversation_turns.c.conversation_id == conversation_id,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py:472:                        _owner(scope, qa_conversation_turns),
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-473-                        _owner(scope, grounded_answers),
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-474-                        grounded_answers.c.response["kind"].astext == "completed",
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-475-                    )
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py:476:                    .order_by(qa_conversation_turns.c.turn_number.desc())
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-477-                    .limit(1)
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-478-                )
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-479-                .mappings()
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-480-                .first()
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-481-            )
+--
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-530-                )
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-531-            )
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-532-            number = (
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-533-                session.scalar(
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py:534:                    select(func.max(qa_conversation_turns.c.turn_number)).where(
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py:535:                        qa_conversation_turns.c.conversation_id == conversation_id
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-536-                    )
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-537-                )
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-538-                or 0
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-539-            ) + 1
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-540-            session.execute(
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py:541:                qa_conversation_turns.insert().values(
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-542-                    turn_id=turn_id,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-543-                    schema_version=1,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-544-                    conversation_id=conversation_id,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-545-                    user_id=scope.user_id,
+D:/wt/r12-conversation-context/backend/src\ai_intel\answering\conversation_context.py-546-                    tenant_id=scope.tenant_id,

@@ -1,0 +1,91 @@
+
+Running 6 tests using 1 worker
+
+  x  1 e2e\r17_integrated_sbom_api.spec.ts:80:1 › R17 actual API 01: empty catalog, raw POST, typed sidecar and declaration navigation (2.1s)
+  ok 2 e2e\r17_integrated_sbom_api.spec.ts:108:1 › R17 actual API 02: SPDX relations and public link keep private URI hidden (1.9s)
+  x  3 e2e\r17_integrated_sbom_api.spec.ts:120:1 › R17 actual API 03: three immutable snapshots, unknowns and stale pointer revalidation (1.6s)
+  ok 4 e2e\r17_integrated_sbom_api.spec.ts:144:1 › R17 actual API 04: database sidecar outage is partial 503 and recovers on retry (3.6s)
+  x  5 e2e\r17_integrated_sbom_api.spec.ts:163:1 › R17 actual API 05: real role and session revocation clear private DOM (1.0m)
+  ok 6 e2e\r17_integrated_sbom_api.spec.ts:188:1 › R17 actual API 06: 390px keyboard, declaration focus and reduced motion (1.7s)
+
+
+  1) e2e\r17_integrated_sbom_api.spec.ts:80:1 › R17 actual API 01: empty catalog, raw POST, typed sidecar and declaration navigation 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('.sbom-panel').getByText(/redacted-field:/)
+    Expected: visible
+    Error: strict mode violation: locator('.sbom-panel').getByText(/redacted-field:/) resolved to 2 elements:
+        1) <code>/redacted-field:c8b8e7c2ba92c645ac86c30698a99d4c0…</code> aka getByText('/redacted-field:').first()
+        2) <code>/redacted-field:c8b8e7c2ba92c645ac86c30698a99d4c0…</code> aka getByText('/redacted-field:').nth(1)
+
+    Call log:
+      - Expect "toBeVisible" locator('.sbom-panel').getByText(/redacted-field:/) with timeout 10000ms
+      - waiting for locator('.sbom-panel').getByText(/redacted-field:/)
+
+
+      93 |   await expect(page.getByRole("table", { name: "SBOM 原始关系声明" }).getByText("dependsOn", { exact: true })).toBeVisible();
+      94 |   await expect(page.getByText("file:///synthetic-private-location", { exact: true })).toHaveCount(0);
+    > 95 |   await expect(page.locator(".sbom-panel").getByText(/redacted-field:/)).toBeVisible();
+         |                                                                          ^
+      96 |   const delay = spawn("D:/dianzi/backend/.venv/Scripts/python.exe", ["e2e/helpers/r17_sbom_control.py", "sidecar-delay", "{}"], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+      97 |   const ended = new Promise<number | null>((resolve) => delay.once("exit", resolve));
+      98 |   await new Promise<void>((resolve, reject) => { delay.stdout.once("data", () => resolve()); delay.once("error", reject); });
+        at D:\wt\r17-integrated-sbom-browser\frontend\e2e\r17_integrated_sbom_api.spec.ts:95:74
+
+    Error Context: ..\reports\runs\recovery_r17_integrated_sbom_browser_20261016\actual_edge_4_artifacts\r17_integrated_sbom_api-R1-99956--and-declaration-navigation\error-context.md
+
+  2) e2e\r17_integrated_sbom_api.spec.ts:120:1 › R17 actual API 03: three immutable snapshots, unknowns and stale pointer revalidation 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 201
+    Received: 422
+
+      60 |   await page.getByRole("button", { name: "提交授权清单", exact: true }).click();
+      61 |   const response = await responsePromise;
+    > 62 |   expect(response.status()).toBe(201);
+         |                             ^
+      63 |   const capturedBody = response.request().postDataBuffer();
+      64 |   if (capturedBody !== null) expect(capturedBody).toEqual(raw);
+      65 |   const created: unknown = await response.json();
+        at importThroughUi (D:\wt\r17-integrated-sbom-browser\frontend\e2e\r17_integrated_sbom_api.spec.ts:62:29)
+        at D:\wt\r17-integrated-sbom-browser\frontend\e2e\r17_integrated_sbom_api.spec.ts:123:18
+
+    Error Context: ..\reports\runs\recovery_r17_integrated_sbom_browser_20261016\actual_edge_4_artifacts\r17_integrated_sbom_api-R1-bca1d--stale-pointer-revalidation\error-context.md
+
+  3) e2e\r17_integrated_sbom_api.spec.ts:163:1 › R17 actual API 05: real role and session revocation clear private DOM 
+
+    Test timeout of 60000ms exceeded.
+
+    Error: locator.click: Test timeout of 60000ms exceeded.
+    Call log:
+      - waiting for getByRole('button', { name: '退出登录', exact: true })
+
+
+      173 |   await expect(page.getByLabel("选择本地清单", { exact: true })).toHaveCount(0);
+      174 |   await record(page, info, "actual-403-revocation");
+    > 175 |   await page.getByRole("button", { name: "退出登录", exact: true }).click();
+          |                                                                 ^
+      176 |   await login(page, 5);
+      177 |   await importThroughUi(page, cyclonedxInput(), "cyclonedx_json");
+      178 |   control("revoke-session", { username: actor(5).username });
+        at D:\wt\r17-integrated-sbom-browser\frontend\e2e\r17_integrated_sbom_api.spec.ts:175:65
+
+    Error Context: ..\reports\runs\recovery_r17_integrated_sbom_browser_20261016\actual_edge_4_artifacts\r17_integrated_sbom_api-R1-640d3-evocation-clear-private-DOM\error-context.md
+
+  3 failed
+    e2e\r17_integrated_sbom_api.spec.ts:80:1 › R17 actual API 01: empty catalog, raw POST, typed sidecar and declaration navigation 
+    e2e\r17_integrated_sbom_api.spec.ts:120:1 › R17 actual API 03: three immutable snapshots, unknowns and stale pointer revalidation 
+    e2e\r17_integrated_sbom_api.spec.ts:163:1 › R17 actual API 05: real role and session revocation clear private DOM 
+  3 passed (1.3m)
+[WebServer] (node:38160) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+(node:47732) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:50832) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:40536) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:23076) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)

@@ -1,0 +1,22 @@
+........................................................................ [ 67%]
+.............................F.....                                      [100%]
+================================== FAILURES ===================================
+____ test_default_public_openapi_keeps_source_collection_and_public_reads _____
+
+    def test_default_public_openapi_keeps_source_collection_and_public_reads() -> None:
+        application = create_application(
+            settings=ApplicationSettings(app_env="test", data_mode="fixture", _env_file=None)
+        )
+        with TestClient(application) as client:
+            paths = client.get("/openapi.json").json()["paths"]
+        for path in ("/api/v1/vulns", "/api/v1/vulns/{event_id}", "/api/v1/sources", "/api/v1/tasks/{task_id}"):
+            assert "get" in paths[path]
+>       assert "post" in paths["/v1/sources/{source_id}/collect"]
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: '/v1/sources/{source_id}/collect'
+
+tests\contract\test_r18_default_public_read_mount.py:35: KeyError
+- generated xml file: D:\dianzi\reports\runs\recovery_reviewed_integration_20261016\public_producer_batch13_unit.xml -
+=========================== short test summary info ===========================
+FAILED tests/contract/test_r18_default_public_read_mount.py::test_default_public_openapi_keeps_source_collection_and_public_reads
+1 failed, 106 passed in 3.61s

@@ -1,0 +1,75 @@
+infra/compose/compose.yaml:20:    SOURCE_POLLING_ENABLED: ${SOURCE_POLLING_ENABLED:-false}
+docs/runbooks/source_polling.md:5:在可信运行环境显式设置`SOURCE_POLLING_ENABLED=true`后启动worker和scheduler。compose通过同名变量透传，默认false；配置false后重启worker/beat，停止创建新轮次，已入队任务继续依原请求/页数上限完成，历史及游标保留。直接调用disabled任务不会连接数据库。不要用重置游标、删除任务或切换fixture模式代替停机/恢复。
+docs/runbooks/source_polling.md:7:beat每60秒安排一次`ai_intel.sources.poll_due`；它只在单个PG事务中安排九个固定source key。vllm_vendor每30分钟，其余每60分钟，UTC桶固定window_end。每源每轮最多5页，原worker每页3次attempt上限/7秒间隔/有界HTTP超时保持。AVID一页最多目录+blob两次GET，不能把page数叫HTTP数。API仍可显式提交1–20页backfill/live任务；手动与自动共享源租约和游标，不互建真值。
+docs/runbooks/source_polling.md:13:运行时记录代码SHA、SOURCE_POLLING_ENABLED、启动/结束、队列/专库/端口、每来源窗口及HTTP attempt。只读`GET /v1/jobs/{job_id}`（或/api/v1）沿用当前系统管理员鉴权；任务ID来自PG/outbox权威记录。结果succeeded/partial/failed/blocked分别解释，禁止把错误显示成0条。普通资料/问答用户不能开启来源管理；部署配置不接受请求体租户、任意URL、query或shell。
+backend/src\ai_intel\workers\runtime.py:18:from ai_intel.ingestion.source_jobs import SOURCE_JOB_TYPE, build_source_page_handler
+backend/src\ai_intel\workers\runtime.py:19:from ai_intel.ingestion.source_polling import enqueue_due_source_collections
+backend/src\ai_intel\workers\runtime.py:24:def build_celery_application() -> Celery:
+backend/src\ai_intel\workers\runtime.py:66:            "task": "ai_intel.sources.poll_due",
+backend/src\ai_intel\workers\runtime.py:96:celery_app = build_celery_application()
+backend/src\ai_intel\workers\runtime.py:98:EXECUTION_HANDLERS: dict[str, JobHandler] = {
+backend/src\ai_intel\workers\runtime.py:100:    SOURCE_JOB_TYPE: build_source_page_handler(
+backend/src\ai_intel\workers\runtime.py:106:def publish_job_event(event: dict[str, str]) -> None:
+backend/src\ai_intel\workers\runtime.py:112:def dispatch_pending_jobs() -> dict[str, int]:
+backend/src\ai_intel\workers\runtime.py:118:            released = relay_pending_events(session, datetime.now(UTC), publisher=publish_job_event)
+backend/src\ai_intel\workers\runtime.py:131:        outcome = execute_job(engine, job_id, "celery-" + uuid4().hex, EXECUTION_HANDLERS)
+backend/src\ai_intel\workers\runtime.py:153:            result = enqueue_due_source_collections(session, scope, datetime.now(UTC))
+backend/src\ai_intel\workers\runtime.py:168:celery_app.task(name="ai_intel.jobs.dispatch_pending", ignore_result=True)(dispatch_pending_jobs)
+backend/src\ai_intel\workers\runtime.py:169:celery_app.task(name="ai_intel.sources.poll_due", ignore_result=True, autoretry_for=())(
+backend/src\ai_intel\ingestion\source_polling.py:21:    SOURCE_JOB_TYPE,
+backend/src\ai_intel\ingestion\source_polling.py:77:            job_runs.c.job_type == SOURCE_JOB_TYPE,
+backend/src\ai_intel\ingestion\source_polling.py:97:def enqueue_due_source_collections(
+backend/src\ai_intel\ingestion\source_polling.py:120:                job_runs.c.job_type == SOURCE_JOB_TYPE,
+backend/src\ai_intel\ingestion\source_jobs.py:71:SOURCE_JOB_TYPE = "collect_public_source_page"
+backend/src\ai_intel\ingestion\source_jobs.py:305:        SOURCE_JOB_TYPE,
+backend/src\ai_intel\api\source_routes.py:33:    SOURCE_JOB_TYPE,
+backend/src\ai_intel\api\source_routes.py:117:                    job_runs.c.job_type == SOURCE_JOB_TYPE,
+backend/tests\integration\test_r04_source_jobs_pg.py:19:    SOURCE_JOB_TYPE,
+backend/tests\integration\test_r04_source_jobs_pg.py:88:            job_engine, job_id, "fixture-worker", {SOURCE_JOB_TYPE: handler}, clock=lambda: NOW
+backend/tests\integration\test_r04_source_jobs_pg.py:132:            job_engine, job_id, "fixture-worker", {SOURCE_JOB_TYPE: handler}, clock=lambda: NOW
+backend/tests\integration\test_r04_source_jobs_pg.py:138:            job_engine, job_id, "duplicate-worker", {SOURCE_JOB_TYPE: handler}, clock=lambda: NOW
+backend/tests\integration\test_r04_source_jobs_pg.py:186:        job_engine, job_id, "fixture-worker", {SOURCE_JOB_TYPE: handler}, clock=lambda: NOW
+backend/tests\integration\test_r04_source_jobs_pg.py:202:        job_engine, job_id, "fixture-worker", {SOURCE_JOB_TYPE: handler}, clock=lambda: NOW
+backend/tests\integration\test_r04_source_jobs_pg.py:218:                    .where(job_runs.c.job_type == SOURCE_JOB_TYPE)
+backend/tests\integration\test_r04_source_jobs_pg.py:226:                        job_runs.c.job_id != job_id, job_runs.c.job_type == SOURCE_JOB_TYPE
+backend/tests\integration\test_r04_source_jobs_pg.py:246:        execute_job(job_engine, first, "worker-1", {SOURCE_JOB_TYPE: handler}, clock=lambda: NOW)
+backend/tests\integration\test_r04_source_jobs_pg.py:263:        execute_job(job_engine, second, "worker-2", {SOURCE_JOB_TYPE: failing}, clock=lambda: later)
+backend/tests\integration\test_r04_source_jobs_pg.py:306:            job_engine, first, "worker-first", {SOURCE_JOB_TYPE: handler}, clock=lambda: current[0]
+backend/tests\integration\test_r04_source_jobs_pg.py:313:                job_runs.c.job_id != first, job_runs.c.job_type == SOURCE_JOB_TYPE
+backend/tests\integration\test_r04_source_jobs_pg.py:325:            {SOURCE_JOB_TYPE: handler},
+backend/tests\integration\test_r04_source_jobs_pg.py:343:                .where(job_runs.c.job_type == SOURCE_JOB_TYPE)
+backend/tests\integration\test_r04_source_jobs_pg.py:358:        execute_job(job_engine, job_id, "worker", {SOURCE_JOB_TYPE: handler}, clock=lambda: NOW)
+backend/tests\integration\test_r04_source_jobs_pg.py:367:                .where(job_runs.c.job_type == SOURCE_JOB_TYPE)
+backend/tests\integration\test_r04_source_jobs_pg.py:393:        execute_job(job_engine, job_id, "worker", {SOURCE_JOB_TYPE: handler}, clock=lambda: NOW)
+backend/tests\integration\test_r04_source_jobs_pg.py:421:            job_engine, first, "worker", {SOURCE_JOB_TYPE: handler}, clock=lambda: current[0]
+backend/tests\integration\test_r04_source_jobs_pg.py:428:                job_runs.c.job_id != first, job_runs.c.job_type == SOURCE_JOB_TYPE
+backend/tests\integration\test_r04_source_jobs_pg.py:438:            {SOURCE_JOB_TYPE: handler},
+backend/tests\integration\test_r04_source_jobs_pg.py:489:            {SOURCE_JOB_TYPE: handler},
+backend/tests\integration\test_r03_executor_celery.py:36:from ai_intel.workers.runtime import celery_app, EXECUTION_HANDLERS
+backend/tests\integration\test_r03_executor_celery.py:48:EXECUTION_HANDLERS["r03_fixture_interrupted"] = interrupted_handler
+backend/tests\integration\test_r06_source_worker_pg.py:23:    SOURCE_JOB_TYPE,
+backend/tests\integration\test_r06_source_worker_pg.py:95:        engine, job_id, "fixture-worker", {SOURCE_JOB_TYPE: handler}, clock=lambda: at
+backend/tests\integration\test_r06_source_polling_pg.py:20:    SOURCE_JOB_TYPE,
+backend/tests\integration\test_r06_source_polling_pg.py:27:    enqueue_due_source_collections,
+backend/tests\integration\test_r06_source_polling_pg.py:38:        return enqueue_due_source_collections(session, ADMIN, at)
+backend/tests\integration\test_r06_source_polling_pg.py:99:        enqueue_due_source_collections(session, ADMIN, NOW)
+backend/tests\integration\test_r06_source_polling_pg.py:124:            session, None, SOURCE_JOB_TYPE, payload, NOW, idempotency_key="malformed-fixture"
+backend/tests\integration\test_r06_source_polling_pg.py:136:            enqueue_job(session, None, SOURCE_JOB_TYPE, payload, NOW)
+backend/tests\integration\test_r06_source_polling_pg.py:160:        {SOURCE_JOB_TYPE: handler_for(ContentStore(tmp_path), "osv_ollama", clock=lambda: NOW)},
+backend/tests\integration\test_r06_source_polling_pg.py:182:from ai_intel.ingestion.source_polling import enqueue_due_source_collections
+backend/tests\integration\test_r06_source_polling_pg.py:188:        result = enqueue_due_source_collections(session, scope, at)
+backend/tests\integration\test_r06_source_worker_api_pg.py:15:from ai_intel.ingestion.source_jobs import SOURCE_JOB_TYPE
+backend/tests\integration\test_r06_source_worker_api_pg.py:76:        assert job["job_type"] == SOURCE_JOB_TYPE
+backend/tests\unit\test_r01_worker_configuration.py:34:    application = runtime.build_celery_application()
+backend/tests\unit\test_r03_jobs_contract.py:78:    runtime.publish_job_event({"job_id": job_id, "topic": "os.system", "payload_ref": "untrusted"})
+backend/tests\unit\test_r03_jobs_contract.py:81:        runtime.publish_job_event({"job_id": "../private", "topic": "os.system"})
+backend/tests\unit\test_r06_source_polling.py:13:    enqueue_due_source_collections,
+backend/tests\unit\test_r06_source_polling.py:44:        enqueue_due_source_collections(None, scope, datetime.now(UTC))
+backend/tests\unit\test_r06_source_polling.py:48:    monkeypatch.delenv("SOURCE_POLLING_ENABLED", raising=False)
+backend/tests\unit\test_r06_source_polling.py:50:    monkeypatch.setenv("SOURCE_POLLING_ENABLED", "true")
+backend/tests\unit\test_r06_source_polling.py:57:    monkeypatch.setenv("SOURCE_POLLING_ENABLED", "false")
+backend/tests\unit\test_r06_source_polling.py:59:    application = runtime.build_celery_application()
+backend/tests\unit\test_r06_source_polling.py:64:    monkeypatch.setenv("SOURCE_POLLING_ENABLED", "true")
+backend/tests\unit\test_r06_source_polling.py:65:    enabled = runtime.build_celery_application()
+backend/tests\unit\test_r06_source_polling.py:68:        assert entry["task"] == "ai_intel.sources.poll_due"
+backend/tests\unit\test_r06_source_polling.py:77:    monkeypatch.setenv("SOURCE_POLLING_ENABLED", "false")

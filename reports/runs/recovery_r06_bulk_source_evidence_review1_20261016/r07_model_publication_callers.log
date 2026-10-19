@@ -1,0 +1,56 @@
+backend/src/ai_intel/enrichment/persistence.py:27:from ai_intel.knowledge.models import evidence
+backend/src/ai_intel/enrichment/persistence.py:35:from ai_intel.knowledge.persistence_models import claim_evidence, claims, event_documents, events
+backend/src/ai_intel/enrichment/persistence.py:103:            query = query.with_for_update()
+backend/src/ai_intel/enrichment/persistence.py:127:                    select(evidence).where(evidence.c.evidence_id == str(reference_id))
+backend/src/ai_intel/enrichment/persistence.py:145:                raise DimensionPublicationError("evidence revision is not active on this event")
+backend/src/ai_intel/enrichment/persistence.py:167:                select(claim_evidence.c.evidence_id)
+backend/src/ai_intel/enrichment/persistence.py:168:                .join(evidence, evidence.c.evidence_id == claim_evidence.c.evidence_id)
+backend/src/ai_intel/enrichment/persistence.py:170:                    claim_evidence.c.claim_id == str(claim_id),
+backend/src/ai_intel/enrichment/persistence.py:171:                    claim_evidence.c.evidence_id.in_(tuple(map(str, submission.reference_ids))),
+backend/src/ai_intel/enrichment/persistence.py:172:                    claim_evidence.c.validation_status == "validated",
+backend/src/ai_intel/enrichment/persistence.py:173:                    claim_evidence.c.support_kind == "supports",
+backend/src/ai_intel/enrichment/persistence.py:174:                    evidence.c.supports_claim.is_(True),
+backend/src/ai_intel/enrichment/persistence.py:175:                    evidence.c.verified_at.is_not(None),
+backend/src/ai_intel/enrichment/persistence.py:180:                raise DimensionPublicationError("claim is not supported by the submitted evidence")
+backend/src/ai_intel/enrichment/persistence.py:189:    def publish(
+backend/src/ai_intel/enrichment/field_sources.py:1:"""Validate extractive field evidence without treating a model proposal as a supported fact."""
+backend/src/ai_intel/enrichment/field_sources.py:65:def validate_evidence(
+backend/src/ai_intel/enrichment/field_sources.py:66:    evidence: tuple[CandidateEvidence, ...], documents: tuple[EnrichmentDocument, ...]
+backend/src/ai_intel/enrichment/field_sources.py:72:    for quote in evidence:
+backend/src/ai_intel/enrichment/field_sources.py:76:            raise FieldEvidenceError("field_evidence_revision_invalid")
+backend/src/ai_intel/enrichment/field_sources.py:77:        blocks = {block.block_id: block for block in document.blocks}
+backend/src/ai_intel/enrichment/field_sources.py:78:        block = blocks.get(quote.block_id)
+backend/src/ai_intel/enrichment/field_sources.py:80:            raise FieldEvidenceError("field_evidence_quote_invalid")
+backend/src/ai_intel/enrichment/field_sources.py:81:        identity = (quote.revision_id, quote.block_id, quote.start_offset, quote.end_offset)
+backend/src/ai_intel/enrichment/field_sources.py:83:            raise FieldEvidenceError("field_evidence_duplicate")
+backend/src/ai_intel/enrichment/field_sources.py:88:            raise FieldEvidenceError("field_evidence_context_truncated")
+backend/src/ai_intel/enrichment/field_sources.py:118:        raise FieldEvidenceError("field_value_not_in_evidence")
+backend/src/ai_intel/enrichment/field_sources.py:124:        raise FieldEvidenceError("field_identifier_not_in_evidence")
+backend/src/ai_intel/enrichment/field_sources.py:130:        raise FieldEvidenceError("field_uri_not_in_evidence")
+backend/src/ai_intel/enrichment/field_sources.py:135:    evidence: tuple[CandidateEvidence, ...],
+backend/src/ai_intel/enrichment/field_sources.py:148:        quote.quote_text for quote in evidence if quote.revision_id in taxonomy_revisions
+backend/src/ai_intel/enrichment/field_sources.py:152:        quote.quote_text for quote in evidence if quote.revision_id not in taxonomy_revisions
+backend/src/ai_intel/enrichment/field_sources.py:178:    raw_expression: str, evidence: tuple[CandidateEvidence, ...], document: EnrichmentDocument
+backend/src/ai_intel/enrichment/field_sources.py:181:    for quote in evidence:
+backend/src/ai_intel/enrichment/field_sources.py:184:        block = next(block for block in document.blocks if block.block_id == quote.block_id)
+backend/src/ai_intel/enrichment/field_sources.py:213:    evidence: tuple[CandidateEvidence, ...],
+backend/src/ai_intel/enrichment/field_sources.py:217:    quotes = tuple(quote.quote_text for quote in evidence)
+backend/src/ai_intel/enrichment/field_sources.py:224:    _require_version_qualifiers(value.raw_expression, evidence, documents[0])
+backend/src/ai_intel/enrichment/field_sources.py:227:            r"not affected|not vulnerable|unaffected|unknown|uncertain|no evidence|"
+backend/src/ai_intel/enrichment/field_sources.py:396:    selected = validate_evidence(candidate.evidence, documents)
+backend/src/ai_intel/enrichment/field_sources.py:397:    quotes = tuple(quote.quote_text for quote in candidate.evidence)
+backend/src/ai_intel/enrichment/field_sources.py:400:        value = _validate_atlas(value, candidate.evidence, selected)
+backend/src/ai_intel/enrichment/field_sources.py:402:        value = _validate_versions(value, candidate.evidence, selected)
+backend/src/ai_intel/enrichment/model_fields.py:1:"""Four independently bounded real generation interfaces produce evidence-bound hypotheses."""
+backend/src/ai_intel/enrichment/model_fields.py:54:    "Return no candidates when a field lacks evidence. Values are model hypotheses, "
+backend/src/ai_intel/enrichment/model_fields.py:59:    "ecosystem, and evidenced boundaries; comparison_support is unknown. Keep vendor "
+backend/src/ai_intel/enrichment/model_fields.py:69:    block_id: UUID
+backend/src/ai_intel/enrichment/model_fields.py:96:    evidence: tuple[ModelQuote, ...] = Field(min_length=1, max_length=20)
+backend/src/ai_intel/enrichment/model_fields.py:123:                "block_id": str(block.block_id),
+backend/src/ai_intel/enrichment/model_fields.py:168:                evidence_texts=texts,
+backend/src/ai_intel/enrichment/model_fields.py:198:            evidence = tuple(
+backend/src/ai_intel/enrichment/model_fields.py:200:                for quote in proposal.evidence
+backend/src/ai_intel/enrichment/model_fields.py:206:                    evidence=evidence,
+backend/src/ai_intel/enrichment/model_fields.py:216:            errors.append("field_evidence_shape_invalid")
+backend/src/ai_intel/enrichment/model_fields.py:218:    code = "model_hypothesis_requires_review" if candidates else "field_evidence_missing"
+backend/src/ai_intel/enrichment/model_fields.py:274:        return _empty_attempts(DimensionStatus.PENDING, "field_evidence_missing", documents)

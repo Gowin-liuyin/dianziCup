@@ -1,0 +1,69 @@
+F..                                                                      [100%]
+================================== FAILURES ===================================
+________ test_forward0017_to0019_retains_paid_reservation_and_pg_state ________
+
+isolated_test_database_url = 'postgresql+psycopg://test_dianzi_r01:[redacted test credential]@127.0.0.1:25432/test_dianzi_r07_execution_api_review1_20261016'
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-774/test_forward0017_to0019_retain0')
+
+    def test_forward0017_to0019_retains_paid_reservation_and_pg_state(isolated_test_database_url, tmp_path):
+        url = make_url(isolated_test_database_url)
+        assert url.database.startswith('test_dianzi_r07_execution_api_review1_')
+        schema = 'test_independent_r07_forward_' + uuid4().hex
+        base = create_engine(url)
+        with base.begin() as connection:
+            connection.execute(CreateSchema(schema))
+        isolated = url.update_query_dict({'options': '-c search_path=' + schema + ' -c statement_timeout=15000 -c lock_timeout=3000'})
+        run_migrations(isolated.render_as_string(hide_password=False), '0017_enrichment_job_workflows')
+        engine = create_engine(isolated)
+        workflow, parent, child = seed_workflow(engine, tmp_path)
+        with engine.begin() as connection:
+            connection.execute(update(enrichment_job_steps).where(enrichment_job_steps.c.job_id == child).values(model_call_reserved_at=NOW))
+        run_migrations(isolated.render_as_string(hide_password=False), 'head')
+        with engine.connect() as connection:
+            assert connection.scalar(text('SELECT version_num FROM alembic_version')) == '0019_aggregate_observations'
+            assert connection.scalar(select(enrichment_workflows.c.workflow_id)) == workflow
+>           assert connection.scalar(select(func.count()).select_from(job_runs)) == 2
+E           AssertionError: assert 6 == 2
+E            +  where 6 = scalar(<sqlalchemy.sql.selectable.Select object at 0x000001CBA2AAE7E0>)
+E            +    where scalar = <sqlalchemy.engine.base.Connection object at 0x000001CBA2A476B0>.scalar
+E            +    and   <sqlalchemy.sql.selectable.Select object at 0x000001CBA2AAE7E0> = select_from(Table('job_runs', MetaData(), Column('job_id', Text(), table=<job_runs>, primary_key=True, nullable=False), Column('te...ob_runs>), Column('error_code', Text(), table=<job_runs>), Column('result_ref', Text(), table=<job_runs>), schema=None))
+E            +      where select_from = <sqlalchemy.sql.selectable.Select object at 0x000001CBA2AAE840>.select_from
+E            +        where <sqlalchemy.sql.selectable.Select object at 0x000001CBA2AAE840> = select(<sqlalchemy.sql.functions.count at 0x1cba2a68dd0; count>)
+E            +          where <sqlalchemy.sql.functions.count at 0x1cba2a68dd0; count> = <sqlalchemy.sql.functions._FunctionGenerator object at 0x000001CBA2A47E60>()
+E            +            where <sqlalchemy.sql.functions._FunctionGenerator object at 0x000001CBA2A47E60> = func.count
+
+..\reports\runs\recovery_r07_default_entry_review1_20261016\probes\test_independent_forward_asset.py:51: AssertionError
+============================== warnings summary ===============================
+..\..\r07-enrichment-jobs\backend\.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\wt\r07-enrichment-jobs\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests\integration\test_r06_catalog_documents_pg.py:32
+  D:\wt\r07-default-entry-review1\backend\tests\integration\test_r06_catalog_documents_pg.py:32: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+tests\integration\test_r06_source_worker_pg.py:44
+  D:\wt\r07-default-entry-review1\backend\tests\integration\test_r06_source_worker_pg.py:44: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+tests\integration\test_r07_enrichment_inputs_pg.py:18
+  D:\wt\r07-default-entry-review1\backend\tests\integration\test_r07_enrichment_inputs_pg.py:18: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+tests\integration\test_r07_job_execution_pg.py:35
+  D:\wt\r07-default-entry-review1\backend\tests\integration\test_r07_job_execution_pg.py:35: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+tests\integration\test_r07_enrichment_api_pg.py:21
+  D:\wt\r07-default-entry-review1\backend\tests\integration\test_r07_enrichment_api_pg.py:21: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+tests\integration\test_r07_enrichment_job_metadata_pg.py:19
+  D:\wt\r07-default-entry-review1\backend\tests\integration\test_r07_enrichment_job_metadata_pg.py:19: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\r07-default-entry-review1\reports\runs\recovery_r07_default_entry_review1_20261016\independent_forward_asset_pg.xml -
+=========================== short test summary info ===========================
+FAILED ..\reports\runs\recovery_r07_default_entry_review1_20261016\probes\test_independent_forward_asset.py::test_forward0017_to0019_retains_paid_reservation_and_pg_state
+1 failed, 2 passed, 7 warnings in 7.25s

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="3" time="117.694" timestamp="2026-10-16T06:38:50.588988+08:00" hostname="yin"><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_compatibility" name="test_other_supported_cdx_versions_have_full_10000_real_http_capacity[1.5]" time="55.490" /><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_compatibility" name="test_other_supported_cdx_versions_have_full_10000_real_http_capacity[1.6]" time="60.247" /><testcase classname="reports.runs.recovery_r11_sbom_inventory_review1_20261016.test_review_compatibility" name="test_protected_source_ref_also_stays_private_for_analyst" time="0.245"><failure message="assert 'postgresql:...rnal/private' not in '{&quot;schema_ve...ocators&quot;:[]}'&#10;  &#10;  'postgresql://synth...db.internal/private' is contained here:&#10;    rce_ref&quot;:&quot;postgresql://synthetic_user:synthetic_password@db.internal/private&quot;,&quot;component_type&quot;:&quot;library&quot;,&quot;source_field_locator&quot;:&quot;/components/0&quot;,&quot;field_sources&quot;:[{&quot;field_name&quot;:&quot;package_name&quot;,&quot;source_field_locator&quot;:&quot;/components/0/name&quot;},{&quot;field_name&quot;:&quot;version&quot;,&quot;source_field_locator&quot;:&quot;/components/0/version&quot;}],&quot;checksums&quot;:[{&quot;algorithm&quot;:&quot;SHA-256&quot;,&quot;checksum_value&quot;:&quot;aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&quot;,&quot;source_field_locator&quot;:&quot;/components/0/hashes/0&quot;}]},{&quot;component_id&quot;:&quot;9118385e-a5e3-5b0...&#10;  &#10;  ...Full output truncated (2 lines hidden), use '-vv' to show">sbom_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r11_sbom_review_20261016_063848)
+sbom_api = (&lt;function sbom_api.&lt;locals&gt;.login at 0x000001F4AE8D16C0&gt;, &lt;ai_intel.api.authentication.AuthenticationSessionService object at 0x000001F4B048BB60&gt;)
+
+    created = resource.upload(client, headers, raw)
+    assert created.status_code == 201
+    identity = created.json()["asset_id"]
+    snapshot = created.json()["snapshot"]
+    assert len(snapshot["components"]) == 10000
+    assert snapshot["components"][-1]["package_name"] == "p9999"
+    assert {item["version"] for item in snapshot["components"]} == {"1"}
+    sidecar = client.get(f"/api/assets/{identity}/snapshots/{snapshot['snapshot_id']}/sbom")
+    assert sidecar.status_code == 200
+    assert sidecar.json()["spec_version"] == version
+    assert len(sidecar.json()["component_sources"]) == 10000
+    assert sidecar.json()["component_sources"][-1]["source_field_locator"] == "/components/9999"
+    with sbom_engine.connect() as connection:
+        saved = connection.execute(
+            select(asset_snapshots.c.raw_input, asset_snapshots.c.raw_input_sha256).where(
+                asset_snapshots.c.snapshot_id == snapshot["snapshot_id"]
+            )
+&gt;       ).one()
+E       assert 'postgresql:...rnal/private' not in '{"schema_ve...ocators":[]}'
+E         
+E         'postgresql://synth...db.internal/private' is contained here:
+E           rce_ref":"postgresql://synthetic_user:synthetic_password@db.internal/private","component_type":"library","source_field_locator":"/components/0","field_sources":[{"field_name":"package_name","source_field_locator":"/components/0/name"},{"field_name":"version","source_field_locator":"/components/0/version"}],"checksums":[{"algorithm":"SHA-256","checksum_value":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source_field_locator":"/components/0/hashes/0"}]},{"component_id":"9118385e-a5e3-5b0...
+E         
+E         ...Full output truncated (2 lines hidden), use '-vv' to show
+
+..\reports\runs\recovery_r11_sbom_inventory_review1_20261016\test_review_compatibility.py:85: AssertionError</failure></testcase></testsuite></testsuites>

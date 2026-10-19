@@ -1,0 +1,408 @@
+....F...........FF...............................F.........F............ [ 72%]
+.................F.........                                              [100%]
+================================== FAILURES ===================================
+______________ test_async_ask_does_not_report_completed_or_zero _______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000029780FF2FF0>
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-873/test_async_ask_does_not_report0')
+capsys = <_pytest.capture.CaptureFixture object at 0x0000029780FF2C90>
+
+    def test_async_ask_does_not_report_completed_or_zero(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        task_id = "00000000-0000-4000-8000-000000000001"
+        task = {
+            "kind": "task",
+            "task_id": task_id,
+            "status": "queued",
+            "poll_uri": "/api/v1/tasks/" + task_id,
+            "created_at": "2026-10-16T00:00:00Z",
+        }
+        source = tmp_path / "synthetic-question.json"
+        source.write_text(json.dumps({"question": "synthetic question", "mode": "library"}))
+        install_fixture_client(monkeypatch, httpx.Response(202, json=task))
+>       assert main(["ask", "--input", str(source)]) == 2
+E       AssertionError: assert 3 == 2
+E        +  where 3 = main(['ask', '--input', 'C:\\Users\\yinha\\AppData\\Local\\Temp\\pytest-of-yinha\\pytest-873\\test_async_ask_does_not_report0\\synthetic-question.json'])
+
+sdk\python\tests\test_cli.py:90: AssertionError
+---------------------------- Captured stderr call -----------------------------
+The operation could not be completed; check configuration and access.
+______ test_ask_uses_fixed_path_bearer_and_operation_key_without_cookie _______
+
+    def test_ask_uses_fixed_path_bearer_and_operation_key_without_cookie() -> None:
+        calls: list[httpx.Request] = []
+    
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request)
+            return httpx.Response(200, json=ANSWER)
+    
+        with DianziClient(
+            "http://127.0.0.1:12345", SecretStr(SYNTHETIC_KEY), transport=httpx.MockTransport(handler)
+        ) as client:
+>           result = client.ask(QUESTION, idempotency_key="synthetic-operation-key")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+sdk\python\tests\test_client.py:75: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sdk\python\ai_intel_client\client.py:301: in ask
+    status, result = self._post(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel_client.client.DianziClient object at 0x000002978107AAE0>
+path = '/api/v1/ask'
+body = '{"question":"synthetic question","mode":"library"}'
+operation_key = 'synthetic-operation-key'
+adapter = TypeAdapter(Annotated[Union[QAAnswer, TaskHandle], FieldInfo(annotation=NoneType, required=True, discriminator='kind')])
+timeout_seconds = 100
+
+    def _post(
+        self,
+        path: str,
+        body: str,
+        operation_key: str,
+        adapter: TypeAdapter[ResultType],
+        timeout_seconds: float,
+    ) -> tuple[int, ResultType]:
+        encoded = body.encode("utf-8")
+        if len(encoded) > MAX_SYNCHRONOUS_REQUEST_BYTES:
+            raise ClientInputError("synchronous request exceeds the client size boundary")
+        try:
+            with self._http.stream(
+                "POST",
+                path,
+                content=encoded,
+                headers={"Content-Type": "application/json", "Idempotency-Key": operation_key},
+                timeout=timeout_seconds,
+            ) as response:
+                if response.headers.get("content-encoding", "identity").lower() != "identity":
+                    raise ResponseContractError(
+                        "compressed response is outside the client boundary"
+                    )
+                raw = bytearray()
+                for chunk in response.iter_bytes():
+                    if len(raw) + len(chunk) > MAX_RESPONSE_BYTES:
+                        raise ResponseContractError("response exceeds the allowed size")
+                    raw.extend(chunk)
+                content = bytes(raw)
+                if response.status_code not in {200, 202}:
+                    problem = None
+                    if (
+                        response.headers.get("content-type", "").split(";", 1)[0].lower()
+                        == "application/problem+json"
+                    ):
+                        try:
+                            validate_json_bytes(content)
+                            problem = ApiProblem.model_validate_json(content)
+                        except (ResponseContractError, ValidationError):
+                            problem = None
+                    if problem is None or problem.status != response.status_code:
+                        raise DianziApiError(response.status_code, "http_error", None, False)
+                    raise DianziApiError(
+                        problem.status,
+                        problem.error.code,
+                        problem.trace_id,
+                        problem.error.retryable,
+                    )
+                if (
+                    response.headers.get("content-type", "").split(";", 1)[0].lower()
+                    != "application/json"
+                ):
+                    raise ResponseContractError("response content type is invalid")
+                validate_json_bytes(content)
+                try:
+                    result = adapter.validate_json(content)
+                except ValidationError:
+>                   raise ResponseContractError(
+                        "response does not match the public contract"
+                    ) from None
+E                   ai_intel_client.client.ResponseContractError: response does not match the public contract
+
+sdk\python\ai_intel_client\client.py:284: ResponseContractError
+________ test_async_handle_remains_async_and_has_no_fabricated_answer _________
+
+    def test_async_handle_remains_async_and_has_no_fabricated_answer() -> None:
+        with DianziClient(
+            "http://127.0.0.1:12345",
+            SecretStr(SYNTHETIC_KEY),
+            transport=httpx.MockTransport(lambda _: httpx.Response(202, json=TASK)),
+        ) as client:
+>           result = client.ask(QUESTION)
+                     ^^^^^^^^^^^^^^^^^^^^
+
+sdk\python\tests\test_client.py:96: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sdk\python\ai_intel_client\client.py:301: in ask
+    status, result = self._post(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel_client.client.DianziClient object at 0x000002978107A600>
+path = '/api/v1/ask'
+body = '{"question":"synthetic question","mode":"library"}'
+operation_key = '0rHJjs10pR2XFqk2gHTRZiIB8aL_7mitFmqqkqiMTdo'
+adapter = TypeAdapter(Annotated[Union[QAAnswer, TaskHandle], FieldInfo(annotation=NoneType, required=True, discriminator='kind')])
+timeout_seconds = 100
+
+    def _post(
+        self,
+        path: str,
+        body: str,
+        operation_key: str,
+        adapter: TypeAdapter[ResultType],
+        timeout_seconds: float,
+    ) -> tuple[int, ResultType]:
+        encoded = body.encode("utf-8")
+        if len(encoded) > MAX_SYNCHRONOUS_REQUEST_BYTES:
+            raise ClientInputError("synchronous request exceeds the client size boundary")
+        try:
+            with self._http.stream(
+                "POST",
+                path,
+                content=encoded,
+                headers={"Content-Type": "application/json", "Idempotency-Key": operation_key},
+                timeout=timeout_seconds,
+            ) as response:
+                if response.headers.get("content-encoding", "identity").lower() != "identity":
+                    raise ResponseContractError(
+                        "compressed response is outside the client boundary"
+                    )
+                raw = bytearray()
+                for chunk in response.iter_bytes():
+                    if len(raw) + len(chunk) > MAX_RESPONSE_BYTES:
+                        raise ResponseContractError("response exceeds the allowed size")
+                    raw.extend(chunk)
+                content = bytes(raw)
+                if response.status_code not in {200, 202}:
+                    problem = None
+                    if (
+                        response.headers.get("content-type", "").split(";", 1)[0].lower()
+                        == "application/problem+json"
+                    ):
+                        try:
+                            validate_json_bytes(content)
+                            problem = ApiProblem.model_validate_json(content)
+                        except (ResponseContractError, ValidationError):
+                            problem = None
+                    if problem is None or problem.status != response.status_code:
+                        raise DianziApiError(response.status_code, "http_error", None, False)
+                    raise DianziApiError(
+                        problem.status,
+                        problem.error.code,
+                        problem.trace_id,
+                        problem.error.retryable,
+                    )
+                if (
+                    response.headers.get("content-type", "").split(";", 1)[0].lower()
+                    != "application/json"
+                ):
+                    raise ResponseContractError("response content type is invalid")
+                validate_json_bytes(content)
+                try:
+                    result = adapter.validate_json(content)
+                except ValidationError:
+>                   raise ResponseContractError(
+                        "response does not match the public contract"
+                    ) from None
+E                   ai_intel_client.client.ResponseContractError: response does not match the public contract
+
+sdk\python\ai_intel_client\client.py:284: ResponseContractError
+_____ test_response_cookie_cannot_change_authentication_of_later_requests _____
+
+    def test_response_cookie_cannot_change_authentication_of_later_requests() -> None:
+        calls: list[httpx.Request] = []
+    
+        def setting_cookie(request: httpx.Request) -> httpx.Response:
+            calls.append(request)
+            return httpx.Response(
+                200,
+                json=ANSWER,
+                headers={"Set-Cookie": "ai_intel_session=synthetic-session; Path=/"},
+            )
+    
+        with DianziClient(
+            "http://127.0.0.1:12345",
+            SecretStr(SYNTHETIC_KEY),
+            transport=httpx.MockTransport(setting_cookie),
+        ) as client:
+>           client.ask(QUESTION, idempotency_key="synthetic-first-key")
+
+sdk\python\tests\test_client.py:326: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sdk\python\ai_intel_client\client.py:301: in ask
+    status, result = self._post(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <ai_intel_client.client.DianziClient object at 0x00000297810B3E90>
+path = '/api/v1/ask'
+body = '{"question":"synthetic question","mode":"library"}'
+operation_key = 'synthetic-first-key'
+adapter = TypeAdapter(Annotated[Union[QAAnswer, TaskHandle], FieldInfo(annotation=NoneType, required=True, discriminator='kind')])
+timeout_seconds = 100
+
+    def _post(
+        self,
+        path: str,
+        body: str,
+        operation_key: str,
+        adapter: TypeAdapter[ResultType],
+        timeout_seconds: float,
+    ) -> tuple[int, ResultType]:
+        encoded = body.encode("utf-8")
+        if len(encoded) > MAX_SYNCHRONOUS_REQUEST_BYTES:
+            raise ClientInputError("synchronous request exceeds the client size boundary")
+        try:
+            with self._http.stream(
+                "POST",
+                path,
+                content=encoded,
+                headers={"Content-Type": "application/json", "Idempotency-Key": operation_key},
+                timeout=timeout_seconds,
+            ) as response:
+                if response.headers.get("content-encoding", "identity").lower() != "identity":
+                    raise ResponseContractError(
+                        "compressed response is outside the client boundary"
+                    )
+                raw = bytearray()
+                for chunk in response.iter_bytes():
+                    if len(raw) + len(chunk) > MAX_RESPONSE_BYTES:
+                        raise ResponseContractError("response exceeds the allowed size")
+                    raw.extend(chunk)
+                content = bytes(raw)
+                if response.status_code not in {200, 202}:
+                    problem = None
+                    if (
+                        response.headers.get("content-type", "").split(";", 1)[0].lower()
+                        == "application/problem+json"
+                    ):
+                        try:
+                            validate_json_bytes(content)
+                            problem = ApiProblem.model_validate_json(content)
+                        except (ResponseContractError, ValidationError):
+                            problem = None
+                    if problem is None or problem.status != response.status_code:
+                        raise DianziApiError(response.status_code, "http_error", None, False)
+                    raise DianziApiError(
+                        problem.status,
+                        problem.error.code,
+                        problem.trace_id,
+                        problem.error.retryable,
+                    )
+                if (
+                    response.headers.get("content-type", "").split(";", 1)[0].lower()
+                    != "application/json"
+                ):
+                    raise ResponseContractError("response content type is invalid")
+                validate_json_bytes(content)
+                try:
+                    result = adapter.validate_json(content)
+                except ValidationError:
+>                   raise ResponseContractError(
+                        "response does not match the public contract"
+                    ) from None
+E                   ai_intel_client.client.ResponseContractError: response does not match the public contract
+
+sdk\python\ai_intel_client\client.py:284: ResponseContractError
+______________________ test_frozen_public_example_cases _______________________
+
+    def test_frozen_public_example_cases() -> None:
+        examples = json.loads((ROOT / "contracts/schemas/public_api_v2_examples.json").read_bytes())
+        adapters = {
+            "AskResult": ASK_RESULT_ADAPTER,
+            "StackCheckRequest": TypeAdapter(StackCheckRequest),
+            "StackCheckResult": TypeAdapter(StackCheckResult),
+        }
+        count = 0
+        for name, values in examples["valid"].items():
+            for value in values:
+>               adapters[name].validate_json(json.dumps(value))
+
+sdk\python\tests\test_models.py:120: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = TypeAdapter(Annotated[Union[QAAnswer, TaskHandle], FieldInfo(annotation=NoneType, required=True, discriminator='kind')])
+data = '{"kind": "task", "task_id": "00000000-0000-4000-8000-000000000001", "status": "queued", "poll_uri": "/api/v1/tasks/00000000-0000-4000-8000-000000000001", "created_at": "2026-10-14T20:52:23+08:00"}'
+
+    def validate_json(
+        self,
+        data: str | bytes | bytearray,
+        /,
+        *,
+        strict: bool | None = None,
+        extra: ExtraValues | None = None,
+        context: Any | None = None,
+        experimental_allow_partial: bool | Literal['off', 'on', 'trailing-strings'] = False,
+        by_alias: bool | None = None,
+        by_name: bool | None = None,
+    ) -> T:
+        """!!! abstract "Usage Documentation"
+            [JSON Parsing](../concepts/json.md#json-parsing)
+    
+        Validate a JSON string or bytes against the model.
+    
+        Args:
+            data: The JSON data to validate against the model.
+            strict: Whether to strictly check types.
+            extra: Whether to ignore, allow, or forbid extra data during model validation.
+                See the [`extra` configuration value][pydantic.ConfigDict.extra] for details.
+            context: Additional context to use during validation.
+            experimental_allow_partial: **Experimental** whether to enable
+                [partial validation](../concepts/experimental.md#partial-validation), e.g. to process streams.
+                * False / 'off': Default behavior, no partial validation.
+                * True / 'on': Enable partial validation.
+                * 'trailing-strings': Enable partial validation and allow trailing strings in the input.
+            by_alias: Whether to use the field's alias when validating against the provided input data.
+            by_name: Whether to use the field's name when validating against the provided input data.
+    
+        Returns:
+            The validated object.
+        """
+        if by_alias is False and by_name is not True:
+            raise PydanticUserError(
+                'At least one of `by_alias` or `by_name` must be set to True.',
+                code='validate-by-alias-and-name-false',
+            )
+    
+>       return self.validator.validate_json(
+            data,
+            strict=strict,
+            extra=extra,
+            context=context,
+            allow_partial=experimental_allow_partial,
+            by_alias=by_alias,
+            by_name=by_name,
+        )
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for tagged-union[function-after[require_complete_support_and_timing(), QAAnswer],function-after[require_bound_poll_uri(), TaskHandle]]
+E       task.created_at
+E         Input should be a valid datetime [type=datetime_type, input_value='2026-10-14T20:52:23+08:00', input_type=str]
+E           For further information visit https://errors.pydantic.dev/2.13/v/datetime_type
+
+D:\dianzi\backend\.venv\Lib\site-packages\pydantic\type_adapter.py:492: ValidationError
+________ test_task_cannot_redirect_polling_to_another_object_or_origin ________
+
+    def test_task_cannot_redirect_polling_to_another_object_or_origin() -> None:
+        value = {
+            "kind": "task",
+            "task_id": ID,
+            "status": "queued",
+            "poll_uri": "/api/v1/tasks/" + ID,
+            "created_at": "2026-10-16T00:00:00Z",
+        }
+>       assert TaskHandle.model_validate_json(json.dumps(value)).task_id.hex
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for TaskHandle
+E       created_at
+E         Input should be a valid datetime [type=datetime_type]
+E           For further information visit https://errors.pydantic.dev/2.13/v/datetime_type
+
+sdk\python\tests\test_models.py:237: ValidationError
+- generated xml file: D:\wt\r18-sdk-client-fix1\reports\runs\recovery_r18_sdk_client_fix1_20261016\sdk_original99_after_fix.xml -
+=========================== short test summary info ===========================
+FAILED sdk/python/tests/test_cli.py::test_async_ask_does_not_report_completed_or_zero
+FAILED sdk/python/tests/test_client.py::test_ask_uses_fixed_path_bearer_and_operation_key_without_cookie
+FAILED sdk/python/tests/test_client.py::test_async_handle_remains_async_and_has_no_fabricated_answer
+FAILED sdk/python/tests/test_client.py::test_response_cookie_cannot_change_authentication_of_later_requests
+FAILED sdk/python/tests/test_models.py::test_frozen_public_example_cases - py...
+FAILED sdk/python/tests/test_models.py::test_task_cannot_redirect_polling_to_another_object_or_origin
+6 failed, 93 passed in 0.92s
+
+--- stderr ---

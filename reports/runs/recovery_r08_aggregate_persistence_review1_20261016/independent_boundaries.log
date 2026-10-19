@@ -1,0 +1,33 @@
+.....................F                                                   [100%]
+================================== FAILURES ===================================
+________ test_cache_ttl_never_exceeds_fractional_pg_remaining_lifetime ________
+
+repository = <ai_intel.assets.aggregate_repository.PostgresAggregateRepository object at 0x000001D51F410AA0>
+policy = AggregateServerPolicy(authorization_profile='review-b06b9a9c1f294439a2a7230aa3940fb9', data_mode='fixture', collection_authorized=True, visibility='public')
+
+    def test_cache_ttl_never_exceeds_fractional_pg_remaining_lifetime(repository, policy):
+        live = AggregateServerPolicy(policy.authorization_profile, "live", True)
+        observation = total_result("hunter", "ollama", 5, NOW, "live")
+        cache = Cache()
+        service = AggregateService(repository, {"hunter": Connector(observation)}, live, safe_cache=cache)
+        reference_time = NOW + timedelta(seconds=86399, microseconds=500000)
+        result = service.collect_provider_aggregate_observation("hunter", "ollama", ADMIN, now=reference_time)
+        assert result.status == "available" and result.freshness == "unknown"
+        remaining = (NOW + timedelta(seconds=86400) - reference_time).total_seconds()
+>       assert not cache.ttls or cache.ttls[-1] <= remaining
+E       assert (not [1] or 1 <= 0.5)
+E        +  where [1] = <test_review_boundaries.Cache object at 0x000001D51F4103E0>.ttls
+
+..\reports\runs\recovery_r08_aggregate_persistence_review1_20261016\test_review_boundaries.py:222: AssertionError
+============================== warnings summary ===============================
+reports/runs/recovery_r08_aggregate_persistence_review1_20261016/test_review_boundaries.py::test_connection
+  D:\wt\r08-persistence-review1\.review-venv\Lib\site-packages\_pytest\python.py:161: PytestReturnNotNoneWarning: Test functions should return None, but reports/runs/recovery_r08_aggregate_persistence_review1_20261016/test_review_boundaries.py::test_connection returned <class 'sqlalchemy.engine.url.URL'>.
+  Did you mean to use `assert` instead of `return`?
+  See https://docs.pytest.org/en/stable/how-to/assert.html#return-not-none for more information.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\r08-persistence-review1\reports\runs\recovery_r08_aggregate_persistence_review1_20261016\boundaries.xml -
+=========================== short test summary info ===========================
+FAILED ..\reports\runs\recovery_r08_aggregate_persistence_review1_20261016\test_review_boundaries.py::test_cache_ttl_never_exceeds_fractional_pg_remaining_lifetime
+1 failed, 21 passed, 1 warning in 4.73s

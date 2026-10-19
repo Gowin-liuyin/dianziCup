@@ -1,0 +1,50 @@
+diff --git a/backend/tests/contract/test_r18_task_poll_uri.py b/backend/tests/contract/test_r18_task_poll_uri.py
+new file mode 100644
+index 00000000..15682782
+--- /dev/null
++++ b/backend/tests/contract/test_r18_task_poll_uri.py
+@@ -0,0 +1,31 @@
++"""Task polling paths accept UUID groups without broadening the legacy profile."""
++
++import json
++from pathlib import Path
++
++import pytest
++from jsonschema import Draft202012Validator
++
++SCHEMA = json.loads(
++    (
++        Path(__file__).resolve().parents[3] / "contracts/schemas/public_api_extensions_v1.json"
++    ).read_text(encoding="utf-8")
++)
++VALIDATOR = Draft202012Validator({**SCHEMA, "$ref": "#/$defs/TaskDescriptor/properties/poll_uri"})
++
++
++@pytest.mark.parametrize(
++    "identifier",
++    (
++        "-" * 36,
++        "a" * 36,
++        "0000000-00000-4000-8000-000000000001",
++        "00000000-0000-4000-8000-000000000001/extra",
++    ),
++)
++def test_invalid_poll_identifier_is_rejected(identifier: str) -> None:
++    assert not VALIDATOR.is_valid("/api/v1/tasks/" + identifier)
++
++
++def test_grouped_uuid_poll_identifier_is_preserved() -> None:
++    assert VALIDATOR.is_valid("/api/v1/tasks/00000000-0000-4000-8000-000000000001")
+diff --git a/contracts/schemas/public_api_extensions_v1.json b/contracts/schemas/public_api_extensions_v1.json
+index c215bc07..1f07ba0b 100644
+--- a/contracts/schemas/public_api_extensions_v1.json
++++ b/contracts/schemas/public_api_extensions_v1.json
+@@ -1453,7 +1453,7 @@
+         },
+         "poll_uri": {
+           "type": "string",
+-          "pattern": "^/api/v1/tasks/[0-9a-fA-F-]{36}$"
++          "pattern": "^/api/v1/tasks/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+         },
+         "created_at": {
+           "type": "string",

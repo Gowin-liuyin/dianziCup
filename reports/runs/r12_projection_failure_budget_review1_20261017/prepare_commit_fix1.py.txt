@@ -1,0 +1,96 @@
+"""Stage only owned review proof files and inspect their scoped diff and secret boundaries."""
+
+import gzip
+import hashlib
+import json
+import re
+import subprocess
+import xml.etree.ElementTree as ET
+from datetime import UTC, datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+RUN = Path(__file__).parent
+REPORT = ROOT / "reports/reviews/recovery/G-D-R12-projection-failure-budget-review-1.md"
+BOUNDARY = RUN / "commit_boundary.json"
+
+
+def git(*arguments):
+    result = subprocess.run(["git", *arguments], cwd=ROOT, capture_output=True, timeout=20)
+    return result.returncode, result.stdout, result.stderr
+
+
+assert git("rev-parse", "HEAD")[1].decode().strip() == "9cd6381eacc67853c055643d634ffb1812875214"
+assert not git("diff", "--cached", "--name-only")[1]
+selected = [REPORT]
+for path in sorted(RUN.iterdir()):
+    if path.is_file() and path.suffix in {".py", ".json", ".gz", ".txt"}:
+        selected.append(path)
+for path in sorted((RUN / "author_material_fixed").iterdir()):
+    if path.is_file() and path.suffix in {".json", ".gz"}:
+        selected.append(path)
+assert all(path == REPORT or path.resolve().is_relative_to(RUN.resolve()) for path in selected)
+patterns = {
+    "private_key": rb"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
+    "openai_key": rb"sk-(?:proj-)?[A-Za-z0-9_-]{24,}",
+    "postgres_url": rb"postgres(?:ql)?(?:\+\w+)?://[^\s\"']+",
+    "credential_url": rb"[A-Za-z][A-Za-z0-9+.-]*://[^\s/:\"']+:[^@\s]+@",
+    "aws_key": rb"AKIA[0-9A-Z]{16}",
+}
+findings = []
+synthetic_fixture_matches = []
+fixture_test_name = (
+    "test_invalid_credential_origins_are_rejected_without_echoing_inputs"
+    "[https://user:synthetic@host.invalid]"
+)
+for path in selected:
+    assert path.name != ".env"
+    raw = gzip.decompress(path.read_bytes()) if path.suffix == ".gz" else path.read_bytes()
+    for name, pattern in patterns.items():
+        matches = list(re.finditer(pattern, raw))
+        for match in matches:
+            if (
+                name == "credential_url"
+                and path.name in {"related.xml.gz", "related_regression_fixed.junit.xml.gz"}
+                and match.group() == b"https://user:synthetic@host.invalid]"
+                and any(case.get("name") == fixture_test_name for case in ET.fromstring(raw).findall(".//testcase"))
+            ):
+                synthetic_fixture_matches.append({
+                    "path": path.relative_to(ROOT).as_posix(),
+                    "test": "test_invalid_credential_origins_are_rejected_without_echoing_inputs",
+                    "source": "backend/tests/unit/test_r01_runtime_settings.py:45",
+                })
+            else:
+                findings.append({"path": path.relative_to(ROOT).as_posix(), "pattern": name})
+assert not findings, findings
+paths = [path.relative_to(ROOT).as_posix() for path in selected]
+spec = RUN / "staged_paths.nul"
+spec.write_bytes(b"\0".join(path.encode() for path in paths) + b"\0")
+code, output, error = git("add", "--pathspec-from-file=" + str(spec), "--pathspec-file-nul")
+assert code == 0, error.decode(errors="replace")
+actual = git("diff", "--cached", "--name-only")[1].decode().splitlines()
+assert set(actual) == set(paths)
+code, output, error = git("diff", "--cached", "--check")
+(RUN / "staged_diff_check.raw.log").write_bytes(output + error)
+assert code == 0
+record = {
+    "checked_at": datetime.now(UTC).isoformat(),
+    "source_parent": "9cd6381eacc67853c055643d634ffb1812875214",
+    "allowed_report": REPORT.relative_to(ROOT).as_posix(),
+    "allowed_run_prefix": RUN.relative_to(ROOT).as_posix() + "/",
+    "staged_paths": actual,
+    "staged_count_before_boundary_receipt": len(actual),
+    "staged_diff_check_exit_code": code,
+    "patterns": list(patterns), "scoped_secret_pattern_findings": findings,
+    "exact_synthetic_rejected_origin_fixture_matches": synthetic_fixture_matches,
+    "scope": "only selected own proof bytes; not a complete secret registry scan",
+    "raw_failure_archives_lossless": True,
+    "staged_manifest_sha256": hashlib.sha256((RUN / "review_delivery_manifest.json").read_bytes()).hexdigest(),
+    "excluded": "raw logs/xml are preserved locally and staged as lossless gzip; caches/tmp directories not staged",
+}
+assert not BOUNDARY.exists()
+BOUNDARY.write_text(json.dumps(record, indent=2) + "\n")
+code, _, error = git("add", "--", BOUNDARY.relative_to(ROOT).as_posix())
+assert code == 0, error.decode(errors="replace")
+assert git("diff", "--cached", "--check")[0] == 0
+print(json.dumps({"staged_proof_files": len(actual) + 1, "secret_pattern_findings": 0, "staged_diff_exit": 0}))

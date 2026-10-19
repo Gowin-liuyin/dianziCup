@@ -1,0 +1,239 @@
+....................F................................................... [ 78%]
+....................                                                     [100%]
+================================== FAILURES ===================================
+_ test_changed_event_version_rejects_new_results_but_replays_original_history _
+
+self = <sqlalchemy.engine.base.Connection object at 0x0000029BF4D97E60>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x0000029BF4D6A630>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x0000029BF5120980>
+statement = <sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x0000029BF4301CA0>
+parameters = [{'hashtextextended_1': 'source:9bd8dd05-221b-52c6-9d2a-4aaa86b60224', 'hashtextextended_2': 0}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r06_catalog_r07_pub_fix_20261016) at 0x29bf4374e90>
+query = 'SELECT pg_advisory_xact_lock(hashtextextended(%(hashtextextended_1)s::VARCHAR, %(hashtextextended_2)s::INTEGER)) AS pg_advisory_xact_lock_1'
+params = {'hashtextextended_1': 'source:9bd8dd05-221b-52c6-9d2a-4aaa86b60224', 'hashtextextended_2': 0}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.LockNotAvailable: canceling statement due to lock timeout
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: LockNotAvailable
+
+The above exception was the direct cause of the following exception:
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_pub_fix_20261016?options=-c+search_path%3Dtest_r06_catalog_88f1a2cd11f244a48b850d357bafebf0+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-658/test_changed_event_version_rej0')
+
+    def test_changed_event_version_rejects_new_results_but_replays_original_history(
+        catalog_engine, tmp_path
+    ):
+        loaded, attempts = inputs(catalog_engine, tmp_path)
+        request_id = uuid4()
+>       old = publish(catalog_engine, loaded, attempts, request_id)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\integration\test_r07_enrichment_publication_pg.py:127: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\integration\test_r07_enrichment_publication_pg.py:45: in publish
+    return publish_enrichment_attempts(
+src\ai_intel\enrichment\publication.py:357: in publish_enrichment_attempts
+    _lock_input_parents(session, loaded)
+src\ai_intel\enrichment\publication.py:116: in _lock_input_parents
+    session.execute(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2473: in execute
+    return self._execute_internal(
+.venv\Lib\site-packages\sqlalchemy\orm\session.py:2373: in _execute_internal
+    result = conn.execute(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1448: in execute
+    return meth(
+.venv\Lib\site-packages\sqlalchemy\sql\elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1822: in _execute_context
+    return self._exec_single_context(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+.venv\Lib\site-packages\sqlalchemy\engine\base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+.venv\Lib\site-packages\sqlalchemy\engine\default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 port=25432 user=test_dianzi_r01 database=test_dianzi_r06_catalog_r07_pub_fix_20261016) at 0x29bf4374e90>
+query = 'SELECT pg_advisory_xact_lock(hashtextextended(%(hashtextextended_1)s::VARCHAR, %(hashtextextended_2)s::INTEGER)) AS pg_advisory_xact_lock_1'
+params = {'hashtextextended_1': 'source:9bd8dd05-221b-52c6-9d2a-4aaa86b60224', 'hashtextextended_2': 0}
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.OperationalError: (psycopg.errors.LockNotAvailable) canceling statement due to lock timeout
+E           [SQL: SELECT pg_advisory_xact_lock(hashtextextended(%(hashtextextended_1)s::VARCHAR, %(hashtextextended_2)s::INTEGER)) AS pg_advisory_xact_lock_1]
+E           [parameters: {'hashtextextended_1': 'source:9bd8dd05-221b-52c6-9d2a-4aaa86b60224', 'hashtextextended_2': 0}]
+E           (Background on this error at: https://sqlalche.me/e/21/e3q8)
+
+.venv\Lib\site-packages\psycopg\cursor.py:117: OperationalError
+- generated xml file: D:\wt\r07-pub-fix\reports\runs\recovery_r07_publication_acl_lock_fix_20261016\frozen_pg92.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r07_enrichment_publication_pg.py::test_changed_event_version_rejects_new_results_but_replays_original_history
+1 failed, 91 passed in 114.94s (0:01:54)

@@ -1,0 +1,42 @@
+................F...................                                     [100%]
+================================== FAILURES ===================================
+_______ test_verified_tls_graph_configuration_preserves_secret_wrapper ________
+
+    def test_verified_tls_graph_configuration_preserves_secret_wrapper() -> None:
+>       configuration = load_application_settings(
+            app_env="production",
+            allowed_origins=("https://ui.invalid",),
+            neo4j_uri="bolt+s://graph.invalid:7687",
+            neo4j_username="neo4j",
+            neo4j_password=SecretStr("synthetic-graph-fixture"),
+        )
+
+tests\unit\test_r10_graph_runtime_settings.py:66: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+overrides = {'allowed_origins': ('https://ui.invalid',), 'app_env': 'production', 'neo4j_password': SecretStr('**********'), 'neo4j_uri': 'bolt+s://graph.invalid:7687', ...}
+reasons = ['DATA_MODE=fixture is not allowed when APP_ENV=production']
+error = {'ctx': {'error': ConfigurationError('DATA_MODE=fixture is not allowed when APP_ENV=production')}, 'loc': (), 'msg': 'Value error, DATA_MODE=fixture is not allowed when APP_ENV=production', 'type': 'value_error'}
+cause = ConfigurationError('DATA_MODE=fixture is not allowed when APP_ENV=production')
+
+    def load_application_settings(**overrides: object) -> ApplicationSettings:
+        """构造并校验配置; 缺必需项或组合违规时抛出 ConfigurationError。"""
+        try:
+            return ApplicationSettings.model_validate(overrides)
+        except ValidationError as validation_error:
+            reasons: list[str] = []
+            for error in validation_error.errors(include_input=False, include_url=False):
+                cause = error.get("ctx", {}).get("error")
+                if isinstance(cause, ConfigurationError):
+                    reasons.append(str(cause))
+                else:
+                    field = error["loc"][0] if error["loc"] else "configuration"
+                    reasons.append(f"invalid setting: {field}")
+>           raise ConfigurationError("; ".join(reasons)) from None
+E           ai_intel.infrastructure.settings.ConfigurationError: DATA_MODE=fixture is not allowed when APP_ENV=production
+
+src\ai_intel\infrastructure\settings.py:273: ConfigurationError
+- generated xml file: D:\dianzi\reports\runs\recovery_reviewed_integration_20261016\graph_settings_batch14_unit.xml -
+=========================== short test summary info ===========================
+FAILED tests/unit/test_r10_graph_runtime_settings.py::test_verified_tls_graph_configuration_preserves_secret_wrapper
+1 failed, 35 passed in 6.40s

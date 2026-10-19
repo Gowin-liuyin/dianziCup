@@ -1,0 +1,322 @@
+{
+  "checked_at": "2026-10-16T10:05:33.887040+08:00",
+  "code_commit": "1e210090d74d1444101330f0c8b8637ad1dd50a3",
+  "tables": [
+    {
+      "name": "qa_conversations",
+      "columns": [
+        {
+          "name": "conversation_id",
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": true,
+          "foreign_keys": [
+            "qa_conversation_turns.conversation_id"
+          ]
+        },
+        {
+          "name": "schema_version",
+          "type": "INTEGER",
+          "nullable": false,
+          "primary_key": false,
+          "foreign_keys": []
+        },
+        {
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primary_key": false,
+          "foreign_keys": [
+            "users.user_id"
+          ]
+        },
+        {
+          "name": "tenant_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primary_key": false,
+          "foreign_keys": []
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "nullable": false,
+          "primary_key": false,
+          "foreign_keys": []
+        },
+        {
+          "name": "version",
+          "type": "BIGINT",
+          "nullable": false,
+          "primary_key": false,
+          "foreign_keys": []
+        },
+        {
+          "name": "active_turn_id",
+          "type": "UUID",
+          "nullable": true,
+          "primary_key": false,
+          "foreign_keys": [
+            "qa_conversation_turns.turn_id"
+          ]
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false,
+          "foreign_keys": []
+        },
+        {
+          "name": "updated_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false,
+          "foreign_keys": []
+        },
+        {
+          "name": "revoked_at",
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false,
+          "foreign_keys": []
+        }
+      ],
+      "constraints": [
+        {
+          "name": "ck_qa_conversation_status",
+          "kind": "CheckConstraint",
+          "columns": [],
+          "check_sql": "(status='active' AND revoked_at IS NULL) OR (status='revoked' AND revoked_at IS NOT NULL)"
+        },
+        {
+          "name": "ck_qa_conversation_version",
+          "kind": "CheckConstraint",
+          "columns": [],
+          "check_sql": "schema_version=1 AND version>=0"
+        },
+        {
+          "name": null,
+          "kind": "ForeignKeyConstraint",
+          "columns": [
+            "user_id"
+          ],
+          "foreign_keys": [
+            "users.user_id"
+          ],
+          "deferrable": null,
+          "initially": null,
+          "use_alter": false
+        },
+        {
+          "name": "fk_qa_active_turn",
+          "kind": "ForeignKeyConstraint",
+          "columns": [
+            "conversation_id",
+            "active_turn_id"
+          ],
+          "foreign_keys": [
+            "qa_conversation_turns.conversation_id",
+            "qa_conversation_turns.turn_id"
+          ],
+          "deferrable": true,
+          "initially": "DEFERRED",
+          "use_alter": true
+        },
+        {
+          "name": null,
+          "kind": "PrimaryKeyConstraint",
+          "columns": [
+            "conversation_id"
+          ]
+        }
+      ],
+      "indexes": [
+        "ix_qa_conversation_owner"
+      ]
+    },
+    {
+      "name": "qa_conversation_turns",
+      "columns": [
+        {
+          "name": "turn_id",
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": true,
+          "foreign_keys": []
+        },
+        {
+          "name": "schema_version",
+          "type": "INTEGER",
+          "nullable": false,
+          "primary_key": false,
+          "foreign_keys": []
+        },
+        {
+          "name": "conversation_id",
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false,
+          "foreign_keys": [
+            "qa_conversations.conversation_id"
+          ]
+        },
+        {
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primary_key": false,
+          "foreign_keys": [
+            "users.user_id"
+          ]
+        },
+        {
+          "name": "tenant_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primary_key": false,
+          "foreign_keys": []
+        },
+        {
+          "name": "turn_number",
+          "type": "BIGINT",
+          "nullable": false,
+          "primary_key": false,
+          "foreign_keys": []
+        },
+        {
+          "name": "base_conversation_version",
+          "type": "BIGINT",
+          "nullable": false,
+          "primary_key": false,
+          "foreign_keys": []
+        },
+        {
+          "name": "answer_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primary_key": false,
+          "foreign_keys": [
+            "grounded_answers.answer_id"
+          ]
+        },
+        {
+          "name": "context_sha256",
+          "type": "TEXT",
+          "nullable": false,
+          "primary_key": false,
+          "foreign_keys": []
+        },
+        {
+          "name": "resolved_context",
+          "type": "JSONB",
+          "nullable": false,
+          "primary_key": false,
+          "foreign_keys": []
+        },
+        {
+          "name": "admitted_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false,
+          "foreign_keys": []
+        }
+      ],
+      "constraints": [
+        {
+          "name": "ck_qa_turn_context",
+          "kind": "CheckConstraint",
+          "columns": [],
+          "check_sql": "context_sha256 ~ '^[0-9a-f]{64}$' AND jsonb_typeof(resolved_context)='object'"
+        },
+        {
+          "name": "ck_qa_turn_version",
+          "kind": "CheckConstraint",
+          "columns": [],
+          "check_sql": "schema_version=1 AND turn_number>=1 AND base_conversation_version>=0"
+        },
+        {
+          "name": null,
+          "kind": "ForeignKeyConstraint",
+          "columns": [
+            "answer_id"
+          ],
+          "foreign_keys": [
+            "grounded_answers.answer_id"
+          ],
+          "deferrable": null,
+          "initially": null,
+          "use_alter": false
+        },
+        {
+          "name": null,
+          "kind": "ForeignKeyConstraint",
+          "columns": [
+            "conversation_id"
+          ],
+          "foreign_keys": [
+            "qa_conversations.conversation_id"
+          ],
+          "deferrable": null,
+          "initially": null,
+          "use_alter": false
+        },
+        {
+          "name": null,
+          "kind": "ForeignKeyConstraint",
+          "columns": [
+            "user_id"
+          ],
+          "foreign_keys": [
+            "users.user_id"
+          ],
+          "deferrable": null,
+          "initially": null,
+          "use_alter": false
+        },
+        {
+          "name": null,
+          "kind": "PrimaryKeyConstraint",
+          "columns": [
+            "turn_id"
+          ]
+        },
+        {
+          "name": null,
+          "kind": "UniqueConstraint",
+          "columns": [
+            "answer_id"
+          ]
+        },
+        {
+          "name": "uq_qa_turn_conversation_identity",
+          "kind": "UniqueConstraint",
+          "columns": [
+            "conversation_id",
+            "turn_id"
+          ]
+        },
+        {
+          "name": "uq_qa_turn_number",
+          "kind": "UniqueConstraint",
+          "columns": [
+            "conversation_id",
+            "turn_number"
+          ]
+        }
+      ],
+      "indexes": []
+    }
+  ],
+  "ownership_function_ddl": "\nCREATE FUNCTION qa_validate_turn_ownership() RETURNS trigger LANGUAGE plpgsql AS $$\nDECLARE\n  target_turn uuid;\n  target_conversation uuid;\n  target_answer text;\nBEGIN\n  IF TG_TABLE_NAME='qa_conversation_turns' THEN target_turn := NEW.turn_id;\n  ELSIF TG_TABLE_NAME='qa_conversations' THEN target_conversation := NEW.conversation_id;\n  ELSE target_answer := NEW.answer_id;\n  END IF;\n  IF EXISTS (\n    SELECT 1 FROM qa_conversation_turns t\n    JOIN qa_conversations c USING (conversation_id)\n    JOIN grounded_answers a USING (answer_id)\n    WHERE (t.turn_id=target_turn OR t.conversation_id=target_conversation\n           OR t.answer_id=target_answer)\n      AND (t.user_id IS DISTINCT FROM c.user_id OR t.user_id IS DISTINCT FROM a.user_id\n       OR t.tenant_id IS DISTINCT FROM c.tenant_id OR t.tenant_id IS DISTINCT FROM a.tenant_id)\n  ) THEN\n    RAISE EXCEPTION 'conversation owner mismatch' USING ERRCODE='23514';\n  END IF;\n  RETURN NULL;\nEND;\n$$\n",
+  "ownership_trigger_ddls": [
+    "CREATE CONSTRAINT TRIGGER qa_owner_qa_conversation_turns AFTER INSERT OR UPDATE ON qa_conversation_turns DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION qa_validate_turn_ownership()",
+    "CREATE CONSTRAINT TRIGGER qa_owner_qa_conversations AFTER INSERT OR UPDATE ON qa_conversations DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION qa_validate_turn_ownership()",
+    "CREATE CONSTRAINT TRIGGER qa_owner_grounded_answers AFTER INSERT OR UPDATE ON grounded_answers DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION qa_validate_turn_ownership()"
+  ],
+  "immutability_function_ddl": "\nCREATE FUNCTION prevent_qa_turn_changes() RETURNS trigger LANGUAGE plpgsql AS $$\nBEGIN RAISE EXCEPTION 'conversation turns are immutable' USING ERRCODE='23514'; END $$\n",
+  "immutability_trigger_ddl": "\nCREATE TRIGGER qa_conversation_turns_immutable BEFORE UPDATE OR DELETE\nON qa_conversation_turns FOR EACH ROW EXECUTE FUNCTION prevent_qa_turn_changes()\n",
+  "ddl_sha256": "166f4806892c006f4739dcd184aa13784099e724a5dd6e72c90cdb0e5a932d28",
+  "production_migration": "not_run",
+  "connections": 0
+}

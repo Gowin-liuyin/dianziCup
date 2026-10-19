@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="2" time="7.073" timestamp="2026-10-16T08:35:22.379862+08:00" hostname="yin"><testcase classname="reports.runs.recovery_r10_neo4j_projection_review1_fix1_20261016.adapted_tests.test_recheck_epoch_boundary" name="test_epoch_movement_during_candidate_io_blocks_matches_and_empty_results[True]" time="2.451" /><testcase classname="reports.runs.recovery_r10_neo4j_projection_review1_fix1_20261016.adapted_tests.test_recheck_epoch_boundary" name="test_epoch_movement_during_candidate_io_blocks_matches_and_empty_results[False]" time="2.864"><failure message="Failed: DID NOT RAISE &lt;class 'ai_intel.knowledge.graph_projection.ProjectionNotReady'&gt;">projection_engine = Engine(postgresql+psycopg://[redacted PG role identity]:***@127.0.0.1:25432/test_dianzi_r10_projection_review1_fix1_20261016?options=-c+search_path%3Dtest_r10r1f1_f9444787869849abba2f02e3cec3ee50+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+neo4j_store = &lt;ai_intel.infrastructure.neo4j_projection.Neo4jProjectionStore object at 0x000001D654CB2960&gt;
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/dianzi-r10-review1-fix1-epochio/test_epoch_movement_during_can1')
+has_candidates = False
+
+    @pytest.mark.real_pg
+    @pytest.mark.real_services
+    @pytest.mark.parametrize("has_candidates", [True, False])
+    def test_epoch_movement_during_candidate_io_blocks_matches_and_empty_results(
+        projection_engine, neo4j_store, tmp_path, has_candidates
+    ):
+        event_id, _source = published_fixture(projection_engine, tmp_path)
+        namespace, generation = "r10_review1_fix1_" + uuid4().hex, uuid4()
+        manifest_for(projection_engine, generation, namespace=namespace)
+        value = capture(projection_engine, generation, event_id, namespace=namespace)
+        apply(projection_engine, neo4j_store, value)
+        seed = event_id if has_candidates else uuid4()
+    
+        class EpochMovingStore:
+            def find_candidates(self, *arguments):
+                found = neo4j_store.find_candidates(*arguments)
+                assert bool(found.candidates) == has_candidates
+                with projection_engine.begin() as connection:
+                    bump_scope_epoch(connection, "public", datetime.now(UTC))
+                return found
+    
+&gt;       with Session(projection_engine) as session, pytest.raises(ProjectionNotReady):
+                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE &lt;class 'ai_intel.knowledge.graph_projection.ProjectionNotReady'&gt;
+
+..\reports\runs\recovery_r10_neo4j_projection_review1_fix1_20261016\adapted_tests\test_recheck_epoch_boundary.py:36: Failed</failure></testcase></testsuite></testsuites>

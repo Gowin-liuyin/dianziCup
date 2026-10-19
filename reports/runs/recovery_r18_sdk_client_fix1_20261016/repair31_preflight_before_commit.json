@@ -1,0 +1,12 @@
+{
+  "command": [
+    "D:/dianzi/backend/.venv/Scripts/python.exe",
+    "-c",
+    "import json,hashlib,pathlib,subprocess\nroot=pathlib.Path.cwd();run=root/'reports/runs/recovery_r18_sdk_client_fix1_20261016';p=run/'renormalize_once_green_proof.json';raw=p.read_bytes();assert hashlib.sha256(raw).hexdigest()=='5574fb196b9eaafd0c15e097dec9cc44d77d0b095b620876bcb57ee195b6180e';proof=json.loads(raw)\ndef git(*args):return subprocess.run(['git',*args],cwd=root,capture_output=True,check=True,timeout=30).stdout\nassert git('rev-parse','HEAD').decode().strip()==proof['head']=='f1eafe20ae70beadb6adb9a7f7974caadb5a7bf7'\nstaged=git('diff','--cached','--name-only').decode().splitlines();assert sorted(staged)==sorted(proof['staged_paths']) and len(staged)==31\nfor e in proof['files']:\n    assert hashlib.sha256((root/e['path']).read_bytes()).hexdigest()==e['raw_sha256']\n    assert hashlib.sha256(git('show',':'+e['path'])).hexdigest()==e['index_blob_sha256']\ngit('diff','--exit-code','6d85742b0114cc5e304e88b2aa930755ccce9bc9','--','sdk/python');git('diff','--cached','--check')\nprint(json.dumps({'head':proof['head'],'staged_exact_31':True,'all_110_disk_index_hashes_match':True,'source_diff_exit':0,'staged_check_exit':0,'commit':'not_run'}))"
+  ],
+  "cwd": "D:\\wt\\r18-sdk-client-fix1",
+  "started_at": "2026-10-16T09:11:55+08:00",
+  "finished_at": "2026-10-16T09:12:01+08:00",
+  "exit_code": 0,
+  "log_path": "repair31_preflight_before_commit.log"
+}

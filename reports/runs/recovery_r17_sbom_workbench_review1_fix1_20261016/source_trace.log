@@ -1,0 +1,41 @@
+frontend/vite.config.ts:12:    proxy: { "/v1": { target: process.env.API_PROXY_TARGET ?? "http://127.0.0.1:28002", changeOrigin: false } },
+frontend/src\main.tsx:2:import { createRoot } from "react-dom/client";
+frontend/src\main.tsx:11:createRoot(rootElement).render(
+frontend/src\App.tsx:15:import { AssetWorkspace } from "./features/assets/asset-workspace";
+frontend/src\App.tsx:202:          {page === "assets" && <AssetWorkspace key={sessionScopeKey} assetId={assetRoute?.assetId} />}
+frontend/src\features\assets\asset-contracts.ts:67:export function isSafeSbomPurl(value: string): boolean {
+frontend/src\features\assets\asset-contracts.ts:91:export function parseSnapshot(value: unknown, tenant: string, assetId: string): AssetSnapshot {
+frontend/src\features\assets\asset-contracts.ts:101:  if ((item.source_kind === "cyclonedx_json" || item.source_kind === "spdx_json") && components.some((entry) => entry.purl !== null && !isSafeSbomPurl(entry.purl))) throw new AssetResponseScopeMismatch();
+frontend/src\features\assets\asset-contracts.ts:108:  const snapshot = parseSnapshot(item.snapshot, tenant, assetId);
+frontend/src\features\assets\asset-contracts.ts:117:export function parseSnapshotList(value: unknown, tenant: string, assetId: string): SnapshotPage {
+frontend/src\features\assets\asset-contracts.ts:119:  return { items: unique(list(item.items, (entry) => parseSnapshot(entry, tenant, assetId), 100), (entry) => entry.snapshot_id), next_cursor: cursor(item.next_cursor) };
+frontend/src\features\assets\asset-contracts.ts:124:  return { asset_id: assetId, snapshot: parseSnapshot(item.snapshot, tenant, assetId), reused: boolean(item.reused) };
+frontend/src\features\assets\asset-client.ts:2:import { AssetResponseScopeMismatch, isAssetIdentifier, parseAsset, parseAssetList, parseImportResult, parseSnapshot, parseSnapshotList, type Asset, type AssetImportResult, type AssetPage, type AssetSnapshot, type ManifestFormat, type SnapshotPage } from "./asset-contracts";
+frontend/src\features\assets\asset-client.ts:3:import { parseSnapshotSbom, type SnapshotSbom } from "./sbom-contracts";
+frontend/src\features\assets\asset-client.ts:29:  const result = parseSnapshotList(await fetchJson(`${assetPath(assetId)}/snapshots?${pageQuery(cursor)}`, {}, signal), tenant, assetId);
+frontend/src\features\assets\asset-client.ts:35:  const result = parseSnapshot(await fetchJson(`${assetPath(assetId)}/snapshots/${encodeURIComponent(snapshotId)}`, {}, signal), tenant, assetId);
+frontend/src\features\assets\asset-client.ts:39:export async function getAssetSnapshotSbom(tenant: string, snapshot: AssetSnapshot, signal?: AbortSignal): Promise<SnapshotSbom> {
+frontend/src\features\assets\asset-client.ts:41:  return parseSnapshotSbom(await fetchJson(`${assetPath(snapshot.asset_id)}/snapshots/${encodeURIComponent(snapshot.snapshot_id)}/sbom`, {}, signal), tenant, snapshot);
+frontend/src\features\assets\asset-client.ts:57:export async function importAsset(tenant: string, request: AssetImportRequest, signal?: AbortSignal, isCurrent: () => boolean = () => true): Promise<AssetImportResult> {
+frontend/src\features\assets\asset-import.tsx:3:import { importAsset, MAX_ASSET_UPLOAD_BYTES, parseCsvMapping, type AssetImportRequest } from "./asset-client";
+frontend/src\features\assets\asset-import.tsx:65:      const result = await importAsset(tenant, request.current, controller.current.signal, isCurrent);
+frontend/src\features\assets\asset-detail.tsx:8:import { SbomDetail } from "./sbom-detail";
+frontend/src\features\assets\asset-detail.tsx:18:function SnapshotView({ snapshot, position, isCurrent, onFailure }: { snapshot: AssetSnapshot; position: SnapshotPosition; isCurrent: () => boolean; onFailure: (error: ApiProblem) => void }) {
+frontend/src\features\assets\asset-detail.tsx:36:    <SbomDetail tenant={snapshot.tenant_id} snapshot={snapshot} isCurrent={isCurrent} onFailure={onFailure} />
+frontend/src\features\assets\asset-detail.tsx:40:export function AssetDetail({ tenant, assetId, refresh, isCurrent, onAsset, onFailure }: DetailProps) {
+frontend/src\features\assets\asset-detail.tsx:87:    if (selectedSnapshotId === null) snapshotContent = <SnapshotView key={asset.snapshot.snapshot_id} snapshot={asset.snapshot} position={newerHistory ? "unverified" : "current"} isCurrent={isCurrent} onFailure={onFailure} />;
+frontend/src\features\assets\asset-detail.tsx:90:    else snapshotContent = <><button className="button secondary asset-return-current" onClick={() => setSelectedSnapshotId(null)}>查看当前快照</button><SnapshotView key={selectedSnapshot.snapshot_id} snapshot={selectedSnapshot} position={selectedSnapshot.snapshot_number < asset.snapshot.snapshot_number ? "history" : "unverified"} isCurrent={isCurrent} onFailure={onFailure} /></>;
+frontend/src\features\assets\asset-workspace.tsx:8:import { AssetDetail } from "./asset-detail";
+frontend/src\features\assets\asset-workspace.tsx:13:function AuthorizedAssets({ user, assetId }: { user: CurrentUser & { tenant_id: string }; assetId?: string }) {
+frontend/src\features\assets\asset-workspace.tsx:64:      {assetId ? <AssetDetail key={`${assetId}:${refresh}`} tenant={user.tenant_id} assetId={assetId} refresh={refresh} isCurrent={isCurrent} onAsset={setCurrentAsset} onFailure={failed} /> : <section className="asset-selection-guide"><p className="eyebrow">READ / VERIFY / COMPARE</p><h2>固定快照<br />保留判断边界</h2><p>选择资产，核对当前清单、历史快照、组件版本与字段位置。版本、配置或范围缺失时保留未知。</p><div><span>内部声明</span><strong>来源与完整性分别核对</strong></div><div><span>外部观察</span><strong>独立入口尚未接通</strong></div><div><span>影响研判</span><strong>等待条件与证据接口</strong></div></section>}
+frontend/src\features\assets\asset-workspace.tsx:70:export function AssetWorkspace({ assetId }: { assetId?: string }) {
+frontend/src\features\assets\asset-workspace.tsx:75:  return <AuthorizedAssets user={{ ...state.user, tenant_id: state.user.tenant_id }} assetId={assetId} />;
+frontend/src\features\assets\sbom-contracts.ts:1:import { AssetResponseScopeMismatch, isAssetIdentifier, isSafeSbomPurl, type AssetSnapshot } from "./asset-contracts";
+frontend/src\features\assets\sbom-contracts.ts:67:function safeReference(value: string): boolean {
+frontend/src\features\assets\sbom-contracts.ts:73:    return isSafeSbomPurl(value);
+frontend/src\features\assets\sbom-contracts.ts:95:export function parseSnapshotSbom(value: unknown, tenant: string, snapshot: AssetSnapshot): SnapshotSbom {
+frontend/src\features\assets\sbom-contracts.ts:120:    } else if (!safeReference(result)) return invalid();
+frontend/src\features\assets\sbom-detail.tsx:3:import { getAssetSnapshotSbom } from "./asset-client";
+frontend/src\features\assets\sbom-detail.tsx:37:export function SbomDetail({ tenant, snapshot, isCurrent, onFailure }: { tenant: string; snapshot: AssetSnapshot; isCurrent: () => boolean; onFailure: (error: ApiProblem) => void }) {
+frontend/src\features\assets\sbom-detail.tsx:45:    void getAssetSnapshotSbom(tenant, snapshot, controller.signal).then((value) => {
+

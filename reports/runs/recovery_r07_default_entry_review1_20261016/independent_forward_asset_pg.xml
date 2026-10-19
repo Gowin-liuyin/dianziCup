@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="3" time="7.245" timestamp="2026-10-16T06:25:15.416801+08:00" hostname="yin"><testcase classname="reports.runs.recovery_r07_default_entry_review1_20261016.probes.test_independent_forward_asset" name="test_forward0017_to0019_retains_paid_reservation_and_pg_state" time="1.609"><failure message="AssertionError: assert 6 == 2&#10; +  where 6 = scalar(&lt;sqlalchemy.sql.selectable.Select object at 0x000001CBA2AAE7E0&gt;)&#10; +    where scalar = &lt;sqlalchemy.engine.base.Connection object at 0x000001CBA2A476B0&gt;.scalar&#10; +    and   &lt;sqlalchemy.sql.selectable.Select object at 0x000001CBA2AAE7E0&gt; = select_from(Table('job_runs', MetaData(), Column('job_id', Text(), table=&lt;job_runs&gt;, primary_key=True, nullable=False), Column('te...ob_runs&gt;), Column('error_code', Text(), table=&lt;job_runs&gt;), Column('result_ref', Text(), table=&lt;job_runs&gt;), schema=None))&#10; +      where select_from = &lt;sqlalchemy.sql.selectable.Select object at 0x000001CBA2AAE840&gt;.select_from&#10; +        where &lt;sqlalchemy.sql.selectable.Select object at 0x000001CBA2AAE840&gt; = select(&lt;sqlalchemy.sql.functions.count at 0x1cba2a68dd0; count&gt;)&#10; +          where &lt;sqlalchemy.sql.functions.count at 0x1cba2a68dd0; count&gt; = &lt;sqlalchemy.sql.functions._FunctionGenerator object at 0x000001CBA2A47E60&gt;()&#10; +            where &lt;sqlalchemy.sql.functions._FunctionGenerator object at 0x000001CBA2A47E60&gt; = func.count">isolated_test_database_url = 'postgresql+psycopg://test_dianzi_r01:[redacted test credential]@127.0.0.1:25432/test_dianzi_r07_execution_api_review1_20261016'
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-774/test_forward0017_to0019_retain0')
+
+    def test_forward0017_to0019_retains_paid_reservation_and_pg_state(isolated_test_database_url, tmp_path):
+        url = make_url(isolated_test_database_url)
+        assert url.database.startswith('test_dianzi_r07_execution_api_review1_')
+        schema = 'test_independent_r07_forward_' + uuid4().hex
+        base = create_engine(url)
+        with base.begin() as connection:
+            connection.execute(CreateSchema(schema))
+        isolated = url.update_query_dict({'options': '-c search_path=' + schema + ' -c statement_timeout=15000 -c lock_timeout=3000'})
+        run_migrations(isolated.render_as_string(hide_password=False), '0017_enrichment_job_workflows')
+        engine = create_engine(isolated)
+        workflow, parent, child = seed_workflow(engine, tmp_path)
+        with engine.begin() as connection:
+            connection.execute(update(enrichment_job_steps).where(enrichment_job_steps.c.job_id == child).values(model_call_reserved_at=NOW))
+        run_migrations(isolated.render_as_string(hide_password=False), 'head')
+        with engine.connect() as connection:
+            assert connection.scalar(text('SELECT version_num FROM alembic_version')) == '0019_aggregate_observations'
+            assert connection.scalar(select(enrichment_workflows.c.workflow_id)) == workflow
+&gt;           assert connection.scalar(select(func.count()).select_from(job_runs)) == 2
+E           AssertionError: assert 6 == 2
+E            +  where 6 = scalar(&lt;sqlalchemy.sql.selectable.Select object at 0x000001CBA2AAE7E0&gt;)
+E            +    where scalar = &lt;sqlalchemy.engine.base.Connection object at 0x000001CBA2A476B0&gt;.scalar
+E            +    and   &lt;sqlalchemy.sql.selectable.Select object at 0x000001CBA2AAE7E0&gt; = select_from(Table('job_runs', MetaData(), Column('job_id', Text(), table=&lt;job_runs&gt;, primary_key=True, nullable=False), Column('te...ob_runs&gt;), Column('error_code', Text(), table=&lt;job_runs&gt;), Column('result_ref', Text(), table=&lt;job_runs&gt;), schema=None))
+E            +      where select_from = &lt;sqlalchemy.sql.selectable.Select object at 0x000001CBA2AAE840&gt;.select_from
+E            +        where &lt;sqlalchemy.sql.selectable.Select object at 0x000001CBA2AAE840&gt; = select(&lt;sqlalchemy.sql.functions.count at 0x1cba2a68dd0; count&gt;)
+E            +          where &lt;sqlalchemy.sql.functions.count at 0x1cba2a68dd0; count&gt; = &lt;sqlalchemy.sql.functions._FunctionGenerator object at 0x000001CBA2A47E60&gt;()
+E            +            where &lt;sqlalchemy.sql.functions._FunctionGenerator object at 0x000001CBA2A47E60&gt; = func.count
+
+..\reports\runs\recovery_r07_default_entry_review1_20261016\probes\test_independent_forward_asset.py:51: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r07_default_entry_review1_20261016.probes.test_independent_forward_asset" name="test_default_asset_current_replay_history_and_acl[/v1]" time="2.108" /><testcase classname="reports.runs.recovery_r07_default_entry_review1_20261016.probes.test_independent_forward_asset" name="test_default_asset_current_replay_history_and_acl[/api/v1]" time="1.898" /></testsuite></testsuites>

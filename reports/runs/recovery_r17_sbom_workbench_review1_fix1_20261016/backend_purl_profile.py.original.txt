@@ -1,0 +1,11 @@
+"""Check pinned server PURL display profile independently of frontend logic."""
+import json
+import sys
+from pathlib import Path
+RUN = Path(__file__).resolve().parent
+sys.path.insert(0,str(RUN/"backend_git_probe/backend/src"))
+from ai_intel.assets.sbom_inventory import _safe_purl_reference
+values = ["pkg:generic/synthetic@%2Fhome%2Freview-private%2F.env", "pkg:pypi/synthetic@review-secret%40private", "pkg:generic/synthetic@%252Fhome%252Freview-private"]
+receipts = [{"purl": value,"server_safe": _safe_purl_reference(value)} for value in values]
+(RUN/"backend_purl_profile.json").write_text(json.dumps(receipts,indent=2)+"\n",encoding="utf-8")
+print(json.dumps(receipts)); assert all(not item["server_safe"] for item in receipts)

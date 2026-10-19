@@ -1,0 +1,1479 @@
+diff --git a/backend/src/ai_intel/revalidation/candidate_contracts.py b/backend/src/ai_intel/revalidation/candidate_contracts.py
+new file mode 100644
+index 00000000..9db1dda8
+--- /dev/null
++++ b/backend/src/ai_intel/revalidation/candidate_contracts.py
+@@ -0,0 +1,67 @@
++"""Internal candidate receipts describe discovery, never a completed reassessment."""
++
++from typing import Annotated, Literal
++
++from pydantic import Field, model_validator
++
++from ai_intel.assessment.conditions import ConditionContract, Label
++
++CandidateReason = Literal[
++    "old_dependency",
++    "scope_watch",
++    "new_package_association",
++    "empty_rule_scope",
++    "partition_fallback",
++    "missing_scope_watch",
++]
++ScopeKey = Annotated[str, Field(min_length=1, max_length=207)]
++
++
++class AssessmentChangeCandidate(ConditionContract):
++    asset_id: Label
++    asset_snapshot_id: Label
++    assessment_id: Label | None = None
++    previous_asset_snapshot_id: Label | None = None
++    watch_assessment_id: Label | None = None
++    reasons: tuple[CandidateReason, ...] = Field(min_length=1, max_length=6)
++
++
++class CandidateContinuation(ConditionContract):
++    schema_version: Literal["r16-candidate-cursor-1"] = "r16-candidate-cursor-1"
++    change_id: Label
++    scope_key: ScopeKey
++    actor_user_id: Label
++    tenant_id: Label
++    actor_role: Label
++    permission_version: int = Field(ge=1, strict=True)
++    requested_epoch: int = Field(ge=0, strict=True)
++    scope_epoch_map: dict[str, int | None]
++    query_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
++    partition_fingerprint: str = Field(pattern=r"^[0-9a-f]{32}$")
++    limit: int = Field(ge=1, le=100, strict=True)
++    after_asset_id: Label
++    after_kind: Literal["asset", "assessment"]
++    after_reference_id: Label
++
++
++class CandidatePage(ConditionContract):
++    schema_version: Literal["r16-assessment-candidates-1"] = "r16-assessment-candidates-1"
++    change_id: Label
++    scope_key: ScopeKey
++    requested_epoch: int = Field(ge=0, strict=True)
++    target_epoch: int = Field(ge=0, strict=True)
++    scope_epoch_map: dict[str, int | None]
++    candidates: tuple[AssessmentChangeCandidate, ...] = Field(max_length=100)
++    status: Literal["complete", "partial"]
++    continuation: str | None = Field(default=None, max_length=4096)
++    scanned_count: int = Field(ge=0, le=500, strict=True)
++    fallback_reason: str | None = None
++
++    @model_validator(mode="after")
++    def require_explicit_continuation(self) -> "CandidatePage":
++        if (self.status == "partial") != (self.continuation is not None):
++            raise ValueError("partial discovery requires continuation")
++        keys = [(item.asset_id, item.assessment_id) for item in self.candidates]
++        if len(keys) != len(set(keys)):
++            raise ValueError("duplicate candidate identity")
++        return self
+diff --git a/backend/src/ai_intel/revalidation/candidates.py b/backend/src/ai_intel/revalidation/candidates.py
+new file mode 100644
+index 00000000..305cf348
+--- /dev/null
++++ b/backend/src/ai_intel/revalidation/candidates.py
+@@ -0,0 +1,616 @@
++"""Read-only PG discovery over current authorized assets and append-only assessments."""
++
++from __future__ import annotations
++
++import base64
++import hmac
++import re
++from dataclasses import dataclass
++from datetime import UTC, datetime
++
++from pydantic import SecretStr, ValidationError
++from sqlalchemy import select, text
++from sqlalchemy.engine import Engine, RowMapping
++from sqlalchemy.orm import Session
++
++from ai_intel.api.auth_state import lock_authenticated_scope
++from ai_intel.assessment.conditions import (
++    ComponentMatches,
++    InventoryProvesAbsence,
++    VersionInRange,
++    iter_condition_nodes,
++)
++from ai_intel.assessment.persistence_contracts import AssessmentReceipt, AssessmentScopeWatch
++from ai_intel.assessment.rule_persistence import condition_rule_versions, stored_rule
++from ai_intel.assessment.rules import ConditionRule
++from ai_intel.assets.inventory_contracts import AssetSnapshotResponse
++from ai_intel.domain.access import READ_ASSET, AccessScope, CrossTenantAccessError
++from ai_intel.knowledge.models import scope_epochs
++from ai_intel.knowledge.persistence import publication_payload_digest
++from ai_intel.knowledge.persistence_models import change_events
++from ai_intel.revalidation.candidate_contracts import (
++    AssessmentChangeCandidate,
++    CandidateContinuation,
++    CandidatePage,
++    CandidateReason,
++)
++
++MAX_SCANNED_ROWS = 500
++MAX_CHANGE_REFERENCES = 256
++QUERY_VERSION = "r16-pg-candidates-1:asset_id,kind,reference_id"
++
++
++class CandidateDiscoveryError(ValueError):
++    """Fixed codes distinguish invalid epochs/cursors from missing configuration."""
++
++
++@dataclass(frozen=True)
++class AffectedAssessmentScope:
++    changed_ids: frozenset[str]
++    package_keys: frozenset[str] = frozenset()
++    event_ids: frozenset[str] = frozenset()
++    rule_ids: frozenset[str] = frozenset()
++    asset_ids: frozenset[str] = frozenset()
++    fallback_reason: str | None = None
++
++
++def rule_package_keys(rule: ConditionRule) -> frozenset[str]:
++    """Use exactly the evaluator's ecosystem/package identity, including purls."""
++    keys: set[str] = set()
++    for node in iter_condition_nodes(rule.condition_ast):
++        if isinstance(node, VersionInRange):
++            keys.add(node.assertion.ecosystem + ":" + node.assertion.package_key)
++        elif isinstance(node, ComponentMatches | InventoryProvesAbsence):
++            keys.add(node.ecosystem + ":" + node.package_key)
++    return frozenset(keys)
++
++
++def candidate_reasons(
++    affected: AffectedAssessmentScope,
++    snapshot: AssetSnapshotResponse,
++    assessment: AssessmentReceipt | None = None,
++    watch: AssessmentScopeWatch | None = None,
++) -> tuple[CandidateReason, ...]:
++    """Union historical references, explicit empty watches and current package candidates."""
++    reasons: set[CandidateReason] = set()
++    if affected.fallback_reason:
++        reasons.add("partition_fallback")
++    if snapshot.asset_id in affected.asset_ids:
++        reasons.add("old_dependency" if assessment else "new_package_association")
++    if assessment is not None:
++        inputs = assessment.prepared.inputs
++        references = {
++            assessment.asset_id,
++            assessment.asset_snapshot_id,
++            assessment.event_id,
++            assessment.rule_id,
++            *inputs.rule.supporting_claim_ids,
++            *inputs.rule.source_span_ids,
++            *inputs.active_revision_ids,
++        }
++        for source in inputs.sources:
++            references.update((source.source_id, source.document_id, source.revision_id))
++        if references & affected.changed_ids:
++            reasons.add("old_dependency")
++        if watch is None:
++            reasons.add("missing_scope_watch")
++        elif (
++            set(watch.event_ids) & affected.event_ids
++            or set(watch.package_keys) & affected.package_keys
++            or {watch.rule_id, *watch.selected_rule_ids} & affected.rule_ids
++        ):
++            reasons.add("scope_watch")
++        if watch is not None and any(value is None for value in watch.scope_epoch_map.values()):
++            reasons.add("partition_fallback")
++        if reasons and watch is not None and watch.no_published_rule:
++            reasons.add("empty_rule_scope")
++    else:
++        packages = {
++            component.ecosystem + ":" + identity
++            for component in snapshot.components
++            for identity in (component.package_name, component.purl)
++            if identity is not None
++        }
++        if packages & affected.package_keys:
++            reasons.add("new_package_association")
++        elif (
++            affected.package_keys
++            and snapshot.inventory_completeness != "complete_for_declared_scope"
++        ):
++            reasons.add("partition_fallback")
++    return tuple(sorted(reasons))
++
++
++def _signing_bytes(key: SecretStr | None) -> bytes:
++    if key is None:
++        raise CandidateDiscoveryError("candidate_cursor_signing_key_not_configured")
++    value = key.get_secret_value()
++    if re.fullmatch(r"[0-9a-f]{64}", value) is None:
++        raise CandidateDiscoveryError("candidate_cursor_signing_key_invalid")
++    return bytes.fromhex(value)
++
++
++def _encode_cursor(cursor: CandidateContinuation, key: bytes) -> str:
++    payload = cursor.model_dump_json().encode()
++    signature = hmac.digest(key, payload, "sha256")
++    return base64.urlsafe_b64encode(signature + payload).decode()
++
++
++def _decode_cursor(value: str, key: bytes) -> CandidateContinuation:
++    if not isinstance(value, str) or len(value) > 4096:
++        raise CandidateDiscoveryError("candidate_cursor_invalid")
++    try:
++        decoded = base64.b64decode(value, altchars=b"-_", validate=True)
++        signature, payload = decoded[:32], decoded[32:]
++        if not hmac.compare_digest(signature, hmac.digest(key, payload, "sha256")):
++            raise ValueError
++        return CandidateContinuation.model_validate_json(payload)
++    except (ValueError, ValidationError):
++        raise CandidateDiscoveryError("candidate_cursor_invalid") from None
++
++
++def _references(payload: object) -> dict[str, set[str]]:
++    """Recognize fixed persisted reference fields; unknown shapes force scope fallback."""
++    kinds = {
++        "source",
++        "document",
++        "revision",
++        "evidence",
++        "claim",
++        "event",
++        "rule",
++        "asset",
++        "entity",
++        "alias",
++    }
++    references: dict[str, set[str]] = {kind: set() for kind in kinds}
++    pending = [payload]
++    visited = 0
++    while pending:
++        value = pending.pop()
++        visited += 1
++        if visited > 10000:
++            raise CandidateDiscoveryError("candidate_change_payload_budget_exceeded")
++        if isinstance(value, dict):
++            for name, child in value.items():
++                kind = str(name).removesuffix("_id").removesuffix("_ids")
++                if name == "source_revision_id" or name == "previous_revision_id":
++                    kind = "revision"
++                if name == "source_span_ids":
++                    kind = "evidence"
++                if name == "supporting_claim_ids":
++                    kind = "claim"
++                if kind in kinds:
++                    values = child if isinstance(child, list | tuple) else (child,)
++                    for reference in values:
++                        if isinstance(reference, str):
++                            references[kind].add(reference)
++                        elif isinstance(reference, dict) and isinstance(
++                            reference.get("value"), str
++                        ):
++                            references[kind].add(reference["value"])
++                pending.append(child)
++        elif isinstance(value, list | tuple):
++            pending.extend(value)
++    if sum(map(len, references.values())) > MAX_CHANGE_REFERENCES:
++        raise CandidateDiscoveryError("candidate_change_reference_budget_exceeded")
++    return references
++
++
++def _visible(alias: str, *, tenant_input: str = "CAST(:tenant AS TEXT)") -> str:
++    """A public parent's null tenant is false, with an explicit psycopg parameter type."""
++    return (
++        f"(({alias}.visibility='public' AND {alias}.tenant_id IS NULL) OR "
++        f"({tenant_input} IS NOT NULL AND {alias}.visibility='tenant' "
++        f"AND {alias}.tenant_id={tenant_input}))"
++    )
++
++
++SOURCE_JOIN = (
++    "document_revisions r JOIN documents d ON d.document_id=r.document_id "
++    "JOIN sources s ON s.source_id=d.source_id"
++)
++SOURCE_VISIBLE = " AND ".join(_visible(alias) for alias in ("r", "d", "s"))
++
++
++def _event_guard(alias: str) -> str:
++    visibility = " AND ".join(
++        _visible(name, tenant_input=f"{alias}.tenant_id") for name in ("r", "d", "s")
++    )
++    return (
++        f"{_visible(alias)} AND NOT EXISTS (SELECT 1 FROM event_documents ed "
++        f"JOIN {SOURCE_JOIN} ON r.revision_id=ed.revision_id "
++        f"WHERE ed.event_id={alias}.event_id AND NOT ({visibility}))"
++    )
++
++
++def _rule_guard(rule_alias: str, event_alias: str) -> str:
++    source_visible = " AND ".join(
++        _visible(name, tenant_input=f"{rule_alias}.tenant_id") for name in ("r", "d", "s", "f")
++    )
++    return (
++        f"{_visible(rule_alias)} AND {_event_guard(event_alias)} "
++        f"AND ({event_alias}.visibility='public' OR ({rule_alias}.tenant_id IS NOT NULL AND "
++        f"{event_alias}.tenant_id={rule_alias}.tenant_id)) "
++        f"AND NOT EXISTS (SELECT 1 FROM evidence f JOIN {SOURCE_JOIN} "
++        "ON r.revision_id=f.revision_id WHERE f.evidence_id IN "
++        f"(SELECT jsonb_array_elements_text({rule_alias}.rule_payload->'source_span_ids')) "
++        f"AND NOT ({source_visible}))"
++    )
++
++
++ASSESSMENT_SOURCE_GUARD = (
++    "NOT EXISTS (SELECT 1 FROM "
++    "jsonb_array_elements(a.result_payload->'prepared'->'inputs'->'sources') p "
++    "LEFT JOIN document_revisions r ON r.revision_id=p->>'revision_id' "
++    "LEFT JOIN documents d ON d.document_id=r.document_id AND d.document_id=p->>'document_id' "
++    "LEFT JOIN sources s ON s.source_id=d.source_id AND s.source_id=p->>'source_id' "
++    "WHERE s.source_id IS NULL OR NOT ("
++    + " AND ".join(_visible(alias, tenant_input="v.tenant_id") for alias in ("r", "d", "s"))
++    + "))"
++)
++
++SOURCE_STAMP = (
++    "(SELECT coalesce(string_agg(concat(r.revision_id,r.visibility,r.tenant_id,"
++    "d.visibility,d.tenant_id,s.visibility,s.tenant_id),'|' ORDER BY r.revision_id),'') "
++    f"FROM {SOURCE_JOIN} WHERE r.revision_id IN "
++    "(SELECT ed.revision_id FROM event_documents ed WHERE ed.event_id=e.event_id) "
++    "OR r.revision_id IN (SELECT p->>'revision_id' FROM "
++    "jsonb_array_elements(a.result_payload->'prepared'->'inputs'->'sources') p))"
++)
++
++SUPPORT_STAMP = (
++    "(SELECT coalesce(string_agg(concat(c.claim_id,c.visibility,c.tenant_id,"
++    "f.evidence_id,f.visibility,f.tenant_id),'|' ORDER BY c.claim_id,f.evidence_id),'') "
++    "FROM jsonb_array_elements(a.result_payload->'prepared'->'inputs'->'supports') p "
++    "JOIN claims c ON c.claim_id=p->'binding'->>'claim_id' "
++    "JOIN evidence f ON f.evidence_id=p->'binding'->>'evidence_id')"
++)
++
++PARTITION_QUERY = (
++    "SELECT x.asset_id,'asset' AS kind,x.asset_id AS reference_id,x.current_snapshot_id,"
++    "n.canonical_payload AS snapshot_payload,'{}'::jsonb AS result_payload,"
++    "NULL::jsonb AS watch_payload,'' AS source_stamp,'' AS stored_rule_id,"
++    "0 AS stored_rule_version,'' AS stored_event_id,'' AS stored_previous_snapshot_id "
++    "FROM assets x "
++    "JOIN asset_snapshots n ON n.asset_id=x.asset_id AND n.tenant_id=x.tenant_id "
++    "AND n.snapshot_id=x.current_snapshot_id WHERE x.tenant_id=:tenant AND x.active "
++    "UNION ALL SELECT x.asset_id,'assessment',a.assessment_id,x.current_snapshot_id,"
++    "n.canonical_payload,a.result_payload,to_jsonb(w),"
++    f"concat({SOURCE_STAMP},{SUPPORT_STAMP},v.status,v.visibility,v.tenant_id,"
++    "e.visibility,e.tenant_id,e.status),a.rule_id,a.rule_version,a.event_id,"
++    "a.asset_snapshot_id FROM assessment_results a "
++    "JOIN assets x ON x.asset_id=a.asset_id AND x.tenant_id=a.tenant_id "
++    "JOIN asset_snapshots n ON n.asset_id=x.asset_id AND n.tenant_id=x.tenant_id "
++    "AND n.snapshot_id=x.current_snapshot_id "
++    "JOIN condition_rule_versions v ON v.rule_id=a.rule_id AND v.version=a.rule_version "
++    "JOIN events e ON e.event_id=a.event_id "
++    "LEFT JOIN assessment_scope_watches w ON w.assessment_id=a.assessment_id "
++    "AND w.tenant_id=a.tenant_id "
++    f"WHERE a.tenant_id=:tenant AND {_rule_guard('v', 'e')} "
++    f"AND {ASSESSMENT_SOURCE_GUARD} "
++    "AND NOT EXISTS (SELECT 1 FROM claims c WHERE c.claim_id IN (SELECT p->'binding'->>'claim_id' "
++    "FROM jsonb_array_elements(a.result_payload->'prepared'->'inputs'->'supports') p) "
++    f"AND NOT ({_visible('c', tenant_input='v.tenant_id')})) "
++    "AND NOT EXISTS (SELECT 1 FROM evidence f WHERE f.evidence_id IN "
++    "(SELECT p->'binding'->>'evidence_id' "
++    "FROM jsonb_array_elements(a.result_payload->'prepared'->'inputs'->'supports') p) "
++    f"AND NOT ({_visible('f', tenant_input='v.tenant_id')}))"
++)
++
++
++class CandidateDiscoveryService:
++    """Authenticated bounded discovery; mutations and worker dispatch belong to later slices."""
++
++    def __init__(
++        self, engine: Engine, session_token: str, cursor_signing_key: SecretStr | None = None
++    ) -> None:
++        self.engine = engine
++        self._session_token = session_token
++        self._cursor_key = _signing_bytes(cursor_signing_key)
++
++    def _authorize_change(self, session: Session, scope: AccessScope, row: RowMapping) -> None:
++        tenant = None if row["scope_key"] == "public" else scope.tenant_id
++        parameters = {"tenant": tenant}
++        references = _references(row["payload"])
++        queries = {
++            "source": "SELECT source_id FROM sources s WHERE source_id=:reference "
++            f"AND {_visible('s')}",
++            "document": "SELECT document_id FROM documents d JOIN sources s USING(source_id) "
++            f"WHERE document_id=:reference AND {_visible('d')} AND {_visible('s')}",
++            "revision": f"SELECT revision_id FROM {SOURCE_JOIN} WHERE revision_id=:reference "
++            f"AND {SOURCE_VISIBLE}",
++            "evidence": f"SELECT f.evidence_id FROM evidence f JOIN {SOURCE_JOIN} "
++            f"ON r.revision_id=f.revision_id WHERE f.evidence_id=:reference "
++            f"AND {_visible('f')} AND {SOURCE_VISIBLE}",
++            "claim": "SELECT c.claim_id FROM claims c WHERE c.claim_id=:reference "
++            f"AND {_visible('c')} "
++            "AND NOT EXISTS (SELECT 1 FROM claim_assertions ca JOIN "
++            f"{SOURCE_JOIN} ON r.revision_id=ca.revision_id WHERE ca.claim_id=c.claim_id "
++            f"AND NOT ({SOURCE_VISIBLE}))",
++            "event": "SELECT event_id FROM events e WHERE event_id=:reference "
++            f"AND {_event_guard('e')}",
++            "rule": f"SELECT rule_id FROM condition_rule_versions v JOIN events e USING(event_id) "
++            f"WHERE rule_id=:reference AND {_rule_guard('v', 'e')} "
++            "AND NOT EXISTS (SELECT 1 FROM condition_rule_versions v2 "
++            "JOIN events e2 USING(event_id) "
++            f"WHERE v2.rule_id=v.rule_id AND NOT ({_rule_guard('v2', 'e2')}))",
++            "asset": "SELECT asset_id FROM assets WHERE asset_id=:reference AND tenant_id=:tenant",
++            "alias": f"SELECT z.alias_id FROM entity_aliases z JOIN entities h USING(entity_id) "
++            f"JOIN {SOURCE_JOIN} ON r.revision_id=z.revision_id AND s.source_id=z.source_id "
++            f"WHERE z.alias_id=:reference AND {_visible('h')} AND {SOURCE_VISIBLE}",
++            "entity": f"SELECT entity_id FROM entities h WHERE entity_id=:reference "
++            f"AND {_visible('h')} AND NOT EXISTS (SELECT 1 FROM entity_aliases z "
++            f"JOIN {SOURCE_JOIN} ON r.revision_id=z.revision_id AND s.source_id=z.source_id "
++            "WHERE z.entity_id=h.entity_id AND NOT ("
++            + " AND ".join(_visible(alias, tenant_input="h.tenant_id") for alias in ("r", "d", "s"))
++            + "))",
++        }
++        for kind, ids in references.items():
++            for reference in sorted(ids):
++                if (
++                    session.execute(
++                        text(queries[kind]), {**parameters, "reference": reference}
++                    ).first()
++                    is None
++                ):
++                    raise CrossTenantAccessError("resource not found")
++        changed = row["entity_ids"]
++        if not isinstance(changed, list) or len(changed) > MAX_CHANGE_REFERENCES:
++            raise CandidateDiscoveryError("candidate_change_reference_budget_exceeded")
++        for reference in changed:
++            if not isinstance(reference, str):
++                raise CandidateDiscoveryError("candidate_change_reference_invalid")
++            for kind, table, column in (
++                ("source", "sources", "source_id"),
++                ("document", "documents", "document_id"),
++                ("revision", "document_revisions", "revision_id"),
++                ("evidence", "evidence", "evidence_id"),
++                ("claim", "claims", "claim_id"),
++                ("event", "events", "event_id"),
++                ("rule", "condition_rule_versions", "rule_id"),
++                ("asset", "assets", "asset_id"),
++                ("entity", "entities", "entity_id"),
++                ("alias", "entity_aliases", "alias_id"),
++            ):
++                exists = (
++                    session.execute(
++                        text(f"SELECT 1 FROM {table} WHERE {column}=:reference LIMIT 1"),
++                        {"reference": reference},
++                    ).first()
++                    is not None
++                )
++                if (
++                    exists
++                    and session.execute(
++                        text(queries[kind]), {**parameters, "reference": reference}
++                    ).first()
++                    is None
++                ):
++                    raise CrossTenantAccessError("resource not found")
++
++    @staticmethod
++    def _affected_scope(
++        session: Session, row: RowMapping, target_epoch: int
++    ) -> AffectedAssessmentScope:
++        changed = frozenset(row["entity_ids"])
++        if row["epoch"] != target_epoch:
++            return AffectedAssessmentScope(changed, fallback_reason="coalesced_scope_epoch")
++        if row["change_type"] in {"condition_rule_published", "condition_rule_retired"}:
++            rule_id = row["payload"].get("rule_id")
++            versions = tuple(
++                session.execute(
++                    select(condition_rule_versions)
++                    .where(condition_rule_versions.c.rule_id == rule_id)
++                    .order_by(condition_rule_versions.c.version)
++                    .limit(65)
++                ).mappings()
++            )
++            if not versions or len(versions) > 64:
++                return AffectedAssessmentScope(changed, fallback_reason="rule_scope_unbounded")
++            rules = tuple(stored_rule(version) for version in versions)
++            packages = frozenset(key for rule in rules for key in rule_package_keys(rule))
++            broad = any(
++                not isinstance(node, ComponentMatches | VersionInRange)
++                for rule in rules
++                for node in iter_condition_nodes(rule.condition_ast)
++                if node.kind not in {"all_of", "any_of"}
++            )
++            return AffectedAssessmentScope(
++                changed,
++                packages,
++                frozenset(rule.event_id for rule in rules),
++                frozenset((rule_id,)),
++                fallback_reason="non_package_rule_scope" if broad or not packages else None,
++            )
++        if row["change_type"] == "asset_snapshot_changed" and row["payload"].get("asset_id"):
++            return AffectedAssessmentScope(
++                changed, asset_ids=frozenset((row["payload"]["asset_id"],))
++            )
++        return AffectedAssessmentScope(
++            changed, fallback_reason="unknown_or_incomplete_change_scope"
++        )
++
++    def discover(
++        self, change_id: str, target_epoch: int, *, limit: int = 20, continuation: str | None = None
++    ) -> CandidatePage:
++        """Return current snapshot refs plus readable history; complete means discovery only."""
++        if (
++            type(target_epoch) is not int
++            or target_epoch < 0
++            or type(limit) is not int
++            or not 1 <= limit <= 100
++        ):
++            raise CandidateDiscoveryError("candidate_request_invalid")
++        if not isinstance(change_id, str) or not 1 <= len(change_id) <= 200:
++            raise CandidateDiscoveryError("candidate_request_invalid")
++        with (
++            self.engine.connect().execution_options(
++                isolation_level="REPEATABLE READ"
++            ) as connection,
++            Session(bind=connection) as session,
++            session.begin(),
++        ):
++            scope = lock_authenticated_scope(
++                session.connection(), self._session_token, datetime.now(UTC)
++            )
++            scope.requires(READ_ASSET)
++            if scope.tenant_id is None:
++                raise CrossTenantAccessError("resource not found")
++            row = (
++                session.execute(
++                    select(change_events).where(
++                        change_events.c.change_id == change_id,
++                        change_events.c.scope_key.in_(("public", "tenant:" + scope.tenant_id)),
++                    )
++                )
++                .mappings()
++                .first()
++            )
++            if row is None:
++                raise CrossTenantAccessError("resource not found")
++            self._authorize_change(session, scope, row)
++            epochs = {"public": None, "tenant:" + scope.tenant_id: None}
++            for epoch in session.execute(
++                select(scope_epochs).where(scope_epochs.c.scope_key.in_(epochs))
++            ).mappings():
++                epochs[epoch["scope_key"]] = epoch["epoch"]
++            current = epochs[row["scope_key"]]
++            if current is None or not row["epoch"] <= target_epoch <= current:
++                raise CandidateDiscoveryError("candidate_target_epoch_invalid")
++            affected = self._affected_scope(session, row, current)
++            query_digest = publication_payload_digest(
++                {
++                    "version": QUERY_VERSION,
++                    "change": row["payload"],
++                    "changed_ids": row["entity_ids"],
++                    "fallback": affected.fallback_reason,
++                    "packages": sorted(affected.package_keys),
++                }
++            )
++            partition = session.execute(
++                text(
++                    "SELECT md5(coalesce(string_agg(md5(row_to_json(p)::text),'' "
++                    "ORDER BY asset_id,kind,reference_id),'')) FROM (" + PARTITION_QUERY + ") p"
++                ),
++                {"tenant": scope.tenant_id},
++            ).scalar_one()
++            binding = dict(
++                change_id=change_id,
++                scope_key=row["scope_key"],
++                actor_user_id=scope.user_id,
++                tenant_id=scope.tenant_id,
++                actor_role=scope.role.value,
++                permission_version=scope.permission_version,
++                requested_epoch=target_epoch,
++                scope_epoch_map=epochs,
++                query_fingerprint=query_digest,
++                partition_fingerprint=partition,
++                limit=limit,
++            )
++            parameters: dict[str, object] = {
++                "tenant": scope.tenant_id,
++                "scan_limit": MAX_SCANNED_ROWS + 1,
++            }
++            position_clause = ""
++            if continuation is not None:
++                cursor = _decode_cursor(continuation, self._cursor_key)
++                if any(getattr(cursor, field) != value for field, value in binding.items()):
++                    raise CandidateDiscoveryError("candidate_cursor_context_changed")
++                parameters.update(
++                    after_asset_id=cursor.after_asset_id,
++                    after_kind=cursor.after_kind,
++                    after_reference_id=cursor.after_reference_id,
++                )
++                position_clause = (
++                    "WHERE (asset_id,kind,reference_id)>"
++                    "(:after_asset_id,:after_kind,:after_reference_id) "
++                )
++            rows = tuple(
++                session.execute(
++                    text(
++                        "SELECT * FROM ("
++                        + PARTITION_QUERY
++                        + ") p "
++                        + position_clause
++                        + "ORDER BY asset_id,kind,reference_id LIMIT :scan_limit"
++                    ),
++                    parameters,
++                ).mappings()
++            )
++            candidates: list[AssessmentChangeCandidate] = []
++            scanned = 0
++            for item in rows[:MAX_SCANNED_ROWS]:
++                snapshot = AssetSnapshotResponse.model_validate(item["snapshot_payload"])
++                if (
++                    snapshot.asset_id != item["asset_id"]
++                    or snapshot.tenant_id != scope.tenant_id
++                    or snapshot.snapshot_id != item["current_snapshot_id"]
++                ):
++                    raise CandidateDiscoveryError("candidate_snapshot_identity_invalid")
++                assessment = (
++                    AssessmentReceipt.model_validate(item["result_payload"])
++                    if item["kind"] == "assessment"
++                    else None
++                )
++                if assessment is not None and (
++                    assessment.assessment_id != item["reference_id"]
++                    or assessment.tenant_id != scope.tenant_id
++                    or assessment.asset_id != item["asset_id"]
++                    or assessment.rule_id != item["stored_rule_id"]
++                    or assessment.rule_version != item["stored_rule_version"]
++                    or assessment.event_id != item["stored_event_id"]
++                    or assessment.asset_snapshot_id != item["stored_previous_snapshot_id"]
++                ):
++                    raise CandidateDiscoveryError("candidate_assessment_identity_invalid")
++                watch = None
++                if item["watch_payload"] is not None:
++                    payload = dict(item["watch_payload"])
++                    if payload.pop("assessment_id") != item["reference_id"]:
++                        raise CandidateDiscoveryError("candidate_watch_identity_invalid")
++                    watch = AssessmentScopeWatch.model_validate(payload)
++                    if watch.tenant_id != scope.tenant_id:
++                        raise CandidateDiscoveryError("candidate_watch_identity_invalid")
++                reasons = candidate_reasons(affected, snapshot, assessment, watch)
++                scanned += 1
++                if reasons:
++                    candidates.append(
++                        AssessmentChangeCandidate(
++                            asset_id=snapshot.asset_id,
++                            asset_snapshot_id=snapshot.snapshot_id,
++                            assessment_id=None if assessment is None else assessment.assessment_id,
++                            previous_asset_snapshot_id=None
++                            if assessment is None
++                            else assessment.asset_snapshot_id,
++                            watch_assessment_id=None
++                            if watch is None or assessment is None
++                            else assessment.assessment_id,
++                            reasons=reasons,
++                        )
++                    )
++                if len(candidates) == limit:
++                    break
++            next_cursor = None
++            if scanned < len(rows):
++                last = rows[scanned - 1]
++                next_cursor = _encode_cursor(
++                    CandidateContinuation(
++                        **binding,
++                        after_asset_id=last["asset_id"],
++                        after_kind=last["kind"],
++                        after_reference_id=last["reference_id"],
++                    ),
++                    self._cursor_key,
++                )
++            return CandidatePage(
++                change_id=change_id,
++                scope_key=row["scope_key"],
++                requested_epoch=target_epoch,
++                target_epoch=current,
++                scope_epoch_map=epochs,
++                candidates=tuple(candidates),
++                status="partial" if next_cursor else "complete",
++                continuation=next_cursor,
++                scanned_count=scanned,
++                fallback_reason=affected.fallback_reason,
++            )
+diff --git a/backend/tests/contract/test_r16_assessment_candidate_contracts.py b/backend/tests/contract/test_r16_assessment_candidate_contracts.py
+new file mode 100644
+index 00000000..d339972a
+--- /dev/null
++++ b/backend/tests/contract/test_r16_assessment_candidate_contracts.py
+@@ -0,0 +1,63 @@
++"""Internal discovery contracts are isolated fixtures, not live/public API results."""
++
++import pytest
++from pydantic import ValidationError
++
++from ai_intel.revalidation.candidate_contracts import AssessmentChangeCandidate, CandidatePage
++
++
++def page_payload():
++    return dict(
++        change_id="fixture-change",
++        scope_key="public",
++        requested_epoch=1,
++        target_epoch=2,
++        scope_epoch_map={"public": 2, "tenant:fixture-tenant": None},
++        candidates=(),
++        status="complete",
++        scanned_count=0,
++    )
++
++
++def test_complete_empty_page_preserves_discovery_and_unknown_scope():
++    page = CandidatePage.model_validate(page_payload())
++    assert page.candidates == () and page.continuation is None and page.target_epoch == 2
++    assert page.scope_epoch_map["tenant:fixture-tenant"] is None
++
++
++@pytest.mark.parametrize(
++    "updates",
++    [
++        dict(status="partial"),
++        dict(continuation="opaque"),
++        dict(scanned_count=501),
++        dict(status="reassessed"),
++        dict(tenant_id="spoofed"),
++        dict(target_epoch=True),
++    ],
++)
++def test_invalid_or_spoofed_page_fields_are_rejected(updates):
++    with pytest.raises(ValidationError):
++        CandidatePage.model_validate({**page_payload(), **updates})
++
++
++def test_duplicate_candidate_identity_is_rejected():
++    candidate = AssessmentChangeCandidate(
++        asset_id="fixture-asset",
++        asset_snapshot_id="fixture-snapshot",
++        reasons=("partition_fallback",),
++    )
++    with pytest.raises(ValidationError, match="duplicate"):
++        CandidatePage.model_validate({**page_payload(), "candidates": (candidate, candidate)})
++
++
++def test_partial_page_exposes_its_continuation_and_no_evaluation_status():
++    page = CandidatePage.model_validate(
++        {
++            **page_payload(),
++            "status": "partial",
++            "continuation": "opaque",
++            "fallback_reason": "unknown_or_incomplete_change_scope",
++        }
++    )
++    assert page.status == "partial" and "assessment_status" not in page.model_dump()
+diff --git a/backend/tests/integration/test_r16_assessment_candidates_pg.py b/backend/tests/integration/test_r16_assessment_candidates_pg.py
+new file mode 100644
+index 00000000..95574c7f
+--- /dev/null
++++ b/backend/tests/integration/test_r16_assessment_candidates_pg.py
+@@ -0,0 +1,433 @@
++"""Synthetic discovery scenarios on an owned real PostgreSQL production-migrated schema."""
++
++import base64
++import json
++import os
++from datetime import UTC, datetime
++from uuid import uuid4
++
++import pytest
++from pydantic import SecretStr
++from sqlalchemy import create_engine, insert, select, text
++from sqlalchemy.engine import make_url
++from sqlalchemy.orm import Session
++from sqlalchemy.pool import NullPool
++from tests.integration.test_r11_pg_assessments import actor, assessor, asset, publish, seed
++
++from ai_intel.assessment.assessment_persistence import assessment_results
++from ai_intel.assessment.rule_service import RuleService
++from ai_intel.assets.inventory_models import asset_snapshots, assets
++from ai_intel.domain.access import CrossTenantAccessError, PermissionDeniedError, Role
++from ai_intel.domain.values import VisibilityScope
++from ai_intel.infrastructure.database import run_migrations
++from ai_intel.knowledge.persistence import publication_payload_digest, save_change_publication
++from ai_intel.knowledge.persistence_models import change_events
++from ai_intel.revalidation.candidates import CandidateDiscoveryError, CandidateDiscoveryService
++
++pytestmark = pytest.mark.real_pg
++RUN_ID = "r16_candidates_20261016"
++SYNTHETIC_KEY = SecretStr("01" * 32)
++
++
++@pytest.fixture(scope="module")
++def pg_engine():
++    url = make_url(os.environ["TEST_DATABASE_URL"])
++    assert url.database == "test_dianzi_" + RUN_ID
++    assert url.host == "127.0.0.1" and url.port == 25432
++    assert url.username is not None and url.username.startswith("test_")
++    assert os.environ["DIANZI_TEST_RUN_ID"] == RUN_ID
++    schema = "test_r16_candidates_" + uuid4().hex
++    base = create_engine(
++        url, hide_parameters=True, poolclass=NullPool, connect_args={"connect_timeout": 5}
++    )
++    with base.begin() as connection:
++        connection.exec_driver_sql(f'CREATE SCHEMA "{schema}"')
++    base.dispose()
++    migration_url = url.update_query_dict({"options": f"-c search_path={schema}"})
++    run_migrations(migration_url.render_as_string(hide_password=False), "head")
++    engine = create_engine(
++        url.update_query_dict(
++            {
++                "options": f"-c search_path={schema},public "
++                "-c statement_timeout=15000 -c lock_timeout=5000"
++            }
++        ),
++        hide_parameters=True,
++        poolclass=NullPool,
++        connect_args={"connect_timeout": 5},
++    )
++    with engine.connect() as connection:
++        assert connection.scalar(text("SELECT current_schema()")) == schema
++        revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
++        assert revision == "0022_sbom_sidecars"
++    evidence = os.environ.get("R16_CANDIDATES_EVIDENCE_DIR")
++    if evidence:
++        from pathlib import Path
++
++        (Path(evidence) / "schema_receipt.json").write_text(
++            json.dumps(
++                dict(
++                    schema=schema,
++                    database=url.database,
++                    forward_only=True,
++                    retained=True,
++                    synthetic=True,
++                    metadata_create_all=False,
++                    revision=revision,
++                )
++            ),
++            encoding="utf-8",
++        )
++    yield engine
++    engine.dispose()
++    base.dispose()
++
++
++@pytest.fixture(autouse=True)
++def redact_connection_credentials(register_sensitive_failure_value):
++    url = make_url(os.environ["TEST_DATABASE_URL"])
++    register_sensitive_failure_value(SecretStr(os.environ["TEST_DATABASE_URL"]))
++    if url.password:
++        register_sensitive_failure_value(SecretStr(url.password))
++
++
++def discovery(engine, seeded):
++    return CandidateDiscoveryService(engine, seeded["asset_token"], SYNTHETIC_KEY)
++
++
++def latest_change(engine, scope_key, *, change_type=None):
++    query = select(change_events).where(change_events.c.scope_key == scope_key)
++    if change_type:
++        query = query.where(change_events.c.change_type == change_type)
++    with engine.connect() as connection:
++        return (
++            connection.execute(query.order_by(change_events.c.epoch.desc()).limit(1))
++            .mappings()
++            .one()
++        )
++
++
++def synthetic_change(
++    engine, seeded, change_type="range_expanded", *, public=False, payload=None, ids=()
++):
++    visibility = VisibilityScope(
++        visibility="public" if public else "tenant", tenant_id=None if public else seeded["tenant"]
++    )
++    payload = {} if payload is None else payload
++    with Session(engine) as session, session.begin():
++        receipt = save_change_publication(
++            session,
++            visibility,
++            "fixture-r16:" + uuid4().hex,
++            payload,
++            publication_payload_digest(payload),
++            (),
++            ids,
++            datetime.now(UTC),
++            change_type,
++        )
++    return receipt
++
++
++def assessment(engine, seeded, imported):
++    service = assessor(engine, seeded)
++    return service.commit(
++        service.prepare(imported.asset_id, imported.snapshot.snapshot_id, seeded["rule"].rule_id, 1)
++    )
++
++
++def collect_pages(service, change_id, epoch, *, limit=2):
++    candidates = []
++    continuation = None
++    for _ in range(1000):
++        page = service.discover(change_id, epoch, limit=limit, continuation=continuation)
++        candidates.extend(page.candidates)
++        if page.status == "complete":
++            assert page.continuation is None
++            return candidates
++        assert page.continuation and page.scanned_count <= 500
++        continuation = page.continuation
++    raise AssertionError("candidate discovery did not terminate")
++
++
++def test_union_covers_old_hit_empty_result_new_asset_and_full_final_snapshot(pg_engine, tmp_path):
++    seeded = seed(pg_engine, tmp_path / "one")
++    other = seed(pg_engine, tmp_path / "two")
++    empty_asset = asset(pg_engine, seeded, "1.4.8")
++    empty = assessment(pg_engine, seeded, empty_asset)
++    assert empty.prepared.scope_watch.no_published_rule and empty.rule_result is None
++    publish(pg_engine, seeded)
++    hit_asset = asset(pg_engine, seeded, "1.4.1")
++    hit = assessment(pg_engine, seeded, hit_asset)
++    excluded_asset = asset(pg_engine, seeded, "1.4.8")
++    excluded = assessment(pg_engine, seeded, excluded_asset)
++    added = asset(pg_engine, seeded, "1.4.9")
++    foreign_asset = asset(pg_engine, other)
++    foreign = assessment(pg_engine, other, foreign_asset)
++    with pg_engine.connect() as connection:
++        original = (
++            connection.execute(
++                select(assessment_results.c.result_payload)
++                .where(
++                    assessment_results.c.assessment_id.in_(
++                        (empty.assessment_id, hit.assessment_id, excluded.assessment_id)
++                    )
++                )
++                .order_by(assessment_results.c.assessment_id)
++            )
++            .scalars()
++            .all()
++        )
++    change = synthetic_change(pg_engine, seeded, ids=(seeded["rule"].rule_id,))
++    candidates = collect_pages(discovery(pg_engine, seeded), change.change_id, change.epoch)
++    expected = {
++        (empty_asset.asset_id, None),
++        (hit_asset.asset_id, None),
++        (excluded_asset.asset_id, None),
++        (added.asset_id, None),
++        (empty_asset.asset_id, empty.assessment_id),
++        (hit_asset.asset_id, hit.assessment_id),
++        (excluded_asset.asset_id, excluded.assessment_id),
++    }
++    assert {(item.asset_id, item.assessment_id) for item in candidates} == expected
++    assert len(candidates) == len(expected)
++    assert all(
++        item.asset_id != foreign_asset.asset_id and item.assessment_id != foreign.assessment_id
++        for item in candidates
++    )
++    assert (
++        "empty_rule_scope"
++        in next(item for item in candidates if item.assessment_id == empty.assessment_id).reasons
++    )
++    with pg_engine.connect() as connection:
++        assert (
++            connection.execute(
++                select(assessment_results.c.result_payload)
++                .where(
++                    assessment_results.c.assessment_id.in_(
++                        (empty.assessment_id, hit.assessment_id, excluded.assessment_id)
++                    )
++                )
++                .order_by(assessment_results.c.assessment_id)
++            )
++            .scalars()
++            .all()
++            == original
++        )
++
++
++@pytest.mark.parametrize(
++    "change_type", ["range_shrunk", "alias_added", "event_withdrawn", "unknown_change"]
++)
++def test_unknown_scopes_conservatively_retain_old_and_unassessed_assets(
++    pg_engine, tmp_path, change_type
++):
++    seeded = seed(pg_engine, tmp_path)
++    imported = asset(pg_engine, seeded)
++    prior = assessment(pg_engine, seeded, imported)
++    change = synthetic_change(pg_engine, seeded, change_type)
++    page = discovery(pg_engine, seeded).discover(change.change_id, change.epoch)
++    assert (
++        page.status == "complete" and page.fallback_reason == "unknown_or_incomplete_change_scope"
++    )
++    assert {(item.asset_id, item.assessment_id) for item in page.candidates} == {
++        (imported.asset_id, None),
++        (imported.asset_id, prior.assessment_id),
++    }
++
++
++def test_retired_rule_preserves_readable_old_hit_and_exact_package_candidates(pg_engine, tmp_path):
++    seeded = seed(pg_engine, tmp_path)
++    publish(pg_engine, seeded)
++    imported = asset(pg_engine, seeded)
++    prior = assessment(pg_engine, seeded, imported)
++    RuleService(pg_engine, seeded["reviewer_token"], seeded["store"]).retire(
++        seeded["rule"].rule_id, 1
++    )
++    change = latest_change(
++        pg_engine, "tenant:" + seeded["tenant"], change_type="condition_rule_retired"
++    )
++    page = discovery(pg_engine, seeded).discover(change["change_id"], change["epoch"])
++    assert page.fallback_reason is None and page.status == "complete"
++    assert prior.prepared.scope_watch.scope_epoch_map["public"] is None
++    assert next(
++        item for item in page.candidates if item.assessment_id == prior.assessment_id
++    ).reasons == ("old_dependency", "partition_fallback", "scope_watch")
++    assert next(item for item in page.candidates if item.assessment_id is None).reasons == (
++        "new_package_association",
++    )
++
++
++def test_asset_snapshot_change_uses_current_pg_ref_and_preserves_history(pg_engine, tmp_path):
++    seeded = seed(pg_engine, tmp_path)
++    imported = asset(pg_engine, seeded)
++    prior = assessment(pg_engine, seeded, imported)
++    changed = asset(pg_engine, seeded, "1.5.0", asset_id=imported.asset_id)
++    change = latest_change(
++        pg_engine, "tenant:" + seeded["tenant"], change_type="asset_snapshot_changed"
++    )
++    page = discovery(pg_engine, seeded).discover(change["change_id"], change["epoch"])
++    assert {item.asset_snapshot_id for item in page.candidates} == {changed.snapshot.snapshot_id}
++    historical = next(item for item in page.candidates if item.assessment_id == prior.assessment_id)
++    assert historical.previous_asset_snapshot_id == imported.snapshot.snapshot_id
++    assert prior.asset_snapshot_id == imported.snapshot.snapshot_id
++
++
++def test_replay_paging_is_deterministic_and_tampering_is_rejected(pg_engine, tmp_path):
++    seeded = seed(pg_engine, tmp_path)
++    for _ in range(3):
++        asset(pg_engine, seeded)
++    change = synthetic_change(pg_engine, seeded)
++    service = discovery(pg_engine, seeded)
++    first = service.discover(change.change_id, change.epoch, limit=1)
++    assert first == service.discover(change.change_id, change.epoch, limit=1)
++    assert first.status == "partial" and first.continuation
++    candidates = collect_pages(service, change.change_id, change.epoch, limit=1)
++    assert len(candidates) == 3 and len({item.asset_id for item in candidates}) == 3
++    raw = bytearray(base64.urlsafe_b64decode(first.continuation))
++    raw[-1] ^= 1
++    with pytest.raises(CandidateDiscoveryError, match="cursor_invalid"):
++        service.discover(
++            change.change_id,
++            change.epoch,
++            limit=1,
++            continuation=base64.urlsafe_b64encode(raw).decode(),
++        )
++    with pytest.raises(CandidateDiscoveryError, match="context_changed"):
++        service.discover(change.change_id, change.epoch, limit=2, continuation=first.continuation)
++
++
++def test_old_cursor_rejected_after_new_asset_and_out_of_order_change_coalesces(pg_engine, tmp_path):
++    seeded = seed(pg_engine, tmp_path)
++    for _ in range(2):
++        asset(pg_engine, seeded)
++    change = synthetic_change(pg_engine, seeded)
++    service = discovery(pg_engine, seeded)
++    first = service.discover(change.change_id, change.epoch, limit=1)
++    added = asset(pg_engine, seeded)
++    with pytest.raises(CandidateDiscoveryError, match="context_changed"):
++        service.discover(change.change_id, change.epoch, limit=1, continuation=first.continuation)
++    current = service.discover(change.change_id, change.epoch)
++    assert (
++        current.target_epoch > change.epoch and current.fallback_reason == "coalesced_scope_epoch"
++    )
++    assert added.asset_id in {item.asset_id for item in current.candidates}
++    with pytest.raises(CandidateDiscoveryError, match="target_epoch_invalid"):
++        service.discover(change.change_id, current.target_epoch + 1)
++
++
++def test_private_change_and_cursor_cannot_cross_tenants(pg_engine, tmp_path):
++    seeded = seed(pg_engine, tmp_path / "one")
++    other = seed(pg_engine, tmp_path / "two")
++    for _ in range(2):
++        asset(pg_engine, seeded)
++    change = synthetic_change(pg_engine, seeded)
++    page = discovery(pg_engine, seeded).discover(change.change_id, change.epoch, limit=1)
++    with pytest.raises(CrossTenantAccessError, match="resource not found"):
++        discovery(pg_engine, other).discover(
++            change.change_id, change.epoch, limit=1, continuation=page.continuation
++        )
++
++
++def test_public_research_role_cannot_discover_private_asset_count(pg_engine, tmp_path):
++    seeded = seed(pg_engine, tmp_path)
++    change = synthetic_change(pg_engine, seeded, public=True)
++    _, token = actor(pg_engine, seeded["tenant"], Role.VIEWER)
++    with pytest.raises(PermissionDeniedError, match="read:asset"):
++        CandidateDiscoveryService(pg_engine, token, SYNTHETIC_KEY).discover(
++            change.change_id, change.epoch
++        )
++
++
++def test_public_event_cannot_expose_private_source_even_to_source_owner(pg_engine, tmp_path):
++    seeded = seed(pg_engine, tmp_path, public=True)
++    imported = asset(pg_engine, seeded)
++    assessment(pg_engine, seeded, imported)
++    change = synthetic_change(
++        pg_engine, seeded, public=True, payload={"event_id": seeded["event_id"]}
++    )
++    with pg_engine.begin() as connection:
++        connection.execute(
++            text(
++                "UPDATE sources SET visibility='tenant',tenant_id=:tenant WHERE source_id=:source"
++            ),
++            dict(tenant=seeded["tenant"], source=seeded["source_id"]),
++        )
++    with pytest.raises(CrossTenantAccessError, match="resource not found"):
++        discovery(pg_engine, seeded).discover(change.change_id, change.epoch)
++
++
++def test_acl_change_rejects_old_cursor_before_returning_invisible_assessments(pg_engine, tmp_path):
++    seeded = seed(pg_engine, tmp_path, public=True)
++    imported = asset(pg_engine, seeded)
++    prior = assessment(pg_engine, seeded, imported)
++    change = synthetic_change(pg_engine, seeded, public=True)
++    service = discovery(pg_engine, seeded)
++    page = service.discover(change.change_id, change.epoch, limit=1)
++    with pg_engine.begin() as connection:
++        connection.execute(
++            text(
++                "UPDATE sources SET visibility='tenant',tenant_id=:tenant WHERE source_id=:source"
++            ),
++            dict(tenant="fixture-other-tenant", source=seeded["source_id"]),
++        )
++    with pytest.raises(CandidateDiscoveryError, match="context_changed"):
++        service.discover(change.change_id, change.epoch, limit=1, continuation=page.continuation)
++    current = service.discover(change.change_id, change.epoch)
++    assert current.scanned_count == 1 and current.status == "complete"
++    assert {item.assessment_id for item in current.candidates} == {None}
++    assert prior.assessment_id not in {item.assessment_id for item in current.candidates}
++
++
++def test_scan_budget_returns_partial_even_when_first_500_authorized_rows_have_no_match(
++    pg_engine, tmp_path
++):
++    seeded = seed(pg_engine, tmp_path)
++    imported = asset(pg_engine, seeded)
++    with pg_engine.begin() as connection:
++        asset_template = dict(
++            connection.execute(select(assets).where(assets.c.asset_id == imported.asset_id))
++            .mappings()
++            .one()
++        )
++        snapshot_template = dict(
++            connection.execute(
++                select(asset_snapshots).where(
++                    asset_snapshots.c.snapshot_id == imported.snapshot.snapshot_id
++                )
++            )
++            .mappings()
++            .one()
++        )
++        asset_rows, snapshot_rows = [], []
++        for index in range(501):
++            asset_id, snapshot_id = (
++                f"fixture-budget-asset-{index:04d}",
++                f"fixture-budget-snapshot-{index:04d}",
++            )
++            payload = imported.snapshot.model_copy(
++                update={"asset_id": asset_id, "snapshot_id": snapshot_id}
++            ).model_dump(mode="json")
++            asset_rows.append(
++                {**asset_template, "asset_id": asset_id, "current_snapshot_id": snapshot_id}
++            )
++            snapshot_rows.append(
++                {
++                    **snapshot_template,
++                    "asset_id": asset_id,
++                    "snapshot_id": snapshot_id,
++                    "canonical_payload": payload,
++                }
++            )
++        connection.execute(insert(assets), asset_rows)
++        connection.execute(insert(asset_snapshots), snapshot_rows)
++    target = "fixture-budget-asset-0500"
++    change = synthetic_change(
++        pg_engine, seeded, "asset_snapshot_changed", payload={"asset_id": target}, ids=(target,)
++    )
++    service = discovery(pg_engine, seeded)
++    first = service.discover(change.change_id, change.epoch)
++    assert first.status == "partial" and first.scanned_count == 500 and first.candidates == ()
++    second = service.discover(change.change_id, change.epoch, continuation=first.continuation)
++    assert second.status == "complete" and second.scanned_count == 2
++    assert {(item.asset_id, item.assessment_id) for item in second.candidates} == {(target, None)}
+diff --git a/backend/tests/unit/test_r16_assessment_candidates.py b/backend/tests/unit/test_r16_assessment_candidates.py
+new file mode 100644
+index 00000000..97a4c2b5
+--- /dev/null
++++ b/backend/tests/unit/test_r16_assessment_candidates.py
+@@ -0,0 +1,270 @@
++"""Explicit isolated fixtures test observable union and signed continuation behavior."""
++
++import base64
++from datetime import UTC, datetime
++
++import pytest
++from pydantic import SecretStr
++from tests.unit.test_r11_pg_assessment_scope import candidate_inputs
++
++from ai_intel.assessment.assessment_service import build_scope_watch
++from ai_intel.assessment.persistence_contracts import AssessmentReceipt, PreparedAssessment
++from ai_intel.assets.inventory_contracts import AssetSnapshotResponse
++from ai_intel.revalidation.candidate_contracts import CandidateContinuation
++from ai_intel.revalidation.candidates import (
++    AffectedAssessmentScope,
++    CandidateDiscoveryError,
++    _decode_cursor,
++    _encode_cursor,
++    _references,
++    _signing_bytes,
++    candidate_reasons,
++    rule_package_keys,
++)
++
++SYNTHETIC_KEY = SecretStr("01" * 32)
++
++
++def snapshot(*, components=(), completeness="unknown"):
++    return AssetSnapshotResponse.model_validate(
++        dict(
++            schema_version="r11-asset-candidate-1",
++            snapshot_id="fixture-snapshot",
++            asset_id="fixture-asset",
++            tenant_id="fixture-tenant",
++            snapshot_number=1,
++            observed_at=datetime(2026, 10, 16, tzinfo=UTC),
++            recorded_at=datetime(2026, 10, 16, tzinfo=UTC),
++            source_kind="fixture",
++            inventory_completeness=completeness,
++            declared_scope=(),
++            components=components,
++            configuration=(),
++            tool_permissions=None,
++            input_channels=None,
++            network_exposure=None,
++            snapshot_sha256="b" * 64,
++        )
++    )
++
++
++def component(package="not-in-inventory", *, purl=None, ecosystem="PyPI"):
++    return dict(
++        component_id="fixture-component",
++        ecosystem=ecosystem,
++        package_name=package,
++        display_name=None,
++        purl=purl,
++        version=None,
++        version_scheme="pep440",
++        image_digest=None,
++        dependency_path=None,
++        source_field_locator="/components/0",
++    )
++
++
++def receipt():
++    inputs = candidate_inputs()
++    asset = snapshot()
++    watch = build_scope_watch(inputs, asset)
++    prepared = PreparedAssessment(
++        preparation_receipt_id="fixture-preparation",
++        actor_user_id="fixture-user",
++        actor_role="analyst",
++        permission_version=1,
++        asset_snapshot=asset,
++        asset_active=True,
++        asset_current_snapshot_id=asset.snapshot_id,
++        asset_fingerprint="b" * 64,
++        inputs=inputs,
++        scope_watch=watch,
++        input_digest="a" * 64,
++    )
++    result = AssessmentReceipt(
++        assessment_id="fixture-assessment",
++        tenant_id=asset.tenant_id,
++        asset_id=asset.asset_id,
++        asset_snapshot_id=asset.snapshot_id,
++        event_id=inputs.rule.event_id,
++        rule_id=inputs.rule.rule_id,
++        rule_version=1,
++        knowledge_epoch=0,
++        scope_epoch_map=inputs.scope_epoch_map,
++        rule_result=None,
++        status="insufficient_evidence",
++        freshness="stale",
++        missing_requirements=("unsupported_rule",),
++        conflicts=(),
++        limitations=(),
++        exposure_result="not_evaluated",
++        prepared=prepared,
++        input_digest="a" * 64,
++        created_at=datetime(2026, 10, 16, tzinfo=UTC),
++    )
++    return result, watch
++
++
++def cursor():
++    return CandidateContinuation(
++        change_id="fixture-change",
++        scope_key="public",
++        actor_user_id="fixture-user",
++        tenant_id="fixture-tenant",
++        actor_role="analyst",
++        permission_version=1,
++        requested_epoch=2,
++        scope_epoch_map={"public": 2, "tenant:fixture-tenant": None},
++        query_fingerprint="a" * 64,
++        partition_fingerprint="b" * 32,
++        limit=20,
++        after_asset_id="fixture-asset",
++        after_kind="asset",
++        after_reference_id="fixture-asset",
++    )
++
++
++def test_old_dependency_and_explicit_empty_scope_are_both_retained():
++    result, watch = receipt()
++    affected = AffectedAssessmentScope(
++        frozenset((result.rule_id,)), rule_ids=frozenset((result.rule_id,))
++    )
++    assert candidate_reasons(affected, snapshot(), result, watch) == (
++        "empty_rule_scope",
++        "old_dependency",
++        "scope_watch",
++    )
++
++
++@pytest.mark.parametrize("change", ["expanded", "shrunk", "withdrawn", "replayed", "out_of_order"])
++def test_scope_change_keeps_previously_excluded_and_unknown_results(change):
++    result, watch = receipt()
++    affected = AffectedAssessmentScope(
++        frozenset(), package_keys=frozenset(("PyPI:not-in-inventory",))
++    )
++    assert "scope_watch" in candidate_reasons(affected, snapshot(), result, watch)
++    assert result.freshness.value == "stale" and result.rule_result is None
++
++
++def test_missing_watch_cannot_produce_false_empty_candidate_set():
++    result, _ = receipt()
++    assert candidate_reasons(AffectedAssessmentScope(frozenset()), snapshot(), result) == (
++        "missing_scope_watch",
++    )
++
++
++def test_unknown_epoch_still_enters_partition_fallback():
++    result, watch = receipt()
++    watch = watch.model_copy(update={"scope_epoch_map": {"public": None}})
++    assert candidate_reasons(AffectedAssessmentScope(frozenset()), snapshot(), result, watch) == (
++        "empty_rule_scope",
++        "partition_fallback",
++    )
++
++
++@pytest.mark.parametrize(
++    "package,purl", [("not-in-inventory", None), ("different-name", "pkg:pypi/demo")]
++)
++def test_current_package_identity_matches_name_or_exact_purl(package, purl):
++    identity = purl or package
++    affected = AffectedAssessmentScope(frozenset(), package_keys=frozenset(("PyPI:" + identity,)))
++    assert candidate_reasons(affected, snapshot(components=(component(package, purl=purl),))) == (
++        "new_package_association",
++    )
++
++
++def test_unrelated_complete_inventory_and_other_ecosystem_are_not_exact_matches():
++    affected = AffectedAssessmentScope(
++        frozenset(), package_keys=frozenset(("PyPI:not-in-inventory",))
++    )
++    assert (
++        candidate_reasons(
++            affected,
++            snapshot(
++                components=(component(ecosystem="npm"),), completeness="complete_for_declared_scope"
++            ),
++        )
++        == ()
++    )
++
++
++def test_missing_component_in_unknown_inventory_is_not_negative_evidence():
++    affected = AffectedAssessmentScope(frozenset(), package_keys=frozenset(("PyPI:fixture",)))
++    assert candidate_reasons(affected, snapshot()) == ("partition_fallback",)
++
++
++def test_unknown_change_partitions_even_empty_assets_without_mutation():
++    affected = AffectedAssessmentScope(frozenset(), fallback_reason="unknown_change")
++    assert candidate_reasons(affected, snapshot()) == ("partition_fallback",)
++
++
++def test_asset_change_discovers_old_assessment_and_new_current_snapshot():
++    result, watch = receipt()
++    affected = AffectedAssessmentScope(frozenset(), asset_ids=frozenset(("fixture-asset",)))
++    assert "old_dependency" in candidate_reasons(affected, snapshot(), result, watch)
++    assert candidate_reasons(affected, snapshot()) == ("new_package_association",)
++
++
++def test_package_extraction_reuses_actual_rule_identity():
++    assert rule_package_keys(candidate_inputs().rule) == frozenset(("PyPI:not-in-inventory",))
++
++
++def test_cursor_round_trip_preserves_null_epochs_and_position():
++    key = _signing_bytes(SYNTHETIC_KEY)
++    value = _encode_cursor(cursor(), key)
++    assert _decode_cursor(value, key) == cursor()
++
++
++@pytest.mark.parametrize(
++    "mode", ["signature", "position", "wrong_key", "oversized", "invalid_base64"]
++)
++def test_cursor_rejects_tamper_and_unbounded_payload(mode):
++    key = _signing_bytes(SYNTHETIC_KEY)
++    value = _encode_cursor(cursor(), key)
++    if mode == "signature":
++        raw = bytearray(base64.urlsafe_b64decode(value))
++        raw[0] ^= 1
++        value = base64.urlsafe_b64encode(raw).decode()
++    elif mode == "position":
++        raw = base64.urlsafe_b64decode(value).replace(b"fixture-asset", b"another-asset")
++        value = base64.urlsafe_b64encode(raw).decode()
++    elif mode == "wrong_key":
++        key = bytes(32)
++    elif mode == "oversized":
++        value = "x" * 4097
++    else:
++        value = "!"
++    with pytest.raises(CandidateDiscoveryError, match="cursor_invalid"):
++        _decode_cursor(value, key)
++
++
++@pytest.mark.parametrize(
++    "value", [None, SecretStr("a" * 63), SecretStr("A" * 64), SecretStr("g" * 64)]
++)
++def test_cursor_key_is_server_configured_fixed_hex_and_never_printed(value):
++    with pytest.raises(
++        CandidateDiscoveryError, match=r"signing_key_(not_configured|invalid)"
++    ) as failure:
++        _signing_bytes(value)
++    assert "a" * 63 not in str(failure.value)
++
++
++def test_reference_extraction_preserves_private_source_parent_fields():
++    refs = _references(
++        dict(
++            claims=[
++                dict(
++                    source_id={"value": "source"},
++                    source_revision_id={"value": "revision"},
++                    evidence_links=[dict(evidence_id={"value": "span"})],
++                )
++            ],
++            rule_id="rule",
++        )
++    )
++    assert refs["source"] == {"source"} and refs["revision"] == {"revision"}
++    assert refs["evidence"] == {"span"} and refs["rule"] == {"rule"}
++
++
++def test_change_reference_budget_fails_explicitly():
++    with pytest.raises(CandidateDiscoveryError, match="reference_budget_exceeded"):
++        _references(dict(source_ids=[str(index) for index in range(257)]))

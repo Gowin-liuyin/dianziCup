@@ -1,0 +1,95 @@
+diff --git a/backend/pyproject.toml b/backend/pyproject.toml
+index b48284d4..faad1b23 100644
+--- a/backend/pyproject.toml
++++ b/backend/pyproject.toml
+@@ -23,6 +23,7 @@ dependencies = [
+     "semver>=3,<4",
+     "packageurl-python==0.17.6",
+     "pyyaml==6.0.3",
++    "neo4j==6.4.0",
+ ]
+ 
+ [project.optional-dependencies]
+diff --git a/backend/uv.lock b/backend/uv.lock
+index 7bbde66d..58503703 100644
+--- a/backend/uv.lock
++++ b/backend/uv.lock
+@@ -14,6 +14,7 @@ dependencies = [
+     { name = "fastapi" },
+     { name = "httpx" },
+     { name = "minio" },
++    { name = "neo4j" },
+     { name = "packageurl-python" },
+     { name = "packaging" },
+     { name = "pgvector" },
+@@ -55,6 +56,7 @@ requires-dist = [
+     { name = "fastapi", specifier = ">=0.115,<1.0" },
+     { name = "httpx", specifier = ">=0.28,<1" },
+     { name = "minio", specifier = "==7.2.20" },
++    { name = "neo4j", specifier = "==6.4.0" },
+     { name = "numpy", marker = "extra == 'semantic'", specifier = "==2.4.2" },
+     { name = "onnxruntime", marker = "extra == 'semantic'", specifier = "==1.24.4" },
+     { name = "packageurl-python", specifier = "==0.17.6" },
+@@ -694,6 +696,18 @@ wheels = [
+     { url = "https://files.pythonhosted.org/packages/79/7b/2c79738432f5c924bef5071f933bcc9efd0473bac3b4aa584a6f7c1c8df8/mypy_extensions-1.1.0-py3-none-any.whl", hash = "sha256:1be4cccdb0f2482337c4743e60421de3a356cd97508abadd57d47403e94f5505", size = 4963, upload-time = "2025-04-22T14:54:22.983Z" },
+ ]
+ 
++[[package]]
++name = "neo4j"
++version = "6.4.0"
++source = { registry = "https://pypi.org/simple" }
++dependencies = [
++    { name = "pytz" },
++]
++sdist = { url = "https://files.pythonhosted.org/packages/80/db/024bd576bde5d97436d0acb71b41cf928c036ed8fec95ea1122eb05e47d1/neo4j-6.4.0.tar.gz", hash = "sha256:056676698f080b5af5b24b0fc5abb485b8db1b95edf366d01dcfd63bcff9b71d", size = 287786, upload-time = "2026-10-05T15:37:45.216Z" }
++wheels = [
++    { url = "https://files.pythonhosted.org/packages/c9/5d/519aefe3b38a490924641e980a16ea6c70f6c96c08d84cf661d32c4a08c2/neo4j-6.4.0-py3-none-any.whl", hash = "sha256:fdd048ba827be138063b045cf59e40056fbf0405ac02dadc24f64e369fbd9d3d", size = 390611, upload-time = "2026-10-05T15:37:43.491Z" },
++]
++
+ [[package]]
+ name = "numpy"
+ version = "2.4.2"
+@@ -1006,6 +1020,15 @@ wheels = [
+     { url = "https://files.pythonhosted.org/packages/0d/17/c5c6b53ddc18f297992099b3d9ec16c855c0ccc83263a21fe4d1c625ec6c/python_dotenv-1.2.3-py3-none-any.whl", hash = "sha256:904552145e8bfed22162c09dab1c2b9b54fefa7b23ba780f4f26ca0316b0f0d9", size = 22780, upload-time = "2026-08-16T16:54:52.473Z" },
+ ]
+ 
++[[package]]
++name = "pytz"
++version = "2026.5"
++source = { registry = "https://pypi.org/simple" }
++sdist = { url = "https://files.pythonhosted.org/packages/14/21/d83d6ef28c4c912c4bb4d1dcf591f7b8c6bde87b9c66f9f454677314e16d/pytz-2026.5.tar.gz", hash = "sha256:fa23724b9c486543b9ff54a327ee7569ac83ade54bb9afd0fc18676620401c86", size = 318572, upload-time = "2026-10-04T02:37:58.719Z" }
++wheels = [
++    { url = "https://files.pythonhosted.org/packages/4f/ef/c66110d46fb800dda0bf33164182dfadabe26a90e4476844d502a23dca8e/pytz-2026.5-py2.py3-none-any.whl", hash = "sha256:e658af3757f9e26a9d25dd2aff38335acd92bc9104f890a894b2c1ba28311b03", size = 506342, upload-time = "2026-10-04T02:37:56.814Z" },
++]
++
+ [[package]]
+ name = "pyyaml"
+ version = "6.0.3"
+diff --git a/docs/decisions/CR-R10_neo4j_driver_dependency.md b/docs/decisions/CR-R10_neo4j_driver_dependency.md
+new file mode 100644
+index 00000000..ea0b8581
+--- /dev/null
++++ b/docs/decisions/CR-R10_neo4j_driver_dependency.md
+@@ -0,0 +1,22 @@
++# CR-R10 · 官方 Neo4j Python driver 锁定
++
++文档首次创建时间：2026-10-16T07:49:23+08:00
++本次写作开始时间：2026-10-16T07:49:23+08:00
++本次写作结束时间：2026-10-16T07:49:26+08:00
++最后更新时间：2026-10-16T07:49:26+08:00
++状态：批准建设目标内的必要依赖 checkpoint；生产投影/整卡/阶段未验收。
++主控：/root。基线：3baeb8809d3950a091e8db114be7a28049b74b36。
++
++R10/R12 已批准图派生索引需要真实 Bolt 事务；复用官方 driver，避免自写 Bolt 协议、连接池、事务或重试框架。固定 neo4j==6.4.0，新增其传递依赖 pytz==2026.5；原 95 个包版本未改变，锁文件共 97 个包。项目 Python 3.12 在官方支持范围。
++
++官方元数据与 wheel 校验依据：[PyPI 6.4.0](https://pypi.org/project/neo4j/6.4.0/)，wheel SHA256 fdd048ba827be138063b045cf59e40056fbf0405ac02dadc24f64e369fbd9d3d。该版本页面许可证为 Apache-2.0 AND Python-2.0；最终第三方许可证目录必须保留。存在较新 6.4.1 不代表本次已测试版本，不能将其兼容性套用本锁。
++
++修改仅 pyproject.toml/uv.lock 与本变更单，不改公共评分/八对象/原验收。原 approved 基础设施目标不需新的用户审批。R10 投影 adapter 会使用固定参数 Cypher，PG 为事实/权限/任务权威；driver 与测试 server telemetry 均关闭，由 owned-runtime 实测证据核对。不能把 driver 导入成功称为产品图接通。
++
++兼容性：官方 driver 配置保持独立；已有 PG/API/Celery 返回值与认证合同不变。测试 Community5.26.32 已独立 owner 实际认证返回 Bolt5.8；具体运行、安全负例与版本证据仍待新独立 reviewer，本变更单不代签。当前测试 tini TERM 转发因缺KILL失败，exact Docker stop 已发生但 graceful shutdown 未通过，另记 runtime 问题不掩盖。
++
++迁移：本依赖无需数据库 migration。后续 PG 投影表为独立前向0025，由主控所有；不得用 Neo4j 另建事实真相。回滚：先关闭新 graph_apply/default projection wiring，再回退这三个依赖 checkpoint 文件并 uv sync --locked；保留 PG 历史与派生测试卷，不 destructive downgrade、不删 volume。已发布后的依赖撤除需查所有 import 与 worker 配置再审。
++
++验证：本脚本实际执行 uv sync --locked，exit0；离线构造 driver telemetry_disabled=True 不发网络，已记录 smoke JSON。实际 auth/Bolt/transaction 用例在 R10 owned-runtime/作者包中，不合并为 live 来源证据。原 uv add 命令发生在此前工具输出中，其逐秒起止未单独落盘，写历史未记录；不根据mtime推算。本次命令的起止与退出在 neo4j_dependency_commit_receipt.json；新增下载费用 unknown，不写0。
++
++任务与测试影响：R10 真实 projection 与恢复/并发负例；R12 多跳可选派生候选仍须回 PG ACL；R20 资源恢复与租户隔离。初审冻结将核本 CR/锁/hash、原包版本不变、真实资源与负例，不签整个 R10/G-C。没有改变金标、分母、阈值或授权资产。

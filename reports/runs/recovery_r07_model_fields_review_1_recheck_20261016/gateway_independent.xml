@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="4" skipped="0" tests="32" time="1.289" timestamp="2026-10-16T01:43:23.724355+08:00" hostname="yin"><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[success-openai]" time="0.043" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[success-anthropic]" time="0.037" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[success-deepseek_openai]" time="0.030" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[success-deepseek_anthropic]" time="0.032" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[format-openai]" time="0.031" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[format-anthropic]" time="0.030" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[format-deepseek_openai]" time="0.029" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[format-deepseek_anthropic]" time="0.030" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[server-openai]" time="0.029"><failure message="assert False&#10; +  where False = all(&lt;generator object test_four_call_limit_through_real_transport.&lt;locals&gt;.&lt;genexpr&gt; at 0x000002276C656F60&gt;)">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002276C6FBAA0&gt;
+provider = 'openai', failure = 'server'
+
+    @pytest.mark.parametrize("provider", ["openai", "anthropic", "deepseek_openai", "deepseek_anthropic"])
+    @pytest.mark.parametrize("failure", ["success", "format", "server", "redirect", "network", "timeout"])
+    def test_four_call_limit_through_real_transport(monkeypatch, provider, failure):
+        result, calls, resolutions, requests, closed = invoke(monkeypatch, provider, failure)
+        assert [call["dimension"] for call in calls] == ["atlas", "versions", "literature", "poc"]
+        assert len(resolutions) == 4
+        assert all(call["method"] == "POST" and call["address"] == "8.8.8.8" for call in calls)
+        assert all(request.allow_format_repair is False for request in requests)
+        assert all(call["maximum"] == 1 for call in calls)
+        assert sum(call["maximum"] for call in calls) &lt;= 7
+        assert len(result.model_attempts) == 4
+        assert all(item.fee == "unknown" for item in result.model_attempts)
+        assert "expired" not in closed
+        if failure == "success":
+            assert all(attempt.candidates and attempt.status == DimensionStatus.PENDING for attempt in result.attempts)
+        else:
+            assert all(not attempt.candidates for attempt in result.attempts)
+            expected = {"format": "model_format_invalid", "server": "model_retryable_unavailable", "redirect": "model_network_failure", "network": "model_network_failure", "timeout": "model_network_timeout"}[failure]
+&gt;           assert all(attempt.error_code == expected for attempt in result.attempts)
+E           assert False
+E            +  where False = all(&lt;generator object test_four_call_limit_through_real_transport.&lt;locals&gt;.&lt;genexpr&gt; at 0x000002276C656F60&gt;)
+
+..\reports\runs\recovery_r07_model_fields_review_1_recheck_20261016\test_gateway_independent.py:120: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[server-anthropic]" time="0.031"><failure message="assert False&#10; +  where False = all(&lt;generator object test_four_call_limit_through_real_transport.&lt;locals&gt;.&lt;genexpr&gt; at 0x000002276C6571D0&gt;)">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002276C6FA960&gt;
+provider = 'anthropic', failure = 'server'
+
+    @pytest.mark.parametrize("provider", ["openai", "anthropic", "deepseek_openai", "deepseek_anthropic"])
+    @pytest.mark.parametrize("failure", ["success", "format", "server", "redirect", "network", "timeout"])
+    def test_four_call_limit_through_real_transport(monkeypatch, provider, failure):
+        result, calls, resolutions, requests, closed = invoke(monkeypatch, provider, failure)
+        assert [call["dimension"] for call in calls] == ["atlas", "versions", "literature", "poc"]
+        assert len(resolutions) == 4
+        assert all(call["method"] == "POST" and call["address"] == "8.8.8.8" for call in calls)
+        assert all(request.allow_format_repair is False for request in requests)
+        assert all(call["maximum"] == 1 for call in calls)
+        assert sum(call["maximum"] for call in calls) &lt;= 7
+        assert len(result.model_attempts) == 4
+        assert all(item.fee == "unknown" for item in result.model_attempts)
+        assert "expired" not in closed
+        if failure == "success":
+            assert all(attempt.candidates and attempt.status == DimensionStatus.PENDING for attempt in result.attempts)
+        else:
+            assert all(not attempt.candidates for attempt in result.attempts)
+            expected = {"format": "model_format_invalid", "server": "model_retryable_unavailable", "redirect": "model_network_failure", "network": "model_network_failure", "timeout": "model_network_timeout"}[failure]
+&gt;           assert all(attempt.error_code == expected for attempt in result.attempts)
+E           assert False
+E            +  where False = all(&lt;generator object test_four_call_limit_through_real_transport.&lt;locals&gt;.&lt;genexpr&gt; at 0x000002276C6571D0&gt;)
+
+..\reports\runs\recovery_r07_model_fields_review_1_recheck_20261016\test_gateway_independent.py:120: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[server-deepseek_openai]" time="0.029"><failure message="assert False&#10; +  where False = all(&lt;generator object test_four_call_limit_through_real_transport.&lt;locals&gt;.&lt;genexpr&gt; at 0x000002276C6C8FB0&gt;)">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002276C6F8C20&gt;
+provider = 'deepseek_openai', failure = 'server'
+
+    @pytest.mark.parametrize("provider", ["openai", "anthropic", "deepseek_openai", "deepseek_anthropic"])
+    @pytest.mark.parametrize("failure", ["success", "format", "server", "redirect", "network", "timeout"])
+    def test_four_call_limit_through_real_transport(monkeypatch, provider, failure):
+        result, calls, resolutions, requests, closed = invoke(monkeypatch, provider, failure)
+        assert [call["dimension"] for call in calls] == ["atlas", "versions", "literature", "poc"]
+        assert len(resolutions) == 4
+        assert all(call["method"] == "POST" and call["address"] == "8.8.8.8" for call in calls)
+        assert all(request.allow_format_repair is False for request in requests)
+        assert all(call["maximum"] == 1 for call in calls)
+        assert sum(call["maximum"] for call in calls) &lt;= 7
+        assert len(result.model_attempts) == 4
+        assert all(item.fee == "unknown" for item in result.model_attempts)
+        assert "expired" not in closed
+        if failure == "success":
+            assert all(attempt.candidates and attempt.status == DimensionStatus.PENDING for attempt in result.attempts)
+        else:
+            assert all(not attempt.candidates for attempt in result.attempts)
+            expected = {"format": "model_format_invalid", "server": "model_retryable_unavailable", "redirect": "model_network_failure", "network": "model_network_failure", "timeout": "model_network_timeout"}[failure]
+&gt;           assert all(attempt.error_code == expected for attempt in result.attempts)
+E           assert False
+E            +  where False = all(&lt;generator object test_four_call_limit_through_real_transport.&lt;locals&gt;.&lt;genexpr&gt; at 0x000002276C6C8FB0&gt;)
+
+..\reports\runs\recovery_r07_model_fields_review_1_recheck_20261016\test_gateway_independent.py:120: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[server-deepseek_anthropic]" time="0.030"><failure message="assert False&#10; +  where False = all(&lt;generator object test_four_call_limit_through_real_transport.&lt;locals&gt;.&lt;genexpr&gt; at 0x000002276CA9C2B0&gt;)">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002276CABECF0&gt;
+provider = 'deepseek_anthropic', failure = 'server'
+
+    @pytest.mark.parametrize("provider", ["openai", "anthropic", "deepseek_openai", "deepseek_anthropic"])
+    @pytest.mark.parametrize("failure", ["success", "format", "server", "redirect", "network", "timeout"])
+    def test_four_call_limit_through_real_transport(monkeypatch, provider, failure):
+        result, calls, resolutions, requests, closed = invoke(monkeypatch, provider, failure)
+        assert [call["dimension"] for call in calls] == ["atlas", "versions", "literature", "poc"]
+        assert len(resolutions) == 4
+        assert all(call["method"] == "POST" and call["address"] == "8.8.8.8" for call in calls)
+        assert all(request.allow_format_repair is False for request in requests)
+        assert all(call["maximum"] == 1 for call in calls)
+        assert sum(call["maximum"] for call in calls) &lt;= 7
+        assert len(result.model_attempts) == 4
+        assert all(item.fee == "unknown" for item in result.model_attempts)
+        assert "expired" not in closed
+        if failure == "success":
+            assert all(attempt.candidates and attempt.status == DimensionStatus.PENDING for attempt in result.attempts)
+        else:
+            assert all(not attempt.candidates for attempt in result.attempts)
+            expected = {"format": "model_format_invalid", "server": "model_retryable_unavailable", "redirect": "model_network_failure", "network": "model_network_failure", "timeout": "model_network_timeout"}[failure]
+&gt;           assert all(attempt.error_code == expected for attempt in result.attempts)
+E           assert False
+E            +  where False = all(&lt;generator object test_four_call_limit_through_real_transport.&lt;locals&gt;.&lt;genexpr&gt; at 0x000002276CA9C2B0&gt;)
+
+..\reports\runs\recovery_r07_model_fields_review_1_recheck_20261016\test_gateway_independent.py:120: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[redirect-openai]" time="0.029" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[redirect-anthropic]" time="0.029" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[redirect-deepseek_openai]" time="0.033" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[redirect-deepseek_anthropic]" time="0.031" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[network-openai]" time="0.030" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[network-anthropic]" time="0.029" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[network-deepseek_openai]" time="0.032" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[network-deepseek_anthropic]" time="0.034" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[timeout-openai]" time="0.029" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[timeout-anthropic]" time="0.030" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[timeout-deepseek_openai]" time="0.029" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_four_call_limit_through_real_transport[timeout-deepseek_anthropic]" time="0.029" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_denial_makes_zero_dns_or_http_calls[policy0-openai]" time="0.021" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_denial_makes_zero_dns_or_http_calls[policy0-anthropic]" time="0.020" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_denial_makes_zero_dns_or_http_calls[policy0-deepseek_openai]" time="0.021" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_denial_makes_zero_dns_or_http_calls[policy0-deepseek_anthropic]" time="0.021" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_denial_makes_zero_dns_or_http_calls[policy1-openai]" time="0.021" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_denial_makes_zero_dns_or_http_calls[policy1-anthropic]" time="0.020" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_denial_makes_zero_dns_or_http_calls[policy1-deepseek_openai]" time="0.021" /><testcase classname="reports.runs.recovery_r07_model_fields_review_1_recheck_20261016.test_gateway_independent" name="test_denial_makes_zero_dns_or_http_calls[policy1-deepseek_anthropic]" time="0.021" /></testsuite></testsuites>

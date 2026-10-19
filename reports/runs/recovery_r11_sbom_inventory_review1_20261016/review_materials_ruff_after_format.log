@@ -1,0 +1,50 @@
+UP022 Prefer `capture_output` over sending `stdout` and `stderr` to `PIPE`
+   --> D:\wt\r11-sbom-inventory-review1\reports\runs\recovery_r11_sbom_inventory_review1_20261016\review_runner.py:88:14
+    |
+ 86 |       from ai_intel.infrastructure.database import run_migrations
+ 87 |
+ 88 |       result = subprocess.run(
+    |  ______________^
+ 89 | |         [
+ 90 | |             "wsl.exe",
+ 91 | |             "-d",
+ 92 | |             "Ubuntu-22.04",
+ 93 | |             "-u",
+ 94 | |             "root",
+ 95 | |             "--exec",
+ 96 | |             "cat",
+ 97 | |             "/tmp/dianzi-docker-static-r01-20261014/runtime/test-services/connection.json",
+ 98 | |         ],
+ 99 | |         stdout=subprocess.PIPE,
+100 | |         stderr=subprocess.PIPE,
+101 | |         check=True,
+102 | |     )
+    | |_____^
+103 |       parsed = make_url(json.loads(result.stdout)["TEST_DATABASE_URL"])
+104 |       assert parsed.host in {"127.0.0.1", "localhost"} and parsed.port == 25432
+    |
+help: Replace with `capture_output` keyword argument
+
+B023 Function definition does not bind loop variable `statements`
+   --> D:\wt\r11-sbom-inventory-review1\reports\runs\recovery_r11_sbom_inventory_review1_20261016\test_review_probes.py:150:13
+    |
+149 |         def observe(connection, cursor, statement, parameters, context, many):
+150 |             statements.append(statement.split()[0])
+    |             ^^^^^^^^^^
+151 |
+152 |         event.listen(sbom_engine, "before_cursor_execute", observe)
+    |
+
+E501 Line too long (114 > 100)
+   --> D:\wt\r11-sbom-inventory-review1\reports\runs\recovery_r11_sbom_inventory_review1_20261016\test_review_probes.py:217:101
+    |
+215 |     imported = resource.upload(client, headers, resource.raw_document(value))
+216 |     assert imported.status_code == 201
+217 |     url = f"/api/assets/{imported.json()['asset_id']}/snapshots/{imported.json()['snapshot']['snapshot_id']}/sbom"
+    |                                                                                                     ^^^^^^^^^^^^^^
+218 |     read = client.get(url)
+219 |     assert read.status_code == 200
+    |
+
+Found 3 errors.
+No fixes available (1 hidden fix can be enabled with the `--unsafe-fixes` option).

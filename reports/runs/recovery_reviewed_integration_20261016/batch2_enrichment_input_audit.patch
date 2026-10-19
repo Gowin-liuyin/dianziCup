@@ -1,0 +1,2029 @@
+diff --git a/backend/src/ai_intel/enrichment/job_contracts.py b/backend/src/ai_intel/enrichment/job_contracts.py
+index a571621c..eff86366 100644
+--- a/backend/src/ai_intel/enrichment/job_contracts.py
++++ b/backend/src/ai_intel/enrichment/job_contracts.py
+@@ -20,6 +20,16 @@ ALL_ENRICHMENT_DIMENSIONS: tuple[DimensionName, ...] = (
+ )
+ 
+ 
++class EnrichmentModelInputVersions(BaseModel):
++    """Server code versions identify the prompt, selector and output schema actually used."""
++
++    model_config = ConfigDict(extra="forbid", frozen=True, strict=True, hide_input_in_errors=True)
++
++    prompt_version: str = Field(min_length=1, max_length=200)
++    selection_version: str = Field(min_length=1, max_length=200)
++    schema_version: str = Field(min_length=1, max_length=200)
++
++
+ class EnrichmentExecutionPolicy(BaseModel):
+     """Only server configuration creates this policy; no HTTP request grants model egress."""
+ 
+@@ -31,6 +41,7 @@ class EnrichmentExecutionPolicy(BaseModel):
+     private_egress_granted: bool = False
+     aggregate_enabled: bool = False
+     data_mode: Literal["live", "fixture"] = "live"
++    model_input_versions: EnrichmentModelInputVersions | None = None
+ 
+     @model_validator(mode="after")
+     def validate_model_authority(self) -> "EnrichmentExecutionPolicy":
+diff --git a/backend/src/ai_intel/enrichment/job_models.py b/backend/src/ai_intel/enrichment/job_models.py
+index bd28b0e6..8e319a2f 100644
+--- a/backend/src/ai_intel/enrichment/job_models.py
++++ b/backend/src/ai_intel/enrichment/job_models.py
+@@ -17,6 +17,37 @@ from sqlalchemy.dialects.postgresql import JSONB
+ 
+ from ai_intel.knowledge.models import TENANT_XOR, VISIBILITY_DOMAIN, metadata
+ 
++INPUT_AUDIT_IMMUTABILITY_DDL: tuple[str, ...] = (
++    """CREATE FUNCTION guard_enrichment_input_audit() RETURNS trigger LANGUAGE plpgsql AS $$
++    DECLARE frozen_input text; frozen_policy text; frozen_versions jsonb;
++    BEGIN
++        IF TG_OP='INSERT' AND NEW.input_audit_payload IS NOT NULL THEN
++            RAISE EXCEPTION 'input audit requires a precreated step' USING ERRCODE='23514';
++        END IF;
++        IF TG_OP='UPDATE' AND OLD.input_audit_payload IS NOT NULL AND
++           (NEW.input_audit_payload, NEW.input_audit_sha256, NEW.model_trace,
++            NEW.model_call_reserved_at, NEW.model_call_completed_at) IS DISTINCT FROM
++           (OLD.input_audit_payload, OLD.input_audit_sha256, OLD.model_trace,
++            OLD.model_call_reserved_at, OLD.model_call_completed_at) THEN
++            RAISE EXCEPTION 'input audit receipt is immutable' USING ERRCODE='23514';
++        END IF;
++        IF NEW.input_audit_payload IS NOT NULL THEN
++            SELECT input_fingerprint, execution_policy_sha256,
++                   execution_policy->'model_input_versions'
++              INTO frozen_input, frozen_policy, frozen_versions
++              FROM enrichment_workflows WHERE workflow_id=NEW.workflow_id;
++            IF (NEW.input_audit_payload->>'input_fingerprint'=frozen_input AND
++                NEW.input_audit_payload->>'execution_policy_sha256'=frozen_policy AND
++                NEW.input_audit_payload->'model_input_versions'=frozen_versions) IS NOT TRUE THEN
++                RAISE EXCEPTION 'input audit workflow identity invalid' USING ERRCODE='23514';
++            END IF;
++        END IF;
++        RETURN NEW;
++    END $$""",
++    "CREATE TRIGGER enrichment_input_audit_guard BEFORE INSERT OR UPDATE ON "
++    "enrichment_job_steps FOR EACH ROW EXECUTE FUNCTION guard_enrichment_input_audit()",
++)
++
+ enrichment_workflows = Table(
+     "enrichment_workflows",
+     metadata,
+@@ -95,6 +126,8 @@ enrichment_job_steps = Table(
+     Column("model_call_reserved_at", DateTime(timezone=True)),
+     Column("model_call_completed_at", DateTime(timezone=True)),
+     Column("model_trace", JSONB, nullable=False, server_default="[]"),
++    Column("input_audit_payload", JSONB),
++    Column("input_audit_sha256", Text),
+     Column("result_payload", JSONB),
+     Column("result_sha256", Text),
+     Column("result_recorded_at", DateTime(timezone=True)),
+@@ -143,5 +176,30 @@ enrichment_job_steps = Table(
+         "AND result_recorded_at IS NOT NULL)",
+         name="ck_enrichment_step_result",
+     ),
++    CheckConstraint(
++        "(input_audit_payload IS NULL AND input_audit_sha256 IS NULL) OR ("
++        "jsonb_typeof(input_audit_payload)='object' AND "
++        "octet_length(input_audit_payload::text)<=4194304 AND "
++        "input_audit_sha256 ~ '^[0-9a-f]{64}$' AND "
++        "input_audit_sha256=encode(sha256(convert_to(input_audit_payload::text,'UTF8')),'hex') "
++        "AND dimension IN ('atlas','versions','literature','poc') AND "
++        "model_call_reserved_at IS NOT NULL AND model_call_completed_at IS NOT NULL AND "
++        "jsonb_array_length(model_trace)=1 AND "
++        "input_audit_payload->>'audit_version'='r07-input-audit-1' AND "
++        "input_audit_payload->>'job_id'=job_id AND "
++        "input_audit_payload->>'workflow_id'=workflow_id AND "
++        "input_audit_payload->>'dimension'=dimension AND "
++        "input_audit_payload->>'input_fingerprint' ~ '^[0-9a-f]{64}$' AND "
++        "input_audit_payload->>'execution_policy_sha256' ~ '^[0-9a-f]{64}$' AND "
++        "input_audit_payload->>'model_version'=model_trace->0->>'requested_model' AND "
++        "input_audit_payload->>'provider'=model_trace->0->>'provider' AND "
++        "input_audit_payload->'model_input_versions'->>'prompt_version'="
++        "model_trace->0->>'prompt_version' AND "
++        "input_audit_payload->'model_input_versions'->>'schema_version'="
++        "model_trace->0->>'schema_version' AND "
++        "jsonb_typeof(input_audit_payload->'input_selections')='array' AND "
++        "jsonb_array_length(input_audit_payload->'input_selections')=1) IS TRUE",
++        name="ck_enrichment_step_input_audit",
++    ),
+ )
+ Index("ix_enrichment_steps_workflow", enrichment_job_steps.c.workflow_id)
+diff --git a/backend/src/ai_intel/enrichment/job_service.py b/backend/src/ai_intel/enrichment/job_service.py
+index cf736a4b..1bca1ee7 100644
+--- a/backend/src/ai_intel/enrichment/job_service.py
++++ b/backend/src/ai_intel/enrichment/job_service.py
+@@ -10,9 +10,11 @@ from datetime import datetime
+ from uuid import NAMESPACE_URL, UUID, uuid5
+ 
+ from pydantic import TypeAdapter, ValidationError
+-from sqlalchemy import insert, select, update
++from sqlalchemy import Text, cast, func, insert, literal, null, select, update
++from sqlalchemy.dialects.postgresql import JSONB
+ from sqlalchemy.engine import Engine, RowMapping
+ from sqlalchemy.orm import Session
++from sqlalchemy.sql.elements import ColumnElement
+ 
+ from ai_intel.api.auth_state import auth_sessions
+ from ai_intel.api.document_read_service import sources
+@@ -29,33 +31,45 @@ from ai_intel.domain.access import (
+ )
+ from ai_intel.domain.enums import DimensionStatus
+ from ai_intel.domain.values import VisibilityScope
++from ai_intel.enrichment import evidence_selection, model_fields
+ from ai_intel.enrichment.contracts import DimensionAttempt
+-from ai_intel.enrichment.field_sources import FieldEvidenceError
++from ai_intel.enrichment.field_sources import FieldEvidenceError, is_atlas_taxonomy
+ from ai_intel.enrichment.inputs import (
+     EnrichmentInputError,
+     LoadedEnrichmentInputs,
+     _require_input_scopes,
+     load_event_enrichment_inputs,
+ )
+-from ai_intel.enrichment.job_contracts import EnrichmentExecutionPolicy, EventEnrichmentRequest
++from ai_intel.enrichment.job_contracts import (
++    EnrichmentExecutionPolicy,
++    EnrichmentModelInputVersions,
++    EventEnrichmentRequest,
++)
+ from ai_intel.enrichment.job_models import enrichment_job_steps, enrichment_workflows
+ from ai_intel.enrichment.job_types import (
++    MAX_INPUT_AUDIT_BYTES,
+     MODEL_DIMENSIONS,
+     TERMINAL_STATUSES,
+     DocumentSnapshot,
+     EnrichmentDimensionView,
+     EnrichmentEnqueueReceipt,
++    EnrichmentInputAuditView,
+     EnrichmentJobPayload,
++    EnrichmentModelInputAudit,
+     EnrichmentStepView,
+     EnrichmentWorkflowView,
+     ExposureStepClient,
++    FieldEvidenceSelectionAudit,
+     FrozenEnrichmentInputs,
++    InputAuditState,
+     ModelCallState,
+     ParentScopeSnapshot,
+     combine_exposure_attempts,
+     json_payload,
+     logical_job_status,
+     physical_steps,
++    validate_input_selection,
++    validate_model_input_audit,
+ )
+ from ai_intel.enrichment.model_fields import extract_model_dimension
+ from ai_intel.enrichment.publication import (
+@@ -103,6 +117,29 @@ def _digest(value: object) -> str:
+     return hashlib.sha256(encoded).hexdigest()
+ 
+ 
++def _versioned_execution_policy(policy: EnrichmentExecutionPolicy) -> EnrichmentExecutionPolicy:
++    current = EnrichmentExecutionPolicy.model_validate_json(policy.model_dump_json())
++    return current.model_copy(
++        update={
++            "model_input_versions": EnrichmentModelInputVersions(
++                prompt_version=model_fields.PROMPT_VERSION,
++                selection_version=evidence_selection.SELECTION_VERSION,
++                schema_version=model_fields.SCHEMA_VERSION,
++            )
++        }
++    )
++
++
++def _base_execution_policy(policy: EnrichmentExecutionPolicy) -> dict[str, object]:
++    return policy.model_dump(mode="json", exclude={"model_input_versions"})
++
++
++def _audit_sql_digest(payload: object) -> ColumnElement[str]:
++    return func.encode(
++        func.sha256(func.convert_to(cast(literal(payload, type_=JSONB), Text), "UTF8")), "hex"
++    )
++
++
+ def _enrichment_idempotency_key(
+     tenant_id: str | None,
+     event_id: UUID,
+@@ -182,9 +219,21 @@ def _existing_parent_receipt(
+     parent: RowMapping,
+     expected_workflow_id: UUID,
+     binding: dict[str, object],
++    policy: EnrichmentExecutionPolicy,
+ ) -> EnrichmentEnqueueReceipt:
+     workflow = _validated_parent_workflow(session, parent)
+-    if workflow["workflow_id"] != str(expected_workflow_id) or _binding(workflow) != binding:
++    frozen_policy = EnrichmentExecutionPolicy.model_validate_json(
++        json.dumps(workflow["execution_policy"])
++    )
++    expected_binding = binding.copy()
++    if frozen_policy.model_input_versions is None and _base_execution_policy(
++        frozen_policy
++    ) == _base_execution_policy(policy):
++        expected_binding["execution_policy_sha256"] = workflow["execution_policy_sha256"]
++    if (
++        workflow["workflow_id"] != str(expected_workflow_id)
++        or _binding(workflow) != expected_binding
++    ):
+         raise IdempotencyConflictError("idempotency key reused with different enrichment binding")
+     return EnrichmentEnqueueReceipt(expected_workflow_id, UUID(parent["job_id"]), True)
+ 
+@@ -194,6 +243,7 @@ def _legacy_parent_receipt(
+     tenant_id: str | None,
+     raw_key: str,
+     binding: dict[str, object],
++    policy: EnrichmentExecutionPolicy,
+ ) -> EnrichmentEnqueueReceipt | None:
+     parent = _parent_job_for_key(session, tenant_id, raw_key)
+     if parent is None:
+@@ -213,7 +263,7 @@ def _legacy_parent_receipt(
+         or workflow["event_id"] != binding["event_id"]
+     ):
+         return None
+-    return _existing_parent_receipt(session, parent, legacy_id, binding)
++    return _existing_parent_receipt(session, parent, legacy_id, binding, policy)
+ 
+ 
+ def _authenticated_scope(
+@@ -364,9 +414,7 @@ class EnrichmentJobService:
+             VisibilityScope(visibility=event["visibility"], tenant_id=event["tenant_id"]),
+             revision_ids,
+         )
+-        policy = EnrichmentExecutionPolicy.model_validate_json(
+-            self.execution_policy().model_dump_json()
+-        )
++        policy = _versioned_execution_policy(self.execution_policy())
+         parent_key = _enrichment_idempotency_key(
+             current.tenant_id, event_id, current.user_id, idempotency_key
+         )
+@@ -384,8 +432,10 @@ class EnrichmentJobService:
+         }
+         existing_parent = _parent_job_for_key(session, event["tenant_id"], parent_key)
+         if existing_parent is not None:
+-            return _existing_parent_receipt(session, existing_parent, workflow_id, binding)
+-        legacy = _legacy_parent_receipt(session, event["tenant_id"], idempotency_key, binding)
++            return _existing_parent_receipt(session, existing_parent, workflow_id, binding, policy)
++        legacy = _legacy_parent_receipt(
++            session, event["tenant_id"], idempotency_key, binding, policy
++        )
+         if legacy is not None:
+             return legacy
+         parent_id = enqueue_job(
+@@ -408,7 +458,7 @@ class EnrichmentJobService:
+             parent = _parent_job_for_key(session, event["tenant_id"], parent_key)
+             if parent is None:
+                 raise IdempotencyConflictError("enrichment parent identity cannot be validated")
+-            return _existing_parent_receipt(session, parent, workflow_id, binding)
++            return _existing_parent_receipt(session, parent, workflow_id, binding, policy)
+         if (
+             event["status"] != "active"
+             or event["business_version"] != request.expected_event_version
+@@ -473,11 +523,16 @@ class EnrichmentJobService:
+             scope.requires(_write_permission(row["visibility"]))
+         except PermissionError:
+             raise JobExecutionError("enrichment_authorization_changed", blocked=True) from None
+-        policy = self.execution_policy()
+-        if (
+-            _digest(policy.model_dump(mode="json")) != row["execution_policy_sha256"]
+-            or _digest(row["execution_policy"]) != row["execution_policy_sha256"]
+-        ):
++        policy = _versioned_execution_policy(self.execution_policy())
++        frozen_policy = EnrichmentExecutionPolicy.model_validate_json(
++            json.dumps(row["execution_policy"])
++        )
++        policy_matches = (
++            _base_execution_policy(policy) == _base_execution_policy(frozen_policy)
++            if frozen_policy.model_input_versions is None
++            else _digest(policy.model_dump(mode="json")) == row["execution_policy_sha256"]
++        )
++        if not policy_matches or _digest(row["execution_policy"]) != row["execution_policy_sha256"]:
+             raise JobExecutionError("enrichment_execution_policy_changed", blocked=True)
+         return scope
+ 
+@@ -601,10 +656,47 @@ class EnrichmentJobService:
+             return reserved is not None
+ 
+     def _record_model_receipt(
+-        self, job_id: str, attempts: tuple[AttemptMetadata, ...], at: datetime
++        self,
++        job_id: str,
++        attempts: tuple[AttemptMetadata, ...],
++        at: datetime,
++        *,
++        input_audit: EnrichmentModelInputAudit | None = None,
+     ) -> None:
++        require_aware_time(at)
++        encoded_audit = input_audit.model_dump(mode="json") if input_audit else None
+         with Session(self.engine) as receipt, receipt.begin():
+-            receipt.execute(
++            if input_audit:
++                workflow = (
++                    receipt.execute(
++                        select(enrichment_workflows)
++                        .join(
++                            enrichment_job_steps,
++                            enrichment_job_steps.c.workflow_id
++                            == enrichment_workflows.c.workflow_id,
++                        )
++                        .where(enrichment_job_steps.c.job_id == job_id)
++                    )
++                    .mappings()
++                    .one()
++                )
++                saved = FrozenEnrichmentInputs.model_validate_json(
++                    json.dumps(workflow["input_context"])
++                )
++                policy = EnrichmentExecutionPolicy.model_validate_json(
++                    json.dumps(workflow["execution_policy"])
++                )
++                if (
++                    str(input_audit.job_id) != job_id
++                    or str(input_audit.workflow_id) != workflow["workflow_id"]
++                    or input_audit.input_fingerprint != workflow["input_fingerprint"]
++                    or _digest(saved.model_dump(mode="json")) != workflow["input_fingerprint"]
++                    or input_audit.execution_policy_sha256 != workflow["execution_policy_sha256"]
++                    or _digest(workflow["execution_policy"]) != workflow["execution_policy_sha256"]
++                ):
++                    raise JobExecutionError("enrichment_input_audit_invalid", blocked=True)
++                validate_model_input_audit(input_audit, saved, policy, attempts)
++            recorded = receipt.execute(
+                 update(enrichment_job_steps)
+                 .where(
+                     enrichment_job_steps.c.job_id == job_id,
+@@ -614,8 +706,107 @@ class EnrichmentJobService:
+                 .values(
+                     model_call_completed_at=at,
+                     model_trace=MODEL_TRACE_ADAPTER.dump_python(attempts, mode="json"),
++                    input_audit_payload=encoded_audit if input_audit else null(),
++                    input_audit_sha256=_audit_sql_digest(encoded_audit) if input_audit else None,
++                )
++                .returning(enrichment_job_steps.c.job_id)
++            ).scalar_one_or_none()
++            if recorded is None:
++                existing = (
++                    receipt.execute(
++                        select(enrichment_job_steps).where(enrichment_job_steps.c.job_id == job_id)
++                    )
++                    .mappings()
++                    .one_or_none()
++                )
++                if (
++                    existing is None
++                    or existing["model_call_completed_at"] is None
++                    or existing["model_trace"]
++                    != MODEL_TRACE_ADAPTER.dump_python(attempts, mode="json")
++                    or existing["input_audit_payload"] != encoded_audit
++                ):
++                    raise JobExecutionError("enrichment_model_receipt_conflict", blocked=True)
++
++    def _build_input_audit(
++        self,
++        row: RowMapping,
++        step: RowMapping,
++        selections: tuple[evidence_selection.FieldEvidenceSelection, ...],
++    ) -> EnrichmentModelInputAudit:
++        policy = EnrichmentExecutionPolicy.model_validate_json(json.dumps(row["execution_policy"]))
++        if (
++            policy.model_input_versions is None
++            or policy.generation_provider is None
++            or policy.approved_model is None
++        ):
++            raise ValueError("input_audit_versions_unavailable")
++        return EnrichmentModelInputAudit(
++            workflow_id=UUID(row["workflow_id"]),
++            job_id=UUID(step["job_id"]),
++            dimension=step["dimension"],
++            input_fingerprint=row["input_fingerprint"],
++            execution_policy_sha256=row["execution_policy_sha256"],
++            model_input_versions=policy.model_input_versions,
++            provider=policy.generation_provider,
++            model_version=policy.approved_model,
++            input_selections=tuple(
++                FieldEvidenceSelectionAudit.from_selection(selection) for selection in selections
++            ),
++        )
++
++    def _input_audit_bytes(self, audit: EnrichmentModelInputAudit) -> int:
++        with Session(self.engine) as session:
++            count = session.scalar(
++                select(
++                    func.octet_length(
++                        cast(literal(audit.model_dump(mode="json"), type_=JSONB), Text)
++                    )
+                 )
+             )
++        if type(count) is not int:
++            raise ValueError("input_audit_size_unavailable")
++        return count
++
++    def _read_input_audit_record(
++        self,
++        session: Session,
++        workflow: RowMapping,
++        step: RowMapping,
++    ) -> EnrichmentModelInputAudit | None:
++        if step["input_audit_payload"] is None:
++            if step["input_audit_sha256"] is not None:
++                raise ValueError("input_audit_digest_invalid")
++            return None
++        if (
++            session.scalar(select(_audit_sql_digest(step["input_audit_payload"])))
++            != step["input_audit_sha256"]
++        ):
++            raise ValueError("input_audit_digest_invalid")
++        audit = EnrichmentModelInputAudit.model_validate_json(
++            json.dumps(step["input_audit_payload"])
++        )
++        frozen = FrozenEnrichmentInputs.model_validate_json(json.dumps(workflow["input_context"]))
++        policy = EnrichmentExecutionPolicy.model_validate_json(
++            json.dumps(workflow["execution_policy"])
++        )
++        if (
++            str(audit.workflow_id) != workflow["workflow_id"]
++            or str(audit.job_id) != step["job_id"]
++            or audit.dimension != step["dimension"]
++            or audit.input_fingerprint != workflow["input_fingerprint"]
++            or _digest(frozen.model_dump(mode="json")) != workflow["input_fingerprint"]
++            or audit.execution_policy_sha256 != workflow["execution_policy_sha256"]
++            or _digest(workflow["execution_policy"]) != workflow["execution_policy_sha256"]
++        ):
++            raise ValueError("input_audit_identity_invalid")
++        validate_model_input_audit(
++            audit,
++            frozen,
++            policy,
++            MODEL_TRACE_ADAPTER.validate_json(json.dumps(step["model_trace"])),
++        )
++        return audit
+ 
+     def execute_step(
+         self, session: Session, context: JobExecutionContext, payload: bytes
+@@ -637,6 +828,19 @@ class EnrichmentJobService:
+         frozen = self._current_inputs(session, row, scope)
+         dimension = step["dimension"]
+         if step["result_payload"] is not None:
++            try:
++                audit = self._read_input_audit_record(session, row, step)
++                policy = EnrichmentExecutionPolicy.model_validate_json(
++                    json.dumps(row["execution_policy"])
++                )
++                if (
++                    step["model_trace"]
++                    and policy.model_input_versions is not None
++                    and audit is None
++                ):
++                    raise ValueError("input_audit_unavailable")
++            except ValueError:
++                raise JobExecutionError("enrichment_input_audit_invalid", blocked=True) from None
+             if _digest(step["result_payload"]) != step["result_sha256"]:
+                 raise JobExecutionError("enrichment_step_result_digest_invalid", blocked=True)
+             attempt = DimensionAttempt.model_validate_json(json.dumps(step["result_payload"]))
+@@ -675,6 +879,18 @@ class EnrichmentJobService:
+         job_id: str,
+     ) -> DimensionAttempt:
+         policy = EnrichmentExecutionPolicy.model_validate_json(json.dumps(row["execution_policy"]))
++        if step["model_call_reserved_at"] is not None:
++            return DimensionAttempt(
++                dimension=step["dimension"],
++                status=DimensionStatus.FAILED,
++                error_code="incomplete_interrupted",
++            )
++        if policy.model_input_versions is None:
++            return DimensionAttempt(
++                dimension=step["dimension"],
++                status=DimensionStatus.BLOCKED,
++                error_code="legacy_model_input_audit_unavailable",
++            )
+         code: str | None = None
+         client = None
+         if not policy.generation_enabled:
+@@ -699,6 +915,36 @@ class EnrichmentJobService:
+             return DimensionAttempt(
+                 dimension=step["dimension"], status=DimensionStatus.BLOCKED, error_code=code
+             )
++        try:
++            if step["dimension"] != "atlas" or any(
++                is_atlas_taxonomy(document) for document in frozen.documents
++            ):
++                preview = self._build_input_audit(
++                    row,
++                    step,
++                    (
++                        evidence_selection.select_field_evidence(
++                            frozen.loaded().documents, step["dimension"]
++                        ),
++                    ),
++                )
++                validate_input_selection(preview.input_selections[0], frozen)
++                if self._input_audit_bytes(preview) > MAX_INPUT_AUDIT_BYTES:
++                    return DimensionAttempt(
++                        dimension=step["dimension"],
++                        status=DimensionStatus.BLOCKED,
++                        error_code="input_audit_budget_exhausted",
++                    )
++        except FieldEvidenceError as error:
++            return DimensionAttempt(
++                dimension=step["dimension"], status=DimensionStatus.FAILED, error_code=error.code
++            )
++        except ValueError:
++            return DimensionAttempt(
++                dimension=step["dimension"],
++                status=DimensionStatus.BLOCKED,
++                error_code="enrichment_input_audit_invalid",
++            )
+         if not self._reserve_model_call(job_id, self.clock()):
+             return DimensionAttempt(
+                 dimension=step["dimension"],
+@@ -721,7 +967,25 @@ class EnrichmentJobService:
+             return DimensionAttempt(
+                 dimension=step["dimension"], status=DimensionStatus.FAILED, error_code=error.code
+             )
+-        self._record_model_receipt(job_id, generated.model_attempts, self.clock())
++        audit = None
++        try:
++            if generated.model_attempts:
++                audit = self._build_input_audit(row, step, generated.input_selections)
++                validate_model_input_audit(audit, frozen, policy, generated.model_attempts)
++                if self._input_audit_bytes(audit) > MAX_INPUT_AUDIT_BYTES:
++                    raise ValueError("input_audit_budget_exhausted")
++            if len(generated.attempts) != 1 or generated.attempts[0].dimension != step["dimension"]:
++                raise ValueError("input_audit_result_dimension_invalid")
++        except ValueError:
++            self._record_model_receipt(job_id, generated.model_attempts, self.clock())
++            return DimensionAttempt(
++                dimension=step["dimension"],
++                status=DimensionStatus.FAILED,
++                error_code="enrichment_input_audit_invalid",
++            )
++        self._record_model_receipt(
++            job_id, generated.model_attempts, self.clock(), input_audit=audit
++        )
+         return generated.attempts[0]
+ 
+     def _exposure_attempt(self, row: RowMapping, step: RowMapping) -> DimensionAttempt:
+@@ -784,6 +1048,21 @@ class EnrichmentJobService:
+             raise JobExecutionError("enrichment_children_pending", retry_after_seconds=20.0)
+         scope = self._execution_scope(session, row, lock=True)
+         frozen = self._current_inputs(session, row, scope)
++        for child in children:
++            try:
++                audit = self._read_input_audit_record(session, row, child)
++                child_policy = EnrichmentExecutionPolicy.model_validate_json(
++                    json.dumps(row["execution_policy"])
++                )
++                if (
++                    child["model_trace"]
++                    and child_policy.model_input_versions is not None
++                    and child["result_payload"] is not None
++                    and audit is None
++                ):
++                    raise ValueError("input_audit_unavailable")
++            except ValueError:
++                raise JobExecutionError("enrichment_input_audit_invalid", blocked=True) from None
+         body = EventEnrichmentRequest.model_validate_json(json.dumps(row["request_payload"]))
+         structured = {
+             attempt.dimension: attempt
+@@ -970,6 +1249,136 @@ class EnrichmentJobService:
+             initialized_at=row["initialized_at"],
+         )
+ 
++    def read_input_audit(
++        self,
++        session: Session,
++        scope: AccessScope,
++        job_id: UUID,
++        *,
++        actor_session_hash: str,
++        at: datetime,
++    ) -> EnrichmentInputAuditView:
++        """Hold historical parent ACL locks until the caller's read transaction ends."""
++        current = _authenticated_scope(session, actor_session_hash, at, lock=True)
++        if current != scope:
++            raise CrossTenantAccessError("resource not found")
++        step = (
++            session.execute(
++                select(enrichment_job_steps).where(enrichment_job_steps.c.job_id == str(job_id))
++            )
++            .mappings()
++            .one_or_none()
++        )
++        if step is None:
++            raise CrossTenantAccessError("resource not found")
++        workflow = (
++            session.execute(
++                select(enrichment_workflows).where(
++                    enrichment_workflows.c.workflow_id == step["workflow_id"]
++                )
++            )
++            .mappings()
++            .one()
++        )
++        workflow = self._lock_input_audit_parents(session, workflow)
++        self.read_workflow(
++            session,
++            current,
++            UUID(step["workflow_id"]),
++            actor_session_hash=actor_session_hash,
++            at=at,
++        )
++        try:
++            record = self._read_input_audit_record(session, workflow, step)
++            policy = EnrichmentExecutionPolicy.model_validate_json(
++                json.dumps(workflow["execution_policy"])
++            )
++            attempts = MODEL_TRACE_ADAPTER.validate_json(json.dumps(step["model_trace"]))
++        except ValueError:
++            raise EnrichmentWorkflowError("enrichment_input_audit_invalid") from None
++        audit_state: InputAuditState = "not_recorded"
++        if record is not None:
++            audit_state = "recorded"
++        elif policy.model_input_versions is None:
++            audit_state = "legacy_unavailable"
++        return EnrichmentInputAuditView(
++            workflow_id=UUID(step["workflow_id"]),
++            job_id=job_id,
++            audit_state=audit_state,
++            record=record,
++            model_attempts=attempts,
++        )
++
++    def _lock_input_audit_parents(self, session: Session, workflow: RowMapping) -> RowMapping:
++        """Follow source writers' parent order without requiring a current revision or roster."""
++        try:
++            frozen = FrozenEnrichmentInputs.model_validate_json(
++                json.dumps(workflow["input_context"])
++            )
++            if (
++                _digest(frozen.model_dump(mode="json")) != workflow["input_fingerprint"]
++                or str(frozen.context.event_id) != workflow["event_id"]
++                or {str(item.revision_id) for item in frozen.documents}
++                != set(map(str, frozen.context.revision_ids))
++            ):
++                raise ValueError("input_audit_frozen_identity_invalid")
++        except ValueError:
++            raise EnrichmentWorkflowError("enrichment_input_audit_invalid") from None
++        source_ids = {str(item.source_id) for item in frozen.documents}
++        document_sources = {str(item.document_id): str(item.source_id) for item in frozen.documents}
++        revision_documents = {
++            str(item.revision_id): str(item.document_id) for item in frozen.documents
++        }
++        locked_sources: set[str] = set(
++            session.scalars(
++                select(sources.c.source_id)
++                .where(sources.c.source_id.in_(source_ids))
++                .order_by(sources.c.source_id)
++                .with_for_update(read=True)
++            )
++        )
++        locked_documents: dict[str, str] = dict(
++            session.execute(
++                select(documents.c.document_id, documents.c.source_id)
++                .where(documents.c.document_id.in_(document_sources))
++                .order_by(documents.c.document_id)
++                .with_for_update(read=True)
++            ).all()
++        )
++        locked_revisions: dict[str, str] = dict(
++            session.execute(
++                select(document_revisions.c.revision_id, document_revisions.c.document_id)
++                .where(document_revisions.c.revision_id.in_(revision_documents))
++                .order_by(document_revisions.c.document_id, document_revisions.c.revision_id)
++                .with_for_update(read=True)
++            ).all()
++        )
++        if (
++            locked_sources != source_ids
++            or locked_documents != document_sources
++            or locked_revisions != revision_documents
++        ):
++            raise EnrichmentWorkflowError("enrichment_input_audit_invalid")
++        event_id = session.scalar(
++            select(events.c.event_id)
++            .where(events.c.event_id == workflow["event_id"])
++            .with_for_update(read=True)
++        )
++        if event_id is None:
++            raise CrossTenantAccessError("resource not found")
++        locked_workflow = (
++            session.execute(
++                select(enrichment_workflows)
++                .where(enrichment_workflows.c.workflow_id == workflow["workflow_id"])
++                .with_for_update(read=True)
++            )
++            .mappings()
++            .one()
++        )
++        if locked_workflow != workflow:
++            raise EnrichmentWorkflowError("enrichment_input_audit_invalid")
++        return locked_workflow
++
+     def _step_view(self, row: RowMapping) -> EnrichmentStepView:
+         call_state: ModelCallState = "not_reserved"
+         if row["model_call_reserved_at"] is not None:
+diff --git a/backend/tests/contract/test_r07_input_audit_contract.py b/backend/tests/contract/test_r07_input_audit_contract.py
+new file mode 100644
+index 00000000..2b535cf9
+--- /dev/null
++++ b/backend/tests/contract/test_r07_input_audit_contract.py
+@@ -0,0 +1,61 @@
++"""Audit is an internal strict contract; public jobs and workflow response shapes stay stable."""
++
++import pytest
++from pydantic import ValidationError
++
++from ai_intel.enrichment.job_contracts import (
++    EnrichmentExecutionPolicy,
++    EnrichmentModelInputVersions,
++    EventEnrichmentRequest,
++)
++from ai_intel.enrichment.job_models import enrichment_job_steps
++from ai_intel.enrichment.job_types import (
++    MAX_INPUT_AUDIT_BYTES,
++    EnrichmentInputAuditView,
++    EnrichmentWorkflowView,
++)
++
++
++def test_legacy_policy_does_not_invent_selector_or_prompt_versions():
++    policy = EnrichmentExecutionPolicy.model_validate_json('{"data_mode":"fixture"}')
++    assert policy.model_input_versions is None
++    assert EnrichmentInputAuditView.model_fields["record"].is_required()
++
++
++@pytest.mark.parametrize(
++    "payload",
++    [
++        {"prompt_version": "p", "selection_version": "s"},
++        {"prompt_version": 1, "selection_version": "s", "schema_version": "o"},
++        {
++            "prompt_version": "p",
++            "selection_version": "s",
++            "schema_version": "o",
++            "egress_granted": True,
++        },
++    ],
++)
++def test_server_version_contract_rejects_missing_coercion_or_grants(payload):
++    with pytest.raises(ValidationError):
++        EnrichmentModelInputVersions.model_validate(payload)
++
++
++def test_http_request_cannot_set_server_input_versions_or_audit():
++    with pytest.raises(ValidationError):
++        EventEnrichmentRequest.model_validate(
++            {"expected_event_version": 1, "model_input_versions": {"prompt_version": "body"}}
++        )
++    assert not {
++        "input_audit",
++        "record",
++        "input_selections",
++        "quoted_text",
++        "model_input_versions",
++    }.intersection(EnrichmentWorkflowView.model_fields)
++
++
++def test_append_columns_are_nullable_and_no_second_job_state_is_added():
++    assert enrichment_job_steps.c.input_audit_payload.nullable
++    assert enrichment_job_steps.c.input_audit_sha256.nullable
++    assert "status" not in enrichment_job_steps.c
++    assert MAX_INPUT_AUDIT_BYTES == 4194304
+diff --git a/backend/tests/integration/test_r07_input_audit_legacy_pg.py b/backend/tests/integration/test_r07_input_audit_legacy_pg.py
+new file mode 100644
+index 00000000..2db8bbab
+--- /dev/null
++++ b/backend/tests/integration/test_r07_input_audit_legacy_pg.py
+@@ -0,0 +1,195 @@
++"""Old absent versions retain exact hashes and identities without generating a new paid receipt."""
++
++from uuid import NAMESPACE_URL, UUID, uuid5
++
++import pytest
++from sqlalchemy import insert, select, text
++from sqlalchemy.orm import Session
++from test_r07_job_execution_pg import children, setup
++
++from ai_intel.enrichment import model_fields
++from ai_intel.enrichment.job_contracts import EnrichmentExecutionPolicy, EventEnrichmentRequest
++from ai_intel.enrichment.job_models import enrichment_job_steps, enrichment_workflows
++from ai_intel.enrichment.job_service import ENRICHMENT_PARENT_JOB_TYPE, RULE_VERSION, _digest
++from ai_intel.enrichment.job_types import EnrichmentJobPayload, json_payload
++from ai_intel.infrastructure.outbox import IdempotencyConflictError, enqueue_job
++from ai_intel.knowledge.models import job_runs
++from r07_input_audit_helpers import audit_engine as audit_engine
++from r07_input_audit_helpers import run
++
++pytestmark = pytest.mark.real_pg
++
++
++def old_workflow(engine, tmp_path):
++    service, scope, session_hash, event_id, request, _ = setup(engine, tmp_path)
++    workflow_id = uuid5(NAMESPACE_URL, "ai-intel:enrichment:" + repr((None, "legacy-audit-key")))
++    policy = service.execution_policy().model_dump(mode="json", exclude={"model_input_versions"})
++    binding = {
++        "event_id": str(event_id),
++        "actor_user_id": scope.user_id,
++        "actor_session_hash": session_hash,
++        "actor_tenant_id": scope.tenant_id,
++        "actor_role": scope.role.value,
++        "actor_permission_version": scope.permission_version,
++        "request_sha256": _digest(request.model_dump(mode="json")),
++        "execution_policy_sha256": _digest(policy),
++        "rule_version": RULE_VERSION,
++    }
++    with Session(engine) as session, session.begin():
++        parent_id = enqueue_job(
++            session,
++            None,
++            ENRICHMENT_PARENT_JOB_TYPE,
++            json_payload(
++                EnrichmentJobPayload(workflow_id=workflow_id, binding_sha256=_digest(binding))
++            ),
++            service.clock(),
++            idempotency_key="legacy-audit-key",
++        )
++        session.execute(
++            insert(enrichment_workflows).values(
++                **binding,
++                workflow_id=str(workflow_id),
++                parent_job_id=parent_id,
++                visibility="public",
++                tenant_id=None,
++                request_payload=request.model_dump(mode="json"),
++                execution_policy=policy,
++                created_at=service.clock(),
++            )
++        )
++    return service, scope, session_hash, event_id, request, workflow_id, parent_id
++
++
++def test_legacy_replay_retains_absent_versions_and_original_policy_hash(
++    audit_engine, tmp_path, monkeypatch
++):
++    service, scope, session_hash, event_id, request, workflow_id, parent_id = old_workflow(
++        audit_engine, tmp_path
++    )
++    with audit_engine.connect() as connection:
++        before = connection.scalar(
++            text("SELECT to_jsonb(w) FROM enrichment_workflows w WHERE workflow_id=:wf"),
++            {"wf": str(workflow_id)},
++        )
++    monkeypatch.setattr(model_fields, "PROMPT_VERSION", "future-prompt-version")
++    with Session(audit_engine) as session, session.begin():
++        receipt = service.enqueue(
++            session,
++            scope,
++            event_id,
++            request,
++            actor_session_hash=session_hash,
++            idempotency_key="legacy-audit-key",
++            created_at=service.clock(),
++        )
++    with audit_engine.connect() as connection:
++        after = connection.scalar(
++            text("SELECT to_jsonb(w) FROM enrichment_workflows w WHERE workflow_id=:wf"),
++            {"wf": str(workflow_id)},
++        )
++    assert before == after and "model_input_versions" not in after["execution_policy"]
++    assert (
++        receipt.reused
++        and receipt.workflow_id == workflow_id
++        and str(receipt.parent_job_id) == parent_id
++    )
++
++
++@pytest.mark.parametrize("mutation", ["body", "policy", "session"])
++def test_legacy_same_scope_changed_binding_remains_conflicting(audit_engine, tmp_path, mutation):
++    service, scope, session_hash, event_id, request, _, _ = old_workflow(audit_engine, tmp_path)
++    if mutation == "body":
++        request = EventEnrichmentRequest(expected_event_version=1, dimensions=("versions",))
++    elif mutation == "policy":
++        service.execution_policy = lambda: EnrichmentExecutionPolicy(data_mode="live")
++    else:
++        from datetime import timedelta
++
++        from ai_intel.api.auth_state import auth_sessions
++
++        session_hash = _digest("synthetic-new-session")
++        with audit_engine.begin() as connection:
++            connection.execute(
++                insert(auth_sessions).values(
++                    session_hash=session_hash,
++                    user_id=scope.user_id,
++                    csrf_token="synthetic-new-csrf",
++                    issued_at=service.clock(),
++                    expires_at=service.clock() + timedelta(hours=1),
++                )
++            )
++    with pytest.raises(IdempotencyConflictError), Session(audit_engine) as session, session.begin():
++        service.enqueue(
++            session,
++            scope,
++            event_id,
++            request,
++            actor_session_hash=session_hash,
++            idempotency_key="legacy-audit-key",
++            created_at=service.clock(),
++        )
++
++
++@pytest.mark.parametrize("reserved", [False, True])
++def test_legacy_model_steps_cannot_get_a_new_selector_or_wire_call(
++    audit_engine, tmp_path, reserved
++):
++    service, scope, session_hash, _, _, workflow_id, parent_id = old_workflow(
++        audit_engine, tmp_path
++    )
++    assert run(service, parent_id) == "succeeded"
++    step = next(
++        item
++        for item in children(service)
++        if item["workflow_id"] == str(workflow_id) and item["dimension"] == "versions"
++    )
++
++    def forbidden_client():
++        raise AssertionError("legacy execution must not construct a new generation client")
++
++    service.generation_client_factory = forbidden_client
++    if reserved:
++        assert service._reserve_model_call(step["job_id"], service.clock())
++    assert run(service, step["job_id"]) == ("failed" if reserved else "blocked")
++    with Session(audit_engine) as session:
++        observed = service.read_input_audit(
++            session,
++            scope,
++            UUID(step["job_id"]),
++            actor_session_hash=session_hash,
++            at=service.clock(),
++        )
++        code = session.scalar(
++            select(job_runs.c.error_code).where(job_runs.c.job_id == step["job_id"])
++        )
++        persisted = (
++            session.execute(
++                select(enrichment_job_steps).where(enrichment_job_steps.c.job_id == step["job_id"])
++            )
++            .mappings()
++            .one()
++        )
++    assert code == (
++        "incomplete_interrupted" if reserved else "legacy_model_input_audit_unavailable"
++    )
++    assert observed.audit_state == "legacy_unavailable" and observed.record is None
++    assert persisted["model_call_completed_at"] is None and persisted["model_trace"] == []
++
++
++def test_old_structured_steps_keep_existing_semantics_without_model_audit(audit_engine, tmp_path):
++    service, _, _, _, _, workflow_id, parent_id = old_workflow(audit_engine, tmp_path)
++    assert run(service, parent_id) == "succeeded"
++    step = next(
++        item
++        for item in children(service)
++        if item["workflow_id"] == str(workflow_id) and item["dimension"] == "cvss"
++    )
++    assert run(service, step["job_id"]) == "succeeded"
++    with Session(audit_engine) as session:
++        payload = session.scalar(
++            select(enrichment_job_steps.c.input_audit_payload).where(
++                enrichment_job_steps.c.job_id == step["job_id"]
++            )
++        )
++    assert payload is None
+diff --git a/backend/tests/integration/test_r07_input_audit_pg.py b/backend/tests/integration/test_r07_input_audit_pg.py
+new file mode 100644
+index 00000000..a4212834
+--- /dev/null
++++ b/backend/tests/integration/test_r07_input_audit_pg.py
+@@ -0,0 +1,200 @@
++"""Input selection and execution versions are durable PostgreSQL evidence, not reconstructed."""
++
++import json
++from dataclasses import asdict
++from datetime import datetime
++from pathlib import Path
++from zoneinfo import ZoneInfo
++
++import pytest
++from pydantic import TypeAdapter
++from sqlalchemy import select, text
++from sqlalchemy.orm import Session
++from test_r07_job_execution_pg import children, setup
++from tests.unit.test_r07_single_model_dimension import prepared_transport
++
++from ai_intel.enrichment import evidence_selection, job_service, model_fields
++from ai_intel.enrichment.job_models import enrichment_workflows
++from ai_intel.infrastructure.models.generation import GenerationLimits
++from ai_intel.infrastructure.outbox import IdempotencyConflictError
++from ai_intel.knowledge.models import job_runs
++from r07_input_audit_helpers import audit_engine as audit_engine
++from r07_input_audit_helpers import prepared_workflow, run
++
++pytestmark = pytest.mark.real_pg
++
++
++def test_enqueue_binds_actual_prompt_selection_and_schema_versions(audit_engine, tmp_path):
++    service, _, _, _, _, _ = setup(audit_engine, tmp_path)
++    with Session(service.engine) as session:
++        policy = session.scalar(select(enrichment_workflows.c.execution_policy))
++    assert policy["model_input_versions"] == {
++        "prompt_version": model_fields.PROMPT_VERSION,
++        "selection_version": evidence_selection.SELECTION_VERSION,
++        "schema_version": model_fields.SCHEMA_VERSION,
++    }
++
++
++@pytest.mark.parametrize(
++    "module, name",
++    [
++        (model_fields, "PROMPT_VERSION"),
++        (model_fields, "SCHEMA_VERSION"),
++        (evidence_selection, "SELECTION_VERSION"),
++    ],
++)
++def test_same_scope_key_cannot_reuse_a_changed_model_input_version(
++    audit_engine, tmp_path, monkeypatch, module, name
++):
++    service, scope, session_hash, event_id, request, _ = setup(audit_engine, tmp_path)
++    monkeypatch.setattr(module, name, getattr(module, name) + "-changed")
++    with (
++        pytest.raises(IdempotencyConflictError),
++        Session(service.engine) as session,
++        session.begin(),
++    ):
++        service.enqueue(
++            session,
++            scope,
++            event_id,
++            request,
++            actor_session_hash=session_hash,
++            idempotency_key="synthetic-request",
++            created_at=service.clock(),
++        )
++
++
++def test_receipt_persists_the_exact_returned_selection(audit_engine, tmp_path, monkeypatch):
++    service, _, _, _, _, _, step, calls = prepared_workflow(audit_engine, tmp_path, monkeypatch)
++    observed = []
++    original = job_service.extract_model_dimension
++
++    def capture(*args, **kwargs):
++        generated = original(*args, **kwargs)
++        observed.append(generated)
++        return generated
++
++    monkeypatch.setattr(job_service, "extract_model_dimension", capture)
++    assert run(service, step["job_id"]) == "partial"
++    with service.engine.connect() as connection:
++        payload = connection.scalar(
++            text("SELECT input_audit_payload FROM enrichment_job_steps WHERE job_id=:job"),
++            {"job": step["job_id"]},
++        )
++    assert payload is not None
++    assert payload["input_selections"][0]["texts"] == list(observed[0].input_selections[0].texts)
++    assert len(calls) == 1 and len(calls[0]) == 1
++    assert (
++        payload["input_selections"][0]["incomplete"] == observed[0].input_selections[0].incomplete
++    )
++    assert len(payload["input_selections"][0]["source_versions"]) == len(
++        asdict(observed[0].input_selections[0])["source_versions"]
++    )
++    assert payload["input_selections"] == json.loads(
++        TypeAdapter(tuple[evidence_selection.FieldEvidenceSelection, ...]).dump_json(
++            observed[0].input_selections
++        )
++    )
++
++
++def test_recorded_nvd_selection_budget_observation_keeps_all_dependencies(
++    audit_engine, tmp_path, monkeypatch
++):
++    from uuid import UUID
++
++    from ai_intel.enrichment.job_contracts import EnrichmentExecutionPolicy
++
++    policy = EnrichmentExecutionPolicy(
++        generation_enabled=True,
++        generation_provider="openai",
++        approved_model="fixture-model",
++        data_mode="fixture",
++    )
++    service, scope, session_hash, _, _, receipt = setup(audit_engine, tmp_path, policy=policy)
++    calls = []
++
++    def factory():
++        client, wire = prepared_transport(monkeypatch)
++        client.limits = GenerationLimits(total_timeout_seconds=20.0, max_calls=1)
++        calls.append(wire)
++        return client
++
++    service.generation_client_factory = factory
++    assert run(service, receipt.parent_job_id) == "succeeded"
++    with audit_engine.connect() as connection:
++        snapshot, context_bytes = connection.execute(
++            text(
++                "SELECT input_context, octet_length(input_context::text) "
++                "FROM enrichment_workflows WHERE workflow_id=:wf"
++            ),
++            {"wf": str(receipt.workflow_id)},
++        ).one()
++    outcomes = []
++    for step in children(service):
++        if step["dimension"] is None:
++            publication = step
++            continue
++        outcome = run(service, step["job_id"])
++        if step["dimension"] in {"atlas", "versions", "literature", "poc"}:
++            with Session(audit_engine) as session:
++                observed = service.read_input_audit(
++                    session,
++                    scope,
++                    UUID(step["job_id"]),
++                    actor_session_hash=session_hash,
++                    at=service.clock(),
++                )
++                error = session.scalar(
++                    select(job_runs.c.error_code).where(job_runs.c.job_id == step["job_id"])
++                )
++            selections = [] if observed.record is None else observed.record.input_selections
++            outcomes.append(
++                {
++                    "dimension": step["dimension"],
++                    "outcome": outcome,
++                    "error_code": error,
++                    "audit_state": observed.audit_state,
++                    "wire_receipts": len(observed.model_attempts),
++                    "selections": [
++                        {
++                            "selected_ranges": len(item.selected),
++                            "input_records": len(item.texts),
++                            "input_utf8_bytes": sum(len(record.encode()) for record in item.texts),
++                            "all_source_dependencies": len(item.source_versions),
++                            "omitted_blocks": len(item.omitted_block_ids),
++                            "omitted_ranges": len(item.omitted_ranges),
++                            "incomplete": item.incomplete,
++                        }
++                        for item in selections
++                    ],
++                }
++            )
++            for item in selections:
++                assert (
++                    len(item.texts) <= 50
++                    and sum(len(record.encode()) for record in item.texts) <= 65536
++                )
++                assert len(item.source_versions) == len(snapshot["documents"]) and item.incomplete
++    publication_outcome = run(service, publication["job_id"])
++    observation = {
++        "observed_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="seconds"),
++        "data_mode": "fixture",
++        "source": "recorded_nvd_ollama",
++        "full_context_jsonb_utf8_bytes": context_bytes,
++        "full_source_documents": len(snapshot["documents"]),
++        "full_roster_blocks": sum(len(document["blocks"]) for document in snapshot["documents"]),
++        "old_case_expected_wire_calls": 0,
++        "actual_offline_codec_wire_calls": sum(len(wire) for wire in calls),
++        "external_wire_calls": 0,
++        "model_outcomes": outcomes,
++        "publication_outcome": publication_outcome,
++        "fees": "unknown",
++        "original_case_red": "not_closed",
++    }
++    path = (
++        Path(__file__).resolve().parents[3]
++        / "reports/runs/recovery_r07_input_audit_20261016/nvd_current_selection_observation.json"
++    )
++    path.write_bytes(json.dumps(observation, indent=2).encode())
++    assert observation["full_roster_blocks"] > 50
++    assert observation["actual_offline_codec_wire_calls"] == 3 and publication_outcome == "partial"
+diff --git a/backend/tests/integration/test_r07_input_audit_receipts_pg.py b/backend/tests/integration/test_r07_input_audit_receipts_pg.py
+new file mode 100644
+index 00000000..28bd58d1
+--- /dev/null
++++ b/backend/tests/integration/test_r07_input_audit_receipts_pg.py
+@@ -0,0 +1,308 @@
++"""PG receipt immutability, recovery and byte budgets retain actual offline call evidence."""
++
++import hashlib
++import json
++from concurrent.futures import ThreadPoolExecutor
++from dataclasses import replace
++from datetime import timedelta
++from uuid import UUID
++
++import pytest
++from sqlalchemy import select, text, update
++from sqlalchemy.exc import IntegrityError
++from sqlalchemy.orm import Session
++
++from ai_intel.api.auth_state import auth_sessions
++from ai_intel.enrichment import evidence_selection, job_service, model_fields
++from ai_intel.enrichment.job_models import enrichment_job_steps, enrichment_workflows
++from ai_intel.enrichment.job_service import EnrichmentJobService
++from ai_intel.enrichment.job_types import FrozenEnrichmentInputs
++from ai_intel.knowledge.models import job_runs
++from ai_intel.workers.executor import JobExecutionError
++from r07_input_audit_helpers import audit_engine as audit_engine
++from r07_input_audit_helpers import install_audit_proposal, prepared_workflow, run
++from r07_input_audit_helpers import legacy_audit_engine as legacy_audit_engine
++
++pytestmark = pytest.mark.real_pg
++
++
++def recorded_workflow(engine, tmp_path, monkeypatch):
++    service, scope, session_hash, _, _, receipt, step, calls = prepared_workflow(
++        engine, tmp_path, monkeypatch
++    )
++    assert run(service, step["job_id"]) == "partial"
++    with Session(engine) as session:
++        view = service.read_input_audit(
++            session,
++            scope,
++            UUID(step["job_id"]),
++            actor_session_hash=session_hash,
++            at=service.clock(),
++        )
++    return service, scope, session_hash, receipt, step, calls, view
++
++
++def test_pg16_jsonb_unicode_hash_uses_postgresql_bytes(audit_engine):
++    payload = json.dumps({"中文": "模型🙂", "nested": {"z": 2, "a": "原文"}}, ensure_ascii=False)
++    with audit_engine.connect() as connection:
++        version = connection.scalar(text("SHOW server_version_num"))
++        normalized, digest = connection.execute(
++            text(
++                "SELECT CAST(CAST(:payload AS jsonb) AS text), "
++                "encode(sha256(convert_to(CAST(CAST(:payload AS jsonb) AS text),'UTF8')),'hex')"
++            ),
++            {"payload": payload},
++        ).one()
++    assert int(version) // 10000 == 16
++    assert hashlib.sha256(normalized.encode()).hexdigest() == digest
++    assert hashlib.sha256(payload.encode()).hexdigest() != digest
++    assert "模型🙂" in normalized
++
++
++def test_receipt_survives_new_service_and_is_not_reconstructed(audit_engine, tmp_path, monkeypatch):
++    service, scope, session_hash, _, step, calls, original = recorded_workflow(
++        audit_engine, tmp_path, monkeypatch
++    )
++
++    def forbidden_selector(*args, **kwargs):
++        raise AssertionError("stored input audit must not reconstruct selection")
++
++    monkeypatch.setattr(evidence_selection, "select_field_evidence", forbidden_selector)
++    restarted = EnrichmentJobService(
++        audit_engine, service.store, execution_policy=service.execution_policy, clock=service.clock
++    )
++    with Session(audit_engine) as session:
++        observed = restarted.read_input_audit(
++            session,
++            scope,
++            UUID(step["job_id"]),
++            actor_session_hash=session_hash,
++            at=service.clock(),
++        )
++    assert observed == original and observed.audit_state == "recorded"
++    assert run(restarted, step["job_id"]) == "not_claimed"
++    assert sum(len(wire) for wire in calls) == 1
++
++
++def test_audit_capacity_is_checked_before_reservation_or_wire(audit_engine, tmp_path, monkeypatch):
++    service, _, _, _, _, _, step, calls = prepared_workflow(audit_engine, tmp_path, monkeypatch)
++    monkeypatch.setattr(job_service, "MAX_INPUT_AUDIT_BYTES", 1)
++    assert run(service, step["job_id"]) == "blocked"
++    with Session(audit_engine) as session:
++        persisted = (
++            session.execute(
++                select(enrichment_job_steps).where(enrichment_job_steps.c.job_id == step["job_id"])
++            )
++            .mappings()
++            .one()
++        )
++        code = session.scalar(
++            select(job_runs.c.error_code).where(job_runs.c.job_id == step["job_id"])
++        )
++    assert code == "input_audit_budget_exhausted"
++    assert persisted["model_call_reserved_at"] is None and persisted["input_audit_payload"] is None
++    assert sum(len(wire) for wire in calls) == 0
++
++
++def test_completed_receipt_and_audit_remain_when_business_transaction_rolls_back(
++    audit_engine, tmp_path, monkeypatch
++):
++    service, _, session_hash, _, _, _, step, calls = prepared_workflow(
++        audit_engine, tmp_path, monkeypatch
++    )
++    original = job_service.extract_model_dimension
++
++    def revoke_after_wire(*args, **kwargs):
++        generated = original(*args, **kwargs)
++        with audit_engine.begin() as connection:
++            connection.execute(
++                update(auth_sessions)
++                .where(auth_sessions.c.session_hash == session_hash)
++                .values(revoked_at=service.clock())
++            )
++        return generated
++
++    monkeypatch.setattr(job_service, "extract_model_dimension", revoke_after_wire)
++    assert run(service, step["job_id"]) == "blocked"
++    with Session(audit_engine) as session:
++        persisted = (
++            session.execute(
++                select(enrichment_job_steps).where(enrichment_job_steps.c.job_id == step["job_id"])
++            )
++            .mappings()
++            .one()
++        )
++    assert persisted["result_payload"] is None
++    assert persisted["input_audit_payload"] is not None and len(persisted["model_trace"]) == 1
++    assert run(service, step["job_id"]) == "not_claimed" and sum(len(wire) for wire in calls) == 1
++
++
++def test_duplicate_concurrent_receipt_is_immutable_and_conflicting_trace_is_rejected(
++    audit_engine, tmp_path, monkeypatch
++):
++    service, _, _, _, step, calls, observed = recorded_workflow(audit_engine, tmp_path, monkeypatch)
++    with ThreadPoolExecutor(max_workers=2) as workers:
++        list(
++            workers.map(
++                lambda _: service._record_model_receipt(
++                    step["job_id"],
++                    observed.model_attempts,
++                    service.clock() + timedelta(seconds=1),
++                    input_audit=observed.record,
++                ),
++                range(2),
++            )
++        )
++    with audit_engine.begin() as connection:
++        before = connection.scalar(
++            text("SELECT to_jsonb(s) FROM enrichment_job_steps s WHERE job_id=:job"),
++            {"job": step["job_id"]},
++        )
++    with pytest.raises(JobExecutionError):
++        service._record_model_receipt(step["job_id"], (), service.clock() + timedelta(seconds=2))
++    with audit_engine.connect() as connection:
++        after = connection.scalar(
++            text("SELECT to_jsonb(s) FROM enrichment_job_steps s WHERE job_id=:job"),
++            {"job": step["job_id"]},
++        )
++    assert before == after and sum(len(wire) for wire in calls) == 1
++
++
++@pytest.mark.parametrize("mutation", ["audit", "trace", "completed", "reserved", "sha"])
++def test_database_rejects_changes_to_completed_audit_receipt(
++    audit_engine, tmp_path, monkeypatch, mutation
++):
++    _, _, _, _, step, _, _ = recorded_workflow(audit_engine, tmp_path, monkeypatch)
++    values = {
++        "audit": {"input_audit_payload": {}},
++        "trace": {"model_trace": []},
++        "completed": {"model_call_completed_at": None},
++        "reserved": {"model_call_reserved_at": None},
++        "sha": {"input_audit_sha256": "0" * 64},
++    }[mutation]
++    with pytest.raises(IntegrityError), audit_engine.begin() as connection:
++        connection.execute(
++            update(enrichment_job_steps)
++            .where(enrichment_job_steps.c.job_id == step["job_id"])
++            .values(**values)
++        )
++
++
++def test_audit_receipt_update_does_not_wait_for_executor_job_lock(
++    audit_engine, tmp_path, monkeypatch
++):
++    service, _, _, _, _, _, step, _ = prepared_workflow(audit_engine, tmp_path, monkeypatch)
++    with Session(audit_engine) as session:
++        workflow = session.execute(select(enrichment_workflows)).mappings().one()
++        frozen = FrozenEnrichmentInputs.model_validate_json(json.dumps(workflow["input_context"]))
++    generated = job_service.extract_model_dimension(
++        frozen.context,
++        frozen.loaded().documents,
++        service.generation_client_factory(),
++        dimension="versions",
++        budget_authorized=True,
++        content_is_private=False,
++        egress_granted=False,
++    )
++    audit = service._build_input_audit(workflow, step, generated.input_selections)
++    with Session(audit_engine) as locked, locked.begin():
++        locked.execute(
++            select(job_runs).where(job_runs.c.job_id == step["job_id"]).with_for_update()
++        ).one()
++        with ThreadPoolExecutor(max_workers=1) as worker:
++            assert worker.submit(
++                service._reserve_model_call, step["job_id"], service.clock()
++            ).result(timeout=5)
++            worker.submit(
++                service._record_model_receipt,
++                step["job_id"],
++                generated.model_attempts,
++                service.clock(),
++                input_audit=audit,
++            ).result(timeout=5)
++    with audit_engine.connect() as connection:
++        assert connection.scalar(
++            text(
++                "SELECT input_audit_payload IS NOT NULL FROM enrichment_job_steps WHERE job_id=:job"
++            ),
++            {"job": step["job_id"]},
++        )
++
++
++def test_model_step_blocks_after_runtime_code_version_changes(audit_engine, tmp_path, monkeypatch):
++    service, _, _, _, _, _, step, calls = prepared_workflow(audit_engine, tmp_path, monkeypatch)
++    monkeypatch.setattr(model_fields, "PROMPT_VERSION", model_fields.PROMPT_VERSION + "-new")
++    assert run(service, step["job_id"]) == "blocked"
++    assert sum(len(wire) for wire in calls) == 0
++
++
++def test_faulty_returned_selector_preserves_trace_without_faking_audit(
++    audit_engine, tmp_path, monkeypatch
++):
++    service, scope, session_hash, _, _, _, step, calls = prepared_workflow(
++        audit_engine, tmp_path, monkeypatch
++    )
++    original = job_service.extract_model_dimension
++
++    def faulty_selector(*args, **kwargs):
++        generated = original(*args, **kwargs)
++        selection = generated.input_selections[0]
++        forged = replace(selection.source_versions[0], content_sha256="0" * 64)
++        return replace(generated, input_selections=(replace(selection, source_versions=(forged,)),))
++
++    monkeypatch.setattr(job_service, "extract_model_dimension", faulty_selector)
++    assert run(service, step["job_id"]) == "failed"
++    with Session(audit_engine) as session:
++        observed = service.read_input_audit(
++            session,
++            scope,
++            UUID(step["job_id"]),
++            actor_session_hash=session_hash,
++            at=service.clock(),
++        )
++    assert observed.audit_state == "not_recorded" and observed.record is None
++    assert len(observed.model_attempts) == 1 and sum(len(wire) for wire in calls) == 1
++
++
++def test_forward_audit_proposal_preserves_all_old_0017_values(legacy_audit_engine, tmp_path):
++    from test_r07_enrichment_job_metadata_pg import seed_workflow
++
++    seed_workflow(legacy_audit_engine, tmp_path)
++    with legacy_audit_engine.connect() as connection:
++        before_workflows = (
++            connection.execute(text("SELECT to_jsonb(w) FROM enrichment_workflows w"))
++            .scalars()
++            .all()
++        )
++        before_steps = (
++            connection.execute(text("SELECT to_jsonb(s) FROM enrichment_job_steps s"))
++            .scalars()
++            .all()
++        )
++    install_audit_proposal(legacy_audit_engine)
++    with legacy_audit_engine.connect() as connection:
++        after_workflows = (
++            connection.execute(text("SELECT to_jsonb(w) FROM enrichment_workflows w"))
++            .scalars()
++            .all()
++        )
++        after_steps = (
++            connection.execute(
++                text(
++                    "SELECT to_jsonb(s)-'input_audit_payload'-'input_audit_sha256' "
++                    "FROM enrichment_job_steps s"
++                )
++            )
++            .scalars()
++            .all()
++        )
++        assert (
++            connection.scalar(
++                text(
++                    "SELECT count(*) FROM enrichment_job_steps WHERE "
++                    "input_audit_payload IS NOT NULL OR input_audit_sha256 IS NOT NULL"
++                )
++            )
++            == 0
++        )
++    assert before_workflows == after_workflows and before_steps == after_steps
+diff --git a/backend/tests/security/test_r07_input_audit_fix1_acl_pg.py b/backend/tests/security/test_r07_input_audit_fix1_acl_pg.py
+new file mode 100644
+index 00000000..f9c9aa4b
+--- /dev/null
++++ b/backend/tests/security/test_r07_input_audit_fix1_acl_pg.py
+@@ -0,0 +1,174 @@
++"""Real PG transactions protect historical audit text against concurrent ACL writers."""
++
++from concurrent.futures import ThreadPoolExecutor, TimeoutError
++from uuid import UUID
++
++import pytest
++from sqlalchemy import select, text, update
++from sqlalchemy.exc import OperationalError
++from sqlalchemy.orm import Session
++from tests.security.test_r07_input_audit_security_pg import private_recorded_workflow
++
++from ai_intel.api.auth_state import auth_sessions
++from ai_intel.knowledge.models import document_revisions, users
++from ai_intel.knowledge.persistence_models import event_documents
++from r07_input_audit_helpers import audit_engine as audit_engine
++
++pytestmark = pytest.mark.real_pg
++PARENT_TABLES = ("sources", "documents", "document_revisions")
++
++
++@pytest.mark.parametrize("parent", (*PARENT_TABLES, "events"))
++def test_committed_parent_writer_is_rechecked_after_reader_waits(
++    audit_engine, tmp_path, monkeypatch, parent
++):
++    service, scope, session_hash, _, step, _ = private_recorded_workflow(
++        audit_engine, tmp_path, monkeypatch
++    )
++
++    def read():
++        with Session(audit_engine) as session, session.begin():
++            return service.read_input_audit(
++                session,
++                scope,
++                UUID(step["job_id"]),
++                actor_session_hash=session_hash,
++                at=service.clock(),
++            )
++
++    with ThreadPoolExecutor(max_workers=1) as worker, audit_engine.connect() as writer:
++        transaction = writer.begin()
++        writer.execute(
++            text("UPDATE " + parent + " SET visibility='tenant',tenant_id='synthetic-revoked'")
++        )
++        reader = worker.submit(read)
++        try:
++            with pytest.raises(TimeoutError):
++                reader.result(timeout=0.2)
++        finally:
++            transaction.commit()
++        with pytest.raises(PermissionError):
++            reader.result(timeout=5)
++
++
++@pytest.mark.parametrize("authority", ["session", "user", "event", "workflow"])
++def test_reader_retains_authority_locks_until_private_text_has_been_returned(
++    audit_engine, tmp_path, monkeypatch, authority
++):
++    service, scope, session_hash, receipt, step, _ = private_recorded_workflow(
++        audit_engine, tmp_path, monkeypatch
++    )
++    original = service._read_input_audit_record
++    observed = []
++    statements = {
++        "session": "UPDATE auth_sessions SET revoked_at=now() WHERE session_hash=:id",
++        "user": "UPDATE users SET role='viewer' WHERE user_id=:id",
++        "event": "UPDATE events SET tenant_id='synthetic-revoked' WHERE event_id=:id",
++        "workflow": "UPDATE enrichment_workflows SET actor_user_id=actor_user_id "
++        "WHERE workflow_id=:id",
++    }
++    identities = {
++        "session": session_hash,
++        "user": scope.user_id,
++        "event": str(receipt.workflow_id),
++        "workflow": str(receipt.workflow_id),
++    }
++    with audit_engine.connect() as connection:
++        identities["event"] = connection.scalar(
++            text("SELECT event_id FROM enrichment_workflows WHERE workflow_id=:id"),
++            {"id": str(receipt.workflow_id)},
++        )
++
++    def concurrent_writer(session, workflow, step_row):
++        with pytest.raises(OperationalError), audit_engine.begin() as connection:
++            connection.execute(text("SET LOCAL lock_timeout='200ms'"))
++            connection.execute(text(statements[authority]), {"id": identities[authority]})
++        observed.append("writer_blocked")
++        return original(session, workflow, step_row)
++
++    monkeypatch.setattr(service, "_read_input_audit_record", concurrent_writer)
++    with Session(audit_engine) as session, session.begin():
++        result = service.read_input_audit(
++            session,
++            scope,
++            UUID(step["job_id"]),
++            actor_session_hash=session_hash,
++            at=service.clock(),
++        )
++    assert result.record.input_selections[0].texts and observed == ["writer_blocked"]
++
++
++@pytest.mark.parametrize("parent", PARENT_TABLES)
++def test_noncurrent_unlinked_history_keeps_current_nonnull_parent_acl(
++    audit_engine, tmp_path, monkeypatch, parent
++):
++    service, scope, session_hash, _, step, calls = private_recorded_workflow(
++        audit_engine, tmp_path, monkeypatch
++    )
++    with audit_engine.begin() as connection:
++        for table in PARENT_TABLES:
++            connection.execute(
++                text("UPDATE " + table + " SET visibility='tenant',tenant_id=:tenant"),
++                {"tenant": scope.tenant_id},
++            )
++        connection.execute(update(document_revisions).values(is_current=False))
++        connection.execute(update(event_documents).values(active=False))
++        assert (
++            connection.scalar(
++                select(document_revisions.c.revision_id).where(document_revisions.c.is_current)
++            )
++            is None
++        )
++        assert (
++            connection.scalar(select(event_documents.c.revision_id).where(event_documents.c.active))
++            is None
++        )
++    with Session(audit_engine) as session, session.begin():
++        result = service.read_input_audit(
++            session,
++            scope,
++            UUID(step["job_id"]),
++            actor_session_hash=session_hash,
++            at=service.clock(),
++        )
++    assert result.audit_state == "recorded" and result.record.input_selections[0].texts
++    before = sum(len(group) for group in calls)
++    with audit_engine.begin() as connection:
++        connection.execute(text("UPDATE " + parent + " SET tenant_id='synthetic-revoked'"))
++    with pytest.raises(PermissionError), Session(audit_engine) as session:
++        service.read_input_audit(
++            session,
++            scope,
++            UUID(step["job_id"]),
++            actor_session_hash=session_hash,
++            at=service.clock(),
++        )
++    assert sum(len(group) for group in calls) == before
++
++
++@pytest.mark.parametrize("authority", ["session", "user"])
++def test_committed_authority_revocation_never_returns_private_text(
++    audit_engine, tmp_path, monkeypatch, authority
++):
++    service, scope, session_hash, _, step, _ = private_recorded_workflow(
++        audit_engine, tmp_path, monkeypatch
++    )
++    with audit_engine.begin() as connection:
++        if authority == "session":
++            connection.execute(
++                update(auth_sessions)
++                .where(auth_sessions.c.session_hash == session_hash)
++                .values(revoked_at=service.clock())
++            )
++        else:
++            connection.execute(
++                update(users).where(users.c.user_id == scope.user_id).values(role="viewer")
++            )
++    with pytest.raises(PermissionError), Session(audit_engine) as session:
++        service.read_input_audit(
++            session,
++            scope,
++            UUID(step["job_id"]),
++            actor_session_hash=session_hash,
++            at=service.clock(),
++        )
+diff --git a/backend/tests/security/test_r07_input_audit_security_pg.py b/backend/tests/security/test_r07_input_audit_security_pg.py
+new file mode 100644
+index 00000000..ab70421a
+--- /dev/null
++++ b/backend/tests/security/test_r07_input_audit_security_pg.py
+@@ -0,0 +1,222 @@
++"""Private selection is authorized internally and corrupted persistent evidence fails closed."""
++
++from datetime import timedelta
++from uuid import UUID
++
++import pytest
++from sqlalchemy import insert, select, text, update
++from sqlalchemy.orm import Session
++from test_r07_input_audit_receipts_pg import recorded_workflow
++from tests.r07_idempotency_scope_helpers import create_actor
++
++from ai_intel.api.auth_state import auth_sessions
++from ai_intel.domain.access import AccessScope, Role
++from ai_intel.enrichment.job_contracts import EnrichmentExecutionPolicy
++from ai_intel.enrichment.job_models import enrichment_job_steps
++from ai_intel.enrichment.job_service import EnrichmentWorkflowError, _audit_sql_digest, _digest
++from ai_intel.knowledge.models import users
++from ai_intel.knowledge.persistence_models import events
++from r07_input_audit_helpers import audit_engine as audit_engine
++from r07_input_audit_helpers import prepared_workflow, run
++
++pytestmark = pytest.mark.real_pg
++
++
++def private_recorded_workflow(engine, tmp_path, monkeypatch):
++    service, scope, session_hash, event_id, request, _, _, calls = prepared_workflow(
++        engine, tmp_path, monkeypatch
++    )
++    tenant = "synthetic-audit-private-tenant"
++    private_scope = AccessScope.for_authenticated_user(scope.user_id, tenant, Role.TENANT_ADMIN)
++    with engine.begin() as connection:
++        connection.execute(
++            update(users)
++            .where(users.c.user_id == scope.user_id)
++            .values(role="tenant_admin", tenant_id=tenant)
++        )
++        connection.execute(
++            update(events)
++            .where(events.c.event_id == str(event_id))
++            .values(visibility="tenant", tenant_id=tenant)
++        )
++    service.execution_policy = lambda: EnrichmentExecutionPolicy(
++        generation_enabled=True,
++        generation_provider="openai",
++        approved_model="fixture-model",
++        private_egress_granted=True,
++        data_mode="fixture",
++    )
++    with Session(engine) as session, session.begin():
++        receipt = service.enqueue(
++            session,
++            private_scope,
++            event_id,
++            request,
++            actor_session_hash=session_hash,
++            idempotency_key="private-audit",
++            created_at=service.clock(),
++        )
++    assert run(service, receipt.parent_job_id) == "succeeded"
++    with Session(engine) as session:
++        step = (
++            session.execute(
++                select(enrichment_job_steps).where(
++                    enrichment_job_steps.c.workflow_id == str(receipt.workflow_id),
++                    enrichment_job_steps.c.dimension == "versions",
++                )
++            )
++            .mappings()
++            .one()
++        )
++    assert run(service, step["job_id"]) == "partial"
++    return service, private_scope, session_hash, receipt, step, calls
++
++
++def test_private_selection_is_absent_from_public_dto_but_authorized_internal_read_exists(
++    audit_engine, tmp_path, monkeypatch
++):
++    service, scope, session_hash, receipt, step, _ = private_recorded_workflow(
++        audit_engine, tmp_path, monkeypatch
++    )
++    with Session(audit_engine) as session:
++        public = service.read_workflow(
++            session, scope, receipt.workflow_id, actor_session_hash=session_hash, at=service.clock()
++        ).model_dump_json()
++        internal = service.read_input_audit(
++            session,
++            scope,
++            UUID(step["job_id"]),
++            actor_session_hash=session_hash,
++            at=service.clock(),
++        )
++    assert internal.audit_state == "recorded" and internal.record.input_selections[0].texts
++    assert all(
++        item not in public
++        for item in (
++            "input_audit",
++            "input_selections",
++            "source_versions",
++            "input_context",
++            "actor_session_hash",
++            session_hash,
++        )
++    )
++
++
++@pytest.mark.parametrize(
++    "reader", ["other_tenant", "same_tenant_viewer", "revoked", "changed_role", "parent_acl"]
++)
++def test_current_scope_session_role_and_parent_acl_protect_private_selection(
++    audit_engine, tmp_path, monkeypatch, reader
++):
++    service, scope, session_hash, _, step, _ = private_recorded_workflow(
++        audit_engine, tmp_path, monkeypatch
++    )
++    if reader in {"other_tenant", "same_tenant_viewer"}:
++        tenant = "synthetic-other" if reader == "other_tenant" else scope.tenant_id
++        role = Role.TENANT_ADMIN if reader == "other_tenant" else Role.VIEWER
++        scope, session_hash = create_actor(audit_engine, tenant_id=tenant, role=role)
++    elif reader == "revoked":
++        with audit_engine.begin() as connection:
++            connection.execute(
++                update(auth_sessions)
++                .where(auth_sessions.c.session_hash == session_hash)
++                .values(revoked_at=service.clock())
++            )
++    elif reader == "changed_role":
++        with audit_engine.begin() as connection:
++            connection.execute(
++                update(users).where(users.c.user_id == scope.user_id).values(role="viewer")
++            )
++    else:
++        with audit_engine.begin() as connection:
++            connection.execute(
++                text("UPDATE sources SET visibility='tenant', tenant_id='synthetic-other-parent'")
++            )
++    with pytest.raises(PermissionError), Session(audit_engine) as session:
++        service.read_input_audit(
++            session,
++            scope,
++            UUID(step["job_id"]),
++            actor_session_hash=session_hash,
++            at=service.clock(),
++        )
++
++
++def test_new_same_actor_session_can_read_history_without_rebinding_execution(
++    audit_engine, tmp_path, monkeypatch
++):
++    service, scope, old_session, _, step, _, original = recorded_workflow(
++        audit_engine, tmp_path, monkeypatch
++    )
++    new_session = _digest("synthetic-authorized-new-read-session")
++    with audit_engine.begin() as connection:
++        connection.execute(
++            update(auth_sessions)
++            .where(auth_sessions.c.session_hash == old_session)
++            .values(revoked_at=service.clock())
++        )
++        connection.execute(
++            insert(auth_sessions).values(
++                session_hash=new_session,
++                user_id=scope.user_id,
++                csrf_token="synthetic-read-csrf",
++                issued_at=service.clock(),
++                expires_at=service.clock() + timedelta(hours=1),
++            )
++        )
++    with Session(audit_engine) as session:
++        observed = service.read_input_audit(
++            session, scope, UUID(step["job_id"]), actor_session_hash=new_session, at=service.clock()
++        )
++    assert observed == original
++
++
++@pytest.mark.parametrize("tamper", ["hash", "source_hash", "omission", "extra", "job_identity"])
++def test_corrupt_persisted_audit_is_rejected_even_if_database_constraints_are_fault_injected(
++    audit_engine, tmp_path, monkeypatch, tamper
++):
++    service, scope, session_hash, _, step, _, original = recorded_workflow(
++        audit_engine, tmp_path, monkeypatch
++    )
++    payload = original.record.model_dump(mode="json")
++    if tamper == "source_hash":
++        payload["input_selections"][0]["source_versions"][0]["content_sha256"] = "0" * 64
++    elif tamper == "omission":
++        payload["input_selections"][0]["omitted_ranges"].append(
++            {
++                "revision_id": payload["input_selections"][0]["source_versions"][0]["revision_id"],
++                "block_id": payload["input_selections"][0]["selected"][0]["block_id"],
++                "start_offset": 0,
++                "end_offset": 1,
++                "matched_cues": [],
++            }
++        )
++    elif tamper == "extra":
++        payload["input_selections"][0]["tenant_id"] = "untrusted-body-grant"
++    elif tamper == "job_identity":
++        payload["job_id"] = "00000000-0000-0000-0000-000000000000"
++    with audit_engine.begin() as connection:
++        connection.execute(
++            text("ALTER TABLE enrichment_job_steps DISABLE TRIGGER enrichment_input_audit_guard")
++        )
++        connection.execute(
++            text("ALTER TABLE enrichment_job_steps DROP CONSTRAINT ck_enrichment_step_input_audit")
++        )
++        connection.execute(
++            update(enrichment_job_steps)
++            .where(enrichment_job_steps.c.job_id == step["job_id"])
++            .values(
++                input_audit_payload=payload,
++                input_audit_sha256="0" * 64 if tamper == "hash" else _audit_sql_digest(payload),
++            )
++        )
++    with pytest.raises(EnrichmentWorkflowError) as blocked, Session(audit_engine) as session:
++        service.read_input_audit(
++            session,
++            scope,
++            UUID(step["job_id"]),
++            actor_session_hash=session_hash,
++            at=service.clock(),
++        )
++    assert blocked.value.code == "enrichment_input_audit_invalid" and blocked.value.status == 409
+diff --git a/backend/tests/unit/test_r07_input_audit_validation.py b/backend/tests/unit/test_r07_input_audit_validation.py
+new file mode 100644
+index 00000000..1891237d
+--- /dev/null
++++ b/backend/tests/unit/test_r07_input_audit_validation.py
+@@ -0,0 +1,106 @@
++"""Immutable Unicode anchors and omissions are checked without running the selector again."""
++
++import hashlib
++import json
++
++import pytest
++from pydantic import ValidationError
++from tests.unit.test_r07_model_fields import context, fixture_documents
++
++from ai_intel.domain.values import VisibilityScope
++from ai_intel.enrichment.evidence_selection import select_field_evidence
++from ai_intel.enrichment.job_types import (
++    DocumentSnapshot,
++    FieldEvidenceSelectionAudit,
++    FrozenEnrichmentInputs,
++    validate_input_selection,
++)
++
++
++def unicode_selection():
++    document = fixture_documents()[0]
++    text = "未送全文🙂" * 3600 + "\nAffected 产品🙂 version 1.0.\n"
++    block = document.blocks[0].model_copy(
++        update={"text": text, "text_sha256": hashlib.sha256(text.encode()).hexdigest()}
++    )
++    document = document.model_copy(update={"blocks": (block,), "json_payload": None})
++    frozen = FrozenEnrichmentInputs(
++        context=context((document,)),
++        scope=VisibilityScope(visibility="public"),
++        documents=(DocumentSnapshot.model_validate(document.model_dump()),),
++        parents=(),
++    )
++    selection = FieldEvidenceSelectionAudit.from_selection(
++        select_field_evidence((document,), "versions")
++    )
++    return frozen, selection
++
++
++def test_actual_unicode_selection_keeps_original_ranges_and_omits_unseen_body():
++    frozen, selection = unicode_selection()
++    validate_input_selection(selection, frozen)
++    assert selection.incomplete and len(selection.omitted_ranges) == 2
++    assert selection.selected[0].start_offset == 18001
++    assert selection.selected[0].start_offset != len(
++        frozen.documents[0].blocks[0].text[:18001].encode()
++    )
++    assert "未送全文" not in selection.model_dump_json()
++    assert "产品🙂" in selection.texts[1]
++
++
++@pytest.mark.parametrize(
++    "mutation",
++    [
++        "source_hash",
++        "source_version",
++        "byte_offset",
++        "missing_omission",
++        "overlap",
++        "report",
++        "text",
++        "block_hash",
++    ],
++)
++def test_corrupt_source_range_text_or_omission_is_rejected(mutation):
++    frozen, selection = unicode_selection()
++    payload = selection.model_dump(mode="json")
++    if mutation == "source_hash":
++        payload["source_versions"][0]["content_sha256"] = "0" * 64
++    elif mutation == "source_version":
++        payload["source_versions"][0]["source_version"] = "invented-selector-version"
++    elif mutation == "byte_offset":
++        payload["selected"][0]["start_offset"] = 30001
++        payload["selected"][0]["end_offset"] = 30002
++    elif mutation == "missing_omission":
++        payload["omitted_ranges"] = []
++    elif mutation == "overlap":
++        payload["selected"].append(payload["selected"][0])
++        payload["texts"].append(payload["texts"][1])
++    elif mutation == "report":
++        report = json.loads(payload["texts"][0])
++        report["selection"]["omitted_ranges"] = 0
++        payload["texts"][0] = json.dumps(report)
++    else:
++        record = json.loads(payload["texts"][1])
++        record["text" if mutation == "text" else "block_text_sha256"] = (
++            "forged" if mutation == "text" else "0" * 64
++        )
++        payload["texts"][1] = json.dumps(record)
++    with pytest.raises(ValueError):
++        validate_input_selection(
++            FieldEvidenceSelectionAudit.model_validate_json(json.dumps(payload)), frozen
++        )
++
++
++@pytest.mark.parametrize("mutation", ["bool_integer", "nested_extra", "range_extra"])
++def test_selection_shape_is_strict_at_every_boundary(mutation):
++    _, selection = unicode_selection()
++    payload = selection.model_dump(mode="json")
++    if mutation == "bool_integer":
++        payload["incomplete"] = 1
++    elif mutation == "nested_extra":
++        payload["source_versions"][0]["tenant_id"] = "body-grant"
++    else:
++        payload["selected"][0]["start_offset"] = True
++    with pytest.raises(ValidationError):
++        FieldEvidenceSelectionAudit.model_validate_json(json.dumps(payload))

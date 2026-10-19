@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="74" time="6.781" timestamp="2026-10-17T06:12:26.443109+08:00" hostname="yin"><testcase classname="reports.runs.recovery_r06_activation_prep_20261016.test_activation_preparation" name="test_old_ambiguous_or_invalid_product_is_refused[1cdb9e7d99b7d24f702f5f19309a56d5afedd526]" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_prep_20261016.test_activation_preparation" name="test_old_ambiguous_or_invalid_product_is_refused[1cdb]" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_prep_20261016.test_activation_preparation" name="test_old_ambiguous_or_invalid_product_is_refused[]" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_prep_20261016.test_activation_preparation" name="test_old_ambiguous_or_invalid_product_is_refused[FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF]" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_prep_20261016.test_activation_preparation" name="test_old_ambiguous_or_invalid_product_is_refused[aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_prep_20261016.test_activation_preparation" name="test_pending_candidate_keeps_all_authorization_off_and_historical_budget" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_prep_20261016.test_activation_preparation" name="test_partial_product_identity_is_not_a_fallback[arguments0]" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_prep_20261016.test_activation_preparation" name="test_partial_product_identity_is_not_a_fallback[arguments1]" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_prep_20261016.test_activation_preparation" name="test_window_exact_boundary_passes_but_last_second_and_naive_time_refuse" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_prep_20261016.test_activation_preparation" name="test_only_fixed_reviewed_constants_change_while_guards_and_crlf_stay_exact" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_prep_20261016.test_activation_preparation" name="test_unverified_ledger_cannot_clear_or_reduce_the_known_42" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_prep_20261016.test_activation_preparation" name="test_default_worker_stamp_and_0030_policy_are_required_in_explicit_source_fixture" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_candidate_binding" name="test_core_only_approved_constants_change_and_ten_original_guards_are_exact" time="0.072"><failure message="assert b'&quot;&quot;&quot;Bind an ...ndle = None\n' == b'&quot;&quot;&quot;Bind an ...ndle = None\n'&#10;  &#10;  At index 145 diff: b'n' != b'j'&#10;  Use -v to get more diff">def test_core_only_approved_constants_change_and_ten_original_guards_are_exact() -&gt; (
+        None
+    ):
+        approved = {
+            "PRODUCT_ROOT",
+            "PRODUCT_SHA",
+            "SCHEMA",
+            "CORE_SOURCE_RELATIVE",
+            "OPERATIONS_SOURCE_RELATIVE",
+            "TOOL_ROOT",
+            "OPERATIONS_ROOT",
+            "CORE_ROOT",
+            "DATABASE",
+            "CONTROL_MARKER_OWNER",
+            "TOOL_SHA",
+            "OBSERVER_SHA",
+            "OBSERVER_RELATIVE",
+        }
+        original = PREPARATION / "reviewed_sources/core"
+        candidate = CANDIDATE / "core"
+        assert {path.name for path in candidate.glob("*.py")} == {
+            path.name for path in original.glob("*.py")
+        }
+        assert len(list(candidate.glob("*.py"))) == 11
+        for path in original.glob("*.py"):
+            actual = (candidate / path.name).read_bytes()
+            if path.name == "run_binding.py":
+                assert without_lifecycle(
+                    actual, approved, {"verify_live_binding", "require_start_window"}
+                ) == without_lifecycle(
+                    expected_nonce_marker_source(path.read_bytes()),
+                    approved,
+                    {"verify_live_binding", "require_start_window"},
+                )
+            elif path.name == "controlled_supervise.py":
+                assert without_lifecycle(
+                    actual, set(), {"main", "producers_acknowledged"}
+                ) == without_lifecycle(
+                    path.read_bytes(), set(), {"main", "producers_acknowledged"}
+                )
+            else:
+&gt;               assert actual == path.read_bytes()
+E               assert b'"""Bind an ...ndle = None\n' == b'"""Bind an ...ndle = None\n'
+E                 
+E                 At index 145 diff: b'n' != b'j'
+E                 Use -v to get more diff
+
+reports\runs\recovery_r06_activation_database_fix5_20261017\test_candidate_binding.py:122: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_candidate_binding" name="test_core_historical_ledger_and_new_database_are_separate_without_a_budget_reset" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_candidate_binding" name="test_core_unreviewed_literal_variants_cannot_be_silently_rewritten" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_candidate_binding" name="test_ops_launch_and_wsl_paths_resolve_only_the_new_fixed_product_and_packages" time="0.036" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_candidate_binding" name="test_ops_controller_observers_and_authorization_guards_remain_original" time="0.019"><failure message="assert b'&quot;&quot;&quot;Check fi...) from None\n' == b'&quot;&quot;&quot;Check fi...) from None\n'&#10;  &#10;  At index 187 diff: b'y' != b'u'&#10;  Use -v to get more diff">def test_ops_controller_observers_and_authorization_guards_remain_original() -&gt; None:
+        configuration = CANDIDATE / "ops/configuration.py"
+        original_configuration = PREPARATION / "reviewed_sources/ops/configuration.py"
+        approved = {
+            "PRODUCT",
+            "PRODUCT_SHA",
+            "SOURCE_SCHEMA",
+            "CORE_SOURCE_SHA",
+            "OPS",
+            "DEPLOY",
+            "CORE",
+            "SOURCE_DATABASE",
+            "TOOL_SHA",
+            "OBSERVER_SHA",
+        }
+        functions = {
+            "write_runtime_gate",
+            "read_launch_state",
+            "validate_launch_state",
+            "prepare_launch",
+            "require_archive_path",
+        }
+        assert without_lifecycle(
+            configuration.read_bytes(), approved, functions
+        ) == without_lifecycle(original_configuration.read_bytes(), approved, functions)
+        original = PREPARATION / "reviewed_sources/ops"
+        changed = {
+            "configuration.py",
+            "launch.ps1",
+            "minio_segment.py",
+            "windows_preflight.ps1",
+            "guardian.py",
+        }
+        for path in original.iterdir():
+            if path.is_file() and path.name not in changed:
+&gt;               assert (CANDIDATE / "ops" / path.name).read_bytes() == path.read_bytes()
+E               assert b'"""Check fi...) from None\n' == b'"""Check fi...) from None\n'
+E                 
+E                 At index 187 diff: b'y' != b'u'
+E                 Use -v to get more diff
+
+reports\runs\recovery_r06_activation_database_fix5_20261017\test_candidate_binding.py:240: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_candidate_binding" name="test_pending_binding_cannot_activate_with_unknown_or_protected_database_identity" time="0.009" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_candidate_binding" name="test_explicit_fixture_old_or_unbound_resource_urls_are_refused[postgresql://fixture:fixture@127.0.0.1:25432/test_dianzi_r06_nine_script_20261016-redis://:fixture@127.0.0.1:26379/15]" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_candidate_binding" name="test_explicit_fixture_old_or_unbound_resource_urls_are_refused[postgresql://fixture:fixture@127.0.0.1:25432/test_dianzi_r01_20261014-redis://:fixture@127.0.0.1:26379/15]" time="0.000" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_candidate_binding" name="test_explicit_fixture_old_or_unbound_resource_urls_are_refused[postgresql://fixture:fixture@192.0.2.1:25432/test_dianzi_r06_f3_20261017_fixture-redis://:fixture@127.0.0.1:26379/15]" time="0.000" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_candidate_binding" name="test_absent_authorization_stops_before_git_or_product_access" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_database_marker" name="test_literal_nonce_marker_has_exact_nine_fields_and_validates_while_preview_is_not_live" time="0.000" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_database_marker" name="test_old_foreign_or_changed_nonce_owner_is_refused_even_with_matching_comment_hash[recovery_root]" time="0.000" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_database_marker" name="test_old_foreign_or_changed_nonce_owner_is_refused_even_with_matching_comment_hash[foreign_owner:nonce:ea89c345e404475d94de02cbe67874e3]" time="0.000" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_database_marker" name="test_old_foreign_or_changed_nonce_owner_is_refused_even_with_matching_comment_hash[recovery_root:nonce:ffffffffffffffffffffffffffffffff]" time="0.000" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_database_marker" name="test_wrong_oid_is_refused_with_a_correct_nonce_marker" time="0.000" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_database_marker" name="test_changed_native_comment_bytes_are_refused_before_field_validation" time="0.000" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_database_marker" name="test_tenth_nonce_field_is_refused_instead_of_loosening_the_exact_marker_contract" time="0.000" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_database_marker" name="test_marker_generator_refuses_naive_time_without_fabricating_a_native_timestamp" time="0.000" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_database_marker" name="test_missing_owner_is_refused_without_substituting_a_default_owner" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_database_marker" name="test_duplicate_owner_is_refused_even_when_both_values_look_correct" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_database_marker" name="test_new_marker_owner_does_not_change_the_original_historical_ledger_identity" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_matching_gate_is_byte_exact_on_repeat" time="0.111" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_foreign_malformed_duplicate_gate_stays_unchanged[not JSON]" time="0.070" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_foreign_malformed_duplicate_gate_stays_unchanged[{&quot;foreign&quot;:true}]" time="0.086" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_foreign_malformed_duplicate_gate_stays_unchanged[{&quot;authorized_at&quot;:&quot;x&quot;,&quot;authorized_at&quot;:&quot;y&quot;}]" time="0.076" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_start_window_keeps_original_bound[2026-10-17T15:34:15+08:00-True]" time="0.000" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_start_window_keeps_original_bound[2026-10-17T16:00:00+08:00-False]" time="0.000" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_core_publishes_stop_only_with_two_real_acks[None]" time="0.015" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_core_publishes_stop_only_with_two_real_acks[ack_present]" time="0.000" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_core_publishes_stop_only_with_two_real_acks[actual_pid_exited]" time="0.000" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_core_publishes_stop_only_with_two_real_acks[owned_descendants_exited]" time="0.000" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_observer_waits_actual_ack_or_fails_without_final_pg[True]" time="0.525" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_observer_waits_actual_ack_or_fails_without_final_pg[False]" time="0.206" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_launch_recovery_archives_exact_controls_without_resetting_ledger" time="0.912" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_launch_recovery_refuses_unsafe_history_without_archival[cpu]" time="0.260" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_launch_recovery_refuses_unsafe_history_without_archival[nonce]" time="0.289" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_launch_recovery_refuses_unsafe_history_without_archival[ack]" time="0.254" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_launch_recovery_refuses_unsafe_history_without_archival[occupied]" time="0.264" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_launch_recovery_refuses_unsafe_history_without_archival[partial]" time="0.216" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_stop_identity_still_validates_after_last_safe_start" time="0.030" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_minio_relaunch_reads_exact_scope_without_cleanup[None]" time="0.051" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_minio_relaunch_reads_exact_scope_without_cleanup[nonce]" time="0.033" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_minio_relaunch_reads_exact_scope_without_cleanup[inode]" time="0.029" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_minio_relaunch_reads_exact_scope_without_cleanup[occupied]" time="0.034" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_minio_relaunch_reads_exact_scope_without_cleanup[foreign]" time="0.034" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_lifecycle_fix2" name="test_minio_relaunch_reads_exact_scope_without_cleanup[ack]" time="0.027" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_native_boundaries" name="test_all_archive_target_boundaries_refuse_native_junction_before_move[history]" time="0.273" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_native_boundaries" name="test_all_archive_target_boundaries_refuse_native_junction_before_move[generation]" time="0.291" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_native_boundaries" name="test_all_archive_target_boundaries_refuse_native_junction_before_move[nested]" time="0.551" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_native_boundaries" name="test_existing_archive_is_refused_without_overwrite" time="0.234" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_native_boundaries" name="test_actual_core_writer_emits_exact_lf_bytes_on_windows" time="0.016" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_product_binding" name="test_product_checkout_is_exact_912_clean_and_only_two_production_files_changed" time="0.398" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_product_binding" name="test_product_binding_and_launch_are_912_only" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_product_binding" name="test_control_logic_is_exact_fix3_outside_approved_product_and_core_pins" time="0.232"><failure message="assert b'&quot;&quot;&quot;Own the ...) from None\n' == b'&quot;&quot;&quot;Own the ...) from None\n'&#10;  &#10;  At index 2391 diff: b'(' != b'g'&#10;  Use -v to get more diff">def test_control_logic_is_exact_fix3_outside_approved_product_and_core_pins():
+        for path in (CANDIDATE / "core").glob("*.py"):
+            original = git("show", BASE + ":" + path.relative_to(ROOT).as_posix())
+            if path.name == "run_binding.py":
+                original = replace_exact(original, OLD_PRODUCT, PRODUCT_SHA, 1)
+                original = replace_exact(
+                    original,
+                    "r06-product-f3-runtime-20261017",
+                    "r06-product-912-runtime-20261017",
+                    1,
+                )
+            original = original.replace(
+                b"test_dianzi_r06_f3_20261017_c965d51749df",
+                b"test_dianzi_r06_912_20261017_f15191e6ea74",
+            )
+&gt;           assert path.read_bytes() == original
+E           assert b'"""Own the ...) from None\n' == b'"""Own the ...) from None\n'
+E             
+E             At index 2391 diff: b'(' != b'g'
+E             Use -v to get more diff
+
+reports\runs\recovery_r06_activation_database_fix5_20261017\test_product_binding.py:70: AssertionError</failure></testcase><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_product_binding" name="test_original_ledger_and_new_marker_product_are_separate" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_product_binding" name="test_only_reviewed_finally_functions_differ_and_build_engine_is_unchanged[backend/migrations/env.py-run_migrations_online]" time="0.208" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_product_binding" name="test_only_reviewed_finally_functions_differ_and_build_engine_is_unchanged[backend/src/ai_intel/infrastructure/database.py-current_migration_revision]" time="0.192" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_database_binding" name="test_new_database_literal_is_exact_in_all_three_callers" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_database_binding" name="test_new_name_passes_existing_exact_native_marker_guard" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_database_binding" name="test_preserved_old_database_is_refused_even_with_new_marker_fixture" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_database_binding" name="test_historical_nonce_and_ledger_bytes_are_unchanged" time="0.001" /><testcase classname="reports.runs.recovery_r06_activation_database_fix5_20261017.test_database_binding" name="test_preserved_reviewer_native_old_snapshot_is_refused_read_only" time="0.009" /></testsuite></testsuites>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="7" time="2.014" timestamp="2026-10-16T06:18:15.558863+08:00" hostname="yin"><testcase classname="reports.runs.recovery_r07_input_review1_20261016.test_review_probe_pg" name="test_all_parent_changes_block_while_loader_transaction_holds_share[source]" time="0.919" /><testcase classname="reports.runs.recovery_r07_input_review1_20261016.test_review_probe_pg" name="test_all_parent_changes_block_while_loader_transaction_holds_share[document]" time="0.228" /><testcase classname="reports.runs.recovery_r07_input_review1_20261016.test_review_probe_pg" name="test_all_parent_changes_block_while_loader_transaction_holds_share[revision]" time="0.253" /><testcase classname="reports.runs.recovery_r07_input_review1_20261016.test_review_probe_pg" name="test_object_failures_are_distinct_and_never_empty_success[missing]" time="0.068" /><testcase classname="reports.runs.recovery_r07_input_review1_20261016.test_review_probe_pg" name="test_object_failures_are_distinct_and_never_empty_success[unavailable]" time="0.064" /><testcase classname="reports.runs.recovery_r07_input_review1_20261016.test_review_probe_pg" name="test_pg_object_size_mismatch_is_integrity_error" time="0.070" /><testcase classname="reports.runs.recovery_r07_input_review1_20261016.test_review_probe_pg" name="test_malformed_saved_uri_returns_typed_error" time="0.069"><failure message="ValueError: Port could not be cast to integer value as 'bad'">migrated_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r07_input_review1_1016_061814_38b40)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-766/test_malformed_saved_uri_retur0')
+
+    def test_malformed_saved_uri_returns_typed_error(migrated_engine, tmp_path):
+        store, revision, _, _ = seed_catalogue(migrated_engine, tmp_path)
+        with migrated_engine.begin() as connection:
+            connection.execute(update(document_revisions).where(document_revisions.c.revision_id == str(revision)).values(canonical_uri="https://cwe.mitre.org:bad/data/xml/cwec_v4.19.xml"))
+        with Session(migrated_engine) as session, pytest.raises(TaxonomyInputError, match="taxonomy_source_uri_invalid"):
+&gt;           load_taxonomy_catalogue(session, store, ADMIN, PUBLIC, revision, "cwe")
+
+..\reports\runs\recovery_r07_input_review1_20261016\test_review_probe_pg.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\enrichment\taxonomy_inputs.py:394: in load_taxonomy_catalogue
+    return (parse_cwe_catalogue if kind == "cwe" else parse_atlas_catalogue)(raw, provenance)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\ai_intel\enrichment\taxonomy_inputs.py:117: in parse_cwe_catalogue
+    _verify_raw(raw, provenance)
+src\ai_intel\enrichment\taxonomy_inputs.py:85: in _verify_raw
+    or parsed.port not in (None, 443)
+       ^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = SplitResult(scheme='https', netloc='cwe.mitre.org:bad', path='/data/xml/cwec_v4.19.xml', query='', fragment='')
+
+    @property
+    def port(self):
+        port = self._hostinfo[1]
+        if port is not None:
+            if port.isdigit() and port.isascii():
+                port = int(port)
+            else:
+&gt;               raise ValueError(f"Port could not be cast to integer value as {port!r}")
+E               ValueError: Port could not be cast to integer value as 'bad'
+
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\urllib\parse.py:182: ValueError</failure></testcase></testsuite></testsuites>

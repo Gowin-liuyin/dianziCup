@@ -1,0 +1,630 @@
+diff --git a/backend/src/ai_intel/assets/fofa_relay.py b/backend/src/ai_intel/assets/fofa_relay.py
+new file mode 100644
+index 0000000..ac28ef2
+--- /dev/null
++++ b/backend/src/ai_intel/assets/fofa_relay.py
+@@ -0,0 +1,214 @@
++"""第三方FOFA relay的固定来源配置和只读账户探测。
++
++只读接口依据用户给定页面当前实现；不提供资产搜索入口。
++账户有效和额度可用不能证明FOFA官方账户、资产授权或观察能力。
++"""
++
++from __future__ import annotations
++
++import json
++import os
++import re
++from collections.abc import Mapping
++from dataclasses import dataclass, field
++from datetime import UTC, datetime
++from typing import Literal, Protocol
++
++from pydantic import SecretStr
++
++from ai_intel.infrastructure.network import (
++    FetchResult,
++    NetworkPolicy,
++    NetworkPolicyViolation,
++    NetworkRequestError,
++    NetworkTimeoutError,
++    OriginCredentials,
++    ResponseTooLargeError,
++    UnsupportedContentTypeError,
++    create_network_gateway,
++)
++
++RELAY_ORIGIN = "https://fafaapi.info"
++ACCOUNT_PATH = "/fofaapi/v1/validate-key"
++PROVIDER_ID: Literal["fofa_relay"] = "fofa_relay"
++ErrorCode = Literal[
++    "not_configured",
++    "invalid_configuration",
++    "authentication_failed",
++    "payment_required",
++    "rate_limited",
++    "provider_unavailable",
++    "provider_error",
++    "http_error",
++    "timeout",
++    "network_error",
++    "network_policy_violation",
++    "invalid_response",
++]
++
++
++class FofaRelayError(RuntimeError):
++    """仅暴露固定错误代码，不传出供应商响应、URL或原始异常。"""
++
++    def __init__(self, code: ErrorCode, retryable: bool = False) -> None:
++        self.code = code
++        self.retryable = retryable
++        super().__init__(code)
++
++
++@dataclass(frozen=True)
++class FofaRelayConfig:
++    api_key: SecretStr = field(repr=False)
++    base_url: str = RELAY_ORIGIN
++    provider_id: Literal["fofa_relay"] = PROVIDER_ID
++
++    def __post_init__(self) -> None:
++        if (
++            self.base_url != RELAY_ORIGIN
++            or self.provider_id != PROVIDER_ID
++            or not isinstance(self.api_key, SecretStr)
++            or re.fullmatch(r"[a-fA-F0-9]{32}", self.api_key.get_secret_value()) is None
++        ):
++            raise FofaRelayError("invalid_configuration")
++
++    @classmethod
++    def from_environment(cls, environment: Mapping[str, str] | None = None) -> FofaRelayConfig:
++        """由服务端注入秘密；明确provider身份，防止把relay凭据发给官方。"""
++        environment = os.environ if environment is None else environment
++        provider_id = environment.get("DIANZI_FOFA_PROVIDER")
++        if provider_id is None:
++            raise FofaRelayError("not_configured")
++        if provider_id != PROVIDER_ID:
++            raise FofaRelayError("invalid_configuration")
++        api_key = environment.get("DIANZI_FOFA_RELAY_API_KEY")
++        if not api_key:
++            raise FofaRelayError("not_configured")
++        return cls(
++            api_key=SecretStr(api_key),
++            base_url=environment.get("DIANZI_FOFA_RELAY_BASE_URL", RELAY_ORIGIN),
++        )
++
++
++@dataclass(frozen=True)
++class RelayAccountStatus:
++    status: Literal["available", "budget_exhausted", "unknown"]
++    today_remaining: int | None
++    total_remaining: int | None
++    provider_id: Literal["fofa_relay"] = PROVIDER_ID
++    provider_kind: Literal["third_party_relay"] = "third_party_relay"
++    retrieved_at: datetime = field(default_factory=lambda: datetime.now(UTC))
++    is_synthetic: bool = False
++
++
++def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
++    result: dict[str, object] = {}
++    for key, value in pairs:
++        if key in result:
++            raise ValueError("duplicate field")
++        result[key] = value
++    return result
++
++
++def _reject_nonfinite_json(value: str) -> object:
++    raise ValueError("nonfinite JSON value")
++
++
++def _quota_value(payload: dict[str, object], key: str) -> int | None:
++    value = payload.get(key)
++    if value is None or (key == "totalRemaining" and type(value) is int and value == -1):
++        return None
++    if key == "totalRemaining" and isinstance(value, str):
++        if len(value) > 64 or any(ord(character) < 32 for character in value):
++            raise FofaRelayError("invalid_response")
++        return None
++    if type(value) is not int or value < 0:
++        raise FofaRelayError("invalid_response")
++    return value
++
++
++def parse_relay_account_response(body: bytes, *, is_synthetic: bool = False) -> RelayAccountStatus:
++    """只保留账户额度白名单；缺失/字符串总额度为unknown，零额度单独标记。"""
++    if not isinstance(body, bytes) or not 1 <= len(body) <= 65536:
++        raise FofaRelayError("invalid_response")
++    try:
++        payload: object = json.loads(
++            body,
++            object_pairs_hook=_unique_json_object,
++            parse_constant=_reject_nonfinite_json,
++        )
++    except (ValueError, UnicodeDecodeError, RecursionError):
++        raise FofaRelayError("invalid_response") from None
++    if not isinstance(payload, dict):
++        raise FofaRelayError("invalid_response")
++    if "error" in payload and type(payload["error"]) is not bool:
++        raise FofaRelayError("invalid_response")
++    if payload.get("error") is True:
++        raise FofaRelayError("provider_error")
++    if type(payload.get("valid")) is not bool:
++        raise FofaRelayError("invalid_response")
++    if payload["valid"] is False:
++        raise FofaRelayError("authentication_failed")
++    today_remaining = _quota_value(payload, "todayRemaining")
++    total_remaining = _quota_value(payload, "totalRemaining")
++    status: Literal["available", "budget_exhausted", "unknown"] = "unknown"
++    if today_remaining == 0 or total_remaining == 0:
++        status = "budget_exhausted"
++    elif today_remaining is not None and total_remaining is not None:
++        status = "available"
++    return RelayAccountStatus(status, today_remaining, total_remaining, is_synthetic=is_synthetic)
++
++
++class RelayGateway(Protocol):
++    def fetch(self, url: str, max_redirect_hops: int = 5) -> FetchResult: ...
++
++
++class FofaRelayClient:
++    """单次账户只读探测；凭据限于固定HTTPS origin，不重定向、不重试。"""
++
++    def __init__(
++        self,
++        config: FofaRelayConfig,
++        *,
++        fixture_gateway: RelayGateway | None = None,
++        fixture_mode: bool = False,
++    ) -> None:
++        if fixture_mode != (fixture_gateway is not None):
++            raise FofaRelayError("invalid_configuration")
++        self._fixture_mode = fixture_mode
++        if fixture_gateway is not None:
++            self._gateway: RelayGateway = fixture_gateway
++        else:
++            self._gateway = create_network_gateway(
++                NetworkPolicy(
++                    allowed_domains=("fafaapi.info",),
++                    max_response_bytes=65536,
++                    allowed_content_types=("application/json",),
++                    total_timeout_seconds=10,
++                    dns_resolver="cloudflare_doh",
++                ),
++                OriginCredentials(config.base_url, query_parameters={"key": config.api_key}),
++                max_concurrent_requests=1,
++            )
++
++    def probe_account(self) -> RelayAccountStatus:
++        try:
++            response = self._gateway.fetch(RELAY_ORIGIN + ACCOUNT_PATH, max_redirect_hops=0)
++        except NetworkTimeoutError:
++            raise FofaRelayError("timeout", retryable=True) from None
++        except (UnsupportedContentTypeError, ResponseTooLargeError):
++            raise FofaRelayError("invalid_response") from None
++        except NetworkPolicyViolation:
++            raise FofaRelayError("network_policy_violation") from None
++        except NetworkRequestError:
++            raise FofaRelayError("network_error", retryable=True) from None
++        if response.status_code in (401, 403):
++            raise FofaRelayError("authentication_failed")
++        if response.status_code == 402:
++            raise FofaRelayError("payment_required")
++        if response.status_code == 429:
++            raise FofaRelayError("rate_limited", retryable=True)
++        if response.status_code >= 500:
++            raise FofaRelayError("provider_unavailable", retryable=True)
++        if not 200 <= response.status_code < 300:
++            raise FofaRelayError("http_error")
++        return parse_relay_account_response(response.body, is_synthetic=self._fixture_mode)
+diff --git a/backend/tests/contract/test_r13_fofa_relay_account_wire.py b/backend/tests/contract/test_r13_fofa_relay_account_wire.py
+new file mode 100644
+index 0000000..b9a8737
+--- /dev/null
++++ b/backend/tests/contract/test_r13_fofa_relay_account_wire.py
+@@ -0,0 +1,120 @@
++"""本地fixture网关合同；不调用FOFA、不搜索资产、不计live。"""
++
++from unittest.mock import Mock
++
++import pytest
++from pydantic import SecretStr
++
++import ai_intel.assets.fofa_relay as relay
++from ai_intel.assets.fofa_relay import FofaRelayClient, FofaRelayConfig, FofaRelayError
++from ai_intel.infrastructure.network import (
++    FetchResult,
++    NetworkPolicyViolation,
++    NetworkRequestError,
++    NetworkTimeoutError,
++    UnsupportedContentTypeError,
++)
++
++
++class FixtureGateway:
++    def __init__(self, response: FetchResult | Exception) -> None:
++        self.response = response
++        self.calls: list[tuple[str, int]] = []
++
++    def fetch(self, url: str, max_redirect_hops: int = 5) -> FetchResult:
++        self.calls.append((url, max_redirect_hops))
++        if isinstance(self.response, Exception):
++            raise self.response
++        return self.response
++
++
++def fixture_config() -> FofaRelayConfig:
++    return FofaRelayConfig(api_key=SecretStr("1" * 32))
++
++
++def fixture_response(status: int = 200, body: bytes = b'{"valid":true}') -> FetchResult:
++    return FetchResult(
++        "https://fafaapi.info/fofaapi/v1/validate-key", status, "application/json", body
++    )
++
++
++def test_account_probe_uses_fixed_path_without_query_or_email_and_is_synthetic() -> None:
++    gateway = FixtureGateway(fixture_response())
++    client = FofaRelayClient(fixture_config(), fixture_gateway=gateway, fixture_mode=True)
++    account = client.probe_account()
++    assert gateway.calls == [("https://fafaapi.info/fofaapi/v1/validate-key", 0)]
++    assert account.provider_id == "fofa_relay"
++    assert account.provider_kind == "third_party_relay"
++    assert account.is_synthetic
++    assert account.retrieved_at.utcoffset() is not None
++    assert not hasattr(client, "search")
++
++
++def test_falsey_fixture_gateway_never_constructs_real_gateway(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    class FalseyFixtureGateway(FixtureGateway):
++        def __bool__(self) -> bool:
++            return False
++
++    gateway = FalseyFixtureGateway(
++        fixture_response(body=b'{"valid":true,"todayRemaining":2,"totalRemaining":10}')
++    )
++    real_factory = Mock(side_effect=AssertionError("fixture mode attempted real gateway creation"))
++    monkeypatch.setattr(relay, "create_network_gateway", real_factory)
++    client = FofaRelayClient(fixture_config(), fixture_gateway=gateway, fixture_mode=True)
++    account = client.probe_account()
++    real_factory.assert_not_called()
++    assert gateway.calls == [("https://fafaapi.info/fofaapi/v1/validate-key", 0)]
++    assert (account.status, account.today_remaining, account.total_remaining) == (
++        "available",
++        2,
++        10,
++    )
++    assert account.is_synthetic
++
++
++@pytest.mark.parametrize(
++    "status,code,retryable",
++    [
++        (401, "authentication_failed", False),
++        (403, "authentication_failed", False),
++        (402, "payment_required", False),
++        (429, "rate_limited", True),
++        (501, "provider_unavailable", True),
++        (502, "provider_unavailable", True),
++        (504, "provider_unavailable", True),
++        (400, "http_error", False),
++    ],
++)
++def test_http_errors_are_not_reported_as_success_or_zero_quota(
++    status: int, code: str, retryable: bool
++) -> None:
++    gateway = FixtureGateway(fixture_response(status))
++    client = FofaRelayClient(fixture_config(), fixture_gateway=gateway, fixture_mode=True)
++    with pytest.raises(FofaRelayError) as caught:
++        client.probe_account()
++    assert (caught.value.code, caught.value.retryable) == (code, retryable)
++    assert len(gateway.calls) == 1
++
++
++@pytest.mark.parametrize(
++    "failure,code,retryable",
++    [
++        (NetworkTimeoutError("fixture secret URL"), "timeout", True),
++        (NetworkRequestError("fixture secret URL"), "network_error", True),
++        (NetworkPolicyViolation("fixture secret URL"), "network_policy_violation", False),
++        (UnsupportedContentTypeError("fixture secret URL"), "invalid_response", False),
++    ],
++)
++def test_transport_errors_remain_safe_and_make_one_attempt(
++    failure: Exception, code: str, retryable: bool
++) -> None:
++    gateway = FixtureGateway(failure)
++    client = FofaRelayClient(fixture_config(), fixture_gateway=gateway, fixture_mode=True)
++    with pytest.raises(FofaRelayError) as caught:
++        client.probe_account()
++    assert (caught.value.code, caught.value.retryable) == (code, retryable)
++    assert "fixture secret URL" not in str(caught.value)
++    assert caught.value.__suppress_context__
++    assert len(gateway.calls) == 1
+diff --git a/backend/tests/security/test_r13_fofa_relay_boundaries.py b/backend/tests/security/test_r13_fofa_relay_boundaries.py
+new file mode 100644
+index 0000000..62f1d9c
+--- /dev/null
++++ b/backend/tests/security/test_r13_fofa_relay_boundaries.py
+@@ -0,0 +1,106 @@
++"""凭据目标、provider身份与脱敏边界，全部使用合成key。"""
++
++from collections.abc import Iterable
++from urllib.parse import parse_qs, urlsplit
++
++import pytest
++from pydantic import SecretStr
++
++from ai_intel.assets.fofa_relay import FofaRelayClient, FofaRelayConfig, FofaRelayError
++from ai_intel.infrastructure.network import (
++    NetworkGateway,
++    NetworkPolicy,
++    OriginCredentials,
++    RequestDeadline,
++)
++
++FIXTURE_KEY = "1" * 32
++
++
++@pytest.mark.parametrize(
++    "base_url",
++    [
++        "http://fafaapi.info",
++        "https://fofa.info",
++        "https://hamal.cc.cd",
++        "https://fafaapi.info.evil.example",
++        "https://sub.fafaapi.info",
++        "https://fafaapi.info:443",
++        "https://fafaapi.info/",
++        "https://fafaapi.info?key=fixture",
++        "https://user@fafaapi.info",
++    ],
++)
++def test_only_documented_exact_relay_origin_is_accepted(base_url: str) -> None:
++    with pytest.raises(FofaRelayError) as caught:
++        FofaRelayConfig(api_key=SecretStr(FIXTURE_KEY), base_url=base_url)
++    assert caught.value.code == "invalid_configuration"
++    assert base_url not in str(caught.value)
++
++
++def test_fixture_gateway_requires_explicit_fixture_flag() -> None:
++    with pytest.raises(FofaRelayError) as caught:
++        FofaRelayClient(FofaRelayConfig(api_key=SecretStr(FIXTURE_KEY)), fixture_mode=True)
++    assert caught.value.code == "invalid_configuration"
++
++
++def test_fixture_gateway_cannot_implicitly_select_fixture_mode() -> None:
++    gateway = NetworkGateway(NetworkPolicy(allowed_domains=("fafaapi.info",)))
++    with pytest.raises(FofaRelayError) as caught:
++        FofaRelayClient(FofaRelayConfig(api_key=SecretStr(FIXTURE_KEY)), fixture_gateway=gateway)
++    assert caught.value.code == "invalid_configuration"
++
++
++class FixtureResponse:
++    status_code = 200
++
++    def __init__(self) -> None:
++        self.headers = {"content-type": "application/json", "x-echo": FIXTURE_KEY}
++
++    def iter_bytes(self) -> Iterable[bytes]:
++        yield b'{"valid":true,"todayRemaining":2,"totalRemaining":10}'
++
++    def close(self) -> None:
++        pass
++
++
++class FixtureTransport:
++    def __init__(self) -> None:
++        self.requests: list[str] = []
++
++    def resolve_addresses(self, hostname: str, deadline: RequestDeadline) -> list[str]:
++        assert hostname == "fafaapi.info"
++        return ["1.1.1.1"]
++
++    def request(
++        self,
++        url: str,
++        addresses: tuple[str, ...],
++        deadline: RequestDeadline,
++        headers: dict[str, str],
++    ) -> FixtureResponse:
++        self.requests.append(url)
++        assert addresses == ("1.1.1.1",)
++        assert not headers
++        return FixtureResponse()
++
++
++def test_shared_gateway_injects_key_only_at_origin_and_redacts_its_audit_result(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    credentials = OriginCredentials(
++        "https://fafaapi.info", query_parameters={"key": SecretStr(FIXTURE_KEY)}
++    )
++    transport = FixtureTransport()
++    gateway = NetworkGateway(
++        NetworkPolicy(allowed_domains=("fafaapi.info",)),
++        credentials,
++    )
++    monkeypatch.setattr(gateway, "_transport", transport)
++    fetch = gateway.fetch("https://fafaapi.info/fofaapi/v1/validate-key", max_redirect_hops=0)
++    assert parse_qs(urlsplit(transport.requests[0]).query) == {"key": [FIXTURE_KEY]}
++    assert FIXTURE_KEY not in repr(fetch)
++    assert fetch.redacted_headers["x-echo"] == "REDACTED"
++    assert "key=REDACTED" in fetch.final_url
++    other_url = "https://fofa.info/api/v1/search/all"
++    assert credentials.inject(other_url) == (other_url, {})
+diff --git a/backend/tests/unit/test_r13_fofa_relay.py b/backend/tests/unit/test_r13_fofa_relay.py
+new file mode 100644
+index 0000000..586dafb
+--- /dev/null
++++ b/backend/tests/unit/test_r13_fofa_relay.py
+@@ -0,0 +1,145 @@
++"""第三方relay账户配置及额度解析的显式合成夹具。"""
++
++import json
++
++import pytest
++from pydantic import SecretStr
++
++from ai_intel.assets.fofa_relay import (
++    FofaRelayConfig,
++    FofaRelayError,
++    parse_relay_account_response,
++)
++
++FIXTURE_KEY = SecretStr("1" * 32)
++
++
++def test_explicit_relay_environment_configuration() -> None:
++    config = FofaRelayConfig.from_environment(
++        {
++            "DIANZI_FOFA_PROVIDER": "fofa_relay",
++            "DIANZI_FOFA_RELAY_BASE_URL": "https://fafaapi.info",
++            "DIANZI_FOFA_RELAY_API_KEY": FIXTURE_KEY.get_secret_value(),
++        }
++    )
++    assert config.provider_id == "fofa_relay"
++    assert config.base_url == "https://fafaapi.info"
++    assert config.api_key == FIXTURE_KEY
++    assert FIXTURE_KEY.get_secret_value() not in repr(config)
++
++
++@pytest.mark.parametrize(
++    "environment, code",
++    [
++        ({}, "not_configured"),
++        ({"DIANZI_FOFA_PROVIDER": "fofa_official"}, "invalid_configuration"),
++        (
++            {"DIANZI_FOFA_PROVIDER": "fofa_relay", "DIANZI_FOFA_RELAY_API_KEY": ""},
++            "not_configured",
++        ),
++        (
++            {"DIANZI_FOFA_PROVIDER": "fofa_relay", "DIANZI_FOFA_RELAY_API_KEY": "bad"},
++            "invalid_configuration",
++        ),
++    ],
++)
++def test_environment_configuration_errors_are_distinct(
++    environment: dict[str, str], code: str
++) -> None:
++    with pytest.raises(FofaRelayError) as caught:
++        FofaRelayConfig.from_environment(environment)
++    assert caught.value.code == code
++    assert not caught.value.retryable
++
++
++@pytest.mark.parametrize("today, total", [(0, 10), (10, 0), (0, 0)])
++def test_account_success_with_zero_quota_is_budget_exhausted(today: int, total: int) -> None:
++    payload = json.dumps({"valid": True, "todayRemaining": today, "totalRemaining": total})
++    account = parse_relay_account_response(payload.encode())
++    assert account.status == "budget_exhausted"
++    assert account.today_remaining == today
++    assert account.total_remaining == total
++
++
++def test_account_success_with_positive_known_counters_is_available() -> None:
++    account = parse_relay_account_response(
++        b'{"valid":true,"todayRemaining":4,"totalRemaining":100}'
++    )
++    assert account.status == "available"
++    assert (account.today_remaining, account.total_remaining) == (4, 100)
++
++
++@pytest.mark.parametrize(
++    "payload",
++    [
++        {"valid": True},
++        {"valid": True, "todayRemaining": None, "totalRemaining": None},
++        {"valid": True, "todayRemaining": 4, "totalRemaining": -1},
++        {"valid": True, "todayRemaining": 4},
++        {"valid": True, "todayRemaining": 200, "totalRemaining": "fixture unspecified"},
++        {"valid": True, "todayRemaining": 200, "totalRemaining": "100"},
++        {"valid": True, "todayRemaining": 200, "totalRemaining": ""},
++    ],
++)
++def test_missing_or_unbounded_counters_remain_unknown(payload: dict[str, object]) -> None:
++    account = parse_relay_account_response(json.dumps(payload).encode())
++    assert account.status == "unknown"
++    assert account.total_remaining is None
++
++
++@pytest.mark.parametrize(
++    "payload",
++    [
++        b"[]",
++        b"{}",
++        b'{"valid":"true"}',
++        b'{"valid":1}',
++        b'{"valid":true,"todayRemaining":true}',
++        b'{"valid":true,"todayRemaining":1.5}',
++        b'{"valid":true,"todayRemaining":-1}',
++        b'{"valid":true,"totalRemaining":-2}',
++        b'{"valid":true,"totalRemaining":[]}',
++        b'{"valid":true,"totalRemaining":"control\\nvalue"}',
++        b'{"valid":true,"totalRemaining":"' + b"a" * 65 + b'"}',
++        b'{"valid":true,"error":"false"}',
++        b'{"valid":true,"error":null}',
++        b'{"valid":true,"todayRemaining":NaN}',
++        b'{"valid":true,"valid":false}',
++        b"<html>gateway failure</html>",
++        b"\xff",
++    ],
++)
++def test_malformed_account_response_never_becomes_empty_success(payload: bytes) -> None:
++    with pytest.raises(FofaRelayError) as caught:
++        parse_relay_account_response(payload)
++    assert caught.value.code == "invalid_response"
++    assert not caught.value.retryable
++
++
++def test_valid_false_is_authentication_failure_without_provider_message() -> None:
++    with pytest.raises(FofaRelayError) as caught:
++        parse_relay_account_response(b'{"valid":false,"errmsg":"private diagnostic"}')
++    assert caught.value.code == "authentication_failed"
++    assert "private diagnostic" not in str(caught.value)
++
++
++def test_error_envelope_overrides_a_success_flag_and_empty_counters() -> None:
++    with pytest.raises(FofaRelayError) as caught:
++        parse_relay_account_response(b'{"valid":true,"error":true,"errmsg":"quota?"}')
++    assert caught.value.code == "provider_error"
++    assert "quota?" not in str(caught.value)
++
++
++def test_unrequested_asset_fields_are_discarded() -> None:
++    account = parse_relay_account_response(
++        b'{"valid":true,"todayRemaining":4,"totalRemaining":10,"results":["fixture private"]}'
++    )
++    assert "fixture private" not in repr(account)
++    assert not hasattr(account, "results")
++
++
++@pytest.mark.parametrize("body", [b"", b"a" * 65537], ids=["empty", "over_64_kib"])
++def test_account_json_body_is_bounded(body: bytes) -> None:
++    with pytest.raises(FofaRelayError) as caught:
++        parse_relay_account_response(body)
++    assert caught.value.code == "invalid_response"
+diff --git a/config/providers/fofa_relay.example.md b/config/providers/fofa_relay.example.md
+new file mode 100644
+index 0000000..3daacc4
+--- /dev/null
++++ b/config/providers/fofa_relay.example.md
+@@ -0,0 +1,15 @@
++# FOFA relay 进程配置变量
++
++本配置只适用于专用第三方 relay 适配器。官方直连使用独立凭据和合同；不能将 relay 密钥复用于官方或其他来源。账户验证只说明 relay 账户状态，不证明资产授权或官方 API 观察能力。
++
++| 变量名 | 用途 |
++|---|---|
++| `DIANZI_FOFA_PROVIDER` | 显式选择专用 relay 身份；其他 provider 会拒绝 |
++| `DIANZI_FOFA_RELAY_BASE_URL` | 服务端可信固定来源配置；仅接受已核对的精确 HTTPS origin |
++| `DIANZI_FOFA_RELAY_API_KEY` | 从秘密管理器向子进程临时注入；不写入配置文件、参数、日志或前端 |
++
++当前候选支持固定路径的单次账户只读验证，不接受任意 URL、自由查询或资产搜索。fixture 网关须同时显式开启 fixture 模式，结果携带合成标记。
++
++缺失 key 为 `not_configured`；无效身份/来源/key 格式为 `invalid_configuration`；鉴权失败、支付要求、限流、超时、非 JSON、供应商错误分别返回固定错误代码。成功但额度未给完整数字时为 `unknown`，已知零额度为 `budget_exhausted`；不从错误文本推测余额。
++
++本候选未接入公共 settings、运行时、PG、API 或 UI。公共配置由主控在独立评审后接入。后续资产观察须先取得授权范围、费用上限、搜索响应字段合同，并使用服务端认证上下文构建范围限制，独立保存快照和历史。

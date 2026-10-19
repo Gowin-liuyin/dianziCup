@@ -1,0 +1,76 @@
+.....F....................F............................................. [ 78%]
+....................                                                     [100%]
+================================== FAILURES ===================================
+_ test_nine_source_jobs_commit_raw_content_evidence_cursor_and_status[ollama_releases-1] _
+
+catalog_worker_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_worker_20261015?options=-c+search_path%3Dtest_r06_worker_54f70c61b8894092a149fe31b6afa872+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-584/test_nine_source_jobs_commit_r4')
+kind = 'ollama_releases', count = 1
+
+    @pytest.mark.parametrize(
+        ("kind", "count"),
+        [
+            ("nvd_ollama", 1),
+            ("vllm_vendor", 1),
+            ("osv_ollama", 1),
+            ("avid_community", 1),
+            ("ollama_releases", 1),
+            ("trailofbits_blog", 20),
+            ("arxiv_security", 2),
+            ("nist_ai_rmf", 1),
+            ("cac_generative_ai", 1),
+        ],
+    )
+    def test_nine_source_jobs_commit_raw_content_evidence_cursor_and_status(
+        catalog_worker_engine, tmp_path, kind, count
+    ):
+        engine = catalog_worker_engine
+        store = ContentStore(tmp_path)
+        job_id = queue(engine, kind)
+        handler = handler_for(store, kind)
+        outcome = run(engine, job_id, handler)
+>       assert outcome == ("partial" if kind in {"arxiv_security", "nvd_ollama"} else "succeeded")
+E       AssertionError: assert 'retry_wait' == 'succeeded'
+E         
+E         - succeeded
+E         + retry_wait
+
+tests\integration\test_r06_source_worker_pg.py:150: AssertionError
+_ test_each_bad_catalog_page_is_blocked_without_business_or_cursor_writes[ollama_releases] _
+
+catalog_worker_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_worker_20261015?options=-c+search_path%3Dtest_r06_worker_054ce6495ac74b78af88e31587275521+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-584/test_each_bad_catalog_page_is_2')
+kind = 'ollama_releases'
+
+    @pytest.mark.parametrize("kind", tuple(source_jobs.CATALOG_CONTENT_TYPES))
+    def test_each_bad_catalog_page_is_blocked_without_business_or_cursor_writes(
+        catalog_worker_engine, tmp_path, kind
+    ):
+        engine = catalog_worker_engine
+        content_type = source_jobs.CATALOG_CONTENT_TYPES[kind][0]
+    
+        def read(url):
+            return FetchResult(url, 200, content_type, b"invalid recorded source response")
+    
+        job_id = queue(engine, kind)
+        handler = handler_for(
+            ContentStore(tmp_path), kind, fetcher=read, poster=lambda url, body: read(url)
+        )
+>       assert run(engine, job_id, handler) == "blocked"
+E       AssertionError: assert 'retry_wait' == 'blocked'
+E         
+E         - blocked
+E         + retry_wait
+
+tests\integration\test_r06_source_worker_pg.py:422: AssertionError
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\wt\r06-live-compat-review-1\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\r06-live-compat-review-1\reports\runs\recovery_r06_live_compat_review_1_20261015\pg_regression.xml -
+=========================== short test summary info ===========================
+FAILED tests/integration/test_r06_source_worker_pg.py::test_nine_source_jobs_commit_raw_content_evidence_cursor_and_status[ollama_releases-1]
+FAILED tests/integration/test_r06_source_worker_pg.py::test_each_bad_catalog_page_is_blocked_without_business_or_cursor_writes[ollama_releases]
+2 failed, 90 passed, 1 warning in 92.57s (0:01:32)

@@ -1,0 +1,48 @@
+backend/migrations/versions/0022_sbom_sidecars.py:1:"""Add frozen immutable R11 history through the production forward chain.
+backend/migrations/versions/0022_sbom_sidecars.py:44:RAISE EXCEPTION 'SBOM sidecars are immutable' USING ERRCODE = '23514';
+backend/migrations/versions/0022_sbom_sidecars.py:46:CREATE TRIGGER asset_snapshot_sbom_sidecars_immutable BEFORE UPDATE OR DELETE
+backend/migrations/versions/0022_sbom_sidecars.py:55:    raise RuntimeError("R11 immutable history cannot be downgraded; use forward repair")
+backend/migrations/versions/0018_asset_inventory.py:1:"""Freeze private asset identities, immutable snapshots and import receipts.
+backend/migrations/versions/0018_asset_inventory.py:18:    """Current pointers can be populated within a transaction; history remains immutable."""
+backend/migrations/versions/0018_asset_inventory.py:125:        RAISE EXCEPTION 'asset snapshots are immutable' USING ERRCODE = '23514';
+backend/migrations/versions/0018_asset_inventory.py:129:        CREATE TRIGGER asset_snapshots_immutable BEFORE UPDATE OR DELETE ON asset_snapshots
+frontend/src/features/assets/asset-client.ts:3:import { parseSnapshotSbom, type SnapshotSbom } from "./sbom-contracts";
+frontend/src/features/assets/asset-client.ts:39:export async function getAssetSnapshotSbom(tenant: string, snapshot: AssetSnapshot, signal?: AbortSignal): Promise<SnapshotSbom> {
+frontend/src/features/assets/asset-client.ts:41:  return parseSnapshotSbom(await fetchJson(`${assetPath(snapshot.asset_id)}/snapshots/${encodeURIComponent(snapshot.snapshot_id)}/sbom`, {}, signal), tenant, snapshot);
+backend/src/ai_intel/assets/inventory_routes.py:16:from ai_intel.api.auth_state import lock_authenticated_scope
+backend/src/ai_intel/assets/inventory_routes.py:34:    READ_ASSET,
+backend/src/ai_intel/assets/inventory_routes.py:35:    WRITE_ASSET,
+backend/src/ai_intel/assets/inventory_routes.py:69:        scope.requires(WRITE_ASSET if write else READ_ASSET)
+backend/src/ai_intel/assets/inventory_routes.py:86:            current = lock_authenticated_scope(
+backend/src/ai_intel/assets/inventory_routes.py:93:            current.requires(WRITE_ASSET if write else READ_ASSET)
+backend/src/ai_intel/assets/inventory_routes.py:315:    def get_snapshot_sbom(request: Request, asset_id: str, snapshot_id: str) -> Response:
+backend/src/ai_intel/assets/inventory_routes.py:325:                    content=service.get_snapshot_sbom(identity, snapshot).model_dump(mode="json"),
+backend/src/ai_intel/api/app.py:40:from ai_intel.infrastructure.settings import ApplicationSettings, load_application_settings
+backend/src/ai_intel/api/app.py:46:    settings: ApplicationSettings | None = None,
+backend/src/ai_intel/api/app.py:160:    settings: ApplicationSettings, engine: Engine | None, cache: Redis | None
+backend/src/ai_intel/assets/inventory.py:36:    READ_ASSET,
+backend/src/ai_intel/assets/inventory.py:37:    WRITE_ASSET,
+backend/src/ai_intel/assets/inventory.py:100:        tenant = self._tenant(WRITE_ASSET if writing else READ_ASSET)
+backend/src/ai_intel/assets/inventory.py:110:        tenant = self._tenant(READ_ASSET)
+backend/src/ai_intel/assets/inventory.py:131:    def get_snapshot_sbom(self, asset_id: str, snapshot_id: str) -> AssetSnapshotSbomResponse:
+backend/src/ai_intel/assets/inventory.py:133:        tenant = self._tenant(READ_ASSET)
+backend/src/ai_intel/assets/inventory.py:201:        tenant = self._tenant(WRITE_ASSET)
+backend/src/ai_intel/assets/inventory.py:302:                current_semantic_sha256 = self.get_snapshot_sbom(
+backend/src/ai_intel/assets/inventory.py:350:                    raw_input=raw_bytes,
+backend/src/ai_intel/assets/inventory.py:377:                    current_snapshot_id=snapshot.snapshot_id,
+backend/src/ai_intel/assets/inventory.py:444:        tenant = self._tenant(READ_ASSET)
+backend/src/ai_intel/assets/inventory.py:511:        tenant = self._tenant(READ_ASSET)
+frontend/src/features/assets/sbom-contracts.ts:95:export function parseSnapshotSbom(value: unknown, tenant: string, snapshot: AssetSnapshot): SnapshotSbom {
+frontend/src/features/assets/asset-workspace.tsx:69:/** 会话代次变化时由 App 重新挂载，私有结果与上传 File 不进入持久缓存。 */
+frontend/src/features/assets/asset-workspace.tsx:70:export function AssetWorkspace({ assetId }: { assetId?: string }) {
+frontend/src/features/assets/sbom-detail.tsx:3:import { getAssetSnapshotSbom } from "./asset-client";
+frontend/src/features/assets/sbom-detail.tsx:53:export function SbomDetail({ tenant, snapshot, isCurrent, onFailure }: { tenant: string; snapshot: AssetSnapshot; isCurrent: () => boolean; onFailure: (error: ApiProblem) => void }) {
+frontend/src/features/assets/sbom-detail.tsx:61:    void getAssetSnapshotSbom(tenant, snapshot, controller.signal).then((value) => {
+frontend/src/features/assets/asset-detail.tsx:8:import { SbomDetail } from "./sbom-detail";
+frontend/src/features/assets/asset-detail.tsx:18:function SnapshotView({ snapshot, position, isCurrent, onFailure }: { snapshot: AssetSnapshot; position: SnapshotPosition; isCurrent: () => boolean; onFailure: (error: ApiProblem) => void }) {
+frontend/src/features/assets/asset-detail.tsx:36:    <SbomDetail tenant={snapshot.tenant_id} snapshot={snapshot} isCurrent={isCurrent} onFailure={onFailure} />
+frontend/src/features/assets/asset-detail.tsx:87:    if (selectedSnapshotId === null) snapshotContent = <SnapshotView key={asset.snapshot.snapshot_id} snapshot={asset.snapshot} position={newerHistory ? "unverified" : "current"} isCurrent={isCurrent} onFailure={onFailure} />;
+frontend/src/features/assets/asset-detail.tsx:90:    else snapshotContent = <><button className="button secondary asset-return-current" onClick={() => setSelectedSnapshotId(null)}>查看当前快照</button><SnapshotView key={selectedSnapshot.snapshot_id} snapshot={selectedSnapshot} position={selectedSnapshot.snapshot_number < asset.snapshot.snapshot_number ? "history" : "unverified"} isCurrent={isCurrent} onFailure={onFailure} /></>;
+frontend/src/App.tsx:15:import { AssetWorkspace } from "./features/assets/asset-workspace";
+frontend/src/App.tsx:202:          {page === "assets" && <AssetWorkspace key={sessionScopeKey} assetId={assetRoute?.assetId} />}
+frontend/src/App.tsx:214:export function App() {

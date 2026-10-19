@@ -1,0 +1,26 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+import { strict as assert } from 'node:assert';
+import { parseSnapshot, isSafeSbomPurl } from '../../../frontend/src/features/assets/asset-contracts';
+import { parseSnapshotSbom } from '../../../frontend/src/features/assets/sbom-contracts';
+import { sbomFixture, sbomSnapshot } from '../../../frontend/tests/r17_sbom_fixture';
+import { fixtureTenant } from '../../../frontend/src/features/assets/synthetic-fixtures';
+const samples=JSON.parse(readFileSync('../reports/runs/recovery_r17_sbom_workbench_review1_20261016/independent_backend_samples.json','utf8'));
+const receipts=[];
+for (const sample of samples) {
+  const snapshot=parseSnapshot(sample.snapshot,fixtureTenant,sample.snapshot.asset_id);
+  const sidecar=parseSnapshotSbom(sample.sidecar,fixtureTenant,snapshot);
+  assert.equal(sidecar.snapshot_id,snapshot.snapshot_id); assert.equal(sidecar.projection_sha256,snapshot.snapshot_sha256);
+  assert.equal(snapshot.inventory_completeness,'unknown'); assert.equal('source_version' in sidecar,false);
+  receipts.push({case:sample.case,snapshot_id:snapshot.snapshot_id,accepted:true,data_mode:'synthetic_contract'});
+}
+const negative=[];
+for (const purl of ['pkg:generic/synthetic@%2Fhome%2Freview-private%2F.env','pkg:pypi/synthetic@review-secret%40private','pkg:generic/synthetic@%252Fhome%252Freview-private']) {
+  const snapshot=sbomSnapshot(); snapshot.components[0].purl=purl;
+  const value=sbomFixture(); value.dependency_edges[0].target_ref=purl;
+  let snapshotAccepted=false,sidecarAccepted=false;
+  try { parseSnapshot(snapshot,fixtureTenant,snapshot.asset_id); snapshotAccepted=true; } catch {}
+  try { parseSnapshotSbom(value,fixtureTenant,sbomSnapshot()); sidecarAccepted=true; } catch {}
+  negative.push({purl,safe_helper:isSafeSbomPurl(purl),snapshotAccepted,sidecarAccepted,expected:'reject unsafe PURL version slash or @'});
+}
+writeFileSync('../reports/runs/recovery_r17_sbom_workbench_review1_20261016/backend_dto_probe.json',JSON.stringify({serializer:receipts,negative},null,2)+'\n');
+console.log(JSON.stringify({serializer_passed:receipts.length,negative},null,2));

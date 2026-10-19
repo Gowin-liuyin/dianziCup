@@ -1,0 +1,197 @@
+diff --git a/backend/src/ai_intel/enrichment/job_service.py b/backend/src/ai_intel/enrichment/job_service.py
+index 9fd8bc13..cf736a4b 100644
+--- a/backend/src/ai_intel/enrichment/job_service.py
++++ b/backend/src/ai_intel/enrichment/job_service.py
+@@ -67,7 +67,7 @@ from ai_intel.enrichment.publication import (
+ from ai_intel.enrichment.signals import enrich_structured_fields
+ from ai_intel.infrastructure.content_store import ContentStorage
+ from ai_intel.infrastructure.models.generation import AttemptMetadata, GenerationClient
+-from ai_intel.infrastructure.outbox import enqueue_job
++from ai_intel.infrastructure.outbox import IdempotencyConflictError, enqueue_job
+ from ai_intel.knowledge.event_linking import EventRepository
+ from ai_intel.knowledge.models import document_revisions, documents, job_runs, users
+ from ai_intel.knowledge.persistence_models import events
+@@ -77,12 +77,13 @@ from ai_intel.workers.executor import (
+     JobExecutionResult,
+     utc_now,
+ )
+-from ai_intel.workers.jobs import require_aware_time
++from ai_intel.workers.jobs import read_job_payload, require_aware_time
+ 
+ ENRICHMENT_PARENT_JOB_TYPE = "initialize_event_enrichment"
+ ENRICHMENT_STEP_JOB_TYPE = "execute_event_enrichment_step"
+ ENRICHMENT_PUBLICATION_JOB_TYPE = "publish_event_enrichment"
+ RULE_VERSION = "r07-enrichment-workflow-1"
++ENRICHMENT_IDEMPOTENCY_NAMESPACE_VERSION = "r07-scope-v2"
+ MODEL_TRACE_ADAPTER = TypeAdapter(tuple[AttemptMetadata, ...])
+ 
+ 
+@@ -102,6 +103,119 @@ def _digest(value: object) -> str:
+     return hashlib.sha256(encoded).hexdigest()
+ 
+ 
++def _enrichment_idempotency_key(
++    tenant_id: str | None,
++    event_id: UUID,
++    actor_user_id: str,
++    raw_key: str,
++) -> str:
++    if not raw_key.strip() or len(raw_key) > 200:
++        raise ValueError("invalid idempotency key")
++    namespace = {
++        "namespace_version": ENRICHMENT_IDEMPOTENCY_NAMESPACE_VERSION,
++        "tenant_id": tenant_id,
++        "route": f"/v1/events/{event_id}/enrichment-jobs",
++        "actor_user_id": actor_user_id,
++        "idempotency_key": raw_key,
++    }
++    return ENRICHMENT_IDEMPOTENCY_NAMESPACE_VERSION + ":" + _digest(namespace)
++
++
++def _parent_job_for_key(session: Session, tenant_id: str | None, key: str) -> RowMapping | None:
++    scope_clause = (
++        job_runs.c.tenant_id.is_(None) if tenant_id is None else job_runs.c.tenant_id == tenant_id
++    )
++    rows = tuple(
++        session.execute(
++            select(job_runs).where(
++                scope_clause,
++                job_runs.c.job_type == ENRICHMENT_PARENT_JOB_TYPE,
++                job_runs.c.idempotency_key == key,
++            )
++        ).mappings()
++    )
++    if len(rows) > 1:
++        raise IdempotencyConflictError("enrichment parent identity is ambiguous")
++    return rows[0] if rows else None
++
++
++def _validated_parent_workflow(session: Session, parent: RowMapping) -> RowMapping:
++    """History is reusable only when its PG reference and frozen identity remain self-consistent."""
++    try:
++        workflow = (
++            session.execute(
++                select(enrichment_workflows).where(
++                    enrichment_workflows.c.parent_job_id == parent["job_id"],
++                )
++            )
++            .mappings()
++            .one_or_none()
++        )
++        if workflow is None:
++            raise ValueError("missing workflow")
++        payload = EnrichmentJobPayload.model_validate_json(
++            read_job_payload(session, parent["job_id"], parent["tenant_id"])
++        )
++        EventEnrichmentRequest.model_validate_json(json.dumps(workflow["request_payload"]))
++        EnrichmentExecutionPolicy.model_validate_json(json.dumps(workflow["execution_policy"]))
++        UUID(workflow["event_id"])
++        if (
++            parent["job_type"] != ENRICHMENT_PARENT_JOB_TYPE
++            or parent["payload_ref"] != "pg:job:" + parent["job_id"]
++            or str(payload.workflow_id) != workflow["workflow_id"]
++            or payload.step_key is not None
++            or payload.binding_sha256 != _digest(_binding(workflow))
++            or _digest(workflow["request_payload"]) != workflow["request_sha256"]
++            or _digest(workflow["execution_policy"]) != workflow["execution_policy_sha256"]
++            or workflow["rule_version"] != RULE_VERSION
++            or workflow["tenant_id"] != parent["tenant_id"]
++            or workflow["visibility"] != ("public" if parent["tenant_id"] is None else "tenant")
++        ):
++            raise ValueError("inconsistent workflow")
++        return workflow
++    except ValueError:
++        raise IdempotencyConflictError("enrichment parent identity cannot be validated") from None
++
++
++def _existing_parent_receipt(
++    session: Session,
++    parent: RowMapping,
++    expected_workflow_id: UUID,
++    binding: dict[str, object],
++) -> EnrichmentEnqueueReceipt:
++    workflow = _validated_parent_workflow(session, parent)
++    if workflow["workflow_id"] != str(expected_workflow_id) or _binding(workflow) != binding:
++        raise IdempotencyConflictError("idempotency key reused with different enrichment binding")
++    return EnrichmentEnqueueReceipt(expected_workflow_id, UUID(parent["job_id"]), True)
++
++
++def _legacy_parent_receipt(
++    session: Session,
++    tenant_id: str | None,
++    raw_key: str,
++    binding: dict[str, object],
++) -> EnrichmentEnqueueReceipt | None:
++    parent = _parent_job_for_key(session, tenant_id, raw_key)
++    if parent is None:
++        return None
++    workflow = _validated_parent_workflow(session, parent)
++    legacy_id = uuid5(NAMESPACE_URL, "ai-intel:enrichment:" + repr((tenant_id, raw_key)))
++    if workflow["workflow_id"] != str(legacy_id):
++        if re.fullmatch(
++            ENRICHMENT_IDEMPOTENCY_NAMESPACE_VERSION + r":[0-9a-f]{64}", raw_key
++        ) and workflow["workflow_id"] == str(
++            uuid5(NAMESPACE_URL, "ai-intel:enrichment:" + raw_key)
++        ):
++            return None
++        raise IdempotencyConflictError("legacy enrichment namespace cannot be validated")
++    if (
++        workflow["actor_user_id"] != binding["actor_user_id"]
++        or workflow["event_id"] != binding["event_id"]
++    ):
++        return None
++    return _existing_parent_receipt(session, parent, legacy_id, binding)
++
++
+ def _authenticated_scope(
+     session: Session,
+     session_hash: str,
+@@ -253,11 +367,10 @@ class EnrichmentJobService:
+         policy = EnrichmentExecutionPolicy.model_validate_json(
+             self.execution_policy().model_dump_json()
+         )
+-        if not idempotency_key.strip() or len(idempotency_key) > 200:
+-            raise ValueError("invalid idempotency key")
+-        workflow_id = uuid5(
+-            NAMESPACE_URL, "ai-intel:enrichment:" + repr((event["tenant_id"], idempotency_key))
++        parent_key = _enrichment_idempotency_key(
++            current.tenant_id, event_id, current.user_id, idempotency_key
+         )
++        workflow_id = uuid5(NAMESPACE_URL, "ai-intel:enrichment:" + parent_key)
+         binding: dict[str, object] = {
+             "event_id": str(event_id),
+             "actor_user_id": current.user_id,
+@@ -269,6 +382,12 @@ class EnrichmentJobService:
+             "execution_policy_sha256": _digest(policy.model_dump(mode="json")),
+             "rule_version": RULE_VERSION,
+         }
++        existing_parent = _parent_job_for_key(session, event["tenant_id"], parent_key)
++        if existing_parent is not None:
++            return _existing_parent_receipt(session, existing_parent, workflow_id, binding)
++        legacy = _legacy_parent_receipt(session, event["tenant_id"], idempotency_key, binding)
++        if legacy is not None:
++            return legacy
+         parent_id = enqueue_job(
+             session,
+             event["tenant_id"],
+@@ -277,7 +396,7 @@ class EnrichmentJobService:
+                 EnrichmentJobPayload(workflow_id=workflow_id, binding_sha256=_digest(binding))
+             ),
+             created_at,
+-            idempotency_key=idempotency_key,
++            idempotency_key=parent_key,
+             max_attempts=3,
+         )
+         existing = session.execute(
+@@ -286,7 +405,10 @@ class EnrichmentJobService:
+             )
+         ).scalar_one_or_none()
+         if existing is not None:
+-            return EnrichmentEnqueueReceipt(UUID(existing), UUID(parent_id), True)
++            parent = _parent_job_for_key(session, event["tenant_id"], parent_key)
++            if parent is None:
++                raise IdempotencyConflictError("enrichment parent identity cannot be validated")
++            return _existing_parent_receipt(session, parent, workflow_id, binding)
+         if (
+             event["status"] != "active"
+             or event["business_version"] != request.expected_event_version

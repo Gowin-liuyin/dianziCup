@@ -1,0 +1,50 @@
+diff --git a/backend/tests/integration/test_r07_enrichment_job_metadata_pg.py b/backend/tests/integration/test_r07_enrichment_job_metadata_pg.py
+index 5f3a15f4..884c2ae0 100644
+--- a/backend/tests/integration/test_r07_enrichment_job_metadata_pg.py
++++ b/backend/tests/integration/test_r07_enrichment_job_metadata_pg.py
+@@ -6,6 +6,7 @@ from datetime import UTC, datetime
+ from uuid import uuid4
+ 
+ import pytest
++from alembic.script import ScriptDirectory
+ from sqlalchemy import insert, inspect, select, text, update
+ from sqlalchemy.exc import IntegrityError
+ from sqlalchemy.orm import Session
+@@ -13,6 +14,7 @@ from test_r06_catalog_documents_pg import catalog_engine as catalog_engine
+ from test_r07_enrichment_inputs_pg import seeded_event
+ 
+ from ai_intel.enrichment.job_models import enrichment_job_steps, enrichment_workflows
++from ai_intel.infrastructure.database import MIGRATIONS_DIR
+ from ai_intel.infrastructure.outbox import enqueue_job
+ from ai_intel.knowledge.models import job_runs, users
+ 
+@@ -70,9 +72,12 @@ def test_forward_migration_exposes_metadata_without_a_duplicate_job_status(catal
+     for name in ("enrichment_workflows", "enrichment_job_steps"):
+         assert "status" not in {row["name"] for row in inspect(catalog_engine).get_columns(name)}
+     with catalog_engine.connect() as connection:
+-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+-            "0017_enrichment_job_workflows"
+-        )
++        installed = connection.scalar(text("SELECT version_num FROM alembic_version"))
++    scripts = ScriptDirectory(str(MIGRATIONS_DIR))
++    assert installed == scripts.get_current_head()
++    assert "0017_enrichment_job_workflows" in {
++        revision.revision for revision in scripts.iterate_revisions(installed, "base")
++    }
+ 
+ 
+ @pytest.mark.parametrize(
+diff --git a/docs/decisions/CR-R07_metadata_head_test_compatibility.md b/docs/decisions/CR-R07_metadata_head_test_compatibility.md
+new file mode 100644
+index 00000000..b85e5717
+--- /dev/null
++++ b/docs/decisions/CR-R07_metadata_head_test_compatibility.md
+@@ -0,0 +1,8 @@
++# CR-R07 · 前向0019后元数据测试兼容
++
++首次创建时间：2026-10-16T06:26:27+08:00；主控/root；状态awaiting_review。
++独立审查固定1b在真实forward0019运行原20元数据用例，19pass/1fail：唯一失败是原测试硬编码head0017，实际0019_aggregate_observations。原20自检确在pre0019运行，不能据原记录宣称最终SHA20通过。审查原红由reviewer保存，不改它。
++
++仅修改test_r07_enrichment_job_metadata_pg.py的installed revision检查：要求真实PG installed等于当前冻结Alembic head，并要求0017在真实祖先链。原19约束/并发用例、输入、业务表、迁移、指标/金标/阈值均不变。这样保留必须已经迁移0017的验收，并允许已批准的0018/19前向链。不是任意revision或不存在数据库通过。
++
++真实同原20测试于current0019重新运行20/20，原报告/manifest1b原bytes保留，新证据另run。生产业务代码与1f0522完全相同，只有测试兼容变更；无需数据库迁移，回退仅回退本测试会恢复已知false failure。需原独立reviewer检查新diff并亲复跑20，root不自签。

@@ -1,0 +1,23 @@
+--- D:\wt\r18-ports-review1\reports\runs\r18_plugin_production_ports_review1_20261017\pg_support\task_pg_identity.py
++++ D:\dianzi\reports\runs\root_pg_packets_preparation_20261017\r16_pg_support\task_pg_identity.py
+@@ -15,9 +15,9 @@
+         identity = json.load(stream)
+     assert identity["source_sha"] == QUALIFIED
+     assert identity["run_id"] == os.environ["DIANZI_TEST_RUN_ID"]
+-    assert re.fullmatch(r"root_batch17_r1_[a-f0-9]{12}", identity["run_id"])
++    assert re.fullmatch(r"r16_change_history_http_[a-f0-9]{12}", identity["run_id"])
+     assert identity["database"] == "test_dianzi_" + identity["run_id"]
+-    assert re.fullmatch(r"test_r05_root17_[a-f0-9]{12}", identity["schema"])
++    assert re.fullmatch(r"test_r16_review1_[a-f0-9]{12}", identity["schema"])
+     assert connection.scalar(text("SELECT current_database()")) == identity["database"]
+     assert connection.scalar(text("SELECT current_user")) == identity["role"]
+     assert connection.scalar(text("SELECT current_schema()")) == identity["schema"]
+@@ -29,7 +29,7 @@
+     marker = json.loads(identity["database_comment"])
+     assert len(marker) == 9 and marker["run_id"] == identity["run_id"]
+     assert marker["product_sha"] == QUALIFIED
+-    assert marker["owner"].startswith("root-batch17-review1:")
++    assert marker["owner"].startswith("r16-history-review1:")
+     schema = connection.execute(text("SELECT oid,obj_description(oid,'pg_namespace') FROM pg_namespace WHERE nspname=current_schema()")).one()
+     assert tuple(schema) == (identity["schema_oid"], identity["schema_comment"])
+     return identity

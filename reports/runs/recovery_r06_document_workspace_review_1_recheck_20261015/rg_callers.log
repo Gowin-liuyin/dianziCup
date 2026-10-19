@@ -1,0 +1,24 @@
+frontend/src\App.tsx:13:import { DocumentWorkspace } from "./features/documents/document-workspace";
+frontend/src\App.tsx:196:          {page === "documents" && <DocumentWorkspace key={sessionScopeKey} />}
+frontend/src\features\documents\document-workspace.tsx:3:import { getDocumentDetail, getDocumentList, getDocumentRevisions, type DocumentFilters } from "../../api/document-client";
+frontend/src\features\documents\document-workspace.tsx:45:function DocumentInspector({ id, revisionId, isCurrent, onExpired, onUnavailable, onReloadCurrent }: { id: string; revisionId: string | null; isCurrent: () => boolean; onExpired: () => void; onUnavailable: (error: ApiProblem) => void; onReloadCurrent: (id: string) => void }) {
+frontend/src\features\documents\document-workspace.tsx:68:    onUnavailable(error);
+frontend/src\features\documents\document-workspace.tsx:69:  }, [stopReads, onUnavailable]);
+frontend/src\features\documents\document-workspace.tsx:70:  function reloadCurrentDocument() { stopReads(); onReloadCurrent(id); }
+frontend/src\features\documents\document-workspace.tsx:79:    void getDocumentDetail(id, selectedRevision.current, request.offset, controller.signal).then((value) => {
+frontend/src\features\documents\document-workspace.tsx:105:    void getDocumentRevisions(id, historyRequest.offset, controller.signal).then((value) => {
+frontend/src\features\documents\document-workspace.tsx:134:    {resource.kind === "failed" && <DocumentError error={resource.error} onRetry={() => { if (resource.error.status === 404) reloadCurrentDocument(); else setRequest({ offset: 0, retry: request.retry + 1 }); }} />}
+frontend/src\features\documents\document-workspace.tsx:139:      {!resource.value.document.is_current && <p className="document-boundary">正在查看保存的历史修订，标题和证据属于此版本。<a href={`#documents/${id}`} onClick={(event) => { event.preventDefault(); reloadCurrentDocument(); }}>查看当前版本 →</a></p>}
+frontend/src\features\documents\document-workspace.tsx:171:export function DocumentWorkspace() {
+frontend/src\features\documents\document-workspace.tsx:187:  const invalidateCatalog = useCallback((error: ApiProblem) => {
+frontend/src\features\documents\document-workspace.tsx:191:  const reloadCurrent = useCallback((id: string) => {
+frontend/src\features\documents\document-workspace.tsx:233:    {selection === null ? <aside className="panel document-prompt"><p className="eyebrow">原文核查</p><h2>读资料<br />留意证据范围</h2><p>选择资料，核查保存的版本、发布时间精度与原文覆盖。</p><dl><dt>论文</dt><dd>研究主张与确认事实分别核查。</dd><dt>标准与政策</dt><dd>版本、建议、义务和适用范围以原文为准。</dd><dt>原文证据</dt><dd>定位已核验仍需确认片段是否支持论断。</dd></dl><p className="document-boundary">未知保持未知</p></aside> : <DocumentInspector key={`${selection.documentId}:${selection.revisionId}:${inspectorGeneration}`} id={selection.documentId} revisionId={selection.revisionId} isCurrent={isCurrent} onExpired={expired} onUnavailable={invalidateCatalog} onReloadCurrent={reloadCurrent} />}
+frontend/src\api\document-client.ts:38:export async function getDocumentDetail(id: string, revisionId: string | null = null, evidenceOffset = 0, signal?: AbortSignal): Promise<DocumentDetailResponse> {
+frontend/src\api\document-client.ts:50:export async function getDocumentRevisions(id: string, offset = 0, signal?: AbortSignal): Promise<DocumentRevisionsResponse> {
+frontend/src\api\document-client.test.ts:3:import { getDocumentDetail, getDocumentList, getDocumentRevisions } from "./document-client";
+frontend/src\api\document-client.test.ts:22:    await expect(getDocumentDetail("../private")).rejects.toMatchObject({ status: 422 });
+frontend/src\api\document-client.test.ts:23:    await expect(getDocumentDetail(documentId, null, 100)).rejects.toMatchObject({ status: 422 });
+frontend/src\api\document-client.test.ts:24:    await expect(getDocumentRevisions(documentId, -1)).rejects.toMatchObject({ status: 422 });
+frontend/src\api\document-client.test.ts:30:      await expect(getDocumentDetail(documentId, revisionId, 100)).rejects.toMatchObject({ code: "invalid_response" });
+frontend/src\api\document-client.test.ts:33:    await expect(getDocumentDetail(documentId, revisionId)).rejects.toMatchObject({ code: "invalid_response" });
+frontend/src\api\document-client.test.ts:38:      await expect(getDocumentRevisions(documentId, 20)).rejects.toMatchObject({ code: "invalid_response" });

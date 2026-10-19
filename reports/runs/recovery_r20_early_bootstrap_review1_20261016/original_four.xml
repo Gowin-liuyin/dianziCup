@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="4" time="7.036" timestamp="2026-10-16T05:00:59.211233+08:00" hostname="yin"><testcase classname="tests.unit.test_r20_native_cpu_guard" name="test_short_cpu_task_keeps_its_result" time="1.647"><failure message="AssertionError: b''&#10;assert 3221225540 == 0&#10; +  where 3221225540 = CompletedProcess(args=['D:\\wt\\r20-early-review1\\backend\\.venv\\Scripts\\python.exe', '-c', &quot;from ai_intel.infrastructure.process_limits import bound_process_resources\nhandle=bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nprint('LIMIT_APPLIED',flush=True)\nprint('RESULT',sum(range(100_000)),flush=True)\n&quot;], returncode=3221225540, stdout=b'', stderr=b'').returncode">def test_short_cpu_task_keeps_its_result() -&gt; None:
+        code = RESOURCE_SETUP + "print('RESULT',sum(range(100_000)),flush=True)\n"
+        result = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, timeout=8, check=False
+        )
+&gt;       assert result.returncode == 0, result.stderr
+E       AssertionError: b''
+E       assert 3221225540 == 0
+E        +  where 3221225540 = CompletedProcess(args=['D:\\wt\\r20-early-review1\\backend\\.venv\\Scripts\\python.exe', '-c', "from ai_intel.infrastructure.process_limits import bound_process_resources\nhandle=bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\nprint('LIMIT_APPLIED',flush=True)\nprint('RESULT',sum(range(100_000)),flush=True)\n"], returncode=3221225540, stdout=b'', stderr=b'').returncode
+
+tests\unit\test_r20_native_cpu_guard.py:86: AssertionError</failure></testcase><testcase classname="tests.unit.test_r20_native_cpu_guard" name="test_guard_hard_exit_after_readiness_terminates_worker_tree[python-gil-held]" time="1.533"><failure message="assert (8593750 + 3906250) &lt; 10000000&#10; +  where 8593750 = c_ulonglong(8593750).value&#10; +  and   3906250 = c_ulonglong(3906250).value">workload = 'sys.setswitchinterval(60)\nwhile time.process_time()&lt;2.25:\n    pass\n'
+
+    @pytest.mark.parametrize(
+        "workload",
+        [
+            "sys.setswitchinterval(60)\nwhile time.process_time()&lt;2.25:\n    pass\n",
+            "ctypes.PyDLL('kernel32').Sleep(2000)\n",
+            "import hashlib\nhashlib.pbkdf2_hmac('sha256',b'a',b'b',100_000_000)\n",
+        ],
+        ids=["python-gil-held", "native-gil-held-idle", "native-cpu"],
+    )
+    def test_guard_hard_exit_after_readiness_terminates_worker_tree(workload: str) -&gt; None:
+        if sys.platform != "win32":
+            from ai_intel.infrastructure import process_limits
+    
+            with pytest.raises(OSError):
+                process_limits._start_windows_cpu_guard(1, 0)
+            return
+    
+        import ctypes
+        from ctypes import wintypes
+    
+        code = (
+            "import ctypes,os,sys,time,subprocess\n"
+            "from ai_intel.infrastructure import process_limits as limits\n"
+            "limits._WINDOWS_CPU_GUARD_CODE=limits._WINDOWS_CPU_GUARD_CODE.replace("
+            "'    while True:\\n','    import time,os\\n    time.sleep(0.4)\\n"
+            "    os._exit(99)\\n    while True:\\n')\n"
+            "handle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\n"
+            "leaf=subprocess.Popen([os.path.join(sys.base_prefix,'python.exe'),'-I','-S','-c',"
+            "'import time;time.sleep(10)'],creationflags=0x08000000)\n"
+            "print('TREE',os.getpid(),limits._WINDOWS_CPU_GUARDS[0].pid,leaf.pid,flush=True)\n"
+            + workload
+            + "print('UNSUPERVISED_RESULT',flush=True)\n"
+        )
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.WaitForSingleObject.restype = wintypes.DWORD
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.c_void_p] * 4
+        handles: list[int] = []
+        with subprocess.Popen(
+            [sys.executable, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        ) as worker:
+            ready: queue.Queue[bytes] = queue.Queue()
+    
+            def read_tree() -&gt; None:
+                assert worker.stdout is not None
+                ready.put(worker.stdout.readline())
+    
+            threading.Thread(target=read_tree, daemon=True).start()
+            try:
+                first_line = ready.get(timeout=8)
+                assert first_line.startswith(b"TREE "), first_line
+                for pid in first_line.split()[1:]:
+                    handle = kernel.OpenProcess(0x100000 | 0x1000, False, int(pid))
+                    assert handle is not None
+                    handles.append(handle)
+                stdout, stderr = worker.communicate(timeout=8)
+                assert b"UNSUPERVISED_RESULT" not in stdout
+                assert b"Traceback" not in stderr
+                assert all(kernel.WaitForSingleObject(handle, 1000) == 0 for handle in handles)
+                times = [ctypes.c_ulonglong() for _ in range(4)]
+                assert kernel.GetProcessTimes(handles[0], *(ctypes.byref(value) for value in times))
+&gt;               assert times[2].value + times[3].value &lt; 10_000_000
+E               assert (8593750 + 3906250) &lt; 10000000
+E                +  where 8593750 = c_ulonglong(8593750).value
+E                +  and   3906250 = c_ulonglong(3906250).value
+
+tests\unit\test_r20_native_cpu_guard.py:154: AssertionError</failure></testcase><testcase classname="tests.unit.test_r20_native_cpu_guard" name="test_guard_hard_exit_after_readiness_terminates_worker_tree[native-gil-held-idle]" time="1.342" /><testcase classname="tests.unit.test_r20_native_cpu_guard" name="test_guard_hard_exit_after_readiness_terminates_worker_tree[native-cpu]" time="1.286"><failure message="assert (4687500 + 6562500) &lt; 10000000&#10; +  where 4687500 = c_ulonglong(4687500).value&#10; +  and   6562500 = c_ulonglong(6562500).value">workload = "import hashlib\nhashlib.pbkdf2_hmac('sha256',b'a',b'b',100_000_000)\n"
+
+    @pytest.mark.parametrize(
+        "workload",
+        [
+            "sys.setswitchinterval(60)\nwhile time.process_time()&lt;2.25:\n    pass\n",
+            "ctypes.PyDLL('kernel32').Sleep(2000)\n",
+            "import hashlib\nhashlib.pbkdf2_hmac('sha256',b'a',b'b',100_000_000)\n",
+        ],
+        ids=["python-gil-held", "native-gil-held-idle", "native-cpu"],
+    )
+    def test_guard_hard_exit_after_readiness_terminates_worker_tree(workload: str) -&gt; None:
+        if sys.platform != "win32":
+            from ai_intel.infrastructure import process_limits
+    
+            with pytest.raises(OSError):
+                process_limits._start_windows_cpu_guard(1, 0)
+            return
+    
+        import ctypes
+        from ctypes import wintypes
+    
+        code = (
+            "import ctypes,os,sys,time,subprocess\n"
+            "from ai_intel.infrastructure import process_limits as limits\n"
+            "limits._WINDOWS_CPU_GUARD_CODE=limits._WINDOWS_CPU_GUARD_CODE.replace("
+            "'    while True:\\n','    import time,os\\n    time.sleep(0.4)\\n"
+            "    os._exit(99)\\n    while True:\\n')\n"
+            "handle=limits.bound_process_resources(memory_bytes=100*1024**2,cpu_seconds=1)\n"
+            "leaf=subprocess.Popen([os.path.join(sys.base_prefix,'python.exe'),'-I','-S','-c',"
+            "'import time;time.sleep(10)'],creationflags=0x08000000)\n"
+            "print('TREE',os.getpid(),limits._WINDOWS_CPU_GUARDS[0].pid,leaf.pid,flush=True)\n"
+            + workload
+            + "print('UNSUPERVISED_RESULT',flush=True)\n"
+        )
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.WaitForSingleObject.restype = wintypes.DWORD
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.c_void_p] * 4
+        handles: list[int] = []
+        with subprocess.Popen(
+            [sys.executable, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        ) as worker:
+            ready: queue.Queue[bytes] = queue.Queue()
+    
+            def read_tree() -&gt; None:
+                assert worker.stdout is not None
+                ready.put(worker.stdout.readline())
+    
+            threading.Thread(target=read_tree, daemon=True).start()
+            try:
+                first_line = ready.get(timeout=8)
+                assert first_line.startswith(b"TREE "), first_line
+                for pid in first_line.split()[1:]:
+                    handle = kernel.OpenProcess(0x100000 | 0x1000, False, int(pid))
+                    assert handle is not None
+                    handles.append(handle)
+                stdout, stderr = worker.communicate(timeout=8)
+                assert b"UNSUPERVISED_RESULT" not in stdout
+                assert b"Traceback" not in stderr
+                assert all(kernel.WaitForSingleObject(handle, 1000) == 0 for handle in handles)
+                times = [ctypes.c_ulonglong() for _ in range(4)]
+                assert kernel.GetProcessTimes(handles[0], *(ctypes.byref(value) for value in times))
+&gt;               assert times[2].value + times[3].value &lt; 10_000_000
+E               assert (4687500 + 6562500) &lt; 10000000
+E                +  where 4687500 = c_ulonglong(4687500).value
+E                +  and   6562500 = c_ulonglong(6562500).value
+
+tests\unit\test_r20_native_cpu_guard.py:154: AssertionError</failure></testcase></testsuite></testsuites>

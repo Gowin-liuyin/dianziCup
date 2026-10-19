@@ -1,11 +1,11 @@
 # G-E · 完整工作台与协议的独立准备
 
 文档首次创建时间：2026-10-16T06:39:55+08:00
-本次写作开始时间：2026-10-16T23:51:59+08:00
-本次写作结束时间：2026-10-16T23:51:59+08:00
-最后更新时间：2026-10-16T23:51:59+08:00
+本次写作开始时间：2026-10-17T13:36:47.367+08:00
+本次写作结束时间：2026-10-17T13:36:47.443+08:00
+最后更新时间：2026-10-17T13:36:47.443+08:00
 阶段实际开始/结束时间：正式阶段门尚未放行；独立准备历史起点未统一记录 / 尚未结束
-本报告证据截止时间：2026-10-16T23:51:59+08:00
+本报告证据截止时间：2026-10-17T13:36:47.443+08:00
 主控/实现Agent：/root及下列唯一所有者
 独立审查Agent与报告：下文列小批审查；整阶段新review尚未运行
 阶段状态：in_progress（仅批准的独立准备，不代表G-C门通过）
@@ -196,3 +196,12 @@ CBM本批2026-10-17T00:31:04+08:00至00:31:28+08:00：当前backend/src独立缓
 评分证据范围：F1/E1支持可信来源模式与原文原子保存；A1/E1支持内部最终事务guard。九维/来源广度/完整Agent/准确率/P95/正式分母与6h稳定运行本批没有新结果。费用unknown，无本批产品API付费调用。用户tsbuildinfo rawSHA 3c587edfd308fb5cf04efa6e2d87b7005ef28c8c656842059b2eca405738e43d未改未stage，push ledger未纳本批。
 
 本次写作结束时间：2026-10-17T00:40:47+08:00；修订原因：精确集成3份已独审源，保留新组合证据限制与4红传播；修订人Root。
+
+
+## 2026-10-17T13:36:47.367+08:00 · 批次18实际ready与默认入口并行续接
+
+首次创建时点保持不变，旧节为所标日期历史；当前权威：Root0291集成风险10文件已实际140pass/type1/Ruff10，原保全基线红与CR保留，新非作者尚未审Root。独立采集产品912d8b3/COREaf639/OPS6b775第四次实际启动，runtime_start已写，worker+beat出生标识/存活匹配，13:17:46+08至19:17:46+08受控窗口，formal six_hour=false。新任务不等于成功采集，费用/wireunknown；失败原件保留。详见Root-batch18-integration.md、actual readiness回执、workstreams所有权。R18ports原18实际PG已独审限定关闭；QA076 additional_sources跨revision P1的同oracle复验限定关闭，Root19PG尚未执行。R10async默认客户端/两事务defaultfactory、R12多轮runtime、R16模式与变化工作台、R18risk REST及R20恢复仍独立开发或审查，原stage状态in_progress/partial与全layer gate保持；无新增accepted/push。R14五真实生产adapter由新唯一集成人负责workflow/runtime，不以角色名计完成。
+
+问题台账续项：Root-risk-baseline（已更正/待新复核，触发保全测试比较旧9aa而Root此前合法修复5files，CR对应最小基线更正140green，实际默认route未接）；Source-pre-ready（三次原失败保存，本轮实际ready证明有界启动恢复，六小时及全类别成功未验）；R12-PG-idle（审查确认base pool闲连接可能越target2+sampler1，作者1bb仅NullPool+pool2fixture更正，原race oracle不动，PGnotrun）；R14-adapter-gaps（未解决，collector/enrich/graph/assessment/report当前实际未配置，新实现负责保留预算与负态）；Gold（外部人工阻塞，双人核验0，不计模型票为人工金标）。
+
+文档修订：2026-10-17T13:36:47.443+08:00 /root，补充本轮实际Sourceready与并行源；未更改历史首次创建时点、原验收或分母。

@@ -1,0 +1,51 @@
+backend/src\ai_intel\ingestion\source_jobs.py:37:    persist_source_response,
+backend/src\ai_intel\ingestion\source_jobs.py:40:from ai_intel.ingestion.sources.nvd import normalize_nvd_page
+backend/src\ai_intel\ingestion\source_jobs.py:57:SourceKind = Literal["nvd_ollama", "vllm_vendor"]
+backend/src\ai_intel\ingestion\source_jobs.py:65:    source_kind: SourceKind
+backend/src\ai_intel\ingestion\source_jobs.py:71:def source_page_url(source_kind: SourceKind, cursor: dict[str, JsonValue]) -> str:
+backend/src\ai_intel\ingestion\source_jobs.py:73:    if source_kind not in {"nvd_ollama", "vllm_vendor"}:
+backend/src\ai_intel\ingestion\source_jobs.py:75:    if source_kind == "nvd_ollama":
+backend/src\ai_intel\ingestion\source_jobs.py:158:    source_kind: SourceKind,
+backend/src\ai_intel\ingestion\source_jobs.py:165:    if source_kind == "nvd_ollama":
+backend/src\ai_intel\ingestion\source_jobs.py:168:        following = normalize_nvd_page(payload).next_start_index
+backend/src\ai_intel\ingestion\source_jobs.py:287:def build_source_page_handler(
+backend/src\ai_intel\ingestion\source_jobs.py:317:        source_id = ensure_source_registration(session, scope, request.source_kind, clock())
+backend/src\ai_intel\ingestion\source_jobs.py:335:            url = source_page_url(request.source_kind, lease.cursor_json)
+backend/src\ai_intel\ingestion\source_jobs.py:339:            saved = persist_source_response(
+backend/src\ai_intel\ingestion\source_jobs.py:343:                SourceResponse(request.source_kind, result.body, url, observed_at),
+backend/src\ai_intel\ingestion\source_jobs.py:347:                request.source_kind, result.body, lease.cursor_json, result.redacted_headers
+backend/src\ai_intel\ingestion\source_documents.py:37:from ai_intel.ingestion.sources.nvd import normalize_nvd_page, normalize_nvd_record
+backend/src\ai_intel\ingestion\source_documents.py:38:from ai_intel.ingestion.sources.vendor_advisories import normalize_vendor_advisory
+backend/src\ai_intel\ingestion\source_documents.py:58:SOURCE_DEFINITIONS = {
+backend/src\ai_intel\ingestion\source_documents.py:82:    source_kind: Literal["nvd_ollama", "vllm_vendor"]
+backend/src\ai_intel\ingestion\source_documents.py:141:    if response.source_kind not in SOURCE_DEFINITIONS:
+backend/src\ai_intel\ingestion\source_documents.py:145:        or len(response.request_url) > (6500 if response.source_kind == "vllm_vendor" else 2000)
+backend/src\ai_intel\ingestion\source_documents.py:158:    if response.source_kind == "nvd_ollama":
+backend/src\ai_intel\ingestion\source_documents.py:239:        if response.source_kind == "nvd_ollama":
+backend/src\ai_intel\ingestion\source_documents.py:242:            page = normalize_nvd_page(payload)
+backend/src\ai_intel\ingestion\source_documents.py:262:            document = _prepare_member(response.source_kind, index, member, raw_bytes, parsed)
+backend/src\ai_intel\ingestion\source_documents.py:327:    vendor = normalize_vendor_advisory(member, repository="vllm-project/vllm")
+backend/src\ai_intel\ingestion\source_documents.py:372:    source_kind: Literal["nvd_ollama", "vllm_vendor"],
+backend/src\ai_intel\ingestion\source_documents.py:378:    if source_kind not in SOURCE_DEFINITIONS:
+backend/src\ai_intel\ingestion\source_documents.py:380:    source_id, name, category, origin = SOURCE_DEFINITIONS[source_kind]
+backend/src\ai_intel\ingestion\source_documents.py:404:def persist_source_response(
+backend/src\ai_intel\ingestion\source_documents.py:420:            session, access_scope, response.source_kind, ingested_at
+backend/src\ai_intel\ingestion\source_documents.py:746:    if source_id != SOURCE_DEFINITIONS["nvd_ollama"][0]:
+backend/src\ai_intel\workers\runtime.py:17:from ai_intel.ingestion.source_jobs import SOURCE_JOB_TYPE, build_source_page_handler
+backend/src\ai_intel\workers\runtime.py:92:    SOURCE_JOB_TYPE: build_source_page_handler(
+backend/src\ai_intel\ingestion\connectors.py:1:"""SourceConnector 协议与来源注册验证: 类别/权限/解析器版本/能力状态必填。"""
+backend/src\ai_intel\ingestion\connectors.py:15:class SourceConnector(Protocol):
+backend/src\ai_intel\api\source_routes.py:29:    SourceKind,
+backend/src\ai_intel\api\source_routes.py:125:        "/sources/{source_kind}/collect", status_code=202, response_model=SourceJobResponse
+backend/src\ai_intel\api\source_routes.py:128:        request: Request, source_kind: SourceKind, payload: SourceCollectionRequest
+backend/src\ai_intel\api\source_routes.py:141:                ensure_source_registration(session, scope, source_kind, at)
+backend/src\ai_intel\api\source_routes.py:145:                        source_kind=source_kind,
+backend/src\ai_intel\enrichment\poc.py:21:    source_kind: str
+backend/src\ai_intel\ingestion\sources\osv.py:58:def normalize_osv_record(payload: dict[str, object]) -> OsvRecord:
+backend/src\ai_intel\ingestion\sources\nvd.py:195:def normalize_nvd_page(payload: dict[str, object]) -> NvdPage:
+backend/src\ai_intel\ingestion\sources\academic.py:35:def normalize_academic_record(payload: dict[str, object]) -> AcademicRecord:
+backend/src\ai_intel\ingestion\sources\feed.py:51:def normalize_feed_entry(payload: dict[str, object], source_record_id_prefix: str) -> FeedEntry:
+backend/src\ai_intel\ingestion\sources\repository.py:43:def normalize_repository_record(payload: dict[str, object]) -> RepositoryRecord:
+backend/src\ai_intel\ingestion\sources\repository.py:71:def normalize_community_article(payload: dict[str, object]) -> CommunityArticle:
+backend/src\ai_intel\ingestion\sources\standards.py:42:def normalize_policy_document(payload: dict[str, object]) -> PolicyDocument:
+backend/src\ai_intel\ingestion\sources\vendor_advisories.py:54:def normalize_vendor_advisory(payload: dict[str, object], *, repository: str) -> VendorAdvisory:

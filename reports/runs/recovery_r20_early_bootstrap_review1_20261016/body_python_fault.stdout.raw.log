@@ -1,0 +1,158 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0 -- D:\wt\r20-early-review1\backend\.venv\Scripts\python.exe
+cachedir: D:\wt\r20-early-review1\reports\runs\recovery_r20_early_bootstrap_review1_20261016\body_python_fault_cache
+rootdir: D:\wt\r20-early-review1\backend
+configfile: pyproject.toml
+plugins: anyio-4.15.1, cov-6.3.0
+collecting ... collected 1 item
+
+tests/unit/test_r20_early_cpu_bootstrap.py::test_body_ready_guard_fault_is_additional_to_early_ready_fault[python-gil-held] BODY_FAULT_OBSERVATION {"workload": "python-gil-held", "ready": ["ready", 43796, 38068, true, 0.65625], "final_cpu_seconds": 1.03125, "guard_exitcode": 99, "worker_exitcode": 3221225540, "messages": [], "parent_error": "worker CPU budget exhausted", "parent_last_cpu_seconds": 1.03125}
+FAILED
+ERROR: Coverage failure: total of 9 is less than fail-under=60
+
+
+================================== FAILURES ===================================
+_ test_body_ready_guard_fault_is_additional_to_early_ready_fault[python-gil-held] _
+
+workload = 'python-gil-held'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000192D7CBE090>
+
+    @pytest.mark.parametrize("workload", ["python-gil-held", "native-gil-held-idle", "native-cpu"])
+    def test_body_ready_guard_fault_is_additional_to_early_ready_fault(
+        workload: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        if sys.platform != "win32":
+            return
+        import uuid
+    
+        kernel = _cpu_kernel()
+        kernel.CreateEventW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR]
+        kernel.CreateEventW.restype = wintypes.HANDLE
+        trigger_name = "Local\\R20BodyFault_" + uuid.uuid4().hex
+        trigger = kernel.CreateEventW(None, True, False, trigger_name)
+        assert trigger is not None
+        trigger_code = (
+            "    kernel.OpenEventW.argtypes=[wintypes.DWORD,wintypes.BOOL,wintypes.LPCWSTR]\n"
+            "    kernel.OpenEventW.restype=wintypes.HANDLE\n"
+            f"    trigger=kernel.OpenEventW(0x100000,False,{trigger_name!r})\n"
+            "    if not trigger or kernel.WaitForSingleObject(trigger,3000)!=0:\n"
+            "        raise OSError('test trigger unavailable')\n"
+            "    kernel.CloseHandle(trigger)\n"
+            "    import time,os\n    time.sleep(0.4)\n    os._exit(99)\n"
+        )
+        monkeypatch.setattr(
+            process_limits,
+            "_WINDOWS_CPU_GUARD_CODE",
+            process_limits._WINDOWS_CPU_GUARD_CODE.replace(
+                "    while True:\n", trigger_code + "    while True:\n"
+            ),
+        )
+        monkeypatch.setattr(semantic, "MAX_MEMORY_BYTES", 100 * 1024**2)
+        monkeypatch.setattr(semantic, "MAX_CPU_SECONDS", 1)
+        receiving, sending = multiprocessing.get_context("spawn").Pipe(duplex=False)
+        process = semantic._EarlySemanticProcess(
+            target=_fixture_worker, args=(sending, workload, trigger_name), daemon=True
+        )
+        handles: list[int] = []
+        messages: list[object] = []
+        try:
+            process.start()
+            sending.close()
+            assert receiving.poll(8)
+            ready = receiving.recv()
+            assert ready[0] == "ready" and ready[3] is True
+            supervision = process._popen.supervisor
+            for pid in (supervision.guard.pid, ready[2]):
+                handle = kernel.OpenProcess(0x100000 | 0x1000, False, pid)
+                assert handle is not None
+                handles.append(handle)
+            process.join(timeout=8)
+            assert not process.is_alive()
+            while True:
+                try:
+                    if not receiving.poll(0):
+                        break
+                    messages.append(receiving.recv())
+                except (EOFError, BrokenPipeError):
+                    break
+            assert all(kernel.WaitForSingleObject(handle, 1000) == 0 for handle in handles)
+            ticks = process_limits._read_windows_cpu_ticks(kernel, process.sentinel)
+            print(
+                "BODY_FAULT_OBSERVATION "
+                + json.dumps(
+                    {
+                        "workload": workload,
+                        "ready": ready,
+                        "final_cpu_seconds": ticks / 10_000_000,
+                        "guard_exitcode": supervision.guard.poll(),
+                        "worker_exitcode": process.exitcode,
+                        "messages": messages,
+                        "parent_error": str(supervision.error),
+                        "parent_last_cpu_seconds": supervision.last_cpu_ticks / 10_000_000,
+                    }
+                )
+            )
+            assert messages == []
+>           assert ticks < 10_000_000
+E           assert 10312500 < 10000000
+
+tests\unit\test_r20_early_cpu_bootstrap.py:329: AssertionError
+- generated xml file: D:\wt\r20-early-review1\reports\runs\recovery_r20_early_bootstrap_review1_20261016\body_python_fault.xml -
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.12.13-final-0 _______________
+
+Name                                                     Stmts   Miss  Cover   Missing
+--------------------------------------------------------------------------------------
+src\ai_intel\__init__.py                                     0      0   100%
+src\ai_intel\answering\__init__.py                           0      0   100%
+src\ai_intel\answering\contracts.py                         64     64     0%   3-98
+src\ai_intel\answering\grounding.py                        144    144     0%   3-264
+src\ai_intel\answering\service.py                          169    169     0%   3-416
+src\ai_intel\api\__init__.py                                 0      0   100%
+src\ai_intel\api\app.py                                    139    139     0%   3-250
+src\ai_intel\api\auth_routes.py                             86     86     0%   3-207
+src\ai_intel\api\auth_state.py                             106    106     0%   3-301
+src\ai_intel\api\authentication.py                         214    214     0%   3-439
+src\ai_intel\api\document_contracts.py                      74     74     0%   3-109
+src\ai_intel\api\document_read_service.py                  147    147     0%   3-308
+src\ai_intel\api\document_routes.py                         63     63     0%   3-129
+src\ai_intel\api\knowledge_contracts.py                     96     96     0%   3-134
+src\ai_intel\api\knowledge_read_service.py                 244    244     0%   3-674
+src\ai_intel\api\knowledge_routes.py                        59     59     0%   3-113
+src\ai_intel\api\problems.py                                 6      6     0%   3-14
+src\ai_intel\api\question_contracts.py                      56     56     0%   3-70
+src\ai_intel\api\question_routes.py                         68     68     0%   3-152
+src\ai_intel\api\source_routes.py                          118    118     0%   3-219
+src\ai_intel\domain\__init__.py                              0      0   100%
+src\ai_intel\domain\access.py                               42     42     0%   3-86
+src\ai_intel\domain\enrichment_values.py                   109    109     0%   3-199
+src\ai_intel\domain\enums.py                                79     79     0%   7-133
+src\ai_intel\domain\records.py                             104    104     0%   7-228
+src\ai_intel\domain\schema_export.py                        15     15     0%   6-49
+src\ai_intel\domain\values.py                               47     47     0%   7-88
+src\ai_intel\infrastructure\__init__.py                      0      0   100%
+src\ai_intel\infrastructure\_worker_bootstrap.py            26     26     0%   3-39
+src\ai_intel\infrastructure\content_storage_factory.py      10     10     0%   3-21
+src\ai_intel\infrastructure\content_store.py                58     58     0%   3-100
+src\ai_intel\infrastructure\database.py                     48     30    38%   30-35, 52-61, 66-69, 74-77, 82-91
+src\ai_intel\infrastructure\dns_resolver.py                 45     45     0%   3-78
+src\ai_intel\infrastructure\http_transport.py              176    176     0%   3-264
+src\ai_intel\infrastructure\minio_store.py                  71     71     0%   3-127
+src\ai_intel\infrastructure\models\__init__.py               0      0   100%
+src\ai_intel\infrastructure\models\clients.py               82     48    41%   61-80, 96-128, 133-134, 139-140, 147-151, 162-164
+src\ai_intel\infrastructure\models\generation.py           299    299     0%   3-547
+src\ai_intel\infrastructure\models\json_output.py           39     36     8%   10-50
+src\ai_intel\infrastructure\models\semantic.py             314    202    36%   72, 91-101, 121, 153-154, 162-163, 217-227, 231-234, 238-250, 254-265, 276-285, 288-289, 292-293, 298-304, 307-312, 325-416, 427-447, 454-497, 502-504
+src\ai_intel\infrastructure\network.py                     286    286     0%   3-586
+src\ai_intel\infrastructure\outbox.py                       59     59     0%   3-168
+src\ai_intel\infrastructure\process_limits.py              267    114    57%   113, 134, 149, 159, 190, 192-196, 213-288, 294, 333, 335, 340-342, 349-352, 354, 359, 361, 368, 376, 379-381, 383, 396, 398, 400, 402, 424, 428, 435, 438, 445, 475, 477, 482, 485, 487-496
+src\ai_intel\infrastructure\runtime_observations.py         18     18     0%   3-38
+src\ai_intel\infrastructure\settings.py                    116     68    41%   69-99, 104-134, 139-156, 161-176, 181-194, 199-204
+--------------------------------------------------------------------------------------
+TOTAL                                                     4163   3795     9%
+Coverage JSON written to file D:\wt\r20-early-review1\reports\runs\recovery_r20_early_bootstrap_review1_20261016\body_python_fault.coverage.json
+FAIL Required test coverage of 60% not reached. Total coverage: 8.84%
+=========================== short test summary info ===========================
+FAILED tests/unit/test_r20_early_cpu_bootstrap.py::test_body_ready_guard_fault_is_additional_to_early_ready_fault[python-gil-held]
+============================== 1 failed in 2.28s ==============================

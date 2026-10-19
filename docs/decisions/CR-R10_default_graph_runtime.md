@@ -27,3 +27,12 @@ knowledge_change 的图派发不能机械依赖后段 R12 已完整验收。配�
 配置相关 36 例真实离线回归通过，mypy 204 source files 通过；它们只证明配置与类型，没有证明默认图工厂/worker 已接线。原配置测试误继承 fixture 环境与一次 Root 误拼测试路径的红日志保留。
 
 实现须查全部调用方并增加：未配置无图 IO、非图 job 不受图宕机影响、driver 成功/异常均关闭、graph_apply 有界失败、canonical 权限/租约变更、重放不重复派发、hybrid 失败后图任务仍 durable、图 unavailable 不被计完成、旧/新/空结果的 epoch 失效。新独审必须运行真实隔离 PG+Neo4j 默认 worker 路径；六类验证、live、人工分别记录，未执行明确 not_run。
+
+
+## 2026-10-17T13:02:29.454+08:00 · 共享 namespace 与客户端 IO 期限复验补充
+
+新非作者在固定96cf发现 graph_apply 未校factory namespace；共享 apply 在已验证不可变 batch 后、store/ACK前允许窄 batch_guard 同 Session 回调，旧 None 仅保持服务端手动恢复/random generation兼容。RuntimePolicy必须给 guard，校 namespace、partition及完整 scope epoch/rule推导的UUID5。历史batch可ACK为stale，不能伪称current或删除历史；修复986b待实际PG，旧反例保留。原PG仅缺updated_at的调用补既有一次now参数，原断言与全部其他AST保持。
+
+固定c554默认工厂独审真实本地Bolt握手后停止回包：server tx_timeout=3000仍阻塞超过5秒，默认write30；不能拿server timeout当客户端期限。唯一默认工厂作者获准在infrastructure/neo4j_projection.py增加窄官方AsyncDriver/单stdlibRunner同线程bridge，保持旧同步store算法与接口兼容，所有session IO/commit/rollback/consume/close绑定绝对deadline，超时公共AsyncSession取消并拒成功ACK；factory采用官方asyncdriver和实际write deadline。旧同步直调未修的3秒界不被新路径代签。
+
+DNS默认executor可能使Runner关闭等待300秒。允许唯一同模块用公开loop_factory/getaddrinfo与单固定标准库socket.getaddrinfo子进程解决：同OS解析算法和IPv4/IPv6/family/type/proto/flags，只有server固定Neo4j origin，无shell/凭据继承/新外部服务；输出有界，超限拒绝不截断，单时刻最多一child，剩余绝对deadline及持句柄kill/wait退出。无私有pool/executor monkeypatch、不关TLS。正常/失败/取消/任意延迟解析/线程及loop归属均需实际检查；原socket两反例与DNS结果分开。该必要复杂度用于已复现有界IO缺口，无依赖锁/表/评分变动，所有store调用者须回归。回滚恢复旧工厂并保留PG任务/批次/历史，旧路径有界不足仍公开，不降低门槛。

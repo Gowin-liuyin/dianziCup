@@ -1,0 +1,21 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
+const root = 'D:/wt/r17-graph-review1';
+const run = path.join(root, 'reports/runs/recovery_r17_evidence_graph_review1_20261016');
+const timestamp = () => new Date(Date.now() + 8 * 3600000).toISOString().replace('Z', '+08:00');
+const [label, cwd, executable, ...args] = process.argv.slice(2);
+if (!label || !cwd || !executable) throw new Error('label cwd executable args required');
+const start = timestamp();
+const output = fs.openSync(path.join(run, `${label}.stdout.log`), 'wx');
+const errors = fs.openSync(path.join(run, `${label}.stderr.log`), 'wx');
+const child = spawn(executable, args, { cwd, windowsHide: true, stdio: ['ignore', output, errors] });
+let spawnError = null;
+child.on('error', error => { spawnError = error.message; });
+child.on('close', (code, signal) => {
+  fs.closeSync(output); fs.closeSync(errors);
+  const receipt = { label, cwd, argv: [executable, ...args], start, end: timestamp(), ownership_pid: child.pid ?? null, exit_code: code, signal, spawn_error: spawnError };
+  fs.appendFileSync(path.join(run, 'commands.jsonl'), JSON.stringify(receipt) + '\n');
+  console.log(JSON.stringify(receipt));
+  process.exitCode = code ?? 1;
+});

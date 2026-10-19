@@ -1,0 +1,61 @@
+import fs from 'node:fs';
+import net from 'node:net';
+import { performance } from 'node:perf_hooks';
+import { createServer } from '../../../frontend/node_modules/vite/dist/node/index.js';
+import { chromium, expect } from '../../../frontend/node_modules/@playwright/test/index.mjs';
+const root='D:/wt/r17-graph-recheck1';
+const run=root+'/reports/runs/recovery_r17_graph_review1_recheck_20261016/browser-independent';
+fs.mkdirSync(run,{recursive:true});
+const stamp=()=>new Date(Date.now()+8*3600000).toISOString().replace('Z','+08:00');
+const id=n=>`72000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+const kinds=['source_revision','event','component_version','atlas','paper','remediation'];
+const relations=['same_event','affects_component_version','mapped_atlas','related_paper','remediated_by','component_version_vulnerability'];
+const fixtureEvent='71000000-0000-4000-8000-000000000001';
+const scope={visibility:'public',tenant_id:null};
+const frozen='r10-graph-1.1.0';
+function snapshot(version=frozen) {
+  const nodes=kinds.map((kind,index)=>({id:kind==='event'?fixtureEvent:id(index+10),kind,label:`独立审查合成 ${kind} · 中文长标题` ,scope}));
+  const nodeKind=kind=>nodes.find(node=>node.kind===kind).id;
+  const endpoints=[['source_revision','event'],['event','component_version'],['event','atlas'],['event','paper'],['event','remediation'],['component_version','event']];
+  return {schema_version:1,event_id:fixtureEvent,business_version:7,rule_version:version,nodes,edges:relations.map((relation_type,index)=>({id:id(index+50),relation_type,subject_id:nodeKind(endpoints[index][0]),object_id:nodeKind(endpoints[index][1]),scope,source_revision_ids:[id(70),id(71)],evidence_span_ids:[id(80),id(81),id(82)],supporting_claim_ids:[id(90)],rule_or_model_version:version,reason:'独立合成支持依据，不证明资产受影响。',status:'supported'})),truncated:false,gaps:[],content_sha256:'c'.repeat(64)};
+}
+const receipts={schema_version:1,reviewed_sha:'65497b14cb5c24c6d780f675a70af3ee4019d8db',data_kind:'isolated_synthetic',start:stamp(),port:25502,server_ownership_pid:process.pid,cases:[],browser_processes:[],requests:[]};
+let server,browser,currentContext;
+const watchdog=setTimeout(()=>{receipts.hard_deadline_exceeded=true; void currentContext?.close(); void browser?.close(); void server?.close();},150000);
+async function checked(name,operation){const start=stamp();const timer=performance.now();try{const detail=await operation();receipts.cases.push({name,start,end:stamp(),elapsed_ms:performance.now()-timer,status:'passed',detail});console.log('PASS '+name);}catch(error){receipts.cases.push({name,start,end:stamp(),elapsed_ms:performance.now()-timer,status:'failed',error:String(error)});console.log('FAIL '+name+' '+String(error));}}
+async function contextFor(width=1366, initial=snapshot(), mode='fixture') {
+  const context=await browser.newContext({viewport:{width,height:width===390?844:900},reducedMotion:'reduce'});currentContext=context;
+  const page=await context.newPage();page.setDefaultTimeout(5000);
+  const state={snapshot:initial,status:200,authStatus:200,evidenceStatus:200,permissionVersion:1,requestPaths:[],pendingGraph:null};
+  const errors=[];page.on('pageerror',error=>errors.push(String(error)));
+  await context.route('**/*',async route=>{
+    const url=new URL(route.request().url());
+    if(url.hostname!=='127.0.0.1'){receipts.requests.push({blocked_external:url.origin});await route.abort();return;}
+    if(!url.pathname.startsWith('/v1/')){await route.continue();return;}
+    const path=url.pathname;state.requestPaths.push(path);receipts.requests.push({path,method:route.request().method(),query:url.search});
+    let body,status=200;
+    if(path==='/v1/auth/me'){status=state.authStatus;body=status===200?{user_id:'independent-fixture-reviewer',tenant_id:'independent-fixture-tenant',role:'analyst',permissions:['read:public'],permission_version:state.permissionVersion,data_mode:'fixture',csrf_token:'independent-test-value-only'}:{error:{code:'session_expired',retryable:false}};}
+    else if(path===`/v1/events/${fixtureEvent}/graph`){if(state.pendingGraph)await state.pendingGraph;status=state.status;body=status===200?state.snapshot:{error:{code:'test_fixture_problem',retryable:status>=500},detail:'DO-NOT-RENDER-PRIVATE-ERROR'};}
+    else if(path==='/v1/events')body={schema_version:2,items:[],next_cursor:null,data_mode:'fixture'};
+    else if(path===`/v1/events/${fixtureEvent}`)body={schema_version:2,event:{event_id:fixtureEvent,event_type:'advisory',title:'独立合成事件',external_ids:[],primary_product_ids:[],first_seen_at:'2026-10-16T00:00:00Z',status:'active',source_count:1,latest_revision_id:id(71),freshness:'current'},dimensions:[],revisions:[],claims:[],data_mode:'fixture'};
+    else if([id(80),id(81),id(82)].some(evidence=>path===`/v1/evidence/${evidence}`)){status=state.evidenceStatus;body=status===200?{schema_version:2,span_id:path.split('/').at(-1),revision_id:id(72),block_id:null,start_offset:0,end_offset:8,quote_text:'独立合成原文片段',quote_sha256:'d'.repeat(64),locator_kind:'legacy_unverified',page_number:null,json_pointer:null,verified_at:null,source_uri:null,source_published_at:null,source_modified_at:null,first_observed_at:null,ingested_at:null,data_mode:'fixture'}:{error:{code:'forbidden',retryable:false},detail:'DO-NOT-RENDER-PRIVATE-EVIDENCE'};}
+    else{await route.abort();throw new Error('Unexpected local API route '+path);}
+    await route.fulfill({status,json:body});
+  });
+  if(mode==='unknown')await page.route('**/e2e/graph-fixture/main.tsx',async route=>{const result=await route.fetch();const body=(await result.text()).replace('dataMode: "fixture"','dataMode: undefined');await route.fulfill({response:result,body});});
+  return {context,page,state,errors};
+}
+async function open(env){await env.page.goto('http://127.0.0.1:25502/e2e/graph-fixture/index.html');}
+async function close(env){await env.context.close();currentContext=null;if(env.errors.length)throw new Error(env.errors.join('\n'));}
+
+try {
+  await new Promise((resolve,reject)=>{const probe=net.createServer();probe.once('error',reject);probe.listen(25502,'127.0.0.1',()=>probe.close(resolve));});receipts.port_precheck='free';
+  server=await createServer({configFile:root+'/frontend/vite.config.ts',root:root+'/frontend',server:{host:'127.0.0.1',port:25502,strictPort:true},logLevel:'error'});await server.listen();receipts.server_start=stamp();
+  browser=await chromium.launch({channel:'msedge',headless:true});receipts.browser_start=stamp();
+  const cdp=await browser.newBrowserCDPSession();receipts.browser_processes=(await cdp.send('SystemInfo.getProcessInfo')).processInfo.map(info=>({type:info.type,pid:info.id}));await cdp.detach();
+  await checked('same-coordinate-chooser-confirmation',async()=>{const graph=snapshot();const env=await contextFor(1366,graph);await open(env);await expect(env.page.getByText('6 节点 / 6 支持关系')).toBeVisible();const edge=env.page.getByRole('button',{name:'图关系 2：影响组件版本',exact:true});const point=await edge.locator('.graph-edge-hit').evaluate(path=>{const point=path.getPointAtLength(path.getTotalLength()*.5);const screenPoint=new DOMPoint(point.x,point.y).matrixTransform(path.getScreenCTM());return{x:screenPoint.x,y:screenPoint.y,target:document.elementFromPoint(screenPoint.x,screenPoint.y)?.closest('.graph-edge')?.getAttribute('aria-label')};});await env.page.mouse.click(point.x,point.y);await expect(env.page.getByRole('complementary',{name:'关系检视',exact:true})).toBeVisible();const chooser=env.page.getByRole('region',{name:'选择此处的关系',exact:true});await expect(chooser).toBeVisible();await expect(env.page.getByRole('complementary',{name:'节点检视',exact:true})).toBeVisible();await env.page.screenshot({path:run+'/same-point-waits-for-confirmation.png'});const option=chooser.getByRole('button',{name:/^选择关系 2：影响组件版本/});await option.scrollIntoViewIfNeeded();const bounds=await option.boundingBox();await env.page.mouse.click(bounds.x+bounds.width/2,bounds.y+bounds.height/2);const actual=await env.page.locator('.graph-edge[aria-pressed="true"]').getAttribute('aria-label');const expected='图关系 2：影响组件版本';const observation={point,expected,actual,input_snapshot:graph};fs.writeFileSync(run+'/same-coordinate-confirmation.json',JSON.stringify(observation,null,2));await env.page.screenshot({path:run+'/pointer-confirmed-edge2-1366.png'});await close(env);expect(actual).toBe(expected);return observation;});
+  await checked('one-relation-actual-pointer-control',async()=>{const graph=snapshot();graph.edges=graph.edges.filter(edge=>edge.relation_type==='affects_component_version');graph.nodes=graph.nodes.filter(node=>node.kind==='event'||node.kind==='component_version');const env=await contextFor(1366,graph);await open(env);await expect(env.page.getByText('2 节点 / 1 支持关系')).toBeVisible();const edge=env.page.getByRole('button',{name:'图关系 1：影响组件版本',exact:true});const point=await edge.locator('.graph-edge-hit').evaluate(path=>{const point=path.getPointAtLength(path.getTotalLength()*.5);const screenPoint=new DOMPoint(point.x,point.y).matrixTransform(path.getScreenCTM());return{x:screenPoint.x,y:screenPoint.y,target:document.elementFromPoint(screenPoint.x,screenPoint.y)?.closest('.graph-edge')?.getAttribute('aria-label')};});await env.page.mouse.click(point.x,point.y);await expect(edge).toHaveAttribute('aria-pressed','true');await close(env);return point;});
+
+  await checked('chooser-clears-on-reset-pan-node-and-revocation',async()=>{const env=await contextFor(390);await open(env);await expect(env.page.locator('.graph-edge')).toHaveCount(6);const edge=env.page.locator('.graph-edge-line').nth(1);async function click(){await env.page.locator('.graph-canvas').scrollIntoViewIfNeeded();const point=await edge.evaluate(path=>{const point=path.getPointAtLength(path.getTotalLength()*.5);let matrix=path.getScreenCTM();let screen=new DOMPoint(point.x,point.y).matrixTransform(matrix);const canvas=path.closest('.graph-canvas');const bounds=canvas.getBoundingClientRect();canvas.scrollLeft+=screen.x-bounds.left-bounds.width/2;canvas.scrollTop+=screen.y-bounds.top-bounds.height/2;matrix=path.getScreenCTM();screen=new DOMPoint(point.x,point.y).matrixTransform(matrix);return{x:screen.x,y:screen.y};});await env.page.mouse.click(point.x,point.y);await expect(env.page.getByRole('region',{name:'选择此处的关系',exact:true})).toBeVisible();}await click();await env.page.getByRole('button',{name:'重置视图',exact:true}).click();await expect(env.page.locator('.graph-edge-choices')).toHaveCount(0);await click();await env.page.getByRole('button',{name:'向右平移',exact:true}).click();await expect(env.page.locator('.graph-edge-choices')).toHaveCount(0);await click();const heights=await env.page.locator('.graph-edge-choices button').evaluateAll(elements=>elements.map(element=>element.getBoundingClientRect().height));for(const height of heights)expect(height).toBeGreaterThanOrEqual(44);expect(await env.page.locator('.graph-edge-choices>div:last-child').evaluate(element=>element.getBoundingClientRect().height)).toBeLessThanOrEqual(260);env.state.status=403;await env.page.getByRole('button',{name:'重新读取',exact:true}).click();await expect(env.page.getByRole('heading',{name:'没有查看权限',exact:true})).toBeVisible();await expect(env.page.locator('.graph-edge-choices,.graph-scene')).toHaveCount(0);await close(env);return{heights};});
+} catch(error){receipts.runner_error=String(error);console.error(error);}
+finally{if(currentContext)await currentContext.close();if(browser){await browser.close();receipts.browser_stop=stamp();}if(server){await server.close();receipts.server_stop=stamp();}clearTimeout(watchdog);const esbuild=await import('../../../frontend/node_modules/vite/node_modules/esbuild/lib/main.js');esbuild.stop();receipts.end=stamp();receipts.passed=receipts.cases.filter(item=>item.status==='passed').length;receipts.failed=receipts.cases.filter(item=>item.status==='failed').length;fs.writeFileSync(run+'/browser-results.json',JSON.stringify(receipts,null,2)+'\n');process.exitCode=receipts.failed||receipts.runner_error||receipts.hard_deadline_exceeded?1:0;console.log(JSON.stringify({passed:receipts.passed,failed:receipts.failed,runner_error:receipts.runner_error,browser_ms:receipts.browser_stop?Date.parse(receipts.browser_stop)-Date.parse(receipts.browser_start):null}));}

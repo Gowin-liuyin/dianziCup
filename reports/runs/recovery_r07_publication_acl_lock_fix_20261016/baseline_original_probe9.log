@@ -1,0 +1,206 @@
+FFF..F..F                                                                [100%]
+================================== FAILURES ===================================
+_______ test_parent_acl_revocation_is_checked_before_object_io[source] ________
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_pub_fix_20261016?options=-c+search_path%3Dtest_r06_catalog_d5ebd6aaf68845e29189a49dc257dc1e+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-647/test_parent_acl_revocation_is_0')
+revoked_parent = 'source'
+
+    @pytest.mark.parametrize("revoked_parent", ["source", "document"])
+    def test_parent_acl_revocation_is_checked_before_object_io(catalog_engine, tmp_path, revoked_parent):
+        store, loaded = loaded_inputs(catalog_engine, tmp_path)
+        with catalog_engine.begin() as connection:
+            if revoked_parent == "source":
+                connection.execute(text("UPDATE sources SET visibility='tenant',tenant_id='review-secret-owner'"))
+            else:
+                connection.execute(update(documents).values(visibility="tenant", tenant_id="review-secret-owner"))
+        reads = []
+    
+        class AuditedStore:
+            def read_verified(self, digest):
+                reads.append(digest)
+                return store.read_verified(digest)
+    
+        with Session(catalog_engine) as session:
+            try:
+                load_event_enrichment_inputs(session, AuditedStore(), ADMIN, loaded.context.event_id, "independent-review-1")
+            except (CrossTenantAccessError, EnrichmentInputError):
+                pass
+>       assert reads == [], "Parent source/document ACL revoked, but object bytes were still read"
+E       AssertionError: Parent source/document ACL revoked, but object bytes were still read
+E       assert ['166672d29d8...b207d8a18b53'] == []
+E         
+E         Left contains one more item: '166672d29d816b4b145d4a5d63eb04e87c0cc3636aeb8f3b9e8ab207d8a18b53'
+E         Use -v to get more diff
+
+..\reports\runs\recovery_r07_publication_acl_lock_fix_20261016\byteblob\test_independent_publication_pg.py:83: AssertionError
+______ test_parent_acl_revocation_is_checked_before_object_io[document] _______
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_pub_fix_20261016?options=-c+search_path%3Dtest_r06_catalog_b8e552e556c64db582a2f5909a27447b+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-647/test_parent_acl_revocation_is_1')
+revoked_parent = 'document'
+
+    @pytest.mark.parametrize("revoked_parent", ["source", "document"])
+    def test_parent_acl_revocation_is_checked_before_object_io(catalog_engine, tmp_path, revoked_parent):
+        store, loaded = loaded_inputs(catalog_engine, tmp_path)
+        with catalog_engine.begin() as connection:
+            if revoked_parent == "source":
+                connection.execute(text("UPDATE sources SET visibility='tenant',tenant_id='review-secret-owner'"))
+            else:
+                connection.execute(update(documents).values(visibility="tenant", tenant_id="review-secret-owner"))
+        reads = []
+    
+        class AuditedStore:
+            def read_verified(self, digest):
+                reads.append(digest)
+                return store.read_verified(digest)
+    
+        with Session(catalog_engine) as session:
+            try:
+                load_event_enrichment_inputs(session, AuditedStore(), ADMIN, loaded.context.event_id, "independent-review-1")
+            except (CrossTenantAccessError, EnrichmentInputError):
+                pass
+>       assert reads == [], "Parent source/document ACL revoked, but object bytes were still read"
+E       AssertionError: Parent source/document ACL revoked, but object bytes were still read
+E       assert ['166672d29d8...b207d8a18b53'] == []
+E         
+E         Left contains one more item: '166672d29d816b4b145d4a5d63eb04e87c0cc3636aeb8f3b9e8ab207d8a18b53'
+E         Use -v to get more diff
+
+..\reports\runs\recovery_r07_publication_acl_lock_fix_20261016\byteblob\test_independent_publication_pg.py:83: AssertionError
+___________ test_failed_attempt_cannot_bypass_revoked_source_scope ____________
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_pub_fix_20261016?options=-c+search_path%3Dtest_r06_catalog_f8da16a576ab415f8386e1152fabb562+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-647/test_failed_attempt_cannot_byp0')
+
+    def test_failed_attempt_cannot_bypass_revoked_source_scope(catalog_engine, tmp_path):
+        _, loaded = loaded_inputs(catalog_engine, tmp_path)
+        with catalog_engine.begin() as connection:
+            connection.execute(text("UPDATE sources SET visibility='tenant',tenant_id='review-secret-owner'"))
+        failed = DimensionAttempt(dimension="versions", status=DimensionStatus.FAILED, error_code="model_timeout")
+        before = all_counts(catalog_engine)
+>       with pytest.raises((CrossTenantAccessError, EnrichmentPublicationError, EnrichmentInputError)):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE any of (<class 'ai_intel.domain.access.CrossTenantAccessError'>, <class 'ai_intel.enrichment.publication.EnrichmentPublicationError'>, <class 'ai_intel.enrichment.inputs.EnrichmentInputError'>)
+
+..\reports\runs\recovery_r07_publication_acl_lock_fix_20261016\byteblob\test_independent_publication_pg.py:92: Failed
+_ test_cvss_parallel_authorities_vs_same_authority_conflict[different-available] _
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_pub_fix_20261016?options=-c+search_path%3Dtest_r06_catalog_7f253f6c70e442efa57edda343425590+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-647/test_cvss_parallel_authorities0')
+authority_relation = 'different', expected = 'available'
+
+    @pytest.mark.parametrize("authority_relation,expected", [("different", "available"), ("same", "conflict")])
+    def test_cvss_parallel_authorities_vs_same_authority_conflict(catalog_engine, tmp_path, authority_relation, expected):
+        store, loaded = loaded_inputs(catalog_engine, tmp_path)
+        body = json.loads(source_response("nvd_ollama")[0])
+        cve = body["vulnerabilities"][0]["cve"]
+        first = {"source": "review-first@example.invalid", "type": "Primary", "cvssData": {
+            "version": "3.1", "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "baseScore": 9.8}}
+        second = deepcopy(first)
+        second["source"] = first["source"] if authority_relation == "same" else "review-second@example.invalid"
+        second["cvssData"]["vectorString"] = "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H"
+        second["cvssData"]["baseScore"] = 8.1
+        cve["metrics"] = {"cvssMetricV31": [first, second]}
+        response = SourceResponse("nvd_ollama", json.dumps(body).encode(),
+            "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=ollama&resultsPerPage=20&startIndex=0",
+            loaded.documents[0].observed_at + timedelta(seconds=1))
+        with Session(catalog_engine) as session, session.begin():
+            persist_source_response(session, store, ADMIN, response, ingested_at=response.observed_at)
+        with Session(catalog_engine) as session:
+            current = load_event_enrichment_inputs(session, store, ADMIN, loaded.context.event_id, "independent-review-1")
+        attempts = enrich_structured_fields(current.context, current.documents)
+        publish(catalog_engine, current, (attempts[0],))
+        with Session(catalog_engine) as session:
+            detail = KnowledgeReadService(session, ADMIN, "fixture").event_detail(current.context.event_id)
+            cvss = next(item for item in detail.dimensions if item.dimension == "cvss")
+            observed = {"authority_relation": authority_relation, "status": cvss.status, "new_claim_count": len(cvss.claim_ids), "source_scores": [9.8, 8.1]}
+            (RAW / ("cvss_" + authority_relation + "_outcome" + RUN_SUFFIX + ".json")).write_text(json.dumps(observed, indent=2), encoding="utf-8")
+            assert len(cvss.claim_ids) == 2
+>           assert cvss.status == expected, observed
+E           AssertionError: {'authority_relation': 'different', 'new_claim_count': 2, 'source_scores': [9.8, 8.1], 'status': <DimensionStatus.CONFLICT: 'conflict'>}
+E           assert <DimensionSta...T: 'conflict'> == 'available'
+E             
+E             - available
+E             + conflict
+
+..\reports\runs\recovery_r07_publication_acl_lock_fix_20261016\byteblob\test_independent_publication_pg.py:146: AssertionError
+____ test_source_revision_and_publication_share_non_deadlocking_lock_order ____
+
+catalog_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r07_pub_fix_20261016?options=-c+search_path%3Dtest_r06_catalog_2c372535acf040649d1b115836030283+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-647/test_source_revision_and_publi0')
+
+    def test_source_revision_and_publication_share_non_deadlocking_lock_order(catalog_engine, tmp_path):
+        store, loaded = loaded_inputs(catalog_engine, tmp_path)
+        attempts = enrich_structured_fields(loaded.context, loaded.documents)
+        body = json.loads(source_response("nvd_ollama")[0])
+        body["vulnerabilities"][0]["cve"]["descriptions"][0]["value"] += " Synthetic review revision."
+        response = SourceResponse("nvd_ollama", json.dumps(body).encode(),
+            "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=ollama&resultsPerPage=20&startIndex=0",
+            loaded.documents[0].observed_at + timedelta(seconds=1))
+        writer_locked = Event()
+        publisher_locked = Event()
+    
+        def synchronize(connection, cursor, statement, parameters, context, executemany):
+            actor = connection.info.get("review_actor")
+            if actor == "writer" and "SELECT documents." in statement and "FOR UPDATE" in statement and not writer_locked.is_set():
+                writer_locked.set()
+                assert publisher_locked.wait(10), "publisher did not acquire scope lock"
+            if actor == "publisher" and "pg_advisory_xact_lock" in statement:
+                publisher_locked.set()
+    
+        def invoke(actor):
+            try:
+                with Session(catalog_engine) as session, session.begin():
+                    session.connection().info["review_actor"] = actor
+                    if actor == "writer":
+                        persist_source_response(session, store, ADMIN, response, ingested_at=response.observed_at)
+                    else:
+                        publish_enrichment_attempts(session, ADMIN, loaded, attempts, request_id=uuid4(), recorded_at=response.observed_at)
+                return {"actor": actor, "outcome": "completed", "sqlstate": None}
+            except Exception as failure:
+                cause = getattr(failure, "orig", None)
+                return {"actor": actor, "outcome": type(failure).__name__, "sqlstate": getattr(cause, "sqlstate", None)}
+    
+        event.listen(catalog_engine, "after_cursor_execute", synchronize)
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                writer = pool.submit(invoke, "writer")
+                assert writer_locked.wait(10), "writer did not acquire document lock"
+                publisher = pool.submit(invoke, "publisher")
+                outcomes = [writer.result(timeout=25), publisher.result(timeout=25)]
+        finally:
+            event.remove(catalog_engine, "after_cursor_execute", synchronize)
+        (RAW / ("concurrent_source_publication_outcomes" + RUN_SUFFIX + ".json")).write_text(json.dumps(outcomes, indent=2), encoding="utf-8")
+>       assert all(outcome["sqlstate"] != "40P01" for outcome in outcomes), outcomes
+E       AssertionError: [{'actor': 'writer', 'outcome': 'completed', 'sqlstate': None}, {'actor': 'publisher', 'outcome': 'OperationalError', 'sqlstate': '40P01'}]
+E       assert False
+E        +  where False = all(<generator object test_source_revision_and_publication_share_non_deadlocking_lock_order.<locals>.<genexpr> at 0x0000029F2AE542B0>)
+
+..\reports\runs\recovery_r07_publication_acl_lock_fix_20261016\byteblob\test_independent_publication_pg.py:223: AssertionError
+============================== warnings summary ===============================
+tests\integration\test_r06_catalog_documents_pg.py:32
+  D:\wt\r07-pub-fix\backend\tests\integration\test_r06_catalog_documents_pg.py:32: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+tests\integration\test_r06_source_worker_pg.py:43
+  D:\wt\r07-pub-fix\backend\tests\integration\test_r06_source_worker_pg.py:43: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+tests\integration\test_r07_enrichment_inputs_pg.py:18
+  D:\wt\r07-pub-fix\backend\tests\integration\test_r07_enrichment_inputs_pg.py:18: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+..\reports\runs\recovery_r07_publication_acl_lock_fix_20261016\byteblob\test_independent_publication_pg.py:38
+  D:\wt\r07-pub-fix\reports\runs\recovery_r07_publication_acl_lock_fix_20261016\byteblob\test_independent_publication_pg.py:38: PytestUnknownMarkWarning: Unknown pytest.mark.real_pg - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    pytestmark = pytest.mark.real_pg
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: D:\wt\r07-pub-fix\reports\runs\recovery_r07_publication_acl_lock_fix_20261016\baseline_original_probe9.xml -
+=========================== short test summary info ===========================
+FAILED ..\reports\runs\recovery_r07_publication_acl_lock_fix_20261016\byteblob\test_independent_publication_pg.py::test_parent_acl_revocation_is_checked_before_object_io[source]
+FAILED ..\reports\runs\recovery_r07_publication_acl_lock_fix_20261016\byteblob\test_independent_publication_pg.py::test_parent_acl_revocation_is_checked_before_object_io[document]
+FAILED ..\reports\runs\recovery_r07_publication_acl_lock_fix_20261016\byteblob\test_independent_publication_pg.py::test_failed_attempt_cannot_bypass_revoked_source_scope
+FAILED ..\reports\runs\recovery_r07_publication_acl_lock_fix_20261016\byteblob\test_independent_publication_pg.py::test_cvss_parallel_authorities_vs_same_authority_conflict[different-available]
+FAILED ..\reports\runs\recovery_r07_publication_acl_lock_fix_20261016\byteblob\test_independent_publication_pg.py::test_source_revision_and_publication_share_non_deadlocking_lock_order
+5 failed, 4 passed, 4 warnings in 18.81s

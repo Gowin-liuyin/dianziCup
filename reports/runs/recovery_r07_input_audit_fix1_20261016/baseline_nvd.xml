@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="1.863" timestamp="2026-10-16T09:27:28.492168+08:00" hostname="yin"><testcase classname="tests.integration.test_r07_job_execution_pg" name="test_full_recorded_nvd_budget_failure_is_retained_without_wire_or_losing_other_dimensions" time="1.498"><failure message="execution_engine = Engine([redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]_r01:***[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]16?options=-c+search_path%3Dtest_r07[redacted test credential fragment]ix1_5250d3f584d94e058b04594056f74295+-c+statement_timeout%3D15000+-c+lock_timeout%3D3000)&#10;tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-925/test_full_recorded_nvd_budget_0')&#10;monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002749582D100&gt;&#10;&#10;    def test_full_recorded_nvd_budget_failure_is_retained_without_wire_or_losing_other_dimensions(&#10;        execution_engine, tmp_path, monkeypatch&#10;    ):&#10;        from tests.unit.test_r07_single_model_dimension import prepared_transport&#10;    &#10;        policy = EnrichmentExecutionPolicy(&#10;            generation_enabled=True,&#10;            generation_provider=&quot;openai&quot;,&#10;            approved_model=&quot;fixture-model&quot;,&#10;            data_mode=&quot;fixture&quot;,&#10;        )&#10;        service, scope, session_hash, _, _, receipt = setup(execution_engine, tmp_path, policy=policy)&#10;        calls = []&#10;    &#10;        def factory():&#10;            client, wire = prepared_transport(monkeypatch)&#10;            client.limits = GenerationLimits(total_timeout_seconds=20.0, max_calls=1)&#10;            calls.append(wire)&#10;            return client&#10;    &#10;        service.generation_client_factory = factory&#10;        assert run(service, receipt.parent_job_id) == &quot;succeeded&quot;&#10;        with Session(execution_engine) as session:&#10;            snapshot = session.scalar(select(enrichment_workflows.c.input_context))&#10;        block_count = sum(len(document[&quot;blocks&quot;]) for document in snapshot[&quot;documents&quot;])&#10;        assert block_count &gt; 50&#10;        for row in children(service):&#10;            if row[&quot;dimension&quot;] is not None:&#10;                outcome = run(service, row[&quot;job_id&quot;])&#10;                if row[&quot;dimension&quot;] in {&quot;atlas&quot;, &quot;versions&quot;, &quot;literature&quot;, &quot;poc&quot;}:&#10;&gt;                   assert outcome == &quot;failed&quot;&#10;E                   AssertionError: assert 'partial' == 'failed'&#10;E                     &#10;E                     - failed&#10;E                     + partial&#10;&#10;tests\integration\test_r07_job_execution_pg.py:528: AssertionError">execution_engine = Engine([redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]_r01:***[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]16?options=-c+search_path%3Dtest_r07[redacted test credential fragment]ix1_5250d3f584d94e058b04594056f74295+-c+statement_timeout%3D15000+-c+lock_timeout%3D3000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-925/test_full_recorded_nvd_budget_0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002749582D100&gt;
+
+    def test_full_recorded_nvd_budget_failure_is_retained_without_wire_or_losing_other_dimensions(
+        execution_engine, tmp_path, monkeypatch
+    ):
+        from tests.unit.test_r07_single_model_dimension import prepared_transport
+    
+        policy = EnrichmentExecutionPolicy(
+            generation_enabled=True,
+            generation_provider="openai",
+            approved_model="fixture-model",
+            data_mode="fixture",
+        )
+        service, scope, session_hash, _, _, receipt = setup(execution_engine, tmp_path, policy=policy)
+        calls = []
+    
+        def factory():
+            client, wire = prepared_transport(monkeypatch)
+            client.limits = GenerationLimits(total_timeout_seconds=20.0, max_calls=1)
+            calls.append(wire)
+            return client
+    
+        service.generation_client_factory = factory
+        assert run(service, receipt.parent_job_id) == "succeeded"
+        with Session(execution_engine) as session:
+            snapshot = session.scalar(select(enrichment_workflows.c.input_context))
+        block_count = sum(len(document["blocks"]) for document in snapshot["documents"])
+        assert block_count &gt; 50
+        for row in children(service):
+            if row["dimension"] is not None:
+                outcome = run(service, row["job_id"])
+                if row["dimension"] in {"atlas", "versions", "literature", "poc"}:
+&gt;                   assert outcome == "failed"
+E                   AssertionError: assert 'partial' == 'failed'
+E                     
+E                     - failed
+E                     + partial
+
+tests\integration\test_r07_job_execution_pg.py:528: AssertionError</failure></testcase></testsuite></testsuites>

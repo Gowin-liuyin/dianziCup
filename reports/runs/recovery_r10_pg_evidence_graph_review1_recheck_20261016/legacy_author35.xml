@@ -1,0 +1,399 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="11" skipped="0" tests="35" time="42.431" timestamp="2026-10-16T04:19:17.052909+08:00" hostname="yin"><testcase classname="test_original_graph_pg" name="test_six_relations_are_derived_from_published_pg_claims_and_preserve_reverse_support" time="2.491"><failure message="AssertionError: assert set() == {'affects_com... 'same_event'}&#10;  &#10;  Extra items in the right set:&#10;  'component_version_vulnerability'&#10;  'affects_component_version'&#10;  'mapped_atlas'&#10;  'same_event'&#10;  'remediated_by'...&#10;  &#10;  ...Full output truncated (12 lines hidden), use '-vv' to show">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_review2_20261016?options=-c+search_path%3Dtest_r10_graph_87aa9b75e3a64292be01e4f56ee78bef+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('D:/dianzi/reports/runs/recovery_r10_pg_evidence_graph_review1_recheck_20261016/temporary_fixture_objects/pytest-of-yinha/pytest-2/test_six_relations_are_derived0')
+
+    def test_six_relations_are_derived_from_published_pg_claims_and_preserve_reverse_support(
+        graph_engine, tmp_path
+    ):
+        event_id = uuid4()
+        values = [VERSION, ATLAS, paper_value(graph_engine, tmp_path / "paper"), VERSION]
+        submissions = [
+            publish_fact(graph_engine, tmp_path / str(index), event_id, value)
+            for index, value in enumerate(values)
+        ]
+        publish_event(graph_engine, event_id, submissions)
+        graph = read_graph(graph_engine, event_id)
+&gt;       assert {edge.relation_type for edge in graph.edges} == {
+            "same_event",
+            "affects_component_version",
+            "mapped_atlas",
+            "related_paper",
+            "remediated_by",
+            "component_version_vulnerability",
+        }
+E       AssertionError: assert set() == {'affects_com... 'same_event'}
+E         
+E         Extra items in the right set:
+E         'component_version_vulnerability'
+E         'affects_component_version'
+E         'mapped_atlas'
+E         'same_event'
+E         'remediated_by'...
+E         
+E         ...Full output truncated (12 lines hidden), use '-vv' to show
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_recheck_20261016\test_original_graph_pg.py:182: AssertionError</failure></testcase><testcase classname="test_original_graph_pg" name="test_invalid_or_unrelated_support_never_enters_effective_graph[hypothesis]" time="1.572" /><testcase classname="test_original_graph_pg" name="test_invalid_or_unrelated_support_never_enters_effective_graph[disputed]" time="1.486" /><testcase classname="test_original_graph_pg" name="test_invalid_or_unrelated_support_never_enters_effective_graph[withdrawn]" time="1.525" /><testcase classname="test_original_graph_pg" name="test_invalid_or_unrelated_support_never_enters_effective_graph[unverified]" time="1.299" /><testcase classname="test_original_graph_pg" name="test_invalid_or_unrelated_support_never_enters_effective_graph[superseded]" time="1.366" /><testcase classname="test_original_graph_pg" name="test_invalid_or_unrelated_support_never_enters_effective_graph[conflict]" time="1.243" /><testcase classname="test_original_graph_pg" name="test_invalid_or_unrelated_support_never_enters_effective_graph[stale]" time="1.107" /><testcase classname="test_original_graph_pg" name="test_invalid_or_unrelated_support_never_enters_effective_graph[not_current]" time="1.213" /><testcase classname="test_original_graph_pg" name="test_invalid_or_unrelated_support_never_enters_effective_graph[old_revision]" time="0.997" /><testcase classname="test_original_graph_pg" name="test_invalid_or_unrelated_support_never_enters_effective_graph[inactive_association]" time="1.258" /><testcase classname="test_original_graph_pg" name="test_invalid_or_unrelated_support_never_enters_effective_graph[other_event]" time="1.312" /><testcase classname="test_original_graph_pg" name="test_invalid_or_unrelated_support_never_enters_effective_graph[unverified_span]" time="1.298" /><testcase classname="test_original_graph_pg" name="test_invalid_or_unrelated_support_never_enters_effective_graph[context]" time="1.223" /><testcase classname="test_original_graph_pg" name="test_invalid_or_unrelated_support_never_enters_effective_graph[wrong_assertion]" time="1.083" /><testcase classname="test_original_graph_pg" name="test_invalid_or_unrelated_support_never_enters_effective_graph[bad_hash]" time="0.973" /><testcase classname="test_original_graph_pg" name="test_invalid_or_unrelated_support_never_enters_effective_graph[bad_offset]" time="1.015" /><testcase classname="test_original_graph_pg" name="test_invalid_or_unrelated_support_never_enters_effective_graph[missing_block]" time="1.042" /><testcase classname="test_original_graph_pg" name="test_same_names_in_distinct_ecosystems_and_ranges_remain_separate" time="1.262"><failure message="assert 0 == 3&#10; +  where 0 = len(set())">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_review2_20261016?options=-c+search_path%3Dtest_r10_graph_81f5a6f2a748410283990145162089f0+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('D:/dianzi/reports/runs/recovery_r10_pg_evidence_graph_review1_recheck_20261016/temporary_fixture_objects/pytest-of-yinha/pytest-2/test_same_names_in_distinct_ec0')
+
+    def test_same_names_in_distinct_ecosystems_and_ranges_remain_separate(graph_engine, tmp_path):
+        event_id = uuid4()
+        values = [
+            VERSION,
+            {**VERSION, "ecosystem": "npm", "scheme": "semver"},
+            {
+                **VERSION,
+                "raw_expression": "&gt;=2,&lt;2.4",
+                "intervals": [{"introduced": "2", "fixed": "2.4"}],
+            },
+        ]
+        submissions = [
+            publish_fact(graph_engine, tmp_path / str(index), event_id, value)
+            for index, value in enumerate(values)
+        ]
+        publish_event(graph_engine, event_id, submissions)
+        components = [
+            node
+            for node in read_graph(graph_engine, event_id).nodes
+            if node.kind == "component_version"
+        ]
+&gt;       assert len({node.id for node in components}) == 3
+E       assert 0 == 3
+E        +  where 0 = len(set())
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_recheck_20261016\test_original_graph_pg.py:320: AssertionError</failure></testcase><testcase classname="test_original_graph_pg" name="test_paper_relation_requires_visible_current_target_and_specific_support[background]" time="1.011" /><testcase classname="test_original_graph_pg" name="test_paper_relation_requires_visible_current_target_and_specific_support[missing_target]" time="1.006" /><testcase classname="test_original_graph_pg" name="test_paper_relation_requires_visible_current_target_and_specific_support[old_target]" time="0.842" /><testcase classname="test_original_graph_pg" name="test_paper_relation_requires_visible_current_target_and_specific_support[private_source]" time="0.890" /><testcase classname="test_original_graph_pg" name="test_paper_relation_requires_visible_current_target_and_specific_support[private_document]" time="1.068" /><testcase classname="test_original_graph_pg" name="test_paper_relation_requires_visible_current_target_and_specific_support[private_revision]" time="0.851" /><testcase classname="test_original_graph_pg" name="test_unknown_version_and_absent_action_preserve_gaps" time="0.802"><failure message="AssertionError: assert set() == {'same_event'}&#10;  &#10;  Extra items in the right set:&#10;  'same_event'&#10;  &#10;  Full diff:&#10;  + set()&#10;  - {&#10;  -     'same_event',&#10;  - }">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_review2_20261016?options=-c+search_path%3Dtest_r10_graph_51d23e5d52224f5dad59ae0be2ca6031+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('D:/dianzi/reports/runs/recovery_r10_pg_evidence_graph_review1_recheck_20261016/temporary_fixture_objects/pytest-of-yinha/pytest-2/test_unknown_version_and_absen0')
+
+    def test_unknown_version_and_absent_action_preserve_gaps(graph_engine, tmp_path):
+        event_id = uuid4()
+        submission = publish_fact(
+            graph_engine,
+            tmp_path,
+            event_id,
+            {**VERSION, "comparison_support": "unknown", "vendor_fix": None, "mitigations": []},
+        )
+        publish_event(graph_engine, event_id, [submission])
+        graph = read_graph(graph_engine, event_id)
+&gt;       assert {edge.relation_type for edge in graph.edges} == {"same_event"}
+E       AssertionError: assert set() == {'same_event'}
+E         
+E         Extra items in the right set:
+E         'same_event'
+E         
+E         Full diff:
+E         + set()
+E         - {
+E         -     'same_event',
+E         - }
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_recheck_20261016\test_original_graph_pg.py:390: AssertionError</failure></testcase><testcase classname="test_original_graph_pg" name="test_current_version_changed_withdrawal_and_truncation_do_not_resurrect_edges" time="0.814"><failure message="AssertionError: assert 0 == 5&#10; +  where 0 = len(())&#10; +    where () = GraphSnapshot(schema_version=1, event_id=UUID('15ba19b6-365b-482a-93f0-de348be94be0'), business_version=1, rule_version='r10-graph-1.1.0', nodes=(GraphNode(id=UUID('15ba19b6-365b-482a-93f0-de348be94be0'), kind='event', label='合成证据图事件', scope=VisibilityScope(visibility='public', tenant_id=None)),), edges=(), truncated=False, gaps=(GraphGap(relation_type='affects_component_version', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='component_version_vulnerability', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='mapped_atlas', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='related_paper', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='remediated_by', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='same_event', status='unknown', reason='no_current_supported_relation')), content_sha256='4f2316a63ef191925afff32291126ad61f63a3a64430bd7834ad81e7ff1c75b4').edges">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_review2_20261016?options=-c+search_path%3Dtest_r10_graph_3f4193bbf5a6414ca826f2f68dcbe4b2+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('D:/dianzi/reports/runs/recovery_r10_pg_evidence_graph_review1_recheck_20261016/temporary_fixture_objects/pytest-of-yinha/pytest-2/test_current_version_changed_w0')
+
+    def test_current_version_changed_withdrawal_and_truncation_do_not_resurrect_edges(
+        graph_engine, tmp_path
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        graph = read_graph(graph_engine, event_id)
+&gt;       assert len(graph.edges) == 5
+E       AssertionError: assert 0 == 5
+E        +  where 0 = len(())
+E        +    where () = GraphSnapshot(schema_version=1, event_id=UUID('15ba19b6-365b-482a-93f0-de348be94be0'), business_version=1, rule_version='r10-graph-1.1.0', nodes=(GraphNode(id=UUID('15ba19b6-365b-482a-93f0-de348be94be0'), kind='event', label='合成证据图事件', scope=VisibilityScope(visibility='public', tenant_id=None)),), edges=(), truncated=False, gaps=(GraphGap(relation_type='affects_component_version', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='component_version_vulnerability', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='mapped_atlas', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='related_paper', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='remediated_by', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='same_event', status='unknown', reason='no_current_supported_relation')), content_sha256='4f2316a63ef191925afff32291126ad61f63a3a64430bd7834ad81e7ff1c75b4').edges
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_recheck_20261016\test_original_graph_pg.py:401: AssertionError</failure></testcase><testcase classname="test_original_graph_pg" name="test_private_graph_and_nested_sources_do_not_cross_tenants_or_promote_scope" time="1.022"><failure message="assert (())">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_review2_20261016?options=-c+search_path%3Dtest_r10_graph_449bf6ff4ed947c8a9c1e1a2d474a58e+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('D:/dianzi/reports/runs/recovery_r10_pg_evidence_graph_review1_recheck_20261016/temporary_fixture_objects/pytest-of-yinha/pytest-2/test_private_graph_and_nested_0')
+
+    def test_private_graph_and_nested_sources_do_not_cross_tenants_or_promote_scope(
+        graph_engine, tmp_path
+    ):
+        event_id = uuid4()
+        private = VisibilityScope(visibility="tenant", tenant_id="owner")
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION, scope=private)
+        publish_event(graph_engine, event_id, [submission], scope=private)
+        owner = AccessScope.for_authenticated_user("owner-user", "owner", Role.ANALYST)
+        assert all(
+            node.scope == private for node in read_graph(graph_engine, event_id, scope=owner).nodes
+        )
+        for tenant, role in [("other", Role.ANALYST), ("owner", Role.VIEWER)]:
+            with pytest.raises(CrossTenantAccessError):
+                read_graph(
+                    graph_engine,
+                    event_id,
+                    scope=AccessScope.for_authenticated_user("fixture-user", tenant, role),
+                )
+        public_id = UUID(seed_event(graph_engine, [submission.revision_id.value]))
+        assert read_graph(graph_engine, public_id).edges == ()
+        with graph_engine.begin() as connection:
+            connection.execute(
+                update(claims)
+                .where(claims.c.claim_id == submission.record.claim_id.value)
+                .values(subject=str(public_id))
+            )
+        private_edges = read_graph(graph_engine, public_id, scope=owner).edges
+&gt;       assert private_edges and all(edge.scope == private for edge in private_edges)
+E       assert (())
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_recheck_20261016\test_original_graph_pg.py:467: AssertionError</failure></testcase><testcase classname="test_original_graph_pg" name="test_every_parent_acl_is_rechecked_and_private_support_stays_private[source]" time="0.851"><failure message="AssertionError: assert (())&#10; +  where () = GraphSnapshot(schema_version=1, event_id=UUID('a4e56b0b-6e02-4dd1-9746-8531bf367610'), business_version=1, rule_version='r10-graph-1.1.0', nodes=(GraphNode(id=UUID('a4e56b0b-6e02-4dd1-9746-8531bf367610'), kind='event', label='合成证据图事件', scope=VisibilityScope(visibility='public', tenant_id=None)),), edges=(), truncated=False, gaps=(GraphGap(relation_type='affects_component_version', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='component_version_vulnerability', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='mapped_atlas', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='related_paper', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='remediated_by', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='same_event', status='unknown', reason='no_current_supported_relation')), content_sha256='7dc288e45fd282d3c87adaa2b4e39cd7c9e63967ffa599116c93530d24c761bd').edges">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_review2_20261016?options=-c+search_path%3Dtest_r10_graph_04cfab0241de432388d9a5d725e84b94+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('D:/dianzi/reports/runs/recovery_r10_pg_evidence_graph_review1_recheck_20261016/temporary_fixture_objects/pytest-of-yinha/pytest-2/test_every_parent_acl_is_reche0')
+private_layer = 'source'
+
+    @pytest.mark.parametrize("private_layer", ["source", "document", "revision", "evidence", "claim"])
+    def test_every_parent_acl_is_rechecked_and_private_support_stays_private(
+        graph_engine, tmp_path, private_layer
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        with graph_engine.begin() as connection:
+            if private_layer == "source":
+                connection.execute(
+                    text(
+                        "UPDATE sources SET visibility='tenant', tenant_id='owner' WHERE source_id=:id"
+                    ),
+                    {"id": submission.source_id.value},
+                )
+            else:
+                relation, predicate = {
+                    "document": (
+                        documents,
+                        documents.c.source_id == submission.source_id.value,
+                    ),
+                    "revision": (
+                        document_revisions,
+                        document_revisions.c.revision_id == submission.revision_id.value,
+                    ),
+                    "evidence": (
+                        evidence,
+                        evidence.c.evidence_id == submission.evidence_links[0].evidence_id.value,
+                    ),
+                    "claim": (claims, claims.c.claim_id == submission.record.claim_id.value),
+                }[private_layer]
+                connection.execute(
+                    update(relation).where(predicate).values(visibility="tenant", tenant_id="owner")
+                )
+        assert read_graph(graph_engine, event_id).edges == ()
+        owner = AccessScope.for_authenticated_user("owner-user", "owner", Role.ANALYST)
+        result = read_graph(graph_engine, event_id, scope=owner)
+&gt;       assert result.edges and all(edge.scope.visibility == "tenant" for edge in result.edges)
+E       AssertionError: assert (())
+E        +  where () = GraphSnapshot(schema_version=1, event_id=UUID('a4e56b0b-6e02-4dd1-9746-8531bf367610'), business_version=1, rule_version='r10-graph-1.1.0', nodes=(GraphNode(id=UUID('a4e56b0b-6e02-4dd1-9746-8531bf367610'), kind='event', label='合成证据图事件', scope=VisibilityScope(visibility='public', tenant_id=None)),), edges=(), truncated=False, gaps=(GraphGap(relation_type='affects_component_version', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='component_version_vulnerability', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='mapped_atlas', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='related_paper', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='remediated_by', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='same_event', status='unknown', reason='no_current_supported_relation')), content_sha256='7dc288e45fd282d3c87adaa2b4e39cd7c9e63967ffa599116c93530d24c761bd').edges
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_recheck_20261016\test_original_graph_pg.py:507: AssertionError</failure></testcase><testcase classname="test_original_graph_pg" name="test_every_parent_acl_is_rechecked_and_private_support_stays_private[document]" time="0.818"><failure message="AssertionError: assert (())&#10; +  where () = GraphSnapshot(schema_version=1, event_id=UUID('74a5f407-081d-400c-b989-99518afa98d3'), business_version=1, rule_version='r10-graph-1.1.0', nodes=(GraphNode(id=UUID('74a5f407-081d-400c-b989-99518afa98d3'), kind='event', label='合成证据图事件', scope=VisibilityScope(visibility='public', tenant_id=None)),), edges=(), truncated=False, gaps=(GraphGap(relation_type='affects_component_version', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='component_version_vulnerability', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='mapped_atlas', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='related_paper', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='remediated_by', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='same_event', status='unknown', reason='no_current_supported_relation')), content_sha256='18bd6999cdb65c395da8b95983f55994bad6d365d4a5fb6391754dd26a561cc6').edges">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_review2_20261016?options=-c+search_path%3Dtest_r10_graph_c4431c38b5f441a08caf0f2beda00049+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('D:/dianzi/reports/runs/recovery_r10_pg_evidence_graph_review1_recheck_20261016/temporary_fixture_objects/pytest-of-yinha/pytest-2/test_every_parent_acl_is_reche1')
+private_layer = 'document'
+
+    @pytest.mark.parametrize("private_layer", ["source", "document", "revision", "evidence", "claim"])
+    def test_every_parent_acl_is_rechecked_and_private_support_stays_private(
+        graph_engine, tmp_path, private_layer
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        with graph_engine.begin() as connection:
+            if private_layer == "source":
+                connection.execute(
+                    text(
+                        "UPDATE sources SET visibility='tenant', tenant_id='owner' WHERE source_id=:id"
+                    ),
+                    {"id": submission.source_id.value},
+                )
+            else:
+                relation, predicate = {
+                    "document": (
+                        documents,
+                        documents.c.source_id == submission.source_id.value,
+                    ),
+                    "revision": (
+                        document_revisions,
+                        document_revisions.c.revision_id == submission.revision_id.value,
+                    ),
+                    "evidence": (
+                        evidence,
+                        evidence.c.evidence_id == submission.evidence_links[0].evidence_id.value,
+                    ),
+                    "claim": (claims, claims.c.claim_id == submission.record.claim_id.value),
+                }[private_layer]
+                connection.execute(
+                    update(relation).where(predicate).values(visibility="tenant", tenant_id="owner")
+                )
+        assert read_graph(graph_engine, event_id).edges == ()
+        owner = AccessScope.for_authenticated_user("owner-user", "owner", Role.ANALYST)
+        result = read_graph(graph_engine, event_id, scope=owner)
+&gt;       assert result.edges and all(edge.scope.visibility == "tenant" for edge in result.edges)
+E       AssertionError: assert (())
+E        +  where () = GraphSnapshot(schema_version=1, event_id=UUID('74a5f407-081d-400c-b989-99518afa98d3'), business_version=1, rule_version='r10-graph-1.1.0', nodes=(GraphNode(id=UUID('74a5f407-081d-400c-b989-99518afa98d3'), kind='event', label='合成证据图事件', scope=VisibilityScope(visibility='public', tenant_id=None)),), edges=(), truncated=False, gaps=(GraphGap(relation_type='affects_component_version', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='component_version_vulnerability', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='mapped_atlas', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='related_paper', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='remediated_by', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='same_event', status='unknown', reason='no_current_supported_relation')), content_sha256='18bd6999cdb65c395da8b95983f55994bad6d365d4a5fb6391754dd26a561cc6').edges
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_recheck_20261016\test_original_graph_pg.py:507: AssertionError</failure></testcase><testcase classname="test_original_graph_pg" name="test_every_parent_acl_is_rechecked_and_private_support_stays_private[revision]" time="0.919"><failure message="AssertionError: assert (())&#10; +  where () = GraphSnapshot(schema_version=1, event_id=UUID('533b7083-e390-47c5-bdd8-8ab89c845931'), business_version=1, rule_version='r10-graph-1.1.0', nodes=(GraphNode(id=UUID('533b7083-e390-47c5-bdd8-8ab89c845931'), kind='event', label='合成证据图事件', scope=VisibilityScope(visibility='public', tenant_id=None)),), edges=(), truncated=False, gaps=(GraphGap(relation_type='affects_component_version', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='component_version_vulnerability', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='mapped_atlas', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='related_paper', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='remediated_by', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='same_event', status='unknown', reason='no_current_supported_relation')), content_sha256='5be14aac55bea4997d39d36a20c3c0783a24952ae1fd7152d15eb44cda9191a5').edges">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_review2_20261016?options=-c+search_path%3Dtest_r10_graph_9976a9badfa14e40a5cac9c007cd471e+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('D:/dianzi/reports/runs/recovery_r10_pg_evidence_graph_review1_recheck_20261016/temporary_fixture_objects/pytest-of-yinha/pytest-2/test_every_parent_acl_is_reche2')
+private_layer = 'revision'
+
+    @pytest.mark.parametrize("private_layer", ["source", "document", "revision", "evidence", "claim"])
+    def test_every_parent_acl_is_rechecked_and_private_support_stays_private(
+        graph_engine, tmp_path, private_layer
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        with graph_engine.begin() as connection:
+            if private_layer == "source":
+                connection.execute(
+                    text(
+                        "UPDATE sources SET visibility='tenant', tenant_id='owner' WHERE source_id=:id"
+                    ),
+                    {"id": submission.source_id.value},
+                )
+            else:
+                relation, predicate = {
+                    "document": (
+                        documents,
+                        documents.c.source_id == submission.source_id.value,
+                    ),
+                    "revision": (
+                        document_revisions,
+                        document_revisions.c.revision_id == submission.revision_id.value,
+                    ),
+                    "evidence": (
+                        evidence,
+                        evidence.c.evidence_id == submission.evidence_links[0].evidence_id.value,
+                    ),
+                    "claim": (claims, claims.c.claim_id == submission.record.claim_id.value),
+                }[private_layer]
+                connection.execute(
+                    update(relation).where(predicate).values(visibility="tenant", tenant_id="owner")
+                )
+        assert read_graph(graph_engine, event_id).edges == ()
+        owner = AccessScope.for_authenticated_user("owner-user", "owner", Role.ANALYST)
+        result = read_graph(graph_engine, event_id, scope=owner)
+&gt;       assert result.edges and all(edge.scope.visibility == "tenant" for edge in result.edges)
+E       AssertionError: assert (())
+E        +  where () = GraphSnapshot(schema_version=1, event_id=UUID('533b7083-e390-47c5-bdd8-8ab89c845931'), business_version=1, rule_version='r10-graph-1.1.0', nodes=(GraphNode(id=UUID('533b7083-e390-47c5-bdd8-8ab89c845931'), kind='event', label='合成证据图事件', scope=VisibilityScope(visibility='public', tenant_id=None)),), edges=(), truncated=False, gaps=(GraphGap(relation_type='affects_component_version', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='component_version_vulnerability', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='mapped_atlas', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='related_paper', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='remediated_by', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='same_event', status='unknown', reason='no_current_supported_relation')), content_sha256='5be14aac55bea4997d39d36a20c3c0783a24952ae1fd7152d15eb44cda9191a5').edges
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_recheck_20261016\test_original_graph_pg.py:507: AssertionError</failure></testcase><testcase classname="test_original_graph_pg" name="test_every_parent_acl_is_rechecked_and_private_support_stays_private[evidence]" time="0.902"><failure message="AssertionError: assert (())&#10; +  where () = GraphSnapshot(schema_version=1, event_id=UUID('27ddda14-d4e4-40cc-adc2-b6afb266f563'), business_version=1, rule_version='r10-graph-1.1.0', nodes=(GraphNode(id=UUID('27ddda14-d4e4-40cc-adc2-b6afb266f563'), kind='event', label='合成证据图事件', scope=VisibilityScope(visibility='public', tenant_id=None)),), edges=(), truncated=False, gaps=(GraphGap(relation_type='affects_component_version', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='component_version_vulnerability', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='mapped_atlas', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='related_paper', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='remediated_by', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='same_event', status='unknown', reason='no_current_supported_relation')), content_sha256='1cad6f950548094e33957e2d71d1d2dc61b841d531c43b504da1d49149bf4c9f').edges">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_review2_20261016?options=-c+search_path%3Dtest_r10_graph_08f9c9dd0cfb4b5ba2ea71c9ae443eef+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('D:/dianzi/reports/runs/recovery_r10_pg_evidence_graph_review1_recheck_20261016/temporary_fixture_objects/pytest-of-yinha/pytest-2/test_every_parent_acl_is_reche3')
+private_layer = 'evidence'
+
+    @pytest.mark.parametrize("private_layer", ["source", "document", "revision", "evidence", "claim"])
+    def test_every_parent_acl_is_rechecked_and_private_support_stays_private(
+        graph_engine, tmp_path, private_layer
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        with graph_engine.begin() as connection:
+            if private_layer == "source":
+                connection.execute(
+                    text(
+                        "UPDATE sources SET visibility='tenant', tenant_id='owner' WHERE source_id=:id"
+                    ),
+                    {"id": submission.source_id.value},
+                )
+            else:
+                relation, predicate = {
+                    "document": (
+                        documents,
+                        documents.c.source_id == submission.source_id.value,
+                    ),
+                    "revision": (
+                        document_revisions,
+                        document_revisions.c.revision_id == submission.revision_id.value,
+                    ),
+                    "evidence": (
+                        evidence,
+                        evidence.c.evidence_id == submission.evidence_links[0].evidence_id.value,
+                    ),
+                    "claim": (claims, claims.c.claim_id == submission.record.claim_id.value),
+                }[private_layer]
+                connection.execute(
+                    update(relation).where(predicate).values(visibility="tenant", tenant_id="owner")
+                )
+        assert read_graph(graph_engine, event_id).edges == ()
+        owner = AccessScope.for_authenticated_user("owner-user", "owner", Role.ANALYST)
+        result = read_graph(graph_engine, event_id, scope=owner)
+&gt;       assert result.edges and all(edge.scope.visibility == "tenant" for edge in result.edges)
+E       AssertionError: assert (())
+E        +  where () = GraphSnapshot(schema_version=1, event_id=UUID('27ddda14-d4e4-40cc-adc2-b6afb266f563'), business_version=1, rule_version='r10-graph-1.1.0', nodes=(GraphNode(id=UUID('27ddda14-d4e4-40cc-adc2-b6afb266f563'), kind='event', label='合成证据图事件', scope=VisibilityScope(visibility='public', tenant_id=None)),), edges=(), truncated=False, gaps=(GraphGap(relation_type='affects_component_version', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='component_version_vulnerability', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='mapped_atlas', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='related_paper', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='remediated_by', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='same_event', status='unknown', reason='no_current_supported_relation')), content_sha256='1cad6f950548094e33957e2d71d1d2dc61b841d531c43b504da1d49149bf4c9f').edges
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_recheck_20261016\test_original_graph_pg.py:507: AssertionError</failure></testcase><testcase classname="test_original_graph_pg" name="test_every_parent_acl_is_rechecked_and_private_support_stays_private[claim]" time="1.136"><failure message="AssertionError: assert (())&#10; +  where () = GraphSnapshot(schema_version=1, event_id=UUID('35f903ca-10be-4677-b8d8-21fa911965ff'), business_version=1, rule_version='r10-graph-1.1.0', nodes=(GraphNode(id=UUID('35f903ca-10be-4677-b8d8-21fa911965ff'), kind='event', label='合成证据图事件', scope=VisibilityScope(visibility='public', tenant_id=None)),), edges=(), truncated=False, gaps=(GraphGap(relation_type='affects_component_version', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='component_version_vulnerability', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='mapped_atlas', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='related_paper', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='remediated_by', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='same_event', status='unknown', reason='no_current_supported_relation')), content_sha256='32222179bee0ab23a88512c90a66071e374c28d68fcd6b26d5a86ed03cbb580c').edges">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_review2_20261016?options=-c+search_path%3Dtest_r10_graph_e25bb9970a6d490f92862ac2b8fb71ac+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('D:/dianzi/reports/runs/recovery_r10_pg_evidence_graph_review1_recheck_20261016/temporary_fixture_objects/pytest-of-yinha/pytest-2/test_every_parent_acl_is_reche4')
+private_layer = 'claim'
+
+    @pytest.mark.parametrize("private_layer", ["source", "document", "revision", "evidence", "claim"])
+    def test_every_parent_acl_is_rechecked_and_private_support_stays_private(
+        graph_engine, tmp_path, private_layer
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        with graph_engine.begin() as connection:
+            if private_layer == "source":
+                connection.execute(
+                    text(
+                        "UPDATE sources SET visibility='tenant', tenant_id='owner' WHERE source_id=:id"
+                    ),
+                    {"id": submission.source_id.value},
+                )
+            else:
+                relation, predicate = {
+                    "document": (
+                        documents,
+                        documents.c.source_id == submission.source_id.value,
+                    ),
+                    "revision": (
+                        document_revisions,
+                        document_revisions.c.revision_id == submission.revision_id.value,
+                    ),
+                    "evidence": (
+                        evidence,
+                        evidence.c.evidence_id == submission.evidence_links[0].evidence_id.value,
+                    ),
+                    "claim": (claims, claims.c.claim_id == submission.record.claim_id.value),
+                }[private_layer]
+                connection.execute(
+                    update(relation).where(predicate).values(visibility="tenant", tenant_id="owner")
+                )
+        assert read_graph(graph_engine, event_id).edges == ()
+        owner = AccessScope.for_authenticated_user("owner-user", "owner", Role.ANALYST)
+        result = read_graph(graph_engine, event_id, scope=owner)
+&gt;       assert result.edges and all(edge.scope.visibility == "tenant" for edge in result.edges)
+E       AssertionError: assert (())
+E        +  where () = GraphSnapshot(schema_version=1, event_id=UUID('35f903ca-10be-4677-b8d8-21fa911965ff'), business_version=1, rule_version='r10-graph-1.1.0', nodes=(GraphNode(id=UUID('35f903ca-10be-4677-b8d8-21fa911965ff'), kind='event', label='合成证据图事件', scope=VisibilityScope(visibility='public', tenant_id=None)),), edges=(), truncated=False, gaps=(GraphGap(relation_type='affects_component_version', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='component_version_vulnerability', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='mapped_atlas', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='related_paper', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='remediated_by', status='unknown', reason='no_current_supported_relation'), GraphGap(relation_type='same_event', status='unknown', reason='no_current_supported_relation')), content_sha256='32222179bee0ab23a88512c90a66071e374c28d68fcd6b26d5a86ed03cbb580c').edges
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_recheck_20261016\test_original_graph_pg.py:507: AssertionError</failure></testcase><testcase classname="test_original_graph_pg" name="test_pg_session_role_revocation_removes_private_graph_access" time="1.323" /><testcase classname="test_original_graph_pg" name="test_real_session_rest_factory_bounds_acl_errors_and_database_failure" time="1.722"><failure message="AssertionError: assert 'r10-graph-1.1.0' == 'r10-graph-1.0.0'&#10;  &#10;  - r10-graph-1.0.0&#10;  ?             ^&#10;  + r10-graph-1.1.0&#10;  ?             ^">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_review2_20261016?options=-c+search_path%3Dtest_r10_graph_ced22669d807450ea4103bc29daa8d68+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('D:/dianzi/reports/runs/recovery_r10_pg_evidence_graph_review1_recheck_20261016/temporary_fixture_objects/pytest-of-yinha/pytest-2/test_real_session_rest_factory0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x00000218ECC26780&gt;
+register_sensitive_failure_value = &lt;function register_sensitive_failure_value.&lt;locals&gt;.register at 0x00000218ECC13BA0&gt;
+
+    def test_real_session_rest_factory_bounds_acl_errors_and_database_failure(
+        graph_engine, tmp_path, monkeypatch, register_sensitive_failure_value
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        auth = AuthenticationSessionService(
+            DatabaseUserDirectory(graph_engine),
+            ("http://localhost:5173",),
+            False,
+            state_store=PgAuthenticationStateStore(graph_engine),
+        )
+        username = "fixture-r10-user-" + uuid4().hex
+        password = secrets.token_urlsafe(32)
+        register_sensitive_failure_value(SecretStr(password))
+        auth.create_precreated_user(username, password, "owner", Role.VIEWER)
+        session_token, _ = auth.login(username, password, "http://localhost:5173", uuid4().hex)
+        register_sensitive_failure_value(SecretStr(session_token))
+        app = FastAPI()
+        app.include_router(build_graph_router(lambda: auth, graph_engine), prefix="/v1")
+        path = f"/v1/events/{event_id}/graph"
+        with TestClient(app) as client:
+            assert client.get(path).status_code == 401
+            client.cookies.set(SESSION_COOKIE_NAME, session_token)
+            response = client.get(path)
+            assert response.status_code == 200 and response.json()["business_version"] == 1
+&gt;           assert response.json()["rule_version"] == "r10-graph-1.0.0"
+E           AssertionError: assert 'r10-graph-1.1.0' == 'r10-graph-1.0.0'
+E             
+E             - r10-graph-1.0.0
+E             ?             ^
+E             + r10-graph-1.1.0
+E             ?             ^
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_recheck_20261016\test_original_graph_pg.py:570: AssertionError</failure></testcase></testsuite></testsuites>

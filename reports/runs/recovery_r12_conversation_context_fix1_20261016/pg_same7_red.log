@@ -1,0 +1,133 @@
+FFFFF..                                                                  [100%]
+================================== FAILURES ===================================
+___ test_missing_reference_without_successful_parent_requires_clarification ___
+
+    def test_missing_reference_without_successful_parent_requires_clarification():
+        scope=AccessScope.for_authenticated_user('synthetic-owner','tenant-a',Role.ANALYST)
+        result=resolve_question_context(QuestionRequest(question='它的修复是什么？',mode='library'),
+            conversation_id=UUID('00000000-0000-0000-0000-000000000001'),base_version=0,scope=scope,
+            event_references=(),now=datetime.now(UTC))
+>       assert result.clarification_code is not None, 'unbound pronoun must clarify before retrieval'
+E       AssertionError: unbound pronoun must clarify before retrieval
+E       assert None is not None
+E        +  where None = ResolvedQuestionContext(schema_version=1, conversation_id=UUID('00000000-0000-0000-0000-000000000001'), base_version=0...0cdbc64aed4a8b1ec11564afb47b5f5751', context_sha256='906563f8af541d8baa1b3315b266c1d1a0e372e0b437eaaaf6726bd2c86a70a0').clarification_code
+
+reports\runs\recovery_r12_conversation_context[redacted test credential fragment]261016\test_review_negative.py:25: AssertionError
+____________ test_pg_missing_reference_does_not_reserve_an_answer _____________
+context_identity = (Engine([redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]_r01:***[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]16?options=-c+search_p...on=1), '[redacted test credential]', <function context_identity.<locals>.login at 0x000001DB38787CE0>)
+
+    def test_pg_missing_reference_does_not_reserve_an_answer(context_identity):
+        engine=context_identity[0]
+>       with pytest.raises(ConversationFailure):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'ai_intel.answering.conversation_contracts.ConversationFailure'>
+
+reports\runs\recovery_r12_conversation_context[redacted test credential fragment]261016\test_review_negative.py:31: Failed
+-------------------------- Captured stdout teardown ---------------------------
+review_owned_schema_removed:test_r12_fix1_3dcc964eca284c1eb34cb44e51913c4a
+_____________ test_pg_admission_rejection_commits_expired_history _____________
+context_identity = (Engine([redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]_r01:***[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]16?options=-c+search_p...on=1), '[redacted test credential]', <function context_identity.<locals>.login at 0x000001DB388C1440>)
+
+    def test_pg_admission_rejection_commits_expired_history(context_identity):
+        engine,_auth,scope,token,_login=context_identity
+        turn=admit(context_identity)
+        with engine.begin() as connection:
+            trace=connection.scalar(select(grounded_answers.c.model_trace))
+            trace['reservation_expires_at']=(datetime.now(UTC)-timedelta(seconds=1)).isoformat()
+            connection.execute(update(grounded_answers).values(model_trace=trace))
+        with pytest.raises(ConversationFailure,match='conversation_version_conflict'):
+            admit(context_identity,key='stale-version-new-key',conversation=turn.conversation_id,version=0)
+        history=ConversationContextService(engine).read_history(scope,turn.turn_id,session_token=token)
+>       assert [item.state for item in history]==['pending','expired'], 'rejected admission rolled back recovery'
+E       AssertionError: rejected admission rolled back recovery
+E       assert ['pending'] == ['pending', 'expired']
+E         
+E         Right contains one more item: 'expired'
+E         Use -v to get more diff
+
+reports\runs\recovery_r12_conversation_context[redacted test credential fragment]261016\test_review_negative.py:47: AssertionError
+-------------------------- Captured stdout teardown ---------------------------
+review_owned_schema_removed:test_r12_fix1_e88c485b8031421ba98ad912169f16af
+_____________ test_pg_child_admission_verifies_saved_parent_hash ______________
+context_identity = (Engine([redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]_r01:***[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]16?options=-c+search_p...on=1), '[redacted test credential]', <function context_identity.<locals>.login at 0x000001DB387D37E0>)
+
+    def test_pg_child_admission_verifies_saved_parent_hash(context_identity):
+        engine,_auth,scope,token,_login=context_identity
+        fact=seed_fact(engine,'S[redacted test credential fragment] current source.',cve='CVE-2026-10001')
+        first=admit(context_identity,event_ids=(UUID(fact['event_id']),))
+        service=ConversationContextService(engine)
+        record_[redacted test credential fragment]c_completion(service,engine,scope,token,first)
+        with engine.begin() as connection:
+            context=connection.scalar(select(qa_conversation_turns.c.resolved_context))
+            context['question']='Corrupt stored parent body; original digest unchanged.'
+            connection.execute(update(qa_conversation_turns).values(resolved_context=context))
+        with pytest.raises(ConversationFailure,match='context_integrity_unavailable'):
+            service.read_turn(scope,first.turn_id,session_token=token)
+>       with pytest.raises(ConversationFailure,match='context_integrity_unavailable'):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'ai_intel.answering.conversation_contracts.ConversationFailure'>
+
+reports\runs\recovery_r12_conversation_context[redacted test credential fragment]261016\test_review_negative.py:64: Failed
+-------------------------- Captured stdout teardown ---------------------------
+review_owned_schema_removed:test_r12_fix1_c1a65901c8b5436e8bd44fc71e932389
+________ test_pg_owner_completed_turn_survives_current_event_inactive _________
+context_identity = (Engine([redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]_r01:***[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]16?options=-c+search_p...on=1), '[redacted test credential]', <function context_identity.<locals>.login at 0x000001DB379D27A0>)
+
+    def test_pg_owner_completed_turn_survives_current_event_inactive(context_identity):
+        engine,_auth,scope,token,_login=context_identity
+        fact=seed_fact(engine,'S[redacted test credential fragment] historical source.',cve='CVE-2026-10001')
+        first=admit(context_identity,event_ids=(UUID(fact['event_id']),))
+        service=ConversationContextService(engine)
+        record_[redacted test credential fragment]c_completion(service,engine,scope,token,first)
+        with engine.begin() as connection:
+            connection.execute(update(events).where(events.c.event_id==fact['event_id']).values(status='withdrawn'))
+>       restored=service.read_turn(scope,first.turn_id,session_token=token)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+reports\runs\recovery_r12_conversation_context[redacted test credential fragment]261016\test_review_negative.py:77: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+backend\src\ai_intel\answering\conversation_context.py:571: in read_turn
+    self._references(session, scope, turn.context.event_ids, turn.context.asset_ids)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+session = <sqlalchemy.orm.session.Session object at 0x000001DB387AEA50>
+scope = AccessScope(user_id='6da61a49-f5e1-4f97-aaab-bd1c7e1cc3b3', tenant_id='tenant-a', role=<Role.ANALYST: 'analyst'>, permissions=frozenset({'read:asset', 'read:public'}), permission_version=1)
+event_ids = (UUID('67f527f8-d270-4b89-8016-f7dbc49e0d03'),), asset_ids = ()
+
+    @staticmethod
+    def _references(
+        session: Session,
+        scope: AccessScope,
+        event_ids: tuple[UUID, ...],
+        asset_ids: tuple[UUID, ...],
+        *,
+        lock_events: bool = True,
+    ) -> tuple[tuple[EventReference, ...], tuple[AssetSnapshotReference, ...]]:
+        """Bundle defers event locks to the shared source/document/event authority fence."""
+        query = (
+            select(events)
+            .where(
+                events.c.event_id.in_(tuple(map(str, event_ids))),
+                visible_clause(scope, events),
+                events.c.status == "active",
+            )
+            .order_by(events.c.event_id)
+        )
+        if lock_events:
+            query = query.with_for_update(read=True)
+        rows = session.execute(query).mappings().all()
+        if {row["event_id"] for row in rows} != set(map(str, event_ids)):
+>           raise CrossTenantAccessError("resource not found")
+E           ai_intel.domain.access.CrossTenantAccessError: resource not found
+
+backend\src\ai_intel\answering\conversation_context.py:282: CrossTenantAccessError
+-------------------------- Captured stdout teardown ---------------------------
+review_owned_schema_removed:test_r12_fix1_a123a643bc814c7fb1855db5d41a5f14
+- generated xml file: D:\wt\r12-conversation-context-fix1\reports\runs\recovery_r12_conversation_context[redacted test credential fragment]261016\pg_same7_red.xml -
+=========================== short test summary info ===========================
+FAILED reports/runs/recovery_r12_conversation_context[redacted test credential fragment]261016/test_review_negative.py::test_missing_reference_without_successful_parent_requires_clarification
+FAILED reports/runs/recovery_r12_conversation_context[redacted test credential fragment]261016/test_review_negative.py::test_pg_missing_reference_does_not_reserve_an_answer
+FAILED reports/runs/recovery_r12_conversation_context[redacted test credential fragment]261016/test_review_negative.py::test_pg_admission_rejection_commits_expired_history
+FAILED reports/runs/recovery_r12_conversation_context[redacted test credential fragment]261016/test_review_negative.py::test_pg_child_admission_verifies_saved_parent_hash
+FAILED reports/runs/recovery_r12_conversation_context[redacted test credential fragment]261016/test_review_negative.py::test_pg_owner_completed_turn_survives_current_event_inactive
+5 failed, 2 passed in 9.29s

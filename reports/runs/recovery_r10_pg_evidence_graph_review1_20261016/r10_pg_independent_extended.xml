@@ -1,0 +1,472 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="12" skipped="0" tests="32" time="38.252" timestamp="2026-10-16T03:14:41.946252+08:00" hostname="yin"><testcase classname="test_independent_graph_pg" name="test_exact_fixture_fields_produce_each_supported_relation[same_event]" time="1.305" /><testcase classname="test_independent_graph_pg" name="test_exact_fixture_fields_produce_each_supported_relation[affects_component_version]" time="1.025" /><testcase classname="test_independent_graph_pg" name="test_exact_fixture_fields_produce_each_supported_relation[component_version_vulnerability]" time="1.069" /><testcase classname="test_independent_graph_pg" name="test_exact_fixture_fields_produce_each_supported_relation[mapped_atlas]" time="1.106" /><testcase classname="test_independent_graph_pg" name="test_exact_fixture_fields_produce_each_supported_relation[related_paper]" time="1.272" /><testcase classname="test_independent_graph_pg" name="test_exact_fixture_fields_produce_each_supported_relation[remediated_by]" time="1.157" /><testcase classname="test_independent_graph_pg" name="test_unknown_condition_never_becomes_each_supported_relation[same_event]" time="1.097" /><testcase classname="test_independent_graph_pg" name="test_unknown_condition_never_becomes_each_supported_relation[affects_component_version]" time="1.276" /><testcase classname="test_independent_graph_pg" name="test_unknown_condition_never_becomes_each_supported_relation[component_version_vulnerability]" time="1.313" /><testcase classname="test_independent_graph_pg" name="test_unknown_condition_never_becomes_each_supported_relation[mapped_atlas]" time="1.069" /><testcase classname="test_independent_graph_pg" name="test_unknown_condition_never_becomes_each_supported_relation[related_paper]" time="1.018" /><testcase classname="test_independent_graph_pg" name="test_unknown_condition_never_becomes_each_supported_relation[remediated_by]" time="1.019" /><testcase classname="test_independent_graph_pg" name="test_unrelated_quote_cannot_become_supported_relation[same_event]" time="1.078"><failure message="AssertionError: An unrelated exact quote has no value or event identity binding and cannot support same_event&#10;assert not True&#10; +  where True = any(&lt;generator object test_unrelated_quote_cannot_become_supported_relation.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001F33BAB93C0&gt;)">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_review1_20261016?options=-c+search_path%3Dtest_r10_graph_e7df731a7a5a4b368d17740b330f8daf+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-663/test_unrelated_quote_cannot_be0')
+relation = 'same_event'
+
+    @pytest.mark.parametrize('relation', [
+        'same_event', 'affects_component_version', 'component_version_vulnerability',
+        'mapped_atlas', 'related_paper', 'remediated_by',
+    ])
+    def test_unrelated_quote_cannot_become_supported_relation(graph_engine, tmp_path, relation):
+        event_id = uuid4()
+        value = ATLAS if relation == 'mapped_atlas' else VERSION
+        if relation == 'related_paper':
+            value = paper_value(graph_engine, tmp_path / 'paper')
+        submission = publish_fact(graph_engine, tmp_path / 'support', event_id, value)
+        publish_event(graph_engine, event_id, [submission])
+        with graph_engine.connect() as connection:
+            quote = connection.scalar(select(evidence.c.quote).where(
+                evidence.c.evidence_id == submission.evidence_links[0].evidence_id.value,
+            ))
+        assert quote == 'explicit source'
+        assert all(token not in quote for token in ('fixture-package', '1.4.2', 'AML.T0051'))
+&gt;       assert not any(edge.relation_type == relation for edge in read_graph(graph_engine, event_id).edges), (
+            'An unrelated exact quote has no value or event identity binding and cannot support ' + relation
+        )
+E       AssertionError: An unrelated exact quote has no value or event identity binding and cannot support same_event
+E       assert not True
+E        +  where True = any(&lt;generator object test_unrelated_quote_cannot_become_supported_relation.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001F33BAB93C0&gt;)
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_20261016\test_independent_graph_pg.py:122: AssertionError</failure></testcase><testcase classname="test_independent_graph_pg" name="test_unrelated_quote_cannot_become_supported_relation[affects_component_version]" time="1.183"><failure message="AssertionError: An unrelated exact quote has no value or event identity binding and cannot support affects_component_version&#10;assert not True&#10; +  where True = any(&lt;generator object test_unrelated_quote_cannot_become_supported_relation.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001F33B806A80&gt;)">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_review1_20261016?options=-c+search_path%3Dtest_r10_graph_1f70e836b83c45e1a37308f356c6a34f+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-663/test_unrelated_quote_cannot_be1')
+relation = 'affects_component_version'
+
+    @pytest.mark.parametrize('relation', [
+        'same_event', 'affects_component_version', 'component_version_vulnerability',
+        'mapped_atlas', 'related_paper', 'remediated_by',
+    ])
+    def test_unrelated_quote_cannot_become_supported_relation(graph_engine, tmp_path, relation):
+        event_id = uuid4()
+        value = ATLAS if relation == 'mapped_atlas' else VERSION
+        if relation == 'related_paper':
+            value = paper_value(graph_engine, tmp_path / 'paper')
+        submission = publish_fact(graph_engine, tmp_path / 'support', event_id, value)
+        publish_event(graph_engine, event_id, [submission])
+        with graph_engine.connect() as connection:
+            quote = connection.scalar(select(evidence.c.quote).where(
+                evidence.c.evidence_id == submission.evidence_links[0].evidence_id.value,
+            ))
+        assert quote == 'explicit source'
+        assert all(token not in quote for token in ('fixture-package', '1.4.2', 'AML.T0051'))
+&gt;       assert not any(edge.relation_type == relation for edge in read_graph(graph_engine, event_id).edges), (
+            'An unrelated exact quote has no value or event identity binding and cannot support ' + relation
+        )
+E       AssertionError: An unrelated exact quote has no value or event identity binding and cannot support affects_component_version
+E       assert not True
+E        +  where True = any(&lt;generator object test_unrelated_quote_cannot_become_supported_relation.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001F33B806A80&gt;)
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_20261016\test_independent_graph_pg.py:122: AssertionError</failure></testcase><testcase classname="test_independent_graph_pg" name="test_unrelated_quote_cannot_become_supported_relation[component_version_vulnerability]" time="0.919"><failure message="AssertionError: An unrelated exact quote has no value or event identity binding and cannot support component_version_vulnerability&#10;assert not True&#10; +  where True = any(&lt;generator object test_unrelated_quote_cannot_become_supported_relation.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001F33BABBC60&gt;)">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_review1_20261016?options=-c+search_path%3Dtest_r10_graph_d93bc5e014d24d61b143a3f14d44883e+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-663/test_unrelated_quote_cannot_be2')
+relation = 'component_version_vulnerability'
+
+    @pytest.mark.parametrize('relation', [
+        'same_event', 'affects_component_version', 'component_version_vulnerability',
+        'mapped_atlas', 'related_paper', 'remediated_by',
+    ])
+    def test_unrelated_quote_cannot_become_supported_relation(graph_engine, tmp_path, relation):
+        event_id = uuid4()
+        value = ATLAS if relation == 'mapped_atlas' else VERSION
+        if relation == 'related_paper':
+            value = paper_value(graph_engine, tmp_path / 'paper')
+        submission = publish_fact(graph_engine, tmp_path / 'support', event_id, value)
+        publish_event(graph_engine, event_id, [submission])
+        with graph_engine.connect() as connection:
+            quote = connection.scalar(select(evidence.c.quote).where(
+                evidence.c.evidence_id == submission.evidence_links[0].evidence_id.value,
+            ))
+        assert quote == 'explicit source'
+        assert all(token not in quote for token in ('fixture-package', '1.4.2', 'AML.T0051'))
+&gt;       assert not any(edge.relation_type == relation for edge in read_graph(graph_engine, event_id).edges), (
+            'An unrelated exact quote has no value or event identity binding and cannot support ' + relation
+        )
+E       AssertionError: An unrelated exact quote has no value or event identity binding and cannot support component_version_vulnerability
+E       assert not True
+E        +  where True = any(&lt;generator object test_unrelated_quote_cannot_become_supported_relation.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001F33BABBC60&gt;)
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_20261016\test_independent_graph_pg.py:122: AssertionError</failure></testcase><testcase classname="test_independent_graph_pg" name="test_unrelated_quote_cannot_become_supported_relation[mapped_atlas]" time="0.876"><failure message="AssertionError: An unrelated exact quote has no value or event identity binding and cannot support mapped_atlas&#10;assert not True&#10; +  where True = any(&lt;generator object test_unrelated_quote_cannot_become_supported_relation.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001F33B807B90&gt;)">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_review1_20261016?options=-c+search_path%3Dtest_r10_graph_0aaf1ef60d5c41258e12a5a9d715117d+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-663/test_unrelated_quote_cannot_be3')
+relation = 'mapped_atlas'
+
+    @pytest.mark.parametrize('relation', [
+        'same_event', 'affects_component_version', 'component_version_vulnerability',
+        'mapped_atlas', 'related_paper', 'remediated_by',
+    ])
+    def test_unrelated_quote_cannot_become_supported_relation(graph_engine, tmp_path, relation):
+        event_id = uuid4()
+        value = ATLAS if relation == 'mapped_atlas' else VERSION
+        if relation == 'related_paper':
+            value = paper_value(graph_engine, tmp_path / 'paper')
+        submission = publish_fact(graph_engine, tmp_path / 'support', event_id, value)
+        publish_event(graph_engine, event_id, [submission])
+        with graph_engine.connect() as connection:
+            quote = connection.scalar(select(evidence.c.quote).where(
+                evidence.c.evidence_id == submission.evidence_links[0].evidence_id.value,
+            ))
+        assert quote == 'explicit source'
+        assert all(token not in quote for token in ('fixture-package', '1.4.2', 'AML.T0051'))
+&gt;       assert not any(edge.relation_type == relation for edge in read_graph(graph_engine, event_id).edges), (
+            'An unrelated exact quote has no value or event identity binding and cannot support ' + relation
+        )
+E       AssertionError: An unrelated exact quote has no value or event identity binding and cannot support mapped_atlas
+E       assert not True
+E        +  where True = any(&lt;generator object test_unrelated_quote_cannot_become_supported_relation.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001F33B807B90&gt;)
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_20261016\test_independent_graph_pg.py:122: AssertionError</failure></testcase><testcase classname="test_independent_graph_pg" name="test_unrelated_quote_cannot_become_supported_relation[related_paper]" time="1.003"><failure message="AssertionError: An unrelated exact quote has no value or event identity binding and cannot support related_paper&#10;assert not True&#10; +  where True = any(&lt;generator object test_unrelated_quote_cannot_become_supported_relation.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001F33BD1E9B0&gt;)">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_review1_20261016?options=-c+search_path%3Dtest_r10_graph_82d42992be904bd98da4a557404f1abb+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-663/test_unrelated_quote_cannot_be4')
+relation = 'related_paper'
+
+    @pytest.mark.parametrize('relation', [
+        'same_event', 'affects_component_version', 'component_version_vulnerability',
+        'mapped_atlas', 'related_paper', 'remediated_by',
+    ])
+    def test_unrelated_quote_cannot_become_supported_relation(graph_engine, tmp_path, relation):
+        event_id = uuid4()
+        value = ATLAS if relation == 'mapped_atlas' else VERSION
+        if relation == 'related_paper':
+            value = paper_value(graph_engine, tmp_path / 'paper')
+        submission = publish_fact(graph_engine, tmp_path / 'support', event_id, value)
+        publish_event(graph_engine, event_id, [submission])
+        with graph_engine.connect() as connection:
+            quote = connection.scalar(select(evidence.c.quote).where(
+                evidence.c.evidence_id == submission.evidence_links[0].evidence_id.value,
+            ))
+        assert quote == 'explicit source'
+        assert all(token not in quote for token in ('fixture-package', '1.4.2', 'AML.T0051'))
+&gt;       assert not any(edge.relation_type == relation for edge in read_graph(graph_engine, event_id).edges), (
+            'An unrelated exact quote has no value or event identity binding and cannot support ' + relation
+        )
+E       AssertionError: An unrelated exact quote has no value or event identity binding and cannot support related_paper
+E       assert not True
+E        +  where True = any(&lt;generator object test_unrelated_quote_cannot_become_supported_relation.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001F33BD1E9B0&gt;)
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_20261016\test_independent_graph_pg.py:122: AssertionError</failure></testcase><testcase classname="test_independent_graph_pg" name="test_unrelated_quote_cannot_become_supported_relation[remediated_by]" time="1.135"><failure message="AssertionError: An unrelated exact quote has no value or event identity binding and cannot support remediated_by&#10;assert not True&#10; +  where True = any(&lt;generator object test_unrelated_quote_cannot_become_supported_relation.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001F33B1CF440&gt;)">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_review1_20261016?options=-c+search_path%3Dtest_r10_graph_c725861ed6864e8f86efb0f4b5c7e555+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-663/test_unrelated_quote_cannot_be5')
+relation = 'remediated_by'
+
+    @pytest.mark.parametrize('relation', [
+        'same_event', 'affects_component_version', 'component_version_vulnerability',
+        'mapped_atlas', 'related_paper', 'remediated_by',
+    ])
+    def test_unrelated_quote_cannot_become_supported_relation(graph_engine, tmp_path, relation):
+        event_id = uuid4()
+        value = ATLAS if relation == 'mapped_atlas' else VERSION
+        if relation == 'related_paper':
+            value = paper_value(graph_engine, tmp_path / 'paper')
+        submission = publish_fact(graph_engine, tmp_path / 'support', event_id, value)
+        publish_event(graph_engine, event_id, [submission])
+        with graph_engine.connect() as connection:
+            quote = connection.scalar(select(evidence.c.quote).where(
+                evidence.c.evidence_id == submission.evidence_links[0].evidence_id.value,
+            ))
+        assert quote == 'explicit source'
+        assert all(token not in quote for token in ('fixture-package', '1.4.2', 'AML.T0051'))
+&gt;       assert not any(edge.relation_type == relation for edge in read_graph(graph_engine, event_id).edges), (
+            'An unrelated exact quote has no value or event identity binding and cannot support ' + relation
+        )
+E       AssertionError: An unrelated exact quote has no value or event identity binding and cannot support remediated_by
+E       assert not True
+E        +  where True = any(&lt;generator object test_unrelated_quote_cannot_become_supported_relation.&lt;locals&gt;.&lt;genexpr&gt; at 0x000001F33B1CF440&gt;)
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_20261016\test_independent_graph_pg.py:122: AssertionError</failure></testcase><testcase classname="test_independent_graph_pg" name="test_http_does_not_return_snapshot_invalidated_before_response[source_acl]" time="1.143"><failure message="AssertionError: HTTP returned supported edges after committed withdrawal or parent ACL revocation&#10;assert [{'evidence_s...核验支持事实', ...}] == []&#10;  &#10;  Left contains 5 more items, first extra item: {'evidence_span_ids': ['3cd6a34c-84bb-4a09-929d-a6fde7ca506e'], 'id': '70b9f76c-3d96-52bc-b3b5-a7d28e2e1184', 'object_id': '11c734de-3ecf-5074-910f-79925760307a', 'reason': '&gt;=1.0,&lt;1.4.2', ...}&#10;  &#10;  Full diff:&#10;  - []&#10;  + [&#10;  +     {...&#10;  &#10;  ...Full output truncated (110 lines hidden), use '-vv' to show">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_review1_20261016?options=-c+search_path%3Dtest_r10_graph_d882e2dc97b14093bfac511cbeec8048+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-663/test_http_does_not_return_snap0')
+register_sensitive_failure_value = &lt;function register_sensitive_failure_value.&lt;locals&gt;.register at 0x000001F33B876DE0&gt;
+change = 'source_acl'
+
+    @pytest.mark.parametrize('change', ['source_acl', 'document_acl', 'revision_acl', 'claim_withdrawn', 'event_version'])
+    def test_http_does_not_return_snapshot_invalidated_before_response(
+        graph_engine, tmp_path, register_sensitive_failure_value, change,
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        client, _ = make_client(graph_engine, register_sensitive_failure_value)
+        changed = False
+    
+        def invalidate(connection, cursor, statement, parameters, context, executemany):
+            nonlocal changed
+            if changed or not statement.lstrip().startswith('SELECT events.'):
+                return
+            changed = True
+            with graph_engine.begin() as writer:
+                if change == 'source_acl':
+                    writer.execute(text("UPDATE sources SET visibility='tenant', tenant_id='other' WHERE source_id=:id"), {'id': submission.source_id.value})
+                if change == 'document_acl':
+                    writer.execute(update(documents).where(documents.c.source_id == submission.source_id.value).values(visibility='tenant', tenant_id='other'))
+                if change == 'revision_acl':
+                    writer.execute(update(document_revisions).where(document_revisions.c.revision_id == submission.revision_id.value).values(visibility='tenant', tenant_id='other'))
+                if change == 'claim_withdrawn':
+                    writer.execute(update(claims).where(claims.c.claim_id == submission.record.claim_id.value).values(claim_status='withdrawn'))
+                writer.execute(text('UPDATE events SET business_version=business_version+1 WHERE event_id=:id'), {'id': str(event_id)})
+                writer.execute(text("UPDATE scope_epochs SET epoch=epoch+1 WHERE scope_key='public'"))
+    
+        event.listen(graph_engine, 'after_cursor_execute', invalidate)
+        try:
+            response = client.get(f'/v1/events/{event_id}/graph')
+        finally:
+            event.remove(graph_engine, 'after_cursor_execute', invalidate)
+            client.close()
+        assert changed
+        if response.status_code == 200:
+            if change == 'event_version':
+                assert response.json()['business_version'] == 2, 'HTTP returned an event version known invalid before serialization'
+            else:
+&gt;               assert response.json()['edges'] == [], 'HTTP returned supported edges after committed withdrawal or parent ACL revocation'
+E               AssertionError: HTTP returned supported edges after committed withdrawal or parent ACL revocation
+E               assert [{'evidence_s...核验支持事实', ...}] == []
+E                 
+E                 Left contains 5 more items, first extra item: {'evidence_span_ids': ['3cd6a34c-84bb-4a09-929d-a6fde7ca506e'], 'id': '70b9f76c-3d96-52bc-b3b5-a7d28e2e1184', 'object_id': '11c734de-3ecf-5074-910f-79925760307a', 'reason': '&gt;=1.0,&lt;1.4.2', ...}
+E                 
+E                 Full diff:
+E                 - []
+E                 + [
+E                 +     {...
+E                 
+E                 ...Full output truncated (110 lines hidden), use '-vv' to show
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_20261016\test_independent_graph_pg.py:165: AssertionError</failure></testcase><testcase classname="test_independent_graph_pg" name="test_http_does_not_return_snapshot_invalidated_before_response[document_acl]" time="1.150"><failure message="AssertionError: HTTP returned supported edges after committed withdrawal or parent ACL revocation&#10;assert [{'evidence_s...核验支持事实', ...}] == []&#10;  &#10;  Left contains 5 more items, first extra item: {'evidence_span_ids': ['4742e6ba-9b16-4e4e-8aa0-bbb867e18cf7'], 'id': '1b2d08c7-160a-5095-a281-c291328bc7ff', 'object_id': '11c734de-3ecf-5074-910f-79925760307a', 'reason': '&gt;=1.0,&lt;1.4.2', ...}&#10;  &#10;  Full diff:&#10;  - []&#10;  + [&#10;  +     {...&#10;  &#10;  ...Full output truncated (110 lines hidden), use '-vv' to show">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_review1_20261016?options=-c+search_path%3Dtest_r10_graph_431b0cdb4303435ca9153f77771b7eb2+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-663/test_http_does_not_return_snap1')
+register_sensitive_failure_value = &lt;function register_sensitive_failure_value.&lt;locals&gt;.register at 0x000001F33BD0A520&gt;
+change = 'document_acl'
+
+    @pytest.mark.parametrize('change', ['source_acl', 'document_acl', 'revision_acl', 'claim_withdrawn', 'event_version'])
+    def test_http_does_not_return_snapshot_invalidated_before_response(
+        graph_engine, tmp_path, register_sensitive_failure_value, change,
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        client, _ = make_client(graph_engine, register_sensitive_failure_value)
+        changed = False
+    
+        def invalidate(connection, cursor, statement, parameters, context, executemany):
+            nonlocal changed
+            if changed or not statement.lstrip().startswith('SELECT events.'):
+                return
+            changed = True
+            with graph_engine.begin() as writer:
+                if change == 'source_acl':
+                    writer.execute(text("UPDATE sources SET visibility='tenant', tenant_id='other' WHERE source_id=:id"), {'id': submission.source_id.value})
+                if change == 'document_acl':
+                    writer.execute(update(documents).where(documents.c.source_id == submission.source_id.value).values(visibility='tenant', tenant_id='other'))
+                if change == 'revision_acl':
+                    writer.execute(update(document_revisions).where(document_revisions.c.revision_id == submission.revision_id.value).values(visibility='tenant', tenant_id='other'))
+                if change == 'claim_withdrawn':
+                    writer.execute(update(claims).where(claims.c.claim_id == submission.record.claim_id.value).values(claim_status='withdrawn'))
+                writer.execute(text('UPDATE events SET business_version=business_version+1 WHERE event_id=:id'), {'id': str(event_id)})
+                writer.execute(text("UPDATE scope_epochs SET epoch=epoch+1 WHERE scope_key='public'"))
+    
+        event.listen(graph_engine, 'after_cursor_execute', invalidate)
+        try:
+            response = client.get(f'/v1/events/{event_id}/graph')
+        finally:
+            event.remove(graph_engine, 'after_cursor_execute', invalidate)
+            client.close()
+        assert changed
+        if response.status_code == 200:
+            if change == 'event_version':
+                assert response.json()['business_version'] == 2, 'HTTP returned an event version known invalid before serialization'
+            else:
+&gt;               assert response.json()['edges'] == [], 'HTTP returned supported edges after committed withdrawal or parent ACL revocation'
+E               AssertionError: HTTP returned supported edges after committed withdrawal or parent ACL revocation
+E               assert [{'evidence_s...核验支持事实', ...}] == []
+E                 
+E                 Left contains 5 more items, first extra item: {'evidence_span_ids': ['4742e6ba-9b16-4e4e-8aa0-bbb867e18cf7'], 'id': '1b2d08c7-160a-5095-a281-c291328bc7ff', 'object_id': '11c734de-3ecf-5074-910f-79925760307a', 'reason': '&gt;=1.0,&lt;1.4.2', ...}
+E                 
+E                 Full diff:
+E                 - []
+E                 + [
+E                 +     {...
+E                 
+E                 ...Full output truncated (110 lines hidden), use '-vv' to show
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_20261016\test_independent_graph_pg.py:165: AssertionError</failure></testcase><testcase classname="test_independent_graph_pg" name="test_http_does_not_return_snapshot_invalidated_before_response[revision_acl]" time="1.182"><failure message="AssertionError: HTTP returned supported edges after committed withdrawal or parent ACL revocation&#10;assert [{'evidence_s...核验支持事实', ...}] == []&#10;  &#10;  Left contains 5 more items, first extra item: {'evidence_span_ids': ['7b3811b9-f486-4863-9f10-2e9195c5f5ba'], 'id': 'acd99a68-3e6f-5baf-a08a-aaead374d9f4', 'object_id': '11c734de-3ecf-5074-910f-79925760307a', 'reason': '&gt;=1.0,&lt;1.4.2', ...}&#10;  &#10;  Full diff:&#10;  - []&#10;  + [&#10;  +     {...&#10;  &#10;  ...Full output truncated (110 lines hidden), use '-vv' to show">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_review1_20261016?options=-c+search_path%3Dtest_r10_graph_29e5317d639546d7b6bbcf89d2b19a5e+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-663/test_http_does_not_return_snap2')
+register_sensitive_failure_value = &lt;function register_sensitive_failure_value.&lt;locals&gt;.register at 0x000001F33BC9AAC0&gt;
+change = 'revision_acl'
+
+    @pytest.mark.parametrize('change', ['source_acl', 'document_acl', 'revision_acl', 'claim_withdrawn', 'event_version'])
+    def test_http_does_not_return_snapshot_invalidated_before_response(
+        graph_engine, tmp_path, register_sensitive_failure_value, change,
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        client, _ = make_client(graph_engine, register_sensitive_failure_value)
+        changed = False
+    
+        def invalidate(connection, cursor, statement, parameters, context, executemany):
+            nonlocal changed
+            if changed or not statement.lstrip().startswith('SELECT events.'):
+                return
+            changed = True
+            with graph_engine.begin() as writer:
+                if change == 'source_acl':
+                    writer.execute(text("UPDATE sources SET visibility='tenant', tenant_id='other' WHERE source_id=:id"), {'id': submission.source_id.value})
+                if change == 'document_acl':
+                    writer.execute(update(documents).where(documents.c.source_id == submission.source_id.value).values(visibility='tenant', tenant_id='other'))
+                if change == 'revision_acl':
+                    writer.execute(update(document_revisions).where(document_revisions.c.revision_id == submission.revision_id.value).values(visibility='tenant', tenant_id='other'))
+                if change == 'claim_withdrawn':
+                    writer.execute(update(claims).where(claims.c.claim_id == submission.record.claim_id.value).values(claim_status='withdrawn'))
+                writer.execute(text('UPDATE events SET business_version=business_version+1 WHERE event_id=:id'), {'id': str(event_id)})
+                writer.execute(text("UPDATE scope_epochs SET epoch=epoch+1 WHERE scope_key='public'"))
+    
+        event.listen(graph_engine, 'after_cursor_execute', invalidate)
+        try:
+            response = client.get(f'/v1/events/{event_id}/graph')
+        finally:
+            event.remove(graph_engine, 'after_cursor_execute', invalidate)
+            client.close()
+        assert changed
+        if response.status_code == 200:
+            if change == 'event_version':
+                assert response.json()['business_version'] == 2, 'HTTP returned an event version known invalid before serialization'
+            else:
+&gt;               assert response.json()['edges'] == [], 'HTTP returned supported edges after committed withdrawal or parent ACL revocation'
+E               AssertionError: HTTP returned supported edges after committed withdrawal or parent ACL revocation
+E               assert [{'evidence_s...核验支持事实', ...}] == []
+E                 
+E                 Left contains 5 more items, first extra item: {'evidence_span_ids': ['7b3811b9-f486-4863-9f10-2e9195c5f5ba'], 'id': 'acd99a68-3e6f-5baf-a08a-aaead374d9f4', 'object_id': '11c734de-3ecf-5074-910f-79925760307a', 'reason': '&gt;=1.0,&lt;1.4.2', ...}
+E                 
+E                 Full diff:
+E                 - []
+E                 + [
+E                 +     {...
+E                 
+E                 ...Full output truncated (110 lines hidden), use '-vv' to show
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_20261016\test_independent_graph_pg.py:165: AssertionError</failure></testcase><testcase classname="test_independent_graph_pg" name="test_http_does_not_return_snapshot_invalidated_before_response[claim_withdrawn]" time="1.501"><failure message="AssertionError: HTTP returned supported edges after committed withdrawal or parent ACL revocation&#10;assert [{'evidence_s...核验支持事实', ...}] == []&#10;  &#10;  Left contains 5 more items, first extra item: {'evidence_span_ids': ['ee262915-3955-4ff0-ba03-79446be20771'], 'id': '513a5200-b9d0-5983-9750-c9e5a82d3bc5', 'object_id': '11c734de-3ecf-5074-910f-79925760307a', 'reason': '&gt;=1.0,&lt;1.4.2', ...}&#10;  &#10;  Full diff:&#10;  - []&#10;  + [&#10;  +     {...&#10;  &#10;  ...Full output truncated (110 lines hidden), use '-vv' to show">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_review1_20261016?options=-c+search_path%3Dtest_r10_graph_28ece57021e84e5ebd3e6a3f8b4e30ab+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-663/test_http_does_not_return_snap3')
+register_sensitive_failure_value = &lt;function register_sensitive_failure_value.&lt;locals&gt;.register at 0x000001F33BD06B60&gt;
+change = 'claim_withdrawn'
+
+    @pytest.mark.parametrize('change', ['source_acl', 'document_acl', 'revision_acl', 'claim_withdrawn', 'event_version'])
+    def test_http_does_not_return_snapshot_invalidated_before_response(
+        graph_engine, tmp_path, register_sensitive_failure_value, change,
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        client, _ = make_client(graph_engine, register_sensitive_failure_value)
+        changed = False
+    
+        def invalidate(connection, cursor, statement, parameters, context, executemany):
+            nonlocal changed
+            if changed or not statement.lstrip().startswith('SELECT events.'):
+                return
+            changed = True
+            with graph_engine.begin() as writer:
+                if change == 'source_acl':
+                    writer.execute(text("UPDATE sources SET visibility='tenant', tenant_id='other' WHERE source_id=:id"), {'id': submission.source_id.value})
+                if change == 'document_acl':
+                    writer.execute(update(documents).where(documents.c.source_id == submission.source_id.value).values(visibility='tenant', tenant_id='other'))
+                if change == 'revision_acl':
+                    writer.execute(update(document_revisions).where(document_revisions.c.revision_id == submission.revision_id.value).values(visibility='tenant', tenant_id='other'))
+                if change == 'claim_withdrawn':
+                    writer.execute(update(claims).where(claims.c.claim_id == submission.record.claim_id.value).values(claim_status='withdrawn'))
+                writer.execute(text('UPDATE events SET business_version=business_version+1 WHERE event_id=:id'), {'id': str(event_id)})
+                writer.execute(text("UPDATE scope_epochs SET epoch=epoch+1 WHERE scope_key='public'"))
+    
+        event.listen(graph_engine, 'after_cursor_execute', invalidate)
+        try:
+            response = client.get(f'/v1/events/{event_id}/graph')
+        finally:
+            event.remove(graph_engine, 'after_cursor_execute', invalidate)
+            client.close()
+        assert changed
+        if response.status_code == 200:
+            if change == 'event_version':
+                assert response.json()['business_version'] == 2, 'HTTP returned an event version known invalid before serialization'
+            else:
+&gt;               assert response.json()['edges'] == [], 'HTTP returned supported edges after committed withdrawal or parent ACL revocation'
+E               AssertionError: HTTP returned supported edges after committed withdrawal or parent ACL revocation
+E               assert [{'evidence_s...核验支持事实', ...}] == []
+E                 
+E                 Left contains 5 more items, first extra item: {'evidence_span_ids': ['ee262915-3955-4ff0-ba03-79446be20771'], 'id': '513a5200-b9d0-5983-9750-c9e5a82d3bc5', 'object_id': '11c734de-3ecf-5074-910f-79925760307a', 'reason': '&gt;=1.0,&lt;1.4.2', ...}
+E                 
+E                 Full diff:
+E                 - []
+E                 + [
+E                 +     {...
+E                 
+E                 ...Full output truncated (110 lines hidden), use '-vv' to show
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_20261016\test_independent_graph_pg.py:165: AssertionError</failure></testcase><testcase classname="test_independent_graph_pg" name="test_http_does_not_return_snapshot_invalidated_before_response[event_version]" time="1.248"><failure message="AssertionError: HTTP returned an event version known invalid before serialization&#10;assert 1 == 2">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_review1_20261016?options=-c+search_path%3Dtest_r10_graph_18daae6a336c4e5a9fb7422a62b976c3+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-663/test_http_does_not_return_snap4')
+register_sensitive_failure_value = &lt;function register_sensitive_failure_value.&lt;locals&gt;.register at 0x000001F33B9BD8A0&gt;
+change = 'event_version'
+
+    @pytest.mark.parametrize('change', ['source_acl', 'document_acl', 'revision_acl', 'claim_withdrawn', 'event_version'])
+    def test_http_does_not_return_snapshot_invalidated_before_response(
+        graph_engine, tmp_path, register_sensitive_failure_value, change,
+    ):
+        event_id = uuid4()
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION)
+        publish_event(graph_engine, event_id, [submission])
+        client, _ = make_client(graph_engine, register_sensitive_failure_value)
+        changed = False
+    
+        def invalidate(connection, cursor, statement, parameters, context, executemany):
+            nonlocal changed
+            if changed or not statement.lstrip().startswith('SELECT events.'):
+                return
+            changed = True
+            with graph_engine.begin() as writer:
+                if change == 'source_acl':
+                    writer.execute(text("UPDATE sources SET visibility='tenant', tenant_id='other' WHERE source_id=:id"), {'id': submission.source_id.value})
+                if change == 'document_acl':
+                    writer.execute(update(documents).where(documents.c.source_id == submission.source_id.value).values(visibility='tenant', tenant_id='other'))
+                if change == 'revision_acl':
+                    writer.execute(update(document_revisions).where(document_revisions.c.revision_id == submission.revision_id.value).values(visibility='tenant', tenant_id='other'))
+                if change == 'claim_withdrawn':
+                    writer.execute(update(claims).where(claims.c.claim_id == submission.record.claim_id.value).values(claim_status='withdrawn'))
+                writer.execute(text('UPDATE events SET business_version=business_version+1 WHERE event_id=:id'), {'id': str(event_id)})
+                writer.execute(text("UPDATE scope_epochs SET epoch=epoch+1 WHERE scope_key='public'"))
+    
+        event.listen(graph_engine, 'after_cursor_execute', invalidate)
+        try:
+            response = client.get(f'/v1/events/{event_id}/graph')
+        finally:
+            event.remove(graph_engine, 'after_cursor_execute', invalidate)
+            client.close()
+        assert changed
+        if response.status_code == 200:
+            if change == 'event_version':
+&gt;               assert response.json()['business_version'] == 2, 'HTTP returned an event version known invalid before serialization'
+E               AssertionError: HTTP returned an event version known invalid before serialization
+E               assert 1 == 2
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_20261016\test_independent_graph_pg.py:163: AssertionError</failure></testcase><testcase classname="test_independent_graph_pg" name="test_http_rechecks_current_role_before_returning_private_graph" time="1.175"><failure message="AssertionError: Private graph escaped after committed role revocation&#10;assert 200 in (401, 403, 404)&#10; +  where 200 = &lt;Response [200 OK]&gt;.status_code">graph_engine = Engine(postgresql+psycopg://test_dianzi_r01:***@127.0.0.1:25432/test_dianzi_r06_catalog_r10_graph_review1_20261016?options=-c+search_path%3Dtest_r10_graph_5c00694285c149f1a8905bc9a143de66+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-663/test_http_rechecks_current_rol0')
+register_sensitive_failure_value = &lt;function register_sensitive_failure_value.&lt;locals&gt;.register at 0x000001F33BF2A0C0&gt;
+
+    def test_http_rechecks_current_role_before_returning_private_graph(
+        graph_engine, tmp_path, register_sensitive_failure_value,
+    ):
+        event_id = uuid4()
+        visibility = VisibilityScope(visibility='tenant', tenant_id='owner')
+        submission = publish_fact(graph_engine, tmp_path, event_id, VERSION, scope=visibility)
+        publish_event(graph_engine, event_id, [submission], scope=visibility)
+        client, username = make_client(graph_engine, register_sensitive_failure_value, Role.ANALYST)
+        changed = False
+    
+        def revoke(connection, cursor, statement, parameters, context, executemany):
+            nonlocal changed
+            if changed or not statement.lstrip().startswith('SELECT events.'):
+                return
+            changed = True
+            with graph_engine.begin() as writer:
+                writer.execute(text("UPDATE users SET role='viewer' WHERE username=:username"), {'username': username})
+    
+        event.listen(graph_engine, 'after_cursor_execute', revoke)
+        try:
+            response = client.get(f'/v1/events/{event_id}/graph')
+        finally:
+            event.remove(graph_engine, 'after_cursor_execute', revoke)
+            client.close()
+        assert changed
+&gt;       assert response.status_code in (401, 403, 404), 'Private graph escaped after committed role revocation'
+E       AssertionError: Private graph escaped after committed role revocation
+E       assert 200 in (401, 403, 404)
+E        +  where 200 = &lt;Response [200 OK]&gt;.status_code
+
+D:\dianzi\reports\runs\recovery_r10_pg_evidence_graph_review1_20261016\test_independent_graph_pg.py:195: AssertionError</failure></testcase><testcase classname="test_independent_graph_pg" name="test_selected_graph_is_bounded_deterministic_and_canonical[1-1]" time="1.266" /><testcase classname="test_independent_graph_pg" name="test_selected_graph_is_bounded_deterministic_and_canonical[2-400]" time="1.205" /><testcase classname="test_independent_graph_pg" name="test_selected_graph_is_bounded_deterministic_and_canonical[200-1]" time="1.304" /><testcase classname="test_independent_graph_pg" name="test_selected_graph_is_bounded_deterministic_and_canonical[200-400]" time="1.207" /><testcase classname="test_independent_graph_pg" name="test_corrupt_rows_never_produce_supported_non_same_event_edges[predicate]" time="1.294" /><testcase classname="test_independent_graph_pg" name="test_corrupt_rows_never_produce_supported_non_same_event_edges[object_schema]" time="1.185" /><testcase classname="test_independent_graph_pg" name="test_corrupt_rows_never_produce_supported_non_same_event_edges[block_hash]" time="1.191" /><testcase classname="test_independent_graph_pg" name="test_poc_reference_does_not_become_remediation_or_verification" time="1.242" /></testsuite></testsuites>
