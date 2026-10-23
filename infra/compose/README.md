@@ -31,10 +31,15 @@ docker compose --project-name dianzi-dev-myname -f infra/compose/compose.yaml --
 docker compose --project-name dianzi-dev-myname -f infra/compose/compose.yaml --profile core --profile search --profile app --profile worker --profile scheduler --profile frontend down
 ```
 
+Profile `investigation` starts `python -m ai_intel.workers.investigation` on queue `ai_intel_investigations`. The default worker does not consume that queue. Declaring the profile is not evidence that an investigation trace has run.
+
 `down` preserves all named volumes. API readiness verifies the real dependency
 connections and installed migration revision. Starting the application does not
-migrate a database or create accounts. Apply migrations and create users through
-the explicit management CLI after checking the target identity. Scheduler health
+migrate a database or create accounts. From `backend/`, with `DATABASE_URL`
+already in the environment, `uv run python ../scripts/migrate.py` applies
+migrations to head and `uv run python ../scripts/admin_user.py` creates a user.
+Neither script reads a `.env` file or prints the database URL. Confirm the
+target database identity before either command. Scheduler health
 checks beat process liveness; it is not evidence that a business task completed.
 
 The bounded data-service allocation is PostgreSQL 512 MiB/0.4 CPU/128 PIDs,

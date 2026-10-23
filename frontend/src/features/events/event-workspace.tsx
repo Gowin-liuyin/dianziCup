@@ -7,6 +7,7 @@ import { readEventSelection } from "../../app/workspace-navigation";
 import { EmptyState, ErrorPanel, LoadingState, StatusBadge } from "../../components/status";
 import { PreparedEventWorkspace } from "../preparation/capability-workspace";
 import { EventDetailView } from "./event-detail-view";
+import { EventEnrichmentAction } from "./event-enrichment-action";
 import { FreshnessBadge, SavedTime } from "./event-display";
 import "./events.css";
 
@@ -67,7 +68,7 @@ function EventDetail({ id, selectedEvidenceId, selectedRevisionId, onSessionExpi
     <div className="panel-heading"><div><p className="eyebrow">EVENT DETAIL / 事实与修订</p><h2 id="event-detail-title">事件详情</h2></div><a className="text-link" href="#events">返回列表</a></div>
     {resource.kind === "loading" && <div className="event-detail-loading" aria-busy="true"><p className="loading-state" role="status">正在取得事件事实与历史版本…</p><div className="event-loading-placeholder" aria-hidden="true"><span /><span /><span /></div></div>}
     {resource.kind === "failed" && <ResourceError error={resource.error} onRetry={() => setRetry((value) => value + 1)} />}
-    {resource.kind === "loaded" && <><div className="panel-actions"><a className="button secondary" href={`#graph/${id}`}>查看证据关系图</a></div><EventDetailView detail={resource.value} selectedEvidenceId={selectedEvidenceId} selectedRevisionId={selectedRevisionId} /></>}
+    {resource.kind === "loaded" && <><div className="panel-actions"><a className="button secondary" href={`#graph/${id}`}>查看证据关系图</a></div><EventEnrichmentAction eventId={id} businessVersion={resource.value.business_version} onReload={() => setRetry((value) => value + 1)} /><EventDetailView detail={resource.value} selectedEvidenceId={selectedEvidenceId} selectedRevisionId={selectedRevisionId} /></>}
   </section>;
 }
 

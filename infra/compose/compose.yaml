@@ -35,7 +35,7 @@ x-backend: &backend
 services:
   postgres:
     image: pgvector/pgvector@sha256:00ba258a66dac104fd5171074a0084462a64a1369d8513f3d0a634e2f24d15bc
-    profiles: [core, app, worker, scheduler, frontend]
+    profiles: [core, app, worker, scheduler, frontend, investigation]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?Set the dedicated database name}
       POSTGRES_USER: ${POSTGRES_USER:?Set the dedicated database user}
@@ -54,7 +54,7 @@ services:
 
   redis:
     image: redis@sha256:4fa24486b8bcca8eec45ee0eb166edc674795e53a2b53d1a9ef263eecebaac85
-    profiles: [core, app, worker, scheduler, frontend]
+    profiles: [core, app, worker, scheduler, frontend, investigation]
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?Inject Redis credential}
     command: [/bin/sh, -ec, 'exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}"']
@@ -146,6 +146,17 @@ services:
       interval: 15s
       timeout: 8s
       retries: 6
+    mem_limit: 384m
+    cpus: 0.25
+    pids_limit: 128
+
+  investigation-worker:
+    <<: *backend
+    profiles: [investigation]
+    command: [python, -m, ai_intel.workers.investigation]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
     mem_limit: 384m
     cpus: 0.25
     pids_limit: 128

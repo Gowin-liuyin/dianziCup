@@ -101,6 +101,7 @@ class EventDetailResponse(StrictRecord):
     dimensions: tuple[EnrichmentProjection, ...] = Field(max_length=9)
     revisions: tuple[RevisionSummary, ...]
     claims: tuple[ClaimSummary, ...]
+    business_version: int = Field(ge=1)
     data_mode: DataMode
 
 

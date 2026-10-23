@@ -57,6 +57,7 @@ def typed_data(tool: str):
             dimensions=(),
             revisions=(),
             claims=(),
+            business_version=1,
             data_mode="fixture",
         )
     if tool == "get_inventory":

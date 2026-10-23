@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
+
 from ai_intel.answering.conversation_context import resolve_question_context
 from ai_intel.answering.conversation_contracts import EventReference
 from ai_intel.api.question_contracts import QuestionRequest

@@ -71,6 +71,7 @@ def consumer_fixture(monkeypatch):
         dimensions=(),
         revisions=(),
         claims=(),
+        business_version=1,
         data_mode="fixture",
     )
     inventory = AssetSnapshotResponse(

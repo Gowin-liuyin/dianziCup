@@ -1,7 +1,7 @@
 [project]
 name = "ai-intel-backend"
 version = "0.1.0"
-description = "赛题九 · AI 安全知识情报系统后端（G1 骨架阶段）"
+description = "赛题九 · AI 安全知识情报系统后端"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.14,<2.0",
@@ -66,6 +66,18 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 # RUF001/002/003 将中文文档注释的全角标点判为歧义字符, 与 AGENTS.md 规定的中文 docstring 风格冲突;
 # 按 AGENTS.md「局部豁免、带审查记录」原则定点豁免, 其余 RUF 规则保留。
 ignore = ["RUF001", "RUF002", "RUF003"]
+
+# 以下 PG 测试文件存在跨目录裸模块导入, 且导入顺序承重: 先导入的兄弟测试模块才会让
+# r07_input_audit_helpers(已自未合并切片 136359106 恢复至 tests 根)与 test_r07_input_audit_receipts_pg
+# 可解析; I001 排序会把后续导入提前并破坏收集。定点豁免 I001 以保持原有导入顺序,
+# 记录见 reports/tasks/Root-batch19-runnable-assembly.md。
+[tool.ruff.lint.per-file-ignores]
+"tests/integration/test_r07_input_audit_legacy_pg.py" = ["I001"]
+"tests/integration/test_r07_input_audit_pg.py" = ["I001"]
+"tests/integration/test_r07_input_audit_receipts_pg.py" = ["I001"]
+"tests/integration/test_r12_conversation_boundary_fix1_pg.py" = ["I001"]
+"tests/security/test_r07_input_audit_fix1_acl_pg.py" = ["I001"]
+"tests/security/test_r07_input_audit_security_pg.py" = ["I001"]
 
 [tool.mypy]
 python_version = "3.12"

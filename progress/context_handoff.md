@@ -1013,3 +1013,14 @@ R10 policy986b/ind9635限定176offline绿、原4PG prepared；默认factoryc554�
 ## 2026-10-17T13:26:17.947+08:00 · Source第四次实际ready与窗口返还
 
 实际 CORE af63972 / OPS 6b775e8，product912d8b3独立冻结WT保持；启动13:17:46.640400+08，截止19:17:46.640400+08。runtime_start与worker46256/beat42528整精度出生标识匹配、均alive，心跳本轮new=22 / 累计64任务；任务计数不是成功采集数，wire/费用unknown，六小时formal=false。原第三失败与CPU/ledger历史保留，无阶段通过。实际回执reports/runs/r06_startup_common_actual_install_20261017/pin_pair_fix1/fourth_source_actual_actor_readiness.json。R10/QA/R12启动静窗已明确返还，R12独占postfreezeCBM≤45秒；新R16/R17默认变化挂载及R18默认risk route在独立WT并行，前者唯一App修改，后者只新route模块，Root资源/Git/状态独占。R12新87a79615冻结，已派全新非作者初审。
+
+
+## 2026-10-24T01:32:00+08:00 · 批次19可运行装配验收入档（10-19→10-23未提交工作checkpoint）
+
+- 范围：验收并checkpoint 10-19→10-23的"默认装配可运行化"未提交工作（scripts/migrate.py、load_main_path_story.py、backend/src/ai_intel/fixtures/main_path_story.py、3个新后端单测、前端tasks工作区App挂载、event-enrichment-action、enrichment-client、knowledge DTO的business_version/data_mode、compose investigation profile、README重写）。未升级任何整卡或阶段状态；R06保持needs_changes/unit=failed。
+- 后端：定向单测79通过（--no-cov，因子集覆盖率26.94%触发既有60%门，全量门在批次20执行）；ruff check/format/mypy全绿。ruff 0.16.9对7个历史未改文件新报I001：unit的r12文件直接排序修复，6个r07/r12 PG文件因导入顺序承重做定点per-file-ignores豁免（pyproject内注明，沿用RUF001-003先例）。
+- 恢复：backend/tests/r07_input_audit_helpers.py（162行）自未合并切片136359106恢复（确认非HEAD祖先，导入者已在分支）。遗留：tests/security的r07 input-audit文件因跨目录裸导入test_r07_input_audit_receipts_pg在unit+contract+security范围仍不可收集，历史红留批次20基线入册。
+- 前端：typecheck/test(799)/build退出码0。6红修复均为夹具/断言跟上本批有意变更（App.test的#tasks断言改真实TaskWorkspace并保留不伪造进度保证；event-workspace本地detailFixture补必填business_version:1），未删测试未弱化断言未改组件。
+- 既有证据：reports/runs/story_fixture_20261023/（10-23 migrate_exit=0/story_exit=0/verify全过/rerun already-present）入档引用，未冒充本轮结果。
+- 进行中：批次20全量离线基线（python -m pytest入口+--continue-on-collection-errors，曾因pytest入口缺CWD致50收集错误中断一次，已留存attempt1记录）。
+- 保护项：用户tsbuildinfo未入暂存区；.zcode/会话目录不提交；无git add -A，全部显式清单。报告reports/tasks/Root-batch19-runnable-assembly.md。

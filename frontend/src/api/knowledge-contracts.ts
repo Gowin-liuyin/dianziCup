@@ -32,7 +32,7 @@ export interface ClaimSummary {
   source_revision_id: string | null; evidence_ids: string[];
 }
 export interface EventDetailResponse {
-  schema_version: 2; event: EventSummary; dimensions: Enrichment[]; revisions: RevisionSummary[]; claims: ClaimSummary[]; data_mode: DataMode;
+  schema_version: 2; event: EventSummary; dimensions: Enrichment[]; revisions: RevisionSummary[]; claims: ClaimSummary[]; business_version: number; data_mode: DataMode;
 }
 export interface EvidenceResponse {
   schema_version: 2; span_id: string; revision_id: string; block_id: string | null; start_offset: number; end_offset: number;
@@ -140,8 +140,9 @@ export function parseEventListResponse(value: unknown): EventListResponse {
 }
 
 export function parseEventDetailResponse(value: unknown): EventDetailResponse {
-  const fields = record(value, ["schema_version", "event", "dimensions", "revisions", "claims", "data_mode"]);
-  return { schema_version: schemaVersion(fields.schema_version), event: parseEventSummary(fields.event), dimensions: list(fields.dimensions, parseEnrichment, 9), revisions: list(fields.revisions, parseRevision), claims: list(fields.claims, parseClaim), data_mode: enumeration(fields.data_mode, dataModes) };
+  const fields = record(value, ["schema_version", "event", "dimensions", "revisions", "claims", "business_version", "data_mode"]);
+  const businessVersion = integer(fields.business_version, 1);
+  return { schema_version: schemaVersion(fields.schema_version), event: parseEventSummary(fields.event), dimensions: list(fields.dimensions, parseEnrichment, 9), revisions: list(fields.revisions, parseRevision), claims: list(fields.claims, parseClaim), business_version: businessVersion, data_mode: enumeration(fields.data_mode, dataModes) };
 }
 
 export function parseEvidenceResponse(value: unknown): EvidenceResponse {

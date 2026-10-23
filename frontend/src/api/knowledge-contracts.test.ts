@@ -30,13 +30,13 @@ describe("frozen R04 schema 2 — isolated synthetic boundary", () => {
     { schema_version: 2, items: [{ ...eventFixture, storage_key: "not-public" }], next_cursor: null, data_mode: "fixture" },
   ])("rejects a non-conforming event response without default success", (value) => expect(() => parseEventListResponse(value)).toThrow(/数据格式/));
   it("keeps null historical time and URI without inventing current source metadata", () => {
-    const result = parseEventDetailResponse({ schema_version: 2, event: eventFixture, dimensions: [dimensionFixture], revisions: [{ revision_id: revisionId, document_id: eventId, revision_number: 1, source_id: evidenceId, source_published_at: null, source_modified_at: null, first_observed_at: null, ingested_at: null, parse_status: "legacy_unverified", document_kind: "advisory", canonical_uri: null }], claims: [], data_mode: "fixture" });
+    const result = parseEventDetailResponse({ schema_version: 2, event: eventFixture, dimensions: [dimensionFixture], revisions: [{ revision_id: revisionId, document_id: eventId, revision_number: 1, source_id: evidenceId, source_published_at: null, source_modified_at: null, first_observed_at: null, ingested_at: null, parse_status: "legacy_unverified", document_kind: "advisory", canonical_uri: null }], claims: [], business_version: 1, data_mode: "fixture" });
     expect(result.revisions[0]?.source_published_at).toBeNull();
     expect(result.revisions[0]?.canonical_uri).toBeNull();
     expect(result.dimensions[0]?.status).toBe("pending");
   });
   it("requires a citation for an available enrichment", () => {
-    expect(() => parseEventDetailResponse({ schema_version: 2, event: eventFixture, dimensions: [{ ...dimensionFixture, status: "available" }], revisions: [], claims: [], data_mode: "fixture" })).toThrow(/数据格式/);
+    expect(() => parseEventDetailResponse({ schema_version: 2, event: eventFixture, dimensions: [{ ...dimensionFixture, status: "available" }], revisions: [], claims: [], business_version: 1, data_mode: "fixture" })).toThrow(/数据格式/);
   });
   it("preserves Unicode coordinates and an unverified legacy locator", () => {
     const result = parseEvidenceResponse(evidenceFixture);

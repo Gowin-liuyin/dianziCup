@@ -39,6 +39,7 @@ export const eventDetailFixture: EventDetailResponse = {
     { revision_id: fixtureRevisionId, document_id: fixtureEventId, revision_number: 2, source_id: fixtureEvidenceId, source_published_at: "2026-10-14T00:00:00Z", source_modified_at: "2026-10-15T00:00:00Z", first_observed_at: "2026-10-15T02:00:00Z", ingested_at: "2026-10-15T02:01:00Z", parse_status: "partial", document_kind: "advisory", canonical_uri: "https://example.test/fixture-source" },
     { revision_id: fixtureOldRevisionId, document_id: fixtureEventId, revision_number: 1, source_id: fixtureOldEvidenceId, source_published_at: null, source_modified_at: null, first_observed_at: null, ingested_at: null, parse_status: "legacy_unverified", document_kind: "advisory", canonical_uri: null },
   ],
+  business_version: 1,
   data_mode: "fixture",
 };
 

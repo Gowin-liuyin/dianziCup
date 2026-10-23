@@ -46,8 +46,9 @@ describe("workbench shell", () => {
     window.history.replaceState(null, "", "/#tasks");
     fireEvent(window, new HashChangeEvent("hashchange"));
     expect(screen.getByRole("heading", { name: "调查与任务" })).toBeTruthy();
-    expect(screen.getByText(/页面不会通过动画递增进度/)).toBeTruthy();
-    expect(screen.getByRole("link", { name: "打开调查工作台" }).getAttribute("href")).toBe("#investigations");
+    expect(screen.getByRole("heading", { name: "任务轨迹" })).toBeTruthy();
+    expect(screen.getByText("没有输入标识。这不是零条任务，也不是能力未建设。")).toBeTruthy();
+    expect(screen.queryByText(/页面不会通过动画递增进度/)).toBeNull();
   });
 
   it("routes sources to the permission-gated scheduler without admin requests for guests", async () => {

@@ -441,6 +441,7 @@ class KnowledgeReadService:
             revisions=tuple(self._revision_summary(item) for item in revisions),
             claims=projected_claims,
             dimensions=self._dimensions(row, claim_rows, evidence_by_id),
+            business_version=int(row["business_version"]),
             data_mode=data_mode,
         )
 

@@ -19,7 +19,10 @@ function failureMessage(error: ApiProblem, submitting: boolean): string {
     if (error.code === "answer_failed") return "同一请求已失败。核对服务状态后再明确开始新问题。";
     return "请求键发生冲突或同一请求暂不可重放。保留原问题与请求键，不自动更换键。";
   }
-  if (error.status === 422) return submitting ? "请求未通过校验。请输入一个完整事件UUID及1至4096字符问题；本轮只支持资料库单事件。" : "回答标识未通过校验，请输入完整UUID。";
+  if (error.status === 422) {
+    if (error.code === "question_scope_not_supported") return "本轮拒绝了超出单事件问答的范围：多个事件、资产、会话、时间或调查模式。没有生成回答。";
+    return submitting ? "请求未通过校验。请输入一个完整事件UUID及1至4096字符问题；本轮只支持资料库单事件。" : "回答标识未通过校验，请输入完整UUID。";
+  }
   if (error.status === 429) return "问答服务当前繁忙或已达到限额。没有自动重试，请稍后再决定操作。";
   if (error.status === 503) {
     if (error.code === "question_models_not_configured") return "生成模型尚未配置，未生成回答。请联系管理员核对模型配置。";
@@ -125,7 +128,7 @@ function AuthenticatedQuestions({ initialEventId }: { initialEventId: string }) 
       {submission !== null && <div className="question-frozen"><h3>{completed ? "本轮已取得回答" : "本轮请求已冻结"}</h3><dl className="question-metadata"><dt>事件</dt><dd><code>{submission.body.event_ids[0]}</code></dd><dt>请求键</dt><dd><code>{submission.idempotencyKey}</code></dd></dl><p className="small-note">结果未知时保留相同问题、事件和请求键。原样重试沿用同一业务请求；开始新问题后首次提交才生成新键。</p><div className="question-actions">{!completed && <button className="button secondary" disabled={pending !== null || actionPending} onClick={() => void runRequest("submit", submission)}>原样重试本轮</button>}<button className="button secondary" disabled={pending !== null || actionPending} onClick={startNewQuestion}>开始新问题</button></div></div>}
       <form className="question-form question-lookup" aria-label="查询已保存回答" onSubmit={(event) => { event.preventDefault(); void runRequest("lookup"); }}><h3>读取已保存回答</h3><label htmlFor="question-answer-id">回答标识<input id="question-answer-id" value={answerId} disabled={pending !== null || actionPending} onChange={(event) => setAnswerId(event.target.value)} placeholder="保存的answer UUID" required /></label><button className="button secondary" type="submit" disabled={pending !== null || actionPending || !answerId.trim()}>查询 / 刷新回答</button><p className="small-note">服务端重新检查所有权与当前性。问题与回答正文只在本页内存中保留；返回后可凭回答标识查询。</p></form>
     </section>
-    <section className="panel question-result-panel" aria-labelledby="question-result-title"><div className="panel-heading"><div><p className="eyebrow">ANSWER / 结论与依据</p><h2 id="question-result-title">回答与证据</h2></div><span className="small-note">完整完成后显示</span></div>{pending !== null && <p className="question-loading" role="status">{pending === "submit" ? "正在提交问题并等待完整回答。未返回结果前不能判断结论。" : "正在重新读取回答及其当前性…"}</p>}{failure !== null && <ErrorPanel error={failure.error} message={failureMessage(failure.error, failure.submitting)} />}{answer !== null && <CompletedAnswer answer={answer} eventId={answerEventId} />}{answer === null && pending === null && failure === null && <EmptyState title="尚未提出问题" description="提交问题或查询已保存回答后，这里展示服务端确认的结论、限制和原文引用。" />}</section>
+    <section className="panel question-result-panel" aria-labelledby="question-result-title"><div className="panel-heading"><div><p className="eyebrow">ANSWER / 结论与依据</p><h2 id="question-result-title">回答与证据</h2></div><span className="small-note">完整完成后显示</span></div>{pending !== null && <p className="question-loading" role="status">{pending === "submit" ? "正在提交问题并等待完整回答。未返回结果前不能判断结论。" : "正在重新读取回答及其当前性…"}</p>}{failure !== null && <ErrorPanel error={failure.error} message={failureMessage(failure.error, failure.submitting)} />}{failure?.error.code === "question_scope_not_supported" && <a className="button secondary" href="#investigations">打开调查工作台</a>}{answer !== null && <CompletedAnswer answer={answer} eventId={answerEventId} />}{answer === null && pending === null && failure === null && <EmptyState title="尚未提出问题" description="提交问题或查询已保存回答后，这里展示服务端确认的结论、限制和原文引用。" />}</section>
   </div></div>;
 }
 
