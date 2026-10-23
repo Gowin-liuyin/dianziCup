@@ -1024,3 +1024,13 @@ R10 policy986b/ind9635限定176offline绿、原4PG prepared；默认factoryc554�
 - 既有证据：reports/runs/story_fixture_20261023/（10-23 migrate_exit=0/story_exit=0/verify全过/rerun already-present）入档引用，未冒充本轮结果。
 - 进行中：批次20全量离线基线（python -m pytest入口+--continue-on-collection-errors，曾因pytest入口缺CWD致50收集错误中断一次，已留存attempt1记录）。
 - 保护项：用户tsbuildinfo未入暂存区；.zcode/会话目录不提交；无git add -A，全部显式清单。报告reports/tasks/Root-batch19-runnable-assembly.md。
+
+
+## 2026-10-24T02:35:00+08:00 · 批次20离线收敛：全量基线、红清单与质量门
+
+- 范围：24小时有界收敛轮。基线40F/5872P/42E（python -m pytest入口；pytest入口会因缺CWD报50收集错误，attempt1记录保留）→ B6复跑35F/5912P/1xfailed/42E；减少的5个全为本轮修复项（r06 revision-mode×2、t02×1、compose×2），新引入红为零；ruff/format/mypy与前端lint/typecheck/799test/build全绿。
+- 甄别结论（red_inventory.md）：42E中38个为设计内blocked（DIANZI_TEST_RUN_ID未设）；16 codec+2迁移head=历史变更单范围；16 r07链=环境回归（uv run强制editable重同步使content_read_worker子进程恒不可导入，修复方向涉安全边界，登记OQ-2停补丁）；t06历史扫描54处未分类（OQ-3）。计划B5.2结论=缺陷已不存在（现行fail-closed与冻结oracle一致），以34钉住测试+1 strict xfail作变更单绊线；B5.3按条件跳过。
+- 交付物：scripts/smoke_main_path.py（0/1/2退出码合同，env-guard=2实测；真实执行被Docker daemon不可达阻塞=OQ-1，未做修复操作）；路由清单合同测试1 passed（README补录15条路径，(path,method)粒度）；r06冻结诊断测试层适配（补常量business_version，oracle不动，38 passed）。
+- checkpoint：e61556a22（批次19装配验收）→ 999af01b0（批次20收敛修复）→ 最终commit见下一行handoff。状态未升级：R06仍needs_changes/unit=failed，仅提供可复跑证据；G-C未过门；6h未启动。
+- 恢复记录：136359106切片的tests/r07_input_audit_helpers.py已恢复（非HEAD祖先，导入者残缺）；ruff 0.16.9 I001对6个导入顺序承重的PG文件定点豁免。tsbuildinfo全程保护（构建改写后已两次恢复至受保护SHA 3c587e内容）。
+- 报告：reports/tasks/Root-batch20-summary.md；OPEN_QUESTIONS.md三项待决（Docker、r07环境、t06分类）。下一会话可从本条+batch20报告+red_inventory直接续接。
