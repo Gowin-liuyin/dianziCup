@@ -137,14 +137,15 @@ def _story_id(name: str) -> str:
 
 
 def _session(engine: Engine, user_id: str) -> str:
-    token = "fixture-session-" + uuid4().hex
+    token = f"fixture-session-{uuid4().hex}"
+    unused_csrf = "fixture-unused"
     now = datetime.now(UTC)
     with engine.begin() as connection:
         connection.execute(
             insert(auth_sessions).values(
                 session_hash=hashlib.sha256(token.encode()).hexdigest(),
                 user_id=user_id,
-                csrf_token="fixture-unused",
+                csrf_token=unused_csrf,
                 issued_at=now,
                 expires_at=now + timedelta(hours=2),
             )

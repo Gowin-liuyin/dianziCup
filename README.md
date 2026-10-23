@@ -55,10 +55,10 @@ uv run python ../scripts/load_main_path_story.py
 | 富化 | `POST /events/{event_id}/enrichment-jobs`，`GET /enrichment-workflows/{workflow_id}` |
 | 任务 | `GET /jobs/{job_id}` |
 | 问答 | `POST /questions`，`GET /answers/{answer_id}` |
-| 资产 | `GET /assets` 及快照、SBOM；`POST /asset-snapshots`，`POST /asset-imports` |
+| 资产 | `GET /assets`，`GET /assets/{asset_id}`，`GET /assets/{asset_id}/snapshots`，`GET /assets/{asset_id}/snapshots/{snapshot_id}`，`GET /assets/{asset_id}/snapshots/{snapshot_id}/sbom`；`POST /asset-snapshots`，`POST /asset-imports` |
 | 研判 | `POST /assessments`，`GET /assessments/{assessment_id}` |
 | 调查 | `POST /investigations`，`GET /investigations/{job_id}`，`GET .../tool-runs`，`POST .../cancel` |
-| 推荐 | `/subscriptions`、`/recommendations`、`/reports` 的列举、创建、生成和导出 |
+| 推荐 | `GET /subscriptions`，`POST /subscriptions`，`GET /subscriptions/{subscription_id}`，`PATCH /subscriptions/{subscription_id}`，`POST /subscriptions/{subscription_id}/generate`，`GET /subscriptions/{subscription_id}/recommendations`，`GET /subscriptions/{subscription_id}/reports`，`POST /recommendations/{recommendation_id}/read`，`POST /reports`，`GET /reports/{report_id}`，`GET /reports/{report_id}/export` |
 
 只挂在 `/api/v1` 的公开读取：`GET /vulns`，`GET /vulns/{event_id}`，`GET /sources`，`GET /tasks/{task_id}`，以及 `POST /ask`。
 

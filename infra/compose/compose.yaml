@@ -157,6 +157,11 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, 'import pathlib; assert any(b"ai_intel.workers.investigation" in (entry / "cmdline").read_bytes() for entry in pathlib.Path("/proc").glob("[0-9]*") if (entry / "cmdline").exists())']
+      interval: 15s
+      timeout: 3s
+      retries: 6
     mem_limit: 384m
     cpus: 0.25
     pids_limit: 128

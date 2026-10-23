@@ -50,6 +50,24 @@ class OriginalProjectionFixtures:
         self.monkeypatch.setattr(target, name, value)
 
 
+def _rows_carry_contract_business_version(rows):
+    """Frozen diagnostic predates business_version; supply the constant without new truth."""
+    adapted = []
+    for row in rows:
+        if isinstance(row, dict) and "event_id" in row and "business_version" not in row:
+            adapted.append({**row, "business_version": 1})
+        else:
+            adapted.append(row)
+    return adapted
+
+
+_frozen_sql_result = original.sql_result
+
+
+def _adapted_sql_result(rows):
+    return _frozen_sql_result(_rows_carry_contract_business_version(list(rows)))
+
+
 @pytest.mark.parametrize(
     "operation",
     [
@@ -71,6 +89,7 @@ def test_original_24_oracles_on_public_mode_configuration(operation, mode, monke
             _constructor(self, *arguments, **options)
 
         monkeypatch.setattr(reader_type, "__init__", public_constructor)
+    monkeypatch.setattr(original, "sql_result", _adapted_sql_result)
     original.test_required_revision_mode_truthfulness(
         operation, mode, OriginalProjectionFixtures(monkeypatch, mode)
     )
