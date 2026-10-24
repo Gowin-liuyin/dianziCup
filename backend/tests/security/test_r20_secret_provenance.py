@@ -16,20 +16,37 @@ ROOT = Path(__file__).resolve().parents[3]
 RUN = ROOT / "reports/runs/recovery_r20_secret_provenance_20261016"
 TABLE = ROOT / "reports/security/recovery_fixture_false_positives.json"
 BUNDLE = ROOT / "fixtures/synthetic/security/r20_secret_provenance_20261016.zip"
+EXTENSION_RUN = ROOT / "reports/runs/batch21_r20_registry_extension_20261024"
+EXTENSION_BUNDLE = ROOT / "fixtures/synthetic/security/r20_registry_extension_batch21.zip"
 PROPOSAL = json.loads((RUN / "registration_proposal.json").read_text(encoding="utf-8"))
-ROWS = PROPOSAL["proposals"]
+EXTENSION = json.loads((EXTENSION_RUN / "registration_proposal.json").read_text(encoding="utf-8"))
+REGISTRATIONS = (PROPOSAL, EXTENSION)
+for _registration in REGISTRATIONS:
+    for _row in _registration["proposals"]:
+        _row["registration"] = _registration
+ROWS = [*PROPOSAL["proposals"], *EXTENSION["proposals"]]
 PATHS = sorted({row["path"] for row in ROWS})
 UNIQUE_VALUES = list({row["value_sha256"]: row for row in ROWS}.values())
 
 
+def registration_for(relative_path: str) -> dict[str, object]:
+    """Return the registration whose fixture bundle and bindings cover the path."""
+    for registration in REGISTRATIONS:
+        if relative_path in registration["fixture_bindings"]:
+            return registration
+    raise AssertionError(f"no registration binds {relative_path}")
+
+
 def isolated_copy(tmp_path: Path, relative_path: str, row: dict[str, object] | None = None) -> Path:
+    registration = row["registration"] if row is not None else registration_for(relative_path)
+    bundle_path = ROOT / str(registration["fixture_bundle"]["path"])
     source = tmp_path / relative_path
     source.parent.mkdir(parents=True, exist_ok=True)
-    binding = PROPOSAL["fixture_bindings"][relative_path]
+    binding = registration["fixture_bindings"][relative_path]
     digest = binding["raw_sha256"]
     assert isinstance(digest, str) and len(digest) == 64
-    archive_bytes = BUNDLE.read_bytes()
-    assert hashlib.sha256(archive_bytes).hexdigest() == PROPOSAL["fixture_bundle"]["raw_sha256"]
+    archive_bytes = bundle_path.read_bytes()
+    assert hashlib.sha256(archive_bytes).hexdigest() == registration["fixture_bundle"]["raw_sha256"]
     with ZipFile(BytesIO(archive_bytes)) as archive:
         raw = archive.read(digest + ".bin")
     assert hashlib.sha256(raw).hexdigest() == digest
@@ -50,8 +67,8 @@ def test_original_registry_bytes_and_all_54_records_are_preserved() -> None:
     current = json.loads(TABLE.read_text(encoding="utf-8"))["records"]
     assert len(old_records) == 54
     assert current[:54] == old_records
-    assert len(current) == PROPOSAL["total_records"]
-    assert len(current) == len(old_records) + len(ROWS)
+    assert len(current) == PROPOSAL["total_records"] + EXTENSION["new_records"]
+    assert current[PROPOSAL["total_records"] :] == EXTENSION["table_records"]
 
 
 @pytest.mark.parametrize(
@@ -99,7 +116,7 @@ def test_exact_authorized_secret_bytes_override_every_registered_value_family(
     tmp_path: Path, row: dict[str, object]
 ) -> None:
     path = str(row["path"])
-    source = isolated_copy(tmp_path, path)
+    source = isolated_copy(tmp_path, path, row)
     raw = source.read_bytes()
     content = raw.decode("utf-8", errors="ignore").replace("\r\n", "\n").replace("\r", "\n")
     start, end = row["start"], row["end"]

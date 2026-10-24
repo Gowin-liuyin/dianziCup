@@ -80,12 +80,22 @@ def test_complete_alembic_chain_has_one_head_and_no_revision_gap() -> None:
     config = Config()
     config.set_main_option("script_location", str(MIGRATIONS))
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == [REVISIONS[-1][0]]
+    assert scripts.get_heads() == ["0031_public_task_bindings"]
     history = list(scripts.walk_revisions("base", "heads"))
-    assert [int(revision.revision[:4]) for revision in history] == list(range(26, 0, -1))
+    assert [int(revision.revision[:4]) for revision in history] == list(range(31, 0, -1))
     assert [
         revision.revision for revision in scripts.iterate_revisions("head", REVISIONS[0][1])
-    ] == [row[0] for row in reversed(REVISIONS)]
+    ] == [
+        "0031_public_task_bindings",
+        "0030_revalidation_actor_bindings",
+        "0029_recommendation_receipts",
+        "0028_investigation_workflows",
+        "0027_recommendation_history",
+        "0026_api_key_credentials",
+        "0025_graph_projection",
+        "0024_conversation_context",
+        "0023_enrichment_input_audit",
+    ]
 
 
 def test_entire_chain_compiles_offline_through_0026() -> None:

@@ -34,7 +34,7 @@ def test_all_real_codecs_preserve_single_attempt_contract_and_metadata(
     assert metadata.requested_model == metadata.response_model == client.approved_model
     assert metadata.outcome == "succeeded"
     assert metadata.http_status == 200
-    assert metadata.prompt_version == "r07-model-fields-1"
+    assert metadata.prompt_version == "r07-model-fields-2"
     assert metadata.schema_version == "r07-model-field-extraction-1"
     assert metadata.call_id == "offline-fixture-call"
     assert metadata.usage.input_tokens == 20

@@ -46,8 +46,20 @@ def test_production_chain_has_single_forward_head():
     config = Config()
     config.set_main_option("script_location", str(MIGRATIONS))
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["0019_aggregate_observations"]
+    assert scripts.get_heads() == ["0031_public_task_bindings"]
     assert [revision.revision for revision in scripts.iterate_revisions("head", "0016")] == [
+        "0031_public_task_bindings",
+        "0030_revalidation_actor_bindings",
+        "0029_recommendation_receipts",
+        "0028_investigation_workflows",
+        "0027_recommendation_history",
+        "0026_api_key_credentials",
+        "0025_graph_projection",
+        "0024_conversation_context",
+        "0023_enrichment_input_audit",
+        "0022_sbom_sidecars",
+        "0021_condition_assessments",
+        "0020_hybrid_retrieval",
         "0019_aggregate_observations",
         "0018_asset_inventory",
         "0017_enrichment_job_workflows",
