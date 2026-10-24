@@ -1,0 +1,177 @@
+run_id=r05_pgvector_20261015
+port=5432
+pin_ambiguity=False
+file=tests/integration/test_r05_vector_persistence.py
+F.....F..F.                                                              [100%]
+=================================== FAILURES ===================================
+_________ test_upgrade_preserves_immutable_evidence_and_real_extension _________
+
+vector_database = Engine(postgresql://test_dianzi_r05_pgvector_20261015:***@127.0.0.1:5432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_633d127346ab422082c89b6c441953c2%2Cpublic+-c+statement_timeout%3D15000)
+
+>   ???
+E   AssertionError: assert '0.8.7' == '0.8.2'
+E     
+E     - 0.8.2
+E     ?     ^
+E     + 0.8.7
+E     ?     ^
+
+D:\dianzi\backend\tests\integration\test_r05_vector_persistence.py:218: AssertionError
+________ test_event_retrieval_reuses_real_pg_vectors_and_exact_evidence ________
+
+self = <ai_intel.api.knowledge_read_service.KnowledgeReadService object at 0x7e9fc01a5370>
+rows = ({'evidence_id': 'f8cced56-a7d5-4e53-8c95-aed410bcd6ca', 'revision_id': '1e34c064-d3e3-4255-ad1d-05f52ab5fa1f', 'start...nter': '/vulnerabilities/0/package/name', 'block_start': 4999, 'block_text': '/vulnerabilities/0/package/name: vllm'},)
+
+    def _revision_mode(self, rows: tuple[RowMapping, ...] | list[RowMapping]) -> DataMode:
+        if len(rows) > MAX_REVISION_MODE_INPUTS:
+            raise KnowledgeProjectionError("source_mode_input_limit_exceeded")
+        try:
+>           return homogeneous_revision_mode(
+                tuple(row["source_metadata"] for row in rows),
+                self.data_mode,
+                require_expected_mode=self.require_expected_mode,
+            )
+
+src/ai_intel/api/knowledge_read_service.py:165: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/ai_intel/knowledge/revision_mode.py:46: in homogeneous_revision_mode
+    candidate = classify_stored_revision_mode(item)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+metadata = {}
+
+    def classify_stored_revision_mode(metadata: object) -> DataMode:
+        if not isinstance(metadata, dict):
+            raise RevisionModeUnavailableError("stored_source_mode_unavailable")
+        mode = metadata.get("data_mode")
+        policy = metadata.get("data_mode_policy_version")
+        if not isinstance(mode, str):
+>           raise RevisionModeUnavailableError("stored_source_mode_unavailable")
+E           ai_intel.knowledge.revision_mode.RevisionModeUnavailableError: stored_source_mode_unavailable
+
+src/ai_intel/knowledge/revision_mode.py:19: RevisionModeUnavailableError
+
+The above exception was the direct cause of the following exception:
+
+vector_database = Engine(postgresql://test_dianzi_r05_pgvector_20261015:***@127.0.0.1:5432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_b213b3ae52ed48c3a7d1e04f6ce1afa0%2Cpublic+-c+statement_timeout%3D15000)
+
+>   ???
+
+D:\dianzi\backend\tests\integration\test_r05_vector_persistence.py:302: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/ai_intel/retrieval/service.py:211: in retrieve
+    projection = read_service.read_evidence(UUID(row["evidence_id"]))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/ai_intel/api/knowledge_read_service.py:559: in read_evidence
+    return self._evidence_projection(rows[0])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/ai_intel/api/knowledge_read_service.py:608: in _evidence_projection
+    data_mode=self._revision_mode((row,)),
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ai_intel.api.knowledge_read_service.KnowledgeReadService object at 0x7e9fc01a5370>
+rows = ({'evidence_id': 'f8cced56-a7d5-4e53-8c95-aed410bcd6ca', 'revision_id': '1e34c064-d3e3-4255-ad1d-05f52ab5fa1f', 'start...nter': '/vulnerabilities/0/package/name', 'block_start': 4999, 'block_text': '/vulnerabilities/0/package/name: vllm'},)
+
+    def _revision_mode(self, rows: tuple[RowMapping, ...] | list[RowMapping]) -> DataMode:
+        if len(rows) > MAX_REVISION_MODE_INPUTS:
+            raise KnowledgeProjectionError("source_mode_input_limit_exceeded")
+        try:
+            return homogeneous_revision_mode(
+                tuple(row["source_metadata"] for row in rows),
+                self.data_mode,
+                require_expected_mode=self.require_expected_mode,
+            )
+        except RevisionModeUnavailableError as error:
+>           raise KnowledgeProjectionError(str(error)) from error
+E           ai_intel.api.knowledge_read_service.KnowledgeProjectionError: stored_source_mode_unavailable
+
+src/ai_intel/api/knowledge_read_service.py:171: KnowledgeProjectionError
+___________ test_corrupt_derived_chunk_is_rejected_instead_of_cited ____________
+
+self = <ai_intel.api.knowledge_read_service.KnowledgeReadService object at 0x7e9fc0508830>
+rows = ({'evidence_id': 'f8cced56-a7d5-4e53-8c95-aed410bcd6ca', 'revision_id': '1e34c064-d3e3-4255-ad1d-05f52ab5fa1f', 'start...nter': '/vulnerabilities/0/package/name', 'block_start': 4999, 'block_text': '/vulnerabilities/0/package/name: vllm'},)
+
+    def _revision_mode(self, rows: tuple[RowMapping, ...] | list[RowMapping]) -> DataMode:
+        if len(rows) > MAX_REVISION_MODE_INPUTS:
+            raise KnowledgeProjectionError("source_mode_input_limit_exceeded")
+        try:
+>           return homogeneous_revision_mode(
+                tuple(row["source_metadata"] for row in rows),
+                self.data_mode,
+                require_expected_mode=self.require_expected_mode,
+            )
+
+src/ai_intel/api/knowledge_read_service.py:165: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/ai_intel/knowledge/revision_mode.py:46: in homogeneous_revision_mode
+    candidate = classify_stored_revision_mode(item)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+metadata = {}
+
+    def classify_stored_revision_mode(metadata: object) -> DataMode:
+        if not isinstance(metadata, dict):
+            raise RevisionModeUnavailableError("stored_source_mode_unavailable")
+        mode = metadata.get("data_mode")
+        policy = metadata.get("data_mode_policy_version")
+        if not isinstance(mode, str):
+>           raise RevisionModeUnavailableError("stored_source_mode_unavailable")
+E           ai_intel.knowledge.revision_mode.RevisionModeUnavailableError: stored_source_mode_unavailable
+
+src/ai_intel/knowledge/revision_mode.py:19: RevisionModeUnavailableError
+
+The above exception was the direct cause of the following exception:
+
+vector_database = Engine(postgresql://test_dianzi_r05_pgvector_20261015:***@127.0.0.1:5432/test_dianzi_r05_pgvector_20261015?options=-c+search_path%3Dtest_r05_vectors_d98d9adba3f24e419888d2bf7fb137fb%2Cpublic+-c+statement_timeout%3D15000)
+
+>   ???
+
+D:\dianzi\backend\tests\integration\test_r05_vector_persistence.py:354: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/ai_intel/retrieval/service.py:211: in retrieve
+    projection = read_service.read_evidence(UUID(row["evidence_id"]))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/ai_intel/api/knowledge_read_service.py:559: in read_evidence
+    return self._evidence_projection(rows[0])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/ai_intel/api/knowledge_read_service.py:608: in _evidence_projection
+    data_mode=self._revision_mode((row,)),
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ai_intel.api.knowledge_read_service.KnowledgeReadService object at 0x7e9fc0508830>
+rows = ({'evidence_id': 'f8cced56-a7d5-4e53-8c95-aed410bcd6ca', 'revision_id': '1e34c064-d3e3-4255-ad1d-05f52ab5fa1f', 'start...nter': '/vulnerabilities/0/package/name', 'block_start': 4999, 'block_text': '/vulnerabilities/0/package/name: vllm'},)
+
+    def _revision_mode(self, rows: tuple[RowMapping, ...] | list[RowMapping]) -> DataMode:
+        if len(rows) > MAX_REVISION_MODE_INPUTS:
+            raise KnowledgeProjectionError("source_mode_input_limit_exceeded")
+        try:
+            return homogeneous_revision_mode(
+                tuple(row["source_metadata"] for row in rows),
+                self.data_mode,
+                require_expected_mode=self.require_expected_mode,
+            )
+        except RevisionModeUnavailableError as error:
+>           raise KnowledgeProjectionError(str(error)) from error
+E           ai_intel.api.knowledge_read_service.KnowledgeProjectionError: stored_source_mode_unavailable
+
+src/ai_intel/api/knowledge_read_service.py:171: KnowledgeProjectionError
+=============================== warnings summary ===============================
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/nodeids: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/nodeids'
+    config.cache.set("cache/nodeids", sorted(self.cached_nodeids))
+
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/lastfailed: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/lastfailed'
+    config.cache.set("cache/lastfailed", self.lastfailed)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/test_r05_vector_persistence.py::test_upgrade_preserves_immutable_evidence_and_real_extension
+FAILED tests/integration/test_r05_vector_persistence.py::test_event_retrieval_reuses_real_pg_vectors_and_exact_evidence
+FAILED tests/integration/test_r05_vector_persistence.py::test_corrupt_derived_chunk_is_rejected_instead_of_cited
+3 failed, 8 passed, 2 warnings in 35.23s
+exit=1

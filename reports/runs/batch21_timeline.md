@@ -53,4 +53,21 @@
 - 2026-10-25T01:0x+08:00：lint/typecheck/test/build 全部 exit 0（frontend_*.txt）。C5 全部为后端改动，前端基线有效。
 - **tsbuildinfo 保护事件**：`npm run build` 重写了被跟踪的 `frontend/tsconfig.tsbuildinfo`（SHA 由保护值 3c587efd… 变为 f31d5fd7…）；已立即 `git checkout -- frontend/tsconfig.tsbuildinfo` 精准还原并复核 SHA 回到保护值。该文件未进暂存区。批次20 报告"构建后无改动"在本轮不成立（前端代码在 19/20 批有变化，build 产物信息更新），后续批次执行 build 后必须复核此文件。
 
+## C3.4 全量复跑（红清零后基线）
+
+- 2026-10-25T01:3x+08:00：`uv run python -m pytest tests/unit tests/contract tests/security -q`（backend，含 coverage）= **6080 passed / 0 failed / 1 xfailed / 83 errors / 1162.36s**（full_suite_after_c3.txt）。19 个历史红全部清零（16 codec + 2 迁移 head + 1 t06）。
+- 83 errors 全部为隔离 PG fixture 的设计内 blocked（38 个原 A2 组 + A1 裸导入修复后新进入 setup 的 45 个隔离测试，宿主无隔离环境按设计上报 UsageError blocked；批次20 基线为 5928 passed / 19 failed / 42 errors——failed 只减不增约束满足，error 增量全部为 A1 修复的设计内转化）。
+
+## C2 执行与甄别（run1/run2/run3）
+
+- run1（23:59 启动）：plan 相对路径 docker 挂载报错 exit=125，修复为 resolve 后重跑。
+- run2（00:0x–02:0x）：24 组完成。3 组全绿（detached_worker 12、r06_catalog_r10_graph 35、r07_execution_api 9）；unlock 组 6030 passed / 60 failed / 73 errors；多组暴露真实问题。甄别结论：
+  1. **钉定 db 断言是"环境库名断言"**：test_r14_tool_gateway_pg:44 断言 `test_dianzi_r14_tools_fix1_20261016`、r07_idempotency_scope_helpers:42 断言 `test_dianzi_r07_execution_scope_20261016`、r06_catalog 系断言 `r06_catalog_` 前缀——unlock 组单一 run_id 无法覆盖，需按文件各自 env 分组（groups2.json + 逐文件 plan3.json）。
+  2. **又发现两处同源 0019 head 守卫**：tests/security/test_r11_r08_forward_migration_boundaries.py:24 与 tests/r07_idempotency_scope_helpers.py:54（此前因 blocked 未暴露）——并入 CR-migration_head_oracle_alignment_batch21.md 同类处置。
+  3. **端口 25432 守卫**：10 个 integration 文件断言父端口 25432（父服务时代口径）；容器内建第二 PG 实例（parentport 集群 @25432）即可满足且不触碰"不连接过期宿主父服务"禁令（连接的是容器内真实 PG）。
+  4. **跨文件 fixture 继承**：自由组 568 errors 的根因是文件 import 钉定模块的 fixture（db 守卫随之继承）——"文件级无钉定"分组不成立，改为逐文件 env 推导（own pin → 一层 fixture 模块 pin → free）。
+  5. **unlock 60 failed 分类**：37 个 test_r07_source_io_deadline（Windows 平台敏感断言在 Linux 容器失败；宿主 6080 passed 为权威，平台适配入 OQ 类记录）、21 个 compose/TLS 渲染（容器内无 docker CLI，宿主已证绿）、t02 mypy 注入 ×1 与 r01_worker_configuration ×1（待个别甄别）。
+  6. run2 角色冲突：audit 组与 unlock 组共用 run_id 且角色已存在 → runner 改为 role/db 存在性处理（ALTER/CREATE 分支）。
+- run3（02:3x 启动）：**逐文件执行**（plan3.json：107 文件、16 排除、每文件独立 env：own pin → 一层 fixture 模块 pin → free；8 文件 25432 走容器内第二实例）。groups2.json（unlock_v2 + 4 个钉定组）随后补跑。
+
 （后续批次按时间追加）

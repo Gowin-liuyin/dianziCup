@@ -21,7 +21,7 @@ SCOPE = AccessScope.for_authenticated_user("migration-fixture-operator", None, R
 def aggregate_record(migrated_engine):
     with migrated_engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0019_aggregate_observations"
+            "0031_public_task_bindings"
         )
     repository = PostgresAggregateRepository(migrated_engine)
     stored = repository.save_observation(

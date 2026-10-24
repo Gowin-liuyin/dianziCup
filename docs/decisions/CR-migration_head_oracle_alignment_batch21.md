@@ -1,7 +1,7 @@
 # CR-迁移head · forward head 期望对齐 0031 批次21（0019/0026 → 0031）
 
-文档首次创建时间：2026-10-24T23:45:00+08:00
-本次写作开始时间：2026-10-24T23:45:00+08:00
+文档首次创建时间：2026-10-24T23:30:00+08:00（初稿；随提交 13a580e23=2026-10-24T23:35:11+08:00 入库，git 时间戳为权威）
+本次写作开始时间：2026-10-24T23:30:00+08:00
 状态：awaiting_independent_review；授权依据：批次21 有界批处理指令 C3.3（oracle 对齐须确认当前 head 迁移文件为已审集成），范围仅限测试期望更新，迁移文件与生产代码零改动。
 
 ## 已审证据
@@ -34,9 +34,18 @@
 
 C2 盘点证实 `backend/tests/integration/test_r11_r08_migration_head_regression.py` 的 `inventory_engine` fixture 守卫断言 alembic 版本 `0019_aggregate_observations`（第 26 行；该文件自述"仅适配原修订守卫"，守卫当初按 0019 head 写定，与当前 head 0031 同源滞后）。按本 CR 证据链更新为 `0031_public_task_bindings`，一行改动。`backend/tests/r11_forward_fixtures.py` 经核实其 `run_migrations(url, target)` 的版本断言是动态的（`HEAD if target == "head" else target`），无滞后，不改。
 
+## C2 追加二（2026-10-25T05:0x+08:00，容器真实执行新暴露的同类守卫）
+
+批次21 C2 逐文件真实执行（run5）暴露两处此前被 blocked 状态掩盖的同源 0019 守卫，均按本 CR 证据链（提交 0291d1975 引入 0031 + G-E 独审）更新为 `0031_public_task_bindings`，各一行：
+
+1. `backend/tests/security/test_r11_r08_forward_migration_boundaries.py`（aggregate_record fixture，第 24 行附近）；
+2. `backend/tests/r07_idempotency_scope_helpers.py`（scope_engine fixture，第 54 行附近）。
+
+合计本 CR 涉及文件：两个 contract 合同测试 + 三个上述适配文件。全部为"仅测试期望替换"，生产/迁移文件零改动。
+
 ## 验收与复跑
 
 `cd backend && uv run python -m pytest tests/contract/test_r11_r08_forward_migrations.py tests/contract/test_recovery_forward_migrations_0023_0026.py -q --no-cov` 预期全绿；C3.4 全量确认无挪红。
 
-本次写作结束时间：2026-10-24T23:45:00+08:00
-最后更新时间：2026-10-24T23:45:00+08:00
+本次写作结束时间：2026-10-24T23:30:00+08:00
+最后更新时间：2026-10-25T01:5x+08:00（R-A 审查修正：时间声明对齐 git 入库事实；C2 追加节保持）

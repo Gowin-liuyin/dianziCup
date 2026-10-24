@@ -1,0 +1,89 @@
+run_id=batch21_c2_free
+port=5432
+pin_ambiguity=False
+file=tests/integration/test_r07_input_capabilities_pg.py
+...........F                                                             [100%]
+=================================== FAILURES ===================================
+_ test_retained_nvd67_blocks_supply_bounded_model_input_without_changing_pg_source _
+
+migrated_engine = Engine(postgresql://test_dianzi_batch21_c2_free:***@127.0.0.1:5432/test_dianzi_batch21_c2_free)
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-26/test_retained_nvd67_blocks_sup0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x741d581a9190>
+
+>   ???
+
+D:\dianzi\backend\tests\integration\test_r07_input_capabilities_pg.py:188: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+session = <sqlalchemy.orm.session.Session object at 0x741d5a743e30>
+store = <ai_intel.infrastructure.content_store.ContentStore object at 0x741d58132990>
+access_scope = AccessScope(user_id='fixture-loader', tenant_id=None, role=<Role.SYSTEM_ADMIN: 'system_admin'>, permissions=frozenset(...ad:asset', 'manage:public_sources', 'read:public', 'write:asset', 'read:audit', 'manage:users'}), permission_version=1)
+event_id = UUID('3070e6b1-48b0-42ce-88ee-183a6f74e91f')
+rule_version = 'synthetic-r07-inputs-1'
+
+    def load_event_enrichment_inputs(
+        session: Session,
+        store: ContentStorage,
+        access_scope: AccessScope,
+        event_id: UUID,
+        rule_version: str,
+    ) -> LoadedEnrichmentInputs:
+        """No model-supplied scope, URL or revision is accepted; IO follows PG visibility checks."""
+        revision_ids = EventRepository(session, access_scope).get_source_revisions(str(event_id))
+        event = (
+            session.execute(select(events).where(events.c.event_id == str(event_id))).mappings().one()
+        )
+        if event["status"] != "active" or not 1 <= len(revision_ids) <= 20:
+            raise EnrichmentInputError("active_bounded_event_revisions_required")
+        scope = VisibilityScope(visibility=event["visibility"], tenant_id=event["tenant_id"])
+        _require_input_scopes(session, access_scope, scope, revision_ids)
+        rows = tuple(
+            session.execute(
+                select(
+                    document_revisions,
+                    documents.c.kind,
+                    documents.c.source_id,
+                    content_objects.c.size_bytes,
+                )
+                .join(documents, documents.c.document_id == document_revisions.c.document_id)
+                .join(
+                    content_objects, content_objects.c.content_hash == document_revisions.c.content_hash
+                )
+                .where(document_revisions.c.revision_id.in_(revision_ids))
+                .order_by(document_revisions.c.revision_id)
+            ).mappings()
+        )
+        if (
+            len(rows) != len(revision_ids)
+            or any(row["size_bytes"] > MAX_DOCUMENT_BYTES for row in rows)
+            or sum(row["size_bytes"] for row in rows) > MAX_INPUT_BYTES
+        ):
+            raise EnrichmentInputError("enrichment_input_byte_budget_exceeded")
+        try:
+            loaded = tuple(_load_document(session, store, scope, row) for row in rows)
+            context = EnrichmentContext(
+                event_id=event_id,
+                expected_event_version=event["business_version"],
+                revision_ids=tuple(UUID(revision_id) for revision_id in revision_ids),
+                external_cve_ids=_explicit_cve_ids(session, event_id, loaded),
+                rule_version=rule_version,
+            )
+        except (OSError, ValidationError, ValueError):
+>           raise EnrichmentInputError("enrichment_source_input_invalid") from None
+E           ai_intel.enrichment.inputs.EnrichmentInputError: enrichment_source_input_invalid
+
+src/ai_intel/enrichment/inputs.py:269: EnrichmentInputError
+=============================== warnings summary ===============================
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/nodeids: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/nodeids'
+    config.cache.set("cache/nodeids", sorted(self.cached_nodeids))
+
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/lastfailed: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/lastfailed'
+    config.cache.set("cache/lastfailed", self.lastfailed)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/test_r07_input_capabilities_pg.py::test_retained_nvd67_blocks_supply_bounded_model_input_without_changing_pg_source
+1 failed, 11 passed, 2 warnings in 12.77s
+exit=1

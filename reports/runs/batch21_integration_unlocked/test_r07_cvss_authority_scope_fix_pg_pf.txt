@@ -1,0 +1,155 @@
+run_id=r06_catalog_20261021
+port=5432
+pin_ambiguity=False
+file=tests/integration/test_r07_cvss_authority_scope_fix_pg.py
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+_ test_two_source_scores_preserve_authority_quotes_metadata_detail_and_replay[False-available] _
+
+self = <ai_intel.api.knowledge_read_service.KnowledgeReadService object at 0x74c4fbf5f0b0>
+rows = [{'revision_id': '1357f866-0b18-4ad9-812b-069115c960e6', 'document_id': '6821e324-4068-53f4-927f-930a01970ff7', 'revis... '/vulnerabilities/0', 'source_metadata': {}, 'source_id': '9bd8dd05-221b-52c6-9d2a-4aaa86b60224', 'kind': 'advisory'}]
+
+    def _revision_mode(self, rows: tuple[RowMapping, ...] | list[RowMapping]) -> DataMode:
+        if len(rows) > MAX_REVISION_MODE_INPUTS:
+            raise KnowledgeProjectionError("source_mode_input_limit_exceeded")
+        try:
+>           return homogeneous_revision_mode(
+                tuple(row["source_metadata"] for row in rows),
+                self.data_mode,
+                require_expected_mode=self.require_expected_mode,
+            )
+
+src/ai_intel/api/knowledge_read_service.py:165: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/ai_intel/knowledge/revision_mode.py:46: in homogeneous_revision_mode
+    candidate = classify_stored_revision_mode(item)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+metadata = {}
+
+    def classify_stored_revision_mode(metadata: object) -> DataMode:
+        if not isinstance(metadata, dict):
+            raise RevisionModeUnavailableError("stored_source_mode_unavailable")
+        mode = metadata.get("data_mode")
+        policy = metadata.get("data_mode_policy_version")
+        if not isinstance(mode, str):
+>           raise RevisionModeUnavailableError("stored_source_mode_unavailable")
+E           ai_intel.knowledge.revision_mode.RevisionModeUnavailableError: stored_source_mode_unavailable
+
+src/ai_intel/knowledge/revision_mode.py:19: RevisionModeUnavailableError
+
+The above exception was the direct cause of the following exception:
+
+catalog_engine = Engine(postgresql://test_dianzi_r06_catalog_20261021:***@127.0.0.1:5432/test_dianzi_r06_catalog_20261021?options=-c+search_path%3Dtest_r06_catalog_09f40bdf6ea344d7a1696191441cae94+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-21/test_two_source_scores_preserv0')
+same_authority = False, expected_status = 'available'
+
+>   ???
+
+D:\dianzi\backend\tests\integration\test_r07_cvss_authority_scope_fix_pg.py:87: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/ai_intel/api/knowledge_read_service.py:371: in event_detail
+    data_mode = self._revision_mode(revisions)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ai_intel.api.knowledge_read_service.KnowledgeReadService object at 0x74c4fbf5f0b0>
+rows = [{'revision_id': '1357f866-0b18-4ad9-812b-069115c960e6', 'document_id': '6821e324-4068-53f4-927f-930a01970ff7', 'revis... '/vulnerabilities/0', 'source_metadata': {}, 'source_id': '9bd8dd05-221b-52c6-9d2a-4aaa86b60224', 'kind': 'advisory'}]
+
+    def _revision_mode(self, rows: tuple[RowMapping, ...] | list[RowMapping]) -> DataMode:
+        if len(rows) > MAX_REVISION_MODE_INPUTS:
+            raise KnowledgeProjectionError("source_mode_input_limit_exceeded")
+        try:
+            return homogeneous_revision_mode(
+                tuple(row["source_metadata"] for row in rows),
+                self.data_mode,
+                require_expected_mode=self.require_expected_mode,
+            )
+        except RevisionModeUnavailableError as error:
+>           raise KnowledgeProjectionError(str(error)) from error
+E           ai_intel.api.knowledge_read_service.KnowledgeProjectionError: stored_source_mode_unavailable
+
+src/ai_intel/api/knowledge_read_service.py:171: KnowledgeProjectionError
+_ test_two_source_scores_preserve_authority_quotes_metadata_detail_and_replay[True-conflict] _
+
+self = <ai_intel.api.knowledge_read_service.KnowledgeReadService object at 0x74c4fb721760>
+rows = [{'revision_id': '545dc8e8-4828-4f11-b76f-f27e87f7cb32', 'document_id': '6821e324-4068-53f4-927f-930a01970ff7', 'revis... '/vulnerabilities/0', 'source_metadata': {}, 'source_id': '9bd8dd05-221b-52c6-9d2a-4aaa86b60224', 'kind': 'advisory'}]
+
+    def _revision_mode(self, rows: tuple[RowMapping, ...] | list[RowMapping]) -> DataMode:
+        if len(rows) > MAX_REVISION_MODE_INPUTS:
+            raise KnowledgeProjectionError("source_mode_input_limit_exceeded")
+        try:
+>           return homogeneous_revision_mode(
+                tuple(row["source_metadata"] for row in rows),
+                self.data_mode,
+                require_expected_mode=self.require_expected_mode,
+            )
+
+src/ai_intel/api/knowledge_read_service.py:165: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/ai_intel/knowledge/revision_mode.py:46: in homogeneous_revision_mode
+    candidate = classify_stored_revision_mode(item)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+metadata = {}
+
+    def classify_stored_revision_mode(metadata: object) -> DataMode:
+        if not isinstance(metadata, dict):
+            raise RevisionModeUnavailableError("stored_source_mode_unavailable")
+        mode = metadata.get("data_mode")
+        policy = metadata.get("data_mode_policy_version")
+        if not isinstance(mode, str):
+>           raise RevisionModeUnavailableError("stored_source_mode_unavailable")
+E           ai_intel.knowledge.revision_mode.RevisionModeUnavailableError: stored_source_mode_unavailable
+
+src/ai_intel/knowledge/revision_mode.py:19: RevisionModeUnavailableError
+
+The above exception was the direct cause of the following exception:
+
+catalog_engine = Engine(postgresql://test_dianzi_r06_catalog_20261021:***@127.0.0.1:5432/test_dianzi_r06_catalog_20261021?options=-c+search_path%3Dtest_r06_catalog_63e9518980e24421a134969ab5ccac28+-c+statement_timeout%3D15000+-c+lock_timeout%3D5000)
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-21/test_two_source_scores_preserv1')
+same_authority = True, expected_status = 'conflict'
+
+>   ???
+
+D:\dianzi\backend\tests\integration\test_r07_cvss_authority_scope_fix_pg.py:87: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/ai_intel/api/knowledge_read_service.py:371: in event_detail
+    data_mode = self._revision_mode(revisions)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ai_intel.api.knowledge_read_service.KnowledgeReadService object at 0x74c4fb721760>
+rows = [{'revision_id': '545dc8e8-4828-4f11-b76f-f27e87f7cb32', 'document_id': '6821e324-4068-53f4-927f-930a01970ff7', 'revis... '/vulnerabilities/0', 'source_metadata': {}, 'source_id': '9bd8dd05-221b-52c6-9d2a-4aaa86b60224', 'kind': 'advisory'}]
+
+    def _revision_mode(self, rows: tuple[RowMapping, ...] | list[RowMapping]) -> DataMode:
+        if len(rows) > MAX_REVISION_MODE_INPUTS:
+            raise KnowledgeProjectionError("source_mode_input_limit_exceeded")
+        try:
+            return homogeneous_revision_mode(
+                tuple(row["source_metadata"] for row in rows),
+                self.data_mode,
+                require_expected_mode=self.require_expected_mode,
+            )
+        except RevisionModeUnavailableError as error:
+>           raise KnowledgeProjectionError(str(error)) from error
+E           ai_intel.api.knowledge_read_service.KnowledgeProjectionError: stored_source_mode_unavailable
+
+src/ai_intel/api/knowledge_read_service.py:171: KnowledgeProjectionError
+=============================== warnings summary ===============================
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/nodeids: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/nodeids'
+    config.cache.set("cache/nodeids", sorted(self.cached_nodeids))
+
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/lastfailed: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/lastfailed'
+    config.cache.set("cache/lastfailed", self.lastfailed)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/test_r07_cvss_authority_scope_fix_pg.py::test_two_source_scores_preserve_authority_quotes_metadata_detail_and_replay[False-available]
+FAILED tests/integration/test_r07_cvss_authority_scope_fix_pg.py::test_two_source_scores_preserve_authority_quotes_metadata_detail_and_replay[True-conflict]
+2 failed, 2 warnings in 8.80s
+exit=1

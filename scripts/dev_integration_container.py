@@ -35,12 +35,15 @@ set -u
 export LANG=C.UTF-8 LC_ALL=C.UTF-8 PYTHONUTF8=1 PYTHONDONTWRITEBYTECODE=1
 export PATH=/root/.local/bin:/usr/lib/postgresql/16/bin:$PATH
 
+pg_createcluster 16 parentport --port 25432 --start-conf auto > /dev/null 2>&1
 pg_ctlcluster 16 main start || { echo "PG_START_FAILED"; exit 3; }
+pg_ctlcluster 16 parentport start || { echo "PG_ALTPORT_START_FAILED"; exit 3; }
 for _ in $(seq 1 30); do
-  pg_isready -h 127.0.0.1 -p 5432 -q && break
+  pg_isready -h 127.0.0.1 -p 5432 -q && pg_isready -h 127.0.0.1 -p 25432 -q && break
   sleep 1
 done
 pg_isready -h 127.0.0.1 -p 5432 -q || { echo "PG_NOT_READY"; exit 3; }
+pg_isready -h 127.0.0.1 -p 25432 -q || { echo "PG_ALTPORT_NOT_READY"; exit 3; }
 echo "pg_isready=ok"
 
 cd /repo/backend || exit 4
@@ -54,7 +57,7 @@ echo "groups_runner_rc=$runner_rc"
 exit "$runner_rc"
 """
 
-GROUPS_RUNNER_PYTHON = r'''"""Provision one disposable database per group, then run each group's pytest."""
+GROUPS_RUNNER_PYTHON = r'''"""Provision disposable databases, then run plan groups or per-file entries."""
 
 import json
 import os
@@ -64,85 +67,147 @@ import sys
 from pathlib import Path
 
 GROUP_TIMEOUT_SECONDS = 2700
+FILE_TIMEOUT_SECONDS = 900
 PLAN = json.loads(Path("/groups.json").read_text(encoding="utf-8"))
 BACKEND = Path("/repo/backend")
 OUTPUT = Path("/out")
 ADMIN = "postgres"
+PORTS = (5432, 25432)
 
 
-def create_group_database(run_id: str) -> str:
-    password = secrets.token_hex(16)
+def provision(run_id: str, password: str, port: int) -> None:
     user = database = f"test_dianzi_{run_id}"
-    subprocess.run(
-        ["runuser", "-u", ADMIN, "--", "psql", "-v", "ON_ERROR_STOP=1", "-c",
-         f"CREATE ROLE {user} LOGIN SUPERUSER PASSWORD '{password}'"],
-        check=True, capture_output=True, text=True,
-    )
-    subprocess.run(
-        ["runuser", "-u", ADMIN, "--", "createdb", "-O", user, database],
-        check=True, capture_output=True, text=True,
-    )
-    return password
-
-
-def run_group(group: dict) -> int:
-    group_id = group["id"]
-    output_path = OUTPUT / f"{group_id}.txt"
-    try:
-        password = create_group_database(group["run_id"])
-    except subprocess.CalledProcessError as failure:
-        output_path.write_text(
-            f"database_provisioning_failed rc={failure.returncode}\n"
-            f"stderr={failure.stderr[-2000:]}\nexit=3\n",
-            encoding="utf-8",
+    base = ["runuser", "-u", ADMIN, "--", "psql", "-p", str(port)]
+    role_exists = subprocess.run(
+        [*base, "-tAc", f"SELECT 1 FROM pg_roles WHERE rolname = '{user}'"],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    if role_exists == "1":
+        subprocess.run(
+            [*base, "-v", "ON_ERROR_STOP=1", "-c",
+             f"ALTER ROLE {user} LOGIN SUPERUSER PASSWORD '{password}'"],
+            check=True, capture_output=True, text=True,
         )
-        return 3
+    else:
+        subprocess.run(
+            [*base, "-v", "ON_ERROR_STOP=1", "-c",
+             f"CREATE ROLE {user} LOGIN SUPERUSER PASSWORD '{password}'"],
+            check=True, capture_output=True, text=True,
+        )
+    db_exists = subprocess.run(
+        [*base, "-tAc", f"SELECT 1 FROM pg_database WHERE datname = '{database}'"],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    if db_exists != "1":
+        subprocess.run(
+            ["runuser", "-u", ADMIN, "--", "createdb", "-p", str(port), "-O", user, database],
+            check=True, capture_output=True, text=True,
+        )
+    database_url = (
+        f"postgresql://{user}:{password}@127.0.0.1:{port}/{database}"
+    )
+    migration = subprocess.run(
+        ["uv", "run", "--no-sync", "python", "/repo/scripts/migrate.py"],
+        cwd=BACKEND,
+        env={**os.environ, "DATABASE_URL": database_url, "DATA_MODE": "fixture"},
+        capture_output=True, text=True,
+    )
+    if migration.returncode != 0:
+        raise RuntimeError(
+            f"migration failed for {database}@{port}: {migration.stderr[-500:]}"
+        )
+
+
+def build_environment(run_id: str, port: int) -> dict[str, str]:
+    password = secrets.token_hex(16)
+    for cluster_port in PORTS:
+        provision(run_id, password, cluster_port)
     environment = os.environ.copy()
     environment.update(
         {
-            "DIANZI_TEST_RUN_ID": group["run_id"],
+            "DIANZI_TEST_RUN_ID": run_id,
             "TEST_DATABASE_URL": (
-                f"postgresql://test_dianzi_{group['run_id']}:{password}"
-                f"@127.0.0.1:5432/test_dianzi_{group['run_id']}"
+                f"postgresql://test_dianzi_{run_id}:{password}"
+                f"@127.0.0.1:{port}/test_dianzi_{run_id}"
             ),
             "DIANZI_TEST_ISOLATION": "container",
             "COVERAGE_FILE": "/tmp/.coverage",
         }
     )
+    return environment
+
+
+def capture(output_path: Path, header: str, completed, exit_code: int) -> None:
+    with output_path.open("w", encoding="utf-8") as handle:
+        handle.write(header)
+        if completed is not None:
+            if completed.stdout:
+                handle.write(completed.stdout)
+            if completed.stderr:
+                handle.write("--- stderr ---\n")
+                handle.write(completed.stderr[-8000:])
+        handle.write(f"exit={exit_code}\n")
+
+
+def run_invocation(
+    entry_id: str, header: str, command: list[str], timeout: int, environment: dict[str, str]
+) -> int:
+    output_path = OUTPUT / f"{entry_id}.txt"
+    try:
+        completed = subprocess.run(
+            command, cwd=BACKEND, env=environment, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=timeout,
+        )
+        exit_code = completed.returncode
+    except subprocess.TimeoutExpired:
+        capture(output_path, header, None, 124)
+        print(f"entry={entry_id} exit=124 timeout", flush=True)
+        return 124
+    capture(output_path, header, completed, exit_code)
+    print(f"entry={entry_id} exit={exit_code}", flush=True)
+    return exit_code
+
+
+def run_group_entry(group: dict) -> int:
+    environment = build_environment(group["run_id"], 5432)
     command = ["uv", "run", "--no-sync", "python", "-m", "pytest", *group["args"], "-q"]
     if not group.get("coverage", False):
         command.append("--no-cov")
-    completed = subprocess.run(
-        command, cwd=BACKEND, env=environment, capture_output=True, text=True,
-        encoding="utf-8", errors="replace", timeout=GROUP_TIMEOUT_SECONDS,
+    header = f"run_id={group['run_id']}\nargs={json.dumps(group['args'])}\n"
+    return run_invocation(group["id"], header, command, GROUP_TIMEOUT_SECONDS, environment)
+
+
+def run_file_entry(entry: dict) -> int:
+    environment = build_environment(entry["run_id"], entry.get("port", 5432))
+    command = [
+        "uv", "run", "--no-sync", "python", "-m", "pytest", entry["file"], "-q", "--no-cov",
+    ]
+    header = (
+        f"run_id={entry['run_id']}\nport={entry.get('port', 5432)}\n"
+        f"pin_ambiguity={entry.get('pin_ambiguity', False)}\nfile={entry['file']}\n"
     )
-    with output_path.open("w", encoding="utf-8") as handle:
-        handle.write(f"run_id={group['run_id']}\n")
-        handle.write(f"args={json.dumps(group['args'])}\n")
-        if completed.stdout:
-            handle.write(completed.stdout)
-        if completed.stderr:
-            handle.write("--- stderr ---\n")
-            handle.write(completed.stderr[-8000:])
-        handle.write(f"exit={completed.returncode}\n")
-    print(f"group={group_id} exit={completed.returncode}", flush=True)
-    return 0 if completed.returncode == 0 else 1
+    return run_invocation(
+        Path(entry["file"]).stem + "_pf", header, command, FILE_TIMEOUT_SECONDS, environment
+    )
 
 
 def main() -> int:
-    failures = 0
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    for group in PLAN["groups"]:
+    if PLAN.get("mode") == "per_file":
+        entries = PLAN["files"]
+        runner = run_file_entry
+    else:
+        entries = PLAN["groups"]
+        runner = run_group_entry
+    failures = 0
+    for entry in entries:
         try:
-            if run_group(group) != 0:
+            if runner(entry) != 0:
                 failures += 1
-        except subprocess.TimeoutExpired:
-            (OUTPUT / f"{group['id']}.txt").open("a", encoding="utf-8").write(
-                f"group_timeout_after={GROUP_TIMEOUT_SECONDS}s\nexit=124\n"
-            )
-            print(f"group={group['id']} exit=124 timeout", flush=True)
+        except subprocess.CalledProcessError as failure:
+            print(f"entry={entry.get('id', entry.get('file'))} provisioning_failed rc={failure.returncode}", flush=True)
             failures += 1
-    print(f"groups_total={len(PLAN['groups'])} groups_failed={failures}", flush=True)
+    print(f"entries_total={len(entries)} entries_failed={failures}", flush=True)
     return 1 if failures else 0
 
 
@@ -196,7 +261,7 @@ def main(argv: list[str] | None = None) -> int:
             "-v", f"{REPO_ROOT.as_posix()}:/repo:ro",
             "-v", f"{scripts_dir / 'run_container.sh'}:/run_container.sh:ro",
             "-v", f"{scripts_dir / 'run_groups.py'}:/run_groups.py:ro",
-            "-v", f"{arguments.plan.as_posix()}:/groups.json:ro",
+            "-v", f"{arguments.plan.resolve().as_posix()}:/groups.json:ro",
             "-v", f"{arguments.evidence_dir.resolve().as_posix()}:/out",
             "-v", f"{CACHE_VOLUME}:/tmp/uv-cache",
             arguments.image_tag,

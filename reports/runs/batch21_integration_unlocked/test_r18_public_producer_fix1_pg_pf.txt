@@ -1,0 +1,50 @@
+run_id=r18_public_producer_fix1_20261016
+port=5432
+pin_ambiguity=False
+file=tests/integration/test_r18_public_producer_fix1_pg.py
+..F.......F.................                                             [100%]
+=================================== FAILURES ===================================
+____________ test_mixed_source_modes_do_not_return_fixture_as_live _____________
+
+pg_engine = Engine(postgresql://test_dianzi_r18_public_producer_fix1_20261016:***@127.0.0.1:5432/test_dianzi_r18_public_producer_f...ns=-c+search_path%3Dtest_r18_fix1_8fa6b2f190d54b5ca8cb2b4e0eb45eec+-c+statement_timeout%3D12000+-c+lock_timeout%3D4000)
+case = (<starlette.testclient.TestClient object at 0x7a617ed6dc70>, SessionCredential(token=SecretStr('**********')), 'dfb6513c-a4b9-4e91-9dfe-72d52ef513da')
+
+>   ???
+E   AssertionError: assert 'public_read_unavailable' == 'not_configured'
+E     
+E     - not_configured
+E     + public_read_unavailable
+
+D:\dianzi\backend\tests\integration\test_r18_public_read_producer_pg.py:223: AssertionError
+___________ test_independent_missing_mode_fails_without_live_relabel ___________
+
+pg_engine = Engine(postgresql://test_dianzi_r18_public_producer_fix1_20261016:***@127.0.0.1:5432/test_dianzi_r18_public_producer_f...ns=-c+search_path%3Dtest_r18_fix1_4920a874bc7e469a8d7da034c039a1f7+-c+statement_timeout%3D12000+-c+lock_timeout%3D4000)
+case = (<starlette.testclient.TestClient object at 0x7a617e395730>, SessionCredential(token=SecretStr('**********')), '4921ac3f-a823-4ecd-b143-9033ee32cdb2')
+
+    def test_independent_missing_mode_fails_without_live_relabel(pg_engine, case):
+        client, _, _ = case
+        document = seed_source_document(pg_engine)
+        event_id = seed_event(pg_engine, [document["revision_id"]])
+        for path in ("/api/v1/vulns/" + event_id, "/api/v1/vulns", "/api/v1/sources"):
+            response = client.get(path)
+            assert response.status_code == 503
+>           assert response.json()["error"]["code"] == "not_configured"
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           AssertionError
+
+../reports/runs/r18_qualified_root_integration_20261017/original/test_independent_pg.py:102: AssertionError
+=============================== warnings summary ===============================
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/nodeids: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/nodeids'
+    config.cache.set("cache/nodeids", sorted(self.cached_nodeids))
+
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/lastfailed: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/lastfailed'
+    config.cache.set("cache/lastfailed", self.lastfailed)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/test_r18_public_producer_fix1_pg.py::test_mixed_source_modes_do_not_return_fixture_as_live
+FAILED tests/integration/test_r18_public_producer_fix1_pg.py::test_independent_missing_mode_fails_without_live_relabel
+2 failed, 26 passed, 2 warnings in 83.41s (0:01:23)
+exit=1

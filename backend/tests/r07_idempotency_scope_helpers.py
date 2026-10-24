@@ -52,7 +52,7 @@ def scope_engine(isolated_test_database_url):
     with engine.connect() as connection:
         assert (
             connection.scalar(text("SELECT version_num FROM alembic_version"))
-            == "0019_aggregate_observations"
+            == "0031_public_task_bindings"
         )
     try:
         yield engine

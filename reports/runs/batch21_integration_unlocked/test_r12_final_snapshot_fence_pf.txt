@@ -1,0 +1,1224 @@
+run_id=r12_hybrid_20261016
+port=5432
+pin_ambiguity=False
+file=tests/integration/test_r12_final_snapshot_fence.py
+EEEEE                                                                    [100%]
+==================================== ERRORS ====================================
+_ ERROR at setup of test_legal_publication_waits_until_result_is_constructed[new_claim] _
+self = <sqlalchemy.engine.base.Connection object at 0x7015c5b30920>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x7015c5b30440>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x7015c5b30740>
+statement = <sqlalchemy.dialects.postgresql.base.PGDDLCompiler object at 0x7015c5b32db0>
+parameters = [immutabledict({})]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 database=test_dianzi_r12_hybrid_20261016) at 0x7015c7d10410>
+query = "\nCREATE TABLE hybrid_index_generations (\n\tgeneration_id TEXT NOT NULL, \n\tindex_name TEXT NOT NULL, \n\tmodel_ver...dimension = 384), \n\tCONSTRAINT ck_hybrid_state CHECK (state IN ('building','ready')), \n\tUNIQUE (index_name)\n)\n\n"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.DuplicateTable: relation "hybrid_index_generations" already exists
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: DuplicateTable
+
+The above exception was the direct cause of the following exception:
+
+isolated_test_database_url = '[redacted test connection]'
+
+>   ???
+
+D:\dianzi\backend\tests\integration\test_t30_hybrid_retrieval.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/schema.py:1557: in create
+    bind._run_ddl_visitor(ddl.SchemaGenerator, self, checkfirst=checkfirst)
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2436: in _run_ddl_visitor
+    ).traverse_single(element)
+      ^^^^^^^^^^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/visitors.py:650: in traverse_single
+    return meth(obj, **kw)
+           ^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/ddl.py:1515: in visit_table
+    table_create_ddl._invoke_with(self.connection)
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/ddl.py:337: in _invoke_with
+    return bind.execute(self)
+           ^^^^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1448: in execute
+    return meth(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/ddl.py:203: in _execute_on_connection
+    return connection._execute_ddl(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1557: in _execute_ddl
+    ret = self._execute_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 database=test_dianzi_r12_hybrid_20261016) at 0x7015c7d10410>
+query = "\nCREATE TABLE hybrid_index_generations (\n\tgeneration_id TEXT NOT NULL, \n\tindex_name TEXT NOT NULL, \n\tmodel_ver...dimension = 384), \n\tCONSTRAINT ck_hybrid_state CHECK (state IN ('building','ready')), \n\tUNIQUE (index_name)\n)\n\n"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateTable) relation "hybrid_index_generations" already exists
+E           [SQL: 
+E           CREATE TABLE hybrid_index_generations (
+E           	generation_id TEXT NOT NULL, 
+E           	index_name TEXT NOT NULL, 
+E           	model_version TEXT NOT NULL, 
+E           	dimension INTEGER NOT NULL, 
+E           	state TEXT NOT NULL, 
+E           	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+E           	PRIMARY KEY (generation_id), 
+E           	CONSTRAINT ck_hybrid_dimension CHECK (dimension = 384), 
+E           	CONSTRAINT ck_hybrid_state CHECK (state IN ('building','ready')), 
+E           	UNIQUE (index_name)
+E           )
+E           
+E           ]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: ProgrammingError
+_ ERROR at setup of test_legal_publication_waits_until_result_is_constructed[source_withdrawal] _
+self = <sqlalchemy.engine.base.Connection object at 0x7015c5fabcb0>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x7015c5ffcce0>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x7015c575b260>
+statement = <sqlalchemy.dialects.postgresql.base.PGDDLCompiler object at 0x7015c5b15ee0>
+parameters = [immutabledict({})]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 database=test_dianzi_r12_hybrid_20261016) at 0x7015c63dd0d0>
+query = "\nCREATE TABLE hybrid_index_generations (\n\tgeneration_id TEXT NOT NULL, \n\tindex_name TEXT NOT NULL, \n\tmodel_ver...dimension = 384), \n\tCONSTRAINT ck_hybrid_state CHECK (state IN ('building','ready')), \n\tUNIQUE (index_name)\n)\n\n"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.DuplicateTable: relation "hybrid_index_generations" already exists
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: DuplicateTable
+
+The above exception was the direct cause of the following exception:
+
+isolated_test_database_url = '[redacted test connection]'
+
+>   ???
+
+D:\dianzi\backend\tests\integration\test_t30_hybrid_retrieval.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/schema.py:1557: in create
+    bind._run_ddl_visitor(ddl.SchemaGenerator, self, checkfirst=checkfirst)
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2436: in _run_ddl_visitor
+    ).traverse_single(element)
+      ^^^^^^^^^^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/visitors.py:650: in traverse_single
+    return meth(obj, **kw)
+           ^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/ddl.py:1515: in visit_table
+    table_create_ddl._invoke_with(self.connection)
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/ddl.py:337: in _invoke_with
+    return bind.execute(self)
+           ^^^^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1448: in execute
+    return meth(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/ddl.py:203: in _execute_on_connection
+    return connection._execute_ddl(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1557: in _execute_ddl
+    ret = self._execute_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 database=test_dianzi_r12_hybrid_20261016) at 0x7015c63dd0d0>
+query = "\nCREATE TABLE hybrid_index_generations (\n\tgeneration_id TEXT NOT NULL, \n\tindex_name TEXT NOT NULL, \n\tmodel_ver...dimension = 384), \n\tCONSTRAINT ck_hybrid_state CHECK (state IN ('building','ready')), \n\tUNIQUE (index_name)\n)\n\n"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateTable) relation "hybrid_index_generations" already exists
+E           [SQL: 
+E           CREATE TABLE hybrid_index_generations (
+E           	generation_id TEXT NOT NULL, 
+E           	index_name TEXT NOT NULL, 
+E           	model_version TEXT NOT NULL, 
+E           	dimension INTEGER NOT NULL, 
+E           	state TEXT NOT NULL, 
+E           	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+E           	PRIMARY KEY (generation_id), 
+E           	CONSTRAINT ck_hybrid_dimension CHECK (dimension = 384), 
+E           	CONSTRAINT ck_hybrid_state CHECK (state IN ('building','ready')), 
+E           	UNIQUE (index_name)
+E           )
+E           
+E           ]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: ProgrammingError
+_ ERROR at setup of test_acl_update_waits_for_visible_source_until_construction_finishes _
+self = <sqlalchemy.engine.base.Connection object at 0x7015c488a090>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x7015c5ffc410>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x7015c4870620>
+statement = <sqlalchemy.dialects.postgresql.base.PGDDLCompiler object at 0x7015c5f7fe00>
+parameters = [immutabledict({})]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 database=test_dianzi_r12_hybrid_20261016) at 0x7015c57f2150>
+query = "\nCREATE TABLE hybrid_index_generations (\n\tgeneration_id TEXT NOT NULL, \n\tindex_name TEXT NOT NULL, \n\tmodel_ver...dimension = 384), \n\tCONSTRAINT ck_hybrid_state CHECK (state IN ('building','ready')), \n\tUNIQUE (index_name)\n)\n\n"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.DuplicateTable: relation "hybrid_index_generations" already exists
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: DuplicateTable
+
+The above exception was the direct cause of the following exception:
+
+isolated_test_database_url = '[redacted test connection]'
+
+>   ???
+
+D:\dianzi\backend\tests\integration\test_t30_hybrid_retrieval.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/schema.py:1557: in create
+    bind._run_ddl_visitor(ddl.SchemaGenerator, self, checkfirst=checkfirst)
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2436: in _run_ddl_visitor
+    ).traverse_single(element)
+      ^^^^^^^^^^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/visitors.py:650: in traverse_single
+    return meth(obj, **kw)
+           ^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/ddl.py:1515: in visit_table
+    table_create_ddl._invoke_with(self.connection)
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/ddl.py:337: in _invoke_with
+    return bind.execute(self)
+           ^^^^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1448: in execute
+    return meth(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/ddl.py:203: in _execute_on_connection
+    return connection._execute_ddl(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1557: in _execute_ddl
+    ret = self._execute_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 database=test_dianzi_r12_hybrid_20261016) at 0x7015c57f2150>
+query = "\nCREATE TABLE hybrid_index_generations (\n\tgeneration_id TEXT NOT NULL, \n\tindex_name TEXT NOT NULL, \n\tmodel_ver...dimension = 384), \n\tCONSTRAINT ck_hybrid_state CHECK (state IN ('building','ready')), \n\tUNIQUE (index_name)\n)\n\n"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateTable) relation "hybrid_index_generations" already exists
+E           [SQL: 
+E           CREATE TABLE hybrid_index_generations (
+E           	generation_id TEXT NOT NULL, 
+E           	index_name TEXT NOT NULL, 
+E           	model_version TEXT NOT NULL, 
+E           	dimension INTEGER NOT NULL, 
+E           	state TEXT NOT NULL, 
+E           	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+E           	PRIMARY KEY (generation_id), 
+E           	CONSTRAINT ck_hybrid_dimension CHECK (dimension = 384), 
+E           	CONSTRAINT ck_hybrid_state CHECK (state IN ('building','ready')), 
+E           	UNIQUE (index_name)
+E           )
+E           
+E           ]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: ProgrammingError
+_ ERROR at setup of test_acl_change_after_final_candidate_read_is_filtered_without_manual_epoch _
+self = <sqlalchemy.engine.base.Connection object at 0x7015c5748350>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x7015c5748770>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x7015c487f4d0>
+statement = <sqlalchemy.dialects.postgresql.base.PGDDLCompiler object at 0x7015c487ede0>
+parameters = [immutabledict({})]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 database=test_dianzi_r12_hybrid_20261016) at 0x7015c63df950>
+query = "\nCREATE TABLE hybrid_index_generations (\n\tgeneration_id TEXT NOT NULL, \n\tindex_name TEXT NOT NULL, \n\tmodel_ver...dimension = 384), \n\tCONSTRAINT ck_hybrid_state CHECK (state IN ('building','ready')), \n\tUNIQUE (index_name)\n)\n\n"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.DuplicateTable: relation "hybrid_index_generations" already exists
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: DuplicateTable
+
+The above exception was the direct cause of the following exception:
+
+isolated_test_database_url = '[redacted test connection]'
+
+>   ???
+
+D:\dianzi\backend\tests\integration\test_t30_hybrid_retrieval.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/schema.py:1557: in create
+    bind._run_ddl_visitor(ddl.SchemaGenerator, self, checkfirst=checkfirst)
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2436: in _run_ddl_visitor
+    ).traverse_single(element)
+      ^^^^^^^^^^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/visitors.py:650: in traverse_single
+    return meth(obj, **kw)
+           ^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/ddl.py:1515: in visit_table
+    table_create_ddl._invoke_with(self.connection)
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/ddl.py:337: in _invoke_with
+    return bind.execute(self)
+           ^^^^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1448: in execute
+    return meth(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/ddl.py:203: in _execute_on_connection
+    return connection._execute_ddl(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1557: in _execute_ddl
+    ret = self._execute_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 database=test_dianzi_r12_hybrid_20261016) at 0x7015c63df950>
+query = "\nCREATE TABLE hybrid_index_generations (\n\tgeneration_id TEXT NOT NULL, \n\tindex_name TEXT NOT NULL, \n\tmodel_ver...dimension = 384), \n\tCONSTRAINT ck_hybrid_state CHECK (state IN ('building','ready')), \n\tUNIQUE (index_name)\n)\n\n"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateTable) relation "hybrid_index_generations" already exists
+E           [SQL: 
+E           CREATE TABLE hybrid_index_generations (
+E           	generation_id TEXT NOT NULL, 
+E           	index_name TEXT NOT NULL, 
+E           	model_version TEXT NOT NULL, 
+E           	dimension INTEGER NOT NULL, 
+E           	state TEXT NOT NULL, 
+E           	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+E           	PRIMARY KEY (generation_id), 
+E           	CONSTRAINT ck_hybrid_dimension CHECK (dimension = 384), 
+E           	CONSTRAINT ck_hybrid_state CHECK (state IN ('building','ready')), 
+E           	UNIQUE (index_name)
+E           )
+E           
+E           ]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: ProgrammingError
+_ ERROR at setup of test_hidden_other_tenant_publication_is_not_locked_by_public_reader _
+self = <sqlalchemy.engine.base.Connection object at 0x7015c48ede20>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x7015c57d56a0>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x7015c48f73e0>
+statement = <sqlalchemy.dialects.postgresql.base.PGDDLCompiler object at 0x7015c57d69c0>
+parameters = [immutabledict({})]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 database=test_dianzi_r12_hybrid_20261016) at 0x7015c57f37d0>
+query = "\nCREATE TABLE hybrid_index_generations (\n\tgeneration_id TEXT NOT NULL, \n\tindex_name TEXT NOT NULL, \n\tmodel_ver...dimension = 384), \n\tCONSTRAINT ck_hybrid_state CHECK (state IN ('building','ready')), \n\tUNIQUE (index_name)\n)\n\n"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.DuplicateTable: relation "hybrid_index_generations" already exists
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: DuplicateTable
+
+The above exception was the direct cause of the following exception:
+
+isolated_test_database_url = '[redacted test connection]'
+
+>   ???
+
+D:\dianzi\backend\tests\integration\test_t30_hybrid_retrieval.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/schema.py:1557: in create
+    bind._run_ddl_visitor(ddl.SchemaGenerator, self, checkfirst=checkfirst)
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2436: in _run_ddl_visitor
+    ).traverse_single(element)
+      ^^^^^^^^^^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/visitors.py:650: in traverse_single
+    return meth(obj, **kw)
+           ^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/ddl.py:1515: in visit_table
+    table_create_ddl._invoke_with(self.connection)
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/ddl.py:337: in _invoke_with
+    return bind.execute(self)
+           ^^^^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1448: in execute
+    return meth(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/sql/ddl.py:203: in _execute_on_connection
+    return connection._execute_ddl(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1557: in _execute_ddl
+    ret = self._execute_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [IDLE] (host=127.0.0.1 database=test_dianzi_r12_hybrid_20261016) at 0x7015c57f37d0>
+query = "\nCREATE TABLE hybrid_index_generations (\n\tgeneration_id TEXT NOT NULL, \n\tindex_name TEXT NOT NULL, \n\tmodel_ver...dimension = 384), \n\tCONSTRAINT ck_hybrid_state CHECK (state IN ('building','ready')), \n\tUNIQUE (index_name)\n)\n\n"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateTable) relation "hybrid_index_generations" already exists
+E           [SQL: 
+E           CREATE TABLE hybrid_index_generations (
+E           	generation_id TEXT NOT NULL, 
+E           	index_name TEXT NOT NULL, 
+E           	model_version TEXT NOT NULL, 
+E           	dimension INTEGER NOT NULL, 
+E           	state TEXT NOT NULL, 
+E           	created_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+E           	PRIMARY KEY (generation_id), 
+E           	CONSTRAINT ck_hybrid_dimension CHECK (dimension = 384), 
+E           	CONSTRAINT ck_hybrid_state CHECK (state IN ('building','ready')), 
+E           	UNIQUE (index_name)
+E           )
+E           
+E           ]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: ProgrammingError
+=============================== warnings summary ===============================
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/nodeids: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/nodeids'
+    config.cache.set("cache/nodeids", sorted(self.cached_nodeids))
+
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/lastfailed: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/lastfailed'
+    config.cache.set("cache/lastfailed", self.lastfailed)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+ERROR tests/integration/test_r12_final_snapshot_fence.py::test_legal_publication_waits_until_result_is_constructed[new_claim]
+ERROR tests/integration/test_r12_final_snapshot_fence.py::test_legal_publication_waits_until_result_is_constructed[source_withdrawal]
+ERROR tests/integration/test_r12_final_snapshot_fence.py::test_acl_update_waits_for_visible_source_until_construction_finishes
+ERROR tests/integration/test_r12_final_snapshot_fence.py::test_acl_change_after_final_candidate_read_is_filtered_without_manual_epoch
+ERROR tests/integration/test_r12_final_snapshot_fence.py::test_hidden_other_tenant_publication_is_not_locked_by_public_reader
+2 warnings, 5 errors in 13.32s
+exit=1

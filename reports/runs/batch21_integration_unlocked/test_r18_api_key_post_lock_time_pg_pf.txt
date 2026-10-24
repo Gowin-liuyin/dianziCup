@@ -1,0 +1,102 @@
+run_id=batch21_c2_free
+port=5432
+pin_ambiguity=False
+file=tests/integration/test_r18_api_key_post_lock_time_pg.py
+FF..                                                                     [100%]
+=================================== FAILURES ===================================
+________ test_real_owner_lock_wait_before_expiry_returns_current_tenant ________
+pg_case = PgCase(engine=Engine([redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]:***[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]ree),...Credential(token=SecretStr('**********')), service=<ai_intel.api.credentials.PgApiKeyService object at 0x72eb96d93da0>)
+
+>   ???
+
+D:\dianzi\backend\tests\integration\test_r18_api_key_post_lock_time_pg.py:49: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/ai_intel/api/credentials.py:347: in issue_key
+    scope = lock_authenticated_principal(connection, credential, now)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/ai_intel/api/credentials.py:259: in lock_authenticated_principal
+    return lock_authenticated_scope(connection, credential.token.get_secret_value(), now)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/ai_intel/api/auth_state.py:93: in lock_authenticated_scope
+    return lock_session_scope(connection, session_token, now)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+connection = <sqlalchemy.engine.base.Connection object at 0x72eb96dba390>
+session_token = '[redacted test credential]'
+now = datetime.datetime(2026, 10, 24, 17, 41, 40, 99951, tzinfo=datetime.timezone.utc)
+
+    def lock_session_scope(connection: Connection, session_token: str, now: datetime) -> AccessScope:
+        """Legacy cookie authentication includes actual lock elapsed time in expiry validation."""
+        _require_transaction(connection)
+        started = monotonic()
+        try:
+            now = _time(now)
+            if not isinstance(session_token, str) or not session_token or len(session_token) > 4096:
+                raise _deny()
+            locator = hashlib.sha256(session_token.encode()).hexdigest()
+            row = _lock_row(connection, "session", locator)
+            _validate_lifetime(row, now + timedelta(seconds=monotonic() - started))
+            return _current_scope(row, "session")
+        except InvalidActorReferenceError:
+>           raise SessionExpiredError("session is not valid") from None
+E           ai_intel.api.authentication.SessionExpiredError: session is not valid
+
+src/ai_intel/api/actor_references.py:210: SessionExpiredError
+__________ test_real_quota_bucket_wait_crossing_expiry_cannot_consume __________
+pg_case = PgCase(engine=Engine([redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]:***[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]ree),...Credential(token=SecretStr('**********')), service=<ai_intel.api.credentials.PgApiKeyService object at 0x72eb96df83e0>)
+
+>   ???
+
+D:\dianzi\backend\tests\integration\test_r18_api_key_post_lock_time_pg.py:82: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/ai_intel/api/credentials.py:347: in issue_key
+    scope = lock_authenticated_principal(connection, credential, now)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/ai_intel/api/credentials.py:259: in lock_authenticated_principal
+    return lock_authenticated_scope(connection, credential.token.get_secret_value(), now)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/ai_intel/api/auth_state.py:93: in lock_authenticated_scope
+    return lock_session_scope(connection, session_token, now)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+connection = <sqlalchemy.engine.base.Connection object at 0x72eb96947aa0>
+session_token = '[redacted test credential]'
+now = datetime.datetime(2026, 10, 24, 17, 41, 40, 570165, tzinfo=datetime.timezone.utc)
+
+    def lock_session_scope(connection: Connection, session_token: str, now: datetime) -> AccessScope:
+        """Legacy cookie authentication includes actual lock elapsed time in expiry validation."""
+        _require_transaction(connection)
+        started = monotonic()
+        try:
+            now = _time(now)
+            if not isinstance(session_token, str) or not session_token or len(session_token) > 4096:
+                raise _deny()
+            locator = hashlib.sha256(session_token.encode()).hexdigest()
+            row = _lock_row(connection, "session", locator)
+            _validate_lifetime(row, now + timedelta(seconds=monotonic() - started))
+            return _current_scope(row, "session")
+        except InvalidActorReferenceError:
+>           raise SessionExpiredError("session is not valid") from None
+E           ai_intel.api.authentication.SessionExpiredError: session is not valid
+
+src/ai_intel/api/actor_references.py:210: SessionExpiredError
+=============================== warnings summary ===============================
+tests/integration/test_r18_api_key_post_lock_time_pg.py::test_real_bucket_wait_advances_trusted_fixture_epoch_to_new_minute
+  D:\dianzi\backend\tests\integration\test_r18_api_key_post_lock_time_pg.py:171: SADeprecationWarning: The Result.tuples() method is deprecated, Row now behaves like a tuple and can unpack types directly. (deprecated since: 2.1.0)
+
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/nodeids: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/nodeids'
+    config.cache.set("cache/nodeids", sorted(self.cached_nodeids))
+
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/lastfailed: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/lastfailed'
+    config.cache.set("cache/lastfailed", self.lastfailed)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/test_r18_api_key_post_lock_time_pg.py::test_real_owner_lock_wait_before_expiry_returns_current_tenant
+FAILED tests/integration/test_r18_api_key_post_lock_time_pg.py::test_real_quota_bucket_wait_crossing_expiry_cannot_consume
+2 failed, 2 passed, 3 warnings in 6.71s
+exit=1
