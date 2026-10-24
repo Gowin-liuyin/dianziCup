@@ -15,7 +15,7 @@ from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.pool import NullPool
 from sqlalchemy.schema import CreateSchema, DropSchema
-from test_r10_evidence_graph_pg import VERSION, publish_event, publish_fact
+from tests.integration.test_r10_evidence_graph_pg import VERSION, publish_event, publish_fact
 
 from ai_intel.api.auth_state import auth_sessions
 from ai_intel.api.authentication import Principal

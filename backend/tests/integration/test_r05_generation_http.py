@@ -9,7 +9,7 @@ from threading import Thread
 
 import pytest
 from pydantic import SecretStr
-from test_r05_generation import Answer, request, wire
+from tests.unit.test_r05_generation import Answer, request, wire
 
 from ai_intel.infrastructure import http_transport
 from ai_intel.infrastructure.models.generation import (

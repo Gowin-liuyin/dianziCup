@@ -23,7 +23,7 @@ def inventory_engine(migrated_engine):
     """The original assertions run unchanged; only the original revision guard is adapted."""
     with migrated_engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0019_aggregate_observations"
+            "0031_public_task_bindings"
         )
         assert connection.scalar(text("SELECT to_regclass('asset_snapshots')")) is not None
     return migrated_engine

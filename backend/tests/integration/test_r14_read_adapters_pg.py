@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-import test_r14_tool_gateway_pg as original_tools
+import tests.contract.test_r14_tool_gateway_pg as original_tools
 from pydantic import SecretStr
 from sqlalchemy import create_engine, event, func, select, text, update
 from sqlalchemy.engine import make_url
@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 from sqlalchemy.schema import CreateSchema, DropSchema
 from test_r10_evidence_graph_pg import VERSION, publish_event, publish_fact
-from test_r14_tool_gateway_pg import (
+from tests.contract.test_r14_tool_gateway_pg import (
     seed_principal,
 )
 

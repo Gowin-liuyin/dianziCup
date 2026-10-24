@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, func, insert, select, text, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 from sqlalchemy.schema import CreateSchema, DropSchema
-from test_r07_enrichment_inputs_pg import seeded_event
+from tests.integration.test_r07_enrichment_inputs_pg import seeded_event
 
 from ai_intel.api.auth_state import auth_sessions
 from ai_intel.domain.access import AccessScope, CrossTenantAccessError, PermissionDeniedError, Role

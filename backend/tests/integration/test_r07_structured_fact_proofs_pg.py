@@ -19,7 +19,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 from sqlalchemy.schema import CreateSchema
-from test_r07_public_signals import cwe_document
+from tests.unit.test_r07_public_signals import cwe_document
 from tests.r06_source_worker_fixtures import source_response
 
 from ai_intel.api.actor_references import (
@@ -267,7 +267,7 @@ def seed_facts(engine, tmp_path, register, dimension="cvss", conflict=False, two
         )
     event_id = UUID(source.event_ids[0])
     if dimension == "epss":
-        from test_r07_public_signals import document
+        from tests.unit.test_r07_public_signals import document
 
         raw = json.dumps(
             {
@@ -284,7 +284,7 @@ def seed_facts(engine, tmp_path, register, dimension="cvss", conflict=False, two
         auxiliary = document(json.loads(selected.payload), selected.canonical_uri)
         add_document(engine, store, auxiliary, event_id, scope)
     elif dimension == "kev":
-        from test_r07_public_signals import document
+        from tests.unit.test_r07_public_signals import document
 
         raw = json.dumps(
             {

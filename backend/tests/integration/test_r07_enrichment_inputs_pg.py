@@ -5,8 +5,8 @@ from uuid import UUID
 import pytest
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
-from test_r06_catalog_documents_pg import catalog_engine as catalog_engine
-from test_r06_source_worker_pg import handler_for, queue, run
+from tests.integration.test_r06_catalog_documents_pg import catalog_engine as catalog_engine
+from tests.integration.test_r06_source_worker_pg import handler_for, queue, run
 
 from ai_intel.domain.access import AccessScope, CrossTenantAccessError, Role
 from ai_intel.enrichment.inputs import EnrichmentInputError, load_event_enrichment_inputs

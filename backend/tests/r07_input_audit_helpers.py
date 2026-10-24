@@ -9,7 +9,7 @@ from pydantic import SecretStr
 from sqlalchemy import CheckConstraint, create_engine, text
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.schema import CreateSchema, DropSchema
-from test_r07_job_execution_pg import children, run, setup
+from tests.integration.test_r07_job_execution_pg import children, run, setup
 from tests.unit.test_r07_single_model_dimension import prepared_transport
 
 from ai_intel.enrichment.job_contracts import EnrichmentExecutionPolicy

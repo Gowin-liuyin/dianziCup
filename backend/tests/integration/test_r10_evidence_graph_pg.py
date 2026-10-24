@@ -15,13 +15,13 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.schema import CreateSchema, DropSchema
-from test_r02_knowledge_revisions import (
+from tests.integration.test_r02_knowledge_revisions import (
     NOW,
     prepared_submission,
     publish_submission,
     publisher_scope,
 )
-from test_r04_knowledge_api_pg import seed_event
+from tests.integration.test_r04_knowledge_api_pg import seed_event
 
 from ai_intel.api.auth_routes import SESSION_COOKIE_NAME
 from ai_intel.api.auth_state import PgAuthenticationStateStore

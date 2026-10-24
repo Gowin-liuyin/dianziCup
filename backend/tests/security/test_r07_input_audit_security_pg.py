@@ -6,7 +6,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy import insert, select, text, update
 from sqlalchemy.orm import Session
-from test_r07_input_audit_receipts_pg import recorded_workflow
+from tests.integration.test_r07_input_audit_receipts_pg import recorded_workflow
 from tests.r07_idempotency_scope_helpers import create_actor
 
 from ai_intel.api.auth_state import auth_sessions
