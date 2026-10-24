@@ -132,6 +132,7 @@ def build_environment(run_id: str, port: int) -> dict[str, str]:
         ),
             "DIANZI_TEST_ISOLATION": "container",
             "COVERAGE_FILE": "/tmp/.coverage",
+            "R06_PROOF_TRACE_DIR": "/out/r06_proof_trace",
         }
     )
     return environment

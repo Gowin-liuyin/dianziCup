@@ -160,7 +160,7 @@ def pg_case(
                         user_id=f"user-{marker}-{index}",
                         csrf_token="synthetic-not-for-http",
                         issued_at=NOW,
-                        expires_at=NOW + timedelta(days=1),
+                        expires_at=datetime.now(UTC) + timedelta(days=1),
                         revoked_at=None,
                     )
                 )

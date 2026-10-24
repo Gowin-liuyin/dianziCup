@@ -97,6 +97,7 @@ def save(engine, store, members, *, at=NOW, scope=ADMIN):
             response_hash=response.content_hash,
             observed_at=at,
             ingested_at=at,
+            data_mode="fixture",
         )
 
 

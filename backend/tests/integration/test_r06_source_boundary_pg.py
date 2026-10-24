@@ -70,6 +70,7 @@ def test_legal_unknown_source_time_has_null_instant_and_visible_raw_precision(
         store,
         clock=lambda: NOW,
         poster=lambda url, payload: FetchResult(url, 200, "application/json", body),
+        data_mode="fixture",
     )
     identifier = queue(catalog_worker_engine, "osv_ollama")
     assert run(catalog_worker_engine, identifier, handler) == "succeeded"

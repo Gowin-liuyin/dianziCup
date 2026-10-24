@@ -246,7 +246,14 @@ def prepared_submission(
             )
         ).scalar_one()
         saved = save_document_revision(
-            connection, store, document_id, b"first body", scope.visibility, scope.tenant_id, NOW
+            connection,
+            store,
+            document_id,
+            b"first body",
+            scope.visibility,
+            scope.tenant_id,
+            NOW,
+            revision_metadata={"data_mode": "fixture"},
         )
         block_id = add_text_block(connection, saved.revision_id, 1, 100, 115, "explicit source")
         evidence_id = attach_evidence_span(

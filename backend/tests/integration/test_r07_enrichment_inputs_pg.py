@@ -21,7 +21,10 @@ pytestmark = pytest.mark.real_pg
 def seeded_event(engine, tmp_path, kind="nvd_ollama"):
     store = ContentStore(tmp_path)
     job_id = queue(engine, kind)
-    assert run(engine, job_id, handler_for(store, kind)) in {"succeeded", "partial"}
+    assert run(engine, job_id, handler_for(store, kind, data_mode="fixture")) in {
+        "succeeded",
+        "partial",
+    }
     with Session(engine) as session:
         event_id = session.scalar(select(events.c.event_id))
     return store, UUID(event_id)

@@ -144,6 +144,7 @@ def seed_source_document(
                 first_observed_at=None if legacy else created_at,
                 ingested_at=None if legacy else created_at,
                 parse_status="legacy_unverified" if legacy else "parsed",
+                **({} if legacy else {"source_metadata": {"data_mode": "fixture"}}),
             )
         )
         connection.execute(

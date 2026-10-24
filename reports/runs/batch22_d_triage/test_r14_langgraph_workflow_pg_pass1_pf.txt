@@ -1,0 +1,112 @@
+run_id=r06_catalog_r10_graph_20261016
+port=5432
+pin_ambiguity=False
+file=tests/integration/test_r14_langgraph_workflow_pg.py
+.................F................                                       [100%]
+=================================== FAILURES ===================================
+_ test_real_pg_supported_path_has_distinct_receipts_shared_evidence_and_no_replay_charge[B2b-2] _
+workflow_resources = (Engine([redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]***[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]r10...[redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment][redacted test credential fragment]0261016', 'test_r14_workflow_d5028b4a27074bfd95d5704b171fd9d6')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-25/test_real_pg_supported_path_ha1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7d3c69482540>
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x7d3c6950cf40>
+strategy = 'B2b', model_calls = 2
+
+>   ???
+
+D:\dianzi\backend\tests\integration\test_r14_langgraph_workflow_pg.py:431: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/ai_intel/investigation/workflow_service.py:552: in execute
+    graph.invoke(
+/tmp/venv/lib/python3.12/site-packages/langgraph/pregel/main.py:4001: in invoke
+    for chunk in self.stream(
+/tmp/venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3058: in stream
+    for _ in runner.tick(
+/tmp/venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:208: in tick
+    run_with_retry(
+/tmp/venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:707: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/langchain_core/runnables/base.py:5327: in invoke
+    return self._call_with_config(
+/tmp/venv/lib/python3.12/site-packages/langchain_core/runnables/base.py:2305: in _call_with_config
+    context.run(
+/tmp/venv/lib/python3.12/site-packages/langchain_core/runnables/config.py:526: in call_func_with_variable_args
+    return func(input, **kwargs)  # type: ignore[call-arg]
+           ^^^^^^^^^^^^^^^^^^^^^
+/tmp/venv/lib/python3.12/site-packages/langchain_core/runnables/base.py:5184: in _invoke
+    output = call_func_with_variable_args(
+/tmp/venv/lib/python3.12/site-packages/langchain_core/runnables/config.py:526: in call_func_with_variable_args
+    return func(input, **kwargs)  # type: ignore[call-arg]
+           ^^^^^^^^^^^^^^^^^^^^^
+src/ai_intel/investigation/graph.py:78: in execute
+    state = execute_role(role, state)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^
+src/ai_intel/investigation/workflow_service.py:1180: in run_role
+    reservation_reason = self.reserve(
+src/ai_intel/investigation/workflow_service.py:841: in reserve
+    self.guard(require_lease=True)
+src/ai_intel/investigation/workflow_service.py:614: in guard
+    self.guard_session(session, require_lease=require_lease)
+src/ai_intel/investigation/workflow_service.py:620: in guard_session
+    scope = lock_authenticated_scope(self.connection, caller_actor, datetime.now(UTC))
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/ai_intel/api/auth_state.py:91: in lock_authenticated_scope
+    return lock_actor_reference_scope(connection, session_token, now)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+connection = <sqlalchemy.engine.base.Connection object at 0x7d3c696f2330>
+reference = ActorReference(credential_kind='session', user_id='8816e46f-1167-49f7-9b73-2f68872b5b20', tenant_id='fixture-owner', r...atetime.datetime(2026, 10, 24, 21, 53, 13, 873163, tzinfo=datetime.timezone.utc), key_id=None, credential_version=None)
+now = datetime.datetime(2026, 10, 24, 21, 53, 13, 871967, tzinfo=datetime.timezone.utc)
+
+    def lock_actor_reference_scope(
+        connection: Connection,
+        reference: ActorReference,
+        now: datetime,
+    ) -> AccessScope:
+        """Revalidate the current credential and user; an old reference never expands authority."""
+        _require_transaction(connection)
+        if not isinstance(reference, ActorReference):
+            raise TypeError("internal actor reference is required")
+        now = _time(now)
+        started = monotonic()
+        locator = reference.session_hash if reference.credential_kind == "session" else reference.key_id
+        if locator is None:
+            raise _deny()
+        row = _lock_row(connection, reference.credential_kind, locator)
+        final_now = now + timedelta(seconds=monotonic() - started)
+        _validate_lifetime(row, final_now)
+        current = _current_scope(row, reference.credential_kind)
+        if (
+            current.user_id != reference.user_id
+            or current.tenant_id != reference.tenant_id
+            or current.role != reference.role
+            or current.permission_version != reference.permission_version
+            or reference.created_at > final_now
+            or _time(row["issued_at"]) != reference.issued_at
+            or not reference.permissions <= current.permissions
+            or reference.permissions_digest != _permissions_digest(reference.permissions)
+            or reference.resource != API_KEY_RESOURCE
+        ):
+>           raise _deny()
+E           ai_intel.api.actor_references.InvalidActorReferenceError: actor reference is not valid
+E           During task with name 'collector' and id 'd3159213-f7cd-bcd8-8615-e84a83767e25'
+
+src/ai_intel/api/actor_references.py:375: InvalidActorReferenceError
+=============================== warnings summary ===============================
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/nodeids: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/nodeids'
+    config.cache.set("cache/nodeids", sorted(self.cached_nodeids))
+
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/lastfailed: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/lastfailed'
+    config.cache.set("cache/lastfailed", self.lastfailed)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/test_r14_langgraph_workflow_pg.py::test_real_pg_supported_path_has_distinct_receipts_shared_evidence_and_no_replay_charge[B2b-2]
+1 failed, 33 passed, 2 warnings in 202.10s (0:03:22)
+exit=1

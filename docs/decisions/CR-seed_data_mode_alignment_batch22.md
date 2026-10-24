@@ -25,5 +25,9 @@
 
 容器逐文件重跑受影响文件（`reports/runs/batch22_d_triage/plan_batch22.json`，自由文件改为独立库消除串扰），预期上述 56 例转绿；全量离线保持 0 failed。文件前后哈希记录于 `reports/runs/batch22_d_triage/seed_alignment_expectations.json`。
 
+## 追加（2026-10-25T05:1x+08:00，实现轮发现）
+
+`test_r06_source_excerpt_event_proof_pg.py` 的 `trace()` 把 pg_case 证据写入 2026-10-16 冻结目录——容器只读挂载下 7 例业务断言已过但写证据失败。为不违反"reports/runs 既有文件不可改"，为 `RUN` 增加 `R06_PROOF_TRACE_DIR` 环境变量覆盖（默认值不变=原冻结目录；容器指向 /out/r06_proof_trace）。默认行为零变化，原证据一字不动。
+
 本次写作结束时间：2026-10-25T05:00:00+08:00
 最后更新时间：2026-10-25T05:00:00+08:00

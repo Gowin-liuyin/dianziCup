@@ -1,0 +1,213 @@
+{
+  "data_mode": "fixture",
+  "model_calls": 0,
+  "http_requests": 0,
+  "reader": {
+    "tool_run_id": "bd7c444b-dc7a-430e-a489-9b9451da3dd1",
+    "call_key": "7ccfbd39f97de8b74764620b36fdec623d68fe9fa1e5384c1e1b99b64428cfeb",
+    "tool_name": "read_evidence",
+    "status": "succeeded",
+    "data": {
+      "schema_version": 2,
+      "span_id": "92bad14d-00b1-4166-a3fe-ef562dd11dd0",
+      "revision_id": "8e5b91e0-d2bd-432a-b111-8ee50198e1a8",
+      "block_id": "052b7f29-8e5b-4449-8d79-3858c4b78b2f",
+      "start_offset": 338,
+      "end_offset": 2338,
+      "quote_text": "## Severity\r\n\r\n- **Severity:** Low\r\n- **CVSS v3.1:** `CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N` (3.7, Low)\r\n- **CWE:** CWE-440 (Expected Behavior Violation), CWE-668 (Exposure of Resource to Wrong Sphere)\r\n\r\n## Summary\r\n\r\nvLLM V1 `InputBatch.condense()` can leave a stale `allowed_token_ids_mask_cpu_tensor` row after moving a constrained request. A later unrestricted request that reuses that batch slot inherits the previous request's token allowlist, so sampling for that other client is constrained by a mask it did not set (cross-request output-integrity issue). The victim request still returns HTTP 200 with no error indication.\r\n\r\nPublic report: https://github.com/vllm-project/vllm/issues/43894\r\n\r\n## Affected\r\n\r\n- **Ecosystem / package:** pip / `vllm`\r\n- **Affected versions:** vLLM ≤ 0.30.0 (V1 worker `InputBatch` path). Confirmed via public issue #43894.\r\n- **Fixed versions:** Fix merged in https://github.com/vllm-project/vllm/pull/43931 (not yet in a tagged release as of v0.30.0; expected in the next release).\r\n\r\n## Details\r\n\r\n`InputBatch.condense()` copies `allowed_token_ids_mask_cpu_tensor` from a moved request's row into the freed index but never clears the source row. `add_request()` only writes that row when the new request sets `sampling_params.allowed_token_ids`. When another active request still has `allowed_token_ids`, `_make_sampling_metadata()` copies the active prefix of the CPU mask to GPU and `Sampler.apply_logits_processors()` applies the stale whitelist to the unrestricted request.\r\n\r\nAn attacker who can submit generate traffic (including unauthenticated `/invocations`, which is outside `--api-key` guards, or any valid API key on `/v1`) plants a chosen `allowed_token_ids` mask. If batching/`condense` recycles that row onto another client's unrestricted request while the constrained request is still active, the victim's tokens are limited to the attacker's allowlist (for example only a single token, only digit tokens, or only tokens that spell a",
+      "quote_sha256": "7b259eb34de80bbe12d4a985c97a789d59f7c4f28991eb46de5e7db7e0518de5",
+      "locator_kind": "json_pointer",
+      "page_number": null,
+      "json_pointer": "/description",
+      "verified_at": "2026-10-16T10:00:00Z",
+      "source_uri": "https://github.com/vllm-project/vllm/security/advisories/GHSA-6cxc-2vcg-w5qc",
+      "source_published_at": "2026-10-06T20:45:08Z",
+      "source_modified_at": "2026-10-06T20:45:08Z",
+      "first_observed_at": "2026-10-16T10:00:00Z",
+      "ingested_at": "2026-10-16T10:00:00Z",
+      "data_mode": "fixture"
+    },
+    "evidence_ids": [
+      "92bad14d-00b1-4166-a3fe-ef562dd11dd0"
+    ],
+    "searched_scope": {
+      "goal_id": "52f8f0d8-a2e4-42e5-9133-005ac0faa4c6",
+      "scope_kind": "public",
+      "event_id": "54f15599-5e3d-51bb-a846-b628bc671b34",
+      "revision_id": "8e5b91e0-d2bd-432a-b111-8ee50198e1a8"
+    },
+    "observed_at": "2026-10-16T10:00:00Z",
+    "executed_at": "2026-10-24T22:24:07.398029Z",
+    "retryable": false,
+    "error_code": null,
+    "usage": {
+      "request_bytes": 248,
+      "result_bytes": 3519,
+      "service_calls": 1,
+      "cached": false
+    },
+    "is_synthetic": true,
+    "limitations": [
+      "引文存在不等于任意论断被支持；仅核验指定事件的当前支持关系。"
+    ]
+  },
+  "graph": {
+    "schema_version": 1,
+    "event_id": "54f15599-5e3d-51bb-a846-b628bc671b34",
+    "business_version": 1,
+    "rule_version": "r10-graph-1.2.0",
+    "nodes": [
+      {
+        "id": "2eba5755-3c7d-5359-beae-1805da574484",
+        "kind": "source_revision",
+        "label": "V1 InputBatch.condense leaves a stale allowed_token_ids mask on recycled batch rows",
+        "scope": {
+          "visibility": "public",
+          "tenant_id": null
+        }
+      },
+      {
+        "id": "54f15599-5e3d-51bb-a846-b628bc671b34",
+        "kind": "event",
+        "label": "V1 InputBatch.condense leaves a stale allowed_token_ids mask on recycled batch rows",
+        "scope": {
+          "visibility": "public",
+          "tenant_id": null
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "4047c3b1-3e9d-55a1-ad65-530296bb3100",
+        "relation_type": "same_event",
+        "subject_id": "54f15599-5e3d-51bb-a846-b628bc671b34",
+        "object_id": "2eba5755-3c7d-5359-beae-1805da574484",
+        "scope": {
+          "visibility": "public",
+          "tenant_id": null
+        },
+        "source_revision_ids": [
+          "8e5b91e0-d2bd-432a-b111-8ee50198e1a8"
+        ],
+        "evidence_span_ids": [
+          "56c0c523-f959-4af3-ae53-78f0e6195b3d",
+          "582a7289-0b32-4a36-b395-445ed4c78937",
+          "6c43f5ac-c5f2-4551-be3d-e5a06108fd75",
+          "92bad14d-00b1-4166-a3fe-ef562dd11dd0",
+          "ab5bb811-a58d-40e8-a6f0-64a81e02f575",
+          "c673167e-7840-493a-8c3f-23c3c4205ceb"
+        ],
+        "supporting_claim_ids": [
+          "595f9925-b986-5ef0-b404-c2887693b167",
+          "ee89839f-e61d-5231-aefe-fed145f1bee0"
+        ],
+        "rule_or_model_version": "r10-graph-1.2.0",
+        "reason": "当前事件的已发布来源关联及已核验支持事实",
+        "status": "supported"
+      }
+    ],
+    "truncated": false,
+    "gaps": [
+      {
+        "relation_type": "affects_component_version",
+        "status": "unknown",
+        "reason": "no_current_supported_relation"
+      },
+      {
+        "relation_type": "component_version_vulnerability",
+        "status": "unknown",
+        "reason": "no_current_supported_relation"
+      },
+      {
+        "relation_type": "mapped_atlas",
+        "status": "unknown",
+        "reason": "no_current_supported_relation"
+      },
+      {
+        "relation_type": "related_paper",
+        "status": "unknown",
+        "reason": "no_current_supported_relation"
+      },
+      {
+        "relation_type": "remediated_by",
+        "status": "unknown",
+        "reason": "no_current_supported_relation"
+      }
+    ],
+    "content_sha256": "47105179edf98c37392a6c5a6605deefc69c8bf25d69033de610cfcc93c2afe8"
+  },
+  "spans": [
+    {
+      "evidence_id": "92bad14d-00b1-4166-a3fe-ef562dd11dd0",
+      "revision_id": "8e5b91e0-d2bd-432a-b111-8ee50198e1a8",
+      "quote": "## Severity\r\n\r\n- **Severity:** Low\r\n- **CVSS v3.1:** `CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N` (3.7, Low)\r\n- **CWE:** CWE-440 (Expected Behavior Violation), CWE-668 (Exposure of Resource to Wrong Sphere)\r\n\r\n## Summary\r\n\r\nvLLM V1 `InputBatch.condense()` can leave a stale `allowed_token_ids_mask_cpu_tensor` row after moving a constrained request. A later unrestricted request that reuses that batch slot inherits the previous request's token allowlist, so sampling for that other client is constrained by a mask it did not set (cross-request output-integrity issue). The victim request still returns HTTP 200 with no error indication.\r\n\r\nPublic report: https://github.com/vllm-project/vllm/issues/43894\r\n\r\n## Affected\r\n\r\n- **Ecosystem / package:** pip / `vllm`\r\n- **Affected versions:** vLLM ≤ 0.30.0 (V1 worker `InputBatch` path). Confirmed via public issue #43894.\r\n- **Fixed versions:** Fix merged in https://github.com/vllm-project/vllm/pull/43931 (not yet in a tagged release as of v0.30.0; expected in the next release).\r\n\r\n## Details\r\n\r\n`InputBatch.condense()` copies `allowed_token_ids_mask_cpu_tensor` from a moved request's row into the freed index but never clears the source row. `add_request()` only writes that row when the new request sets `sampling_params.allowed_token_ids`. When another active request still has `allowed_token_ids`, `_make_sampling_metadata()` copies the active prefix of the CPU mask to GPU and `Sampler.apply_logits_processors()` applies the stale whitelist to the unrestricted request.\r\n\r\nAn attacker who can submit generate traffic (including unauthenticated `/invocations`, which is outside `--api-key` guards, or any valid API key on `/v1`) plants a chosen `allowed_token_ids` mask. If batching/`condense` recycles that row onto another client's unrestricted request while the constrained request is still active, the victim's tokens are limited to the attacker's allowlist (for example only a single token, only digit tokens, or only tokens that spell a",
+      "start_offset": 338,
+      "end_offset": 2338,
+      "locator": "/description",
+      "quote_sha256": "7b259eb34de80bbe12d4a985c97a789d59f7c4f28991eb46de5e7db7e0518de5",
+      "block_text": "/description: ## Severity\r\n\r\n- **Severity:** Low\r\n- **CVSS v3.1:** `CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N` (3.7, Low)\r\n- **CWE:** CWE-440 (Expected Behavior Violation), CWE-668 (Exposure of Resource to Wrong Sphere)\r\n\r\n## Summary\r\n\r\nvLLM V1 `InputBatch.condense()` can leave a stale `allowed_token_ids_mask_cpu_tensor` row after moving a constrained request. A later unrestricted request that reuses that batch slot inherits the previous request's token allowlist, so sampling for that other client is constrained by a mask it did not set (cross-request output-integrity issue). The victim request still returns HTTP 200 with no error indication.\r\n\r\nPublic report: https://github.com/vllm-project/vllm/issues/43894\r\n\r\n## Affected\r\n\r\n- **Ecosystem / package:** pip / `vllm`\r\n- **Affected versions:** vLLM ≤ 0.30.0 (V1 worker `InputBatch` path). Confirmed via public issue #43894.\r\n- **Fixed versions:** Fix merged in https://github.com/vllm-project/vllm/pull/43931 (not yet in a tagged release as of v0.30.0; expected in the next release).\r\n\r\n## Details\r\n\r\n`InputBatch.condense()` copies `allowed_token_ids_mask_cpu_tensor` from a moved request's row into the freed index but never clears the source row. `add_request()` only writes that row when the new request sets `sampling_params.allowed_token_ids`. When another active request still has `allowed_token_ids`, `_make_sampling_metadata()` copies the active prefix of the CPU mask to GPU and `Sampler.apply_logits_processors()` applies the stale whitelist to the unrestricted request.\r\n\r\nAn attacker who can submit generate traffic (including unauthenticated `/invocations`, which is outside `--api-key` guards, or any valid API key on `/v1`) plants a chosen `allowed_token_ids` mask. If batching/`condense` recycles that row onto another client's unrestricted request while the constrained request is still active, the victim's tokens are limited to the attacker's allowlist (for example only a single token, only digit tokens, or only tokens that spell a short phrase). This is vocabulary steering / wrong allowlist application, not free-form substitution of arbitrary attacker text.\r\n\r\nA related but distinct bug in `InputBatch.swap_states()` (row-view aliasing of the same mask tensor) was fixed in https://github.com/vllm-project/vllm/pull/48419.\r\n\r\n## Impact\r\n\r\nLimited cross-request sampling integrity on a shared engine: one client's `allowed_token_ids` can constrain another client's outputs under concurrent batching. Confidentiality and availability are unaffected. Attack complexity is High because exploitation needs concurrent requests plus a `condense` slot-reuse race while the attacker's constrained request remains in the batch.\r\n\r\n## Patches\r\n\r\n- https://github.com/vllm-project/vllm/pull/43931 — clear vacated `allowed_token_ids` mask rows in `condense()`\r\n- https://github.com/vllm-project/vllm/pull/48419 — related `swap_states` mask aliasing fix\r\n\r\n## References\r\n\r\n- https://github.com/vllm-project/vllm/issues/43894\r\n- https://github.com/vllm-project/vllm/pull/43931\r\n- https://github.com/vllm-project/vllm/pull/48419\r\n- https://docs.vllm.ai/en/latest/usage/security.html (API key does not cover `/invocations`)\r\n\r\n## Credit\r\n\r\nReported publicly by @glaziermag in issue #43894.\r\n",
+      "block_start": 324,
+      "json_pointer": "/description"
+    },
+    {
+      "evidence_id": "c673167e-7840-493a-8c3f-23c3c4205ceb",
+      "revision_id": "8e5b91e0-d2bd-432a-b111-8ee50198e1a8",
+      "quote": "GHSA-6cxc-2vcg-w5qc",
+      "start_offset": 10,
+      "end_offset": 29,
+      "locator": "/ghsa_id",
+      "quote_sha256": "2d6baeaa926137a3aa319f24967a4524ae45f84f8f6f2a7a21ac3459f148723a",
+      "block_text": "/ghsa_id: GHSA-6cxc-2vcg-w5qc",
+      "block_start": 0,
+      "json_pointer": "/ghsa_id"
+    },
+    {
+      "evidence_id": "ab5bb811-a58d-40e8-a6f0-64a81e02f575",
+      "revision_id": "8e5b91e0-d2bd-432a-b111-8ee50198e1a8",
+      "quote": "CVE-2026-12345",
+      "start_offset": 38,
+      "end_offset": 52,
+      "locator": "/cve_id",
+      "quote_sha256": "18047ef453eb1257e919dd0f98e94478e6c86adc7b226b120fccbb1e19ef2925",
+      "block_text": "/cve_id: CVE-2026-12345",
+      "block_start": 29,
+      "json_pointer": "/cve_id"
+    },
+    {
+      "evidence_id": "6c43f5ac-c5f2-4551-be3d-e5a06108fd75",
+      "revision_id": "8e5b91e0-d2bd-432a-b111-8ee50198e1a8",
+      "quote": "vllm",
+      "start_offset": 5042,
+      "end_offset": 5046,
+      "locator": "/vulnerabilities/0/package/name",
+      "quote_sha256": "ec8207a3dde607f7867f8f5390915018488b877761306ffd4ef099f9b3ee16a1",
+      "block_text": "/vulnerabilities/0/package/name: vllm",
+      "block_start": 5009,
+      "json_pointer": "/vulnerabilities/0/package/name"
+    },
+    {
+      "evidence_id": "582a7289-0b32-4a36-b395-445ed4c78937",
+      "revision_id": "8e5b91e0-d2bd-432a-b111-8ee50198e1a8",
+      "quote": "GHSA-6cxc-2vcg-w5qc",
+      "start_offset": 10,
+      "end_offset": 29,
+      "locator": "/ghsa_id",
+      "quote_sha256": "2d6baeaa926137a3aa319f24967a4524ae45f84f8f6f2a7a21ac3459f148723a",
+      "block_text": "/ghsa_id: GHSA-6cxc-2vcg-w5qc",
+      "block_start": 0,
+      "json_pointer": "/ghsa_id"
+    },
+    {
+      "evidence_id": "56c0c523-f959-4af3-ae53-78f0e6195b3d",
+      "revision_id": "8e5b91e0-d2bd-432a-b111-8ee50198e1a8",
+      "quote": "CVE-2026-12345",
+      "start_offset": 38,
+      "end_offset": 52,
+      "locator": "/cve_id",
+      "quote_sha256": "18047ef453eb1257e919dd0f98e94478e6c86adc7b226b120fccbb1e19ef2925",
+      "block_text": "/cve_id: CVE-2026-12345",
+      "block_start": 29,
+      "json_pointer": "/cve_id"
+    }
+  ]
+}

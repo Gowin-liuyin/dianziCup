@@ -97,7 +97,7 @@ def run(engine, job_id, handler, at=NOW):
     )
 
 
-def handler_for(store, kind, *, clock=lambda: NOW, fetcher=None, poster=None):
+def handler_for(store, kind, *, clock=lambda: NOW, fetcher=None, poster=None, data_mode=None):
     if kind == "avid_community":
         tree, blob = avid_responses()
 
@@ -110,7 +110,11 @@ def handler_for(store, kind, *, clock=lambda: NOW, fetcher=None, poster=None):
             return FetchResult(url, 200, media, body)
 
     return build_source_page_handler(
-        store, fetcher=fetcher or read, poster=poster or (lambda url, body: read(url)), clock=clock
+        store,
+        fetcher=fetcher or read,
+        poster=poster or (lambda url, body: read(url)),
+        clock=clock,
+        data_mode=data_mode,
     )
 
 

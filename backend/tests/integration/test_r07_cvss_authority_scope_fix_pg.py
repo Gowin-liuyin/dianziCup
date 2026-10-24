@@ -54,6 +54,7 @@ def test_two_source_scores_preserve_authority_quotes_metadata_detail_and_replay(
                 "https://services.nvd.nist.gov/rest/json/cves/2.0"
                 "?keywordSearch=ollama&resultsPerPage=100&startIndex=0",
                 NOW,
+                data_mode="fixture",
             ),
             ingested_at=NOW,
         )

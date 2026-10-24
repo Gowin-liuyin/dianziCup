@@ -36,6 +36,9 @@ from ai_intel.knowledge.revisions import QuoteConsistencyError
 pytestmark = pytest.mark.real_pg
 ROOT = Path(__file__).resolve().parents[3]
 RUN = ROOT / "reports/runs/recovery_r06_source_excerpt_event_proof_20261016"
+# pg_case 输出目录默认即 RUN（原始冻结证据目录）；重跑环境可用环境变量把"写"改指
+# 专属目录，避免覆盖既有冻结证据；输入夹具读取始终走 RUN。
+TRACE_DIR = Path(os.environ.get("R06_PROOF_TRACE_DIR", str(RUN)))
 NOW = datetime(2026, 10, 16, 10, tzinfo=UTC)
 ADMIN = AccessScope.for_authenticated_user("fixture-source-proof-admin", None, Role.SYSTEM_ADMIN)
 NVD_URL = (
@@ -80,7 +83,7 @@ def response(kind="nvd_ollama", *, payload=None):
         url = VENDOR_URL
     if payload is not None:
         body = json.dumps(payload, ensure_ascii=False).encode()
-    return SourceResponse(kind, body, url, NOW)
+    return SourceResponse(kind, body, url, NOW, data_mode="fixture")
 
 
 def publish(engine, store, source_response):
@@ -179,7 +182,8 @@ def trace(engine, arguments, result, name):
                 .where(evidence.c.revision_id == str(arguments.revision_id))
             ).mappings()
         ]
-    (RUN / ("pg_case_" + name + ".json")).write_text(
+    TRACE_DIR.mkdir(parents=True, exist_ok=True)
+    (TRACE_DIR / ("pg_case_" + name + ".json")).write_text(
         json.dumps(
             {
                 "data_mode": "fixture",
