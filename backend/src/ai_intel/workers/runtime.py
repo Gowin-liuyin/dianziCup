@@ -21,7 +21,6 @@ from ai_intel.ingestion.source_jobs import SOURCE_JOB_TYPE, build_source_page_ha
 from ai_intel.ingestion.source_polling import enqueue_due_source_collections
 from ai_intel.knowledge.default_graph_runtime import build_default_graph_job_handlers
 from ai_intel.knowledge.models import job_runs
-from ai_intel.retrieval.runtime_policy import build_projection_job_handlers
 from ai_intel.revalidation.runtime_policy import make_revalidation_job_handlers
 from ai_intel.workers.executor import (
     DetachedJobHandler,

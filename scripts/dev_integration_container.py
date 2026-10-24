@@ -126,10 +126,10 @@ def build_environment(run_id: str, port: int) -> dict[str, str]:
     environment.update(
         {
             "DIANZI_TEST_RUN_ID": run_id,
-            "TEST_DATABASE_URL": (
-                f"postgresql://test_dianzi_{run_id}:{password}"
-                f"@127.0.0.1:{port}/test_dianzi_{run_id}"
-            ),
+        "TEST_DATABASE_URL": (
+            f"postgresql+psycopg://test_dianzi_{run_id}:{password}"
+            f"@127.0.0.1:{port}/test_dianzi_{run_id}"
+        ),
             "DIANZI_TEST_ISOLATION": "container",
             "COVERAGE_FILE": "/tmp/.coverage",
         }

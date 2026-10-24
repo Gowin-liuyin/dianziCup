@@ -1,0 +1,148 @@
+F401 [*] `ai_intel.retrieval.runtime_policy.build_projection_job_handlers` imported but unused
+  --> src\ai_intel\workers\runtime.py:24:47
+   |
+22 | from ai_intel.knowledge.default_graph_runtime import build_default_graph_job_handlers
+23 | from ai_intel.knowledge.models import job_runs
+24 | from ai_intel.retrieval.runtime_policy import build_projection_job_handlers
+   |                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+25 | from ai_intel.revalidation.runtime_policy import make_revalidation_job_handlers
+26 | from ai_intel.workers.executor import (
+   |
+help: Remove unused import: `ai_intel.retrieval.runtime_policy.build_projection_job_handlers`
+   |
+23 | from ai_intel.knowledge.models import job_runs
+   - from ai_intel.retrieval.runtime_policy import build_projection_job_handlers
+24 | from ai_intel.revalidation.runtime_policy import make_revalidation_job_handlers
+   |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests\integration\test_r07_structured_fact_proofs_pg.py:7:1
+   |
+ 5 |   """
+ 6 |
+ 7 | / import hashlib
+ 8 | | import json
+ 9 | | import secrets
+10 | | import time
+11 | | from dataclasses import dataclass
+12 | | from datetime import UTC, datetime, timedelta
+13 | | from uuid import UUID, uuid4
+14 | |
+15 | | import pytest
+16 | | from pydantic import SecretStr
+17 | | from sqlalchemy import create_engine, select, text, update
+18 | | from sqlalchemy.engine import make_url
+19 | | from sqlalchemy.orm import Session
+20 | | from sqlalchemy.pool import NullPool
+21 | | from sqlalchemy.schema import CreateSchema
+22 | | from tests.unit.test_r07_public_signals import cwe_document
+23 | | from tests.r06_source_worker_fixtures import source_response
+24 | |
+25 | | from ai_intel.api.actor_references import (
+26 | |     ActorReference,
+27 | |     create_actor_reference,
+28 | |     lock_actor_reference_scope,
+29 | | )
+30 | | from ai_intel.api.auth_state import auth_sessions
+31 | | from ai_intel.api.credentials import SessionCredential
+32 | | from ai_intel.api.document_read_service import sources
+33 | | from ai_intel.domain.access import AccessScope, CrossTenantAccessError, Role
+34 | | from ai_intel.domain.enums import DimensionStatus
+35 | | from ai_intel.domain.values import Identifier, VisibilityScope
+36 | | from ai_intel.enrichment.contracts import DimensionAttempt, EvidenceBoundCandidate
+37 | | from ai_intel.enrichment.inputs import load_event_enrichment_inputs
+38 | | from ai_intel.enrichment.publication import publish_enrichment_attempts
+39 | | from ai_intel.enrichment.signal_sources import select_public_signal_document
+40 | | from ai_intel.enrichment.signals import enrich_structured_fields
+41 | | from ai_intel.infrastructure.content_store import ContentStore
+42 | | from ai_intel.infrastructure.database import run_migrations
+43 | | from ai_intel.ingestion.parsing.parsers import parse_json_document
+44 | | from ai_intel.ingestion.source_documents import (
+45 | |     SourceResponse,
+46 | |     persist_source_response,
+47 | |     source_data_mode_metadata,
+48 | | )
+49 | | from ai_intel.knowledge.event_linking import EventRepository, EventSubmission
+50 | | from ai_intel.knowledge.models import document_revisions, documents, evidence, text_blocks, users
+51 | | from ai_intel.knowledge.persistence_models import (
+52 | |     claim_assertions,
+53 | |     claim_evidence,
+54 | |     claims,
+55 | |     event_documents,
+56 | |     event_external_ids,
+57 | |     events,
+58 | | )
+59 | | from ai_intel.knowledge.revisions import (
+60 | |     SourceRevisionBlock,
+61 | |     register_response_content,
+62 | |     register_source_revision_blocks,
+63 | |     save_document_revision,
+64 | | )
+65 | | from ai_intel.knowledge.structured_fact_proofs import (
+66 | |     StructuredFactProofChangedError,
+67 | |     StructuredFactProofReader,
+68 | |     StructuredFactProofRequest,
+69 | | )
+   | |_^
+70 |
+71 |   pytestmark = pytest.mark.real_pg
+   |
+help: Organize imports
+   |
+21 | from sqlalchemy.schema import CreateSchema
+22 + from tests.r06_source_worker_fixtures import source_response
+23 | from tests.unit.test_r07_public_signals import cwe_document
+   - from tests.r06_source_worker_fixtures import source_response
+24 |
+   |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests\integration\test_r10_projection_fix1_markers.py:3:1
+   |
+ 1 |   """Fault only owned projection markers on real isolated PG and Neo4j resources."""
+ 2 |
+ 3 | / from uuid import uuid4
+ 4 | |
+ 5 | | import pytest
+ 6 | | from pydantic import SecretStr
+ 7 | | from sqlalchemy import delete, select, update
+ 8 | | from sqlalchemy.engine import make_url
+ 9 | | from test_r10_neo4j_projection import apply, candidates
+10 | | from test_r10_neo4j_projection import neo4j_store as neo4j_store
+11 | | from tests.unit.test_r10_projection_batches import batch as synthetic_batch
+12 | | from test_r10_projection_pg import (
+13 | |     PUBLIC,
+14 | |     capture,
+15 | |     header,
+16 | |     manifest_for,
+17 | |     published_fixture,
+18 | | )
+19 | | from test_r10_projection_pg import projection_engine as projection_engine
+20 | |
+21 | | from ai_intel.infrastructure.neo4j_projection import projection_key
+22 | | from ai_intel.knowledge.evidence_graph import RELATION_TYPES
+23 | | from ai_intel.knowledge.graph_projection import (
+24 | |     GRAPH_APPLY_JOB_TYPE,
+25 | |     ProjectionDigestConflict,
+26 | |     ProjectionNotReady,
+27 | |     build_graph_apply_handler,
+28 | |     encode_projection_batch,
+29 | | )
+30 | | from ai_intel.knowledge.graph_projection_models import graph_projection_state
+31 | | from ai_intel.knowledge.models import job_runs, scope_epochs
+32 | | from ai_intel.workers.executor import execute_job
+   | |_________________________________________________^
+help: Organize imports
+   |
+10 | from test_r10_neo4j_projection import neo4j_store as neo4j_store
+   - from tests.unit.test_r10_projection_batches import batch as synthetic_batch
+11 | from test_r10_projection_pg import (
+--------------------------------------------------------------------------------
+18 | from test_r10_projection_pg import projection_engine as projection_engine
+19 + from tests.unit.test_r10_projection_batches import batch as synthetic_batch
+20 |
+   |
+
+Found 3 errors.
+[*] 3 fixable with the `--fix` option.
+exit=1

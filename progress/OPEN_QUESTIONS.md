@@ -4,7 +4,7 @@
 
 ## OQ-1 Docker Desktop daemon 不可达（批次20 主路径冒烟真实执行被阻塞）
 
-**状态更新（2026-10-25T00:4x+08:00，批次21 C1）：主路径冒烟已通过"单容器回环"路线真实解决；宿主虚拟交换机故障本身仍未修复（用户侧事项）。**
+**状态更新（2026-10-24T23:3x+08:00 完成事实、2026-10-25T03:56+08:00 勘误记录，批次21 C1）：主路径冒烟已通过"单容器回环"路线真实解决；宿主虚拟交换机故障本身仍未修复（用户侧事项）。**
 
 - 批次21 C1 按 OQ-1 实测事实（容器内 loopback 与出网正常）把 PostgreSQL16+pgvector 与被测系统放进同一容器（dianzi:batch21-smoke 镜像，python:3.12-bookworm + pgdg），全部流量走容器内 127.0.0.1：`scripts/dev_single_container.py` 编排，attempt7 真实退出码 0，六组断言全过（迁移/夹具/评估/幂等/健康），证据 `reports/runs/batch21_single_container_smoke/attempt7_run.txt`。
 - 过程中发现并修复冒烟脚本真实缺陷：SQLAlchemy 2.1.1 的 `str(URL)` 把密码渲染为 `"***"`，`smoke_main_path.py` 的字符串往返导致密码失效（与宿主无关，任何环境带真实 DATABASE_URL 首跑即触发；宿主侧离线复核 + 容器双探针诊断，6 次尝试定位根因、第 7 次验证修复，cap 偏差已记入 timeline）。
@@ -27,6 +27,8 @@
 
 ## OQ-2 content_read_worker 子进程在 uv 管理的 venv 下必然导入失败（16 个 r07 链红的根因）
 
+**已解决（2026-10-25T03:56+08:00 勘误标注）：用户授权后已于提交 `6c9bb455c` 选定方案 (b) 修复——`content_store.py` Windows 分支新增 `_content_read_child_python_paths()`，4 个受影响文件复测 165 passed 全绿（证据见 batch20 续推轮补记与 red_inventory 附注2）。本节以下保留原始记录供追溯。**
+
 - 发现时间：2026-10-24T02:2x+08:00（批次20基线甄别）
 - 已验证事实（含最小复现）：`backend/src/ai_intel/infrastructure/content_store.py` 在 Windows 下以 `base_prefix/python.exe` + `PYTHONPATH=<venv>/Lib/site-packages` 启动 `ai_intel.infrastructure._content_read_worker` 子进程；该 venv 由 `uv run`/`uv sync` 管理时项目始终以 editable 安装（`_editable_impl_ai_intel_backend.pth` 内容即 `D:\dianzi\backend\src`）。PYTHONPATH 目录不做 .pth 处理，且 `uv run` 每次都会把 `uv sync --no-editable --reinstall-package ai-intel-backend` 的实体安装翻转回 editable（已实测翻转），因此子进程内 `import ai_intel` 恒为 ModuleNotFoundError → `OSError: content_read_worker_unavailable`（content_store.py:233）→ `tests/unit/test_r07_source_io_deadline.py` 等 16 个测试失败。产品代码在不可编辑安装（如容器镜像）下无此问题。
 - 具体缺口：需要评审决定修复方向：(a) 约定本机测试一律 `UV_NO_SYNC=1` 且 venv 保持非 editable 安装（工作流约定）；(b) spawn 环境构造中追加源码布局路径（触碰安全敏感的子进程环境边界，需按变更单走）。
@@ -37,6 +39,8 @@
 ## OQ-3 t06 秘密扫描遗留未分类 finding（54 处，含 10-23 证据脚本）
 
 **状态更新（2026-10-24T11:3x+08:00）：决议经历一次修正。** 用户授权自决后先执行了逐条分类（54 条记录，全部验证为合成值并带证据链，t06 一度 15 passed 转绿）；随后发现分类表受 R20 冻结登记控制（`tests/security/test_r20_secret_provenance.py` 冻结 total_records=136 = 原 54 + 已审增补 82，且扩展需完整的提案证据束程序），单方面追加登记等于绕过该变更单级控制。已回退分类表至 136 条（R20 复测全绿 158 passed），**54 条已建好的分类记录连同证据链保存于 `reports/runs/batch20_secret_classification_20261024/classification_records_54_ready_to_land.json` 作为待落地提案材料**。
+
+**已解决（2026-10-25T03:56+08:00 勘误标注，批次21 C3.1）**：54 条记录已按 R20 提案程序落地（提案材料 `reports/runs/batch21_r20_registry_extension_20261024/`、bundle `fixtures/synthetic/security/r20_registry_extension_batch21.zip`、CR `docs/decisions/CR-R20_secret_registry_extension_batch21.md`，136→190），R20+t06+t02 复跑 303 passed / exit 0；批次21 C3.4 全量 0 failed，"19 failed 历史余量"表述自此作废（历史余量清零）。
 
 - 落地路径：按 R20 提案程序为 54 条记录建立 fixture bundle + fixture_bindings + 更新 total_records（54→190），走变更单；完成后 t06 转绿。
 - 影响：t06 维持唯一历史红（16 codec + 2 迁移 head + 1 t06 = 19 failed 最终余量）；不影响其他批次。
@@ -50,3 +54,12 @@
 - 相邻发现：`public_risk_summary.py` 为同家族更彻底的未接模块（无路由、src 零导入），见盘点报告。
 - 可以继续的独立部分：其余公开面（/vulns /sources /ask）已证实完整接线，契约测试齐备。
 - 最小所需输入：评审决定是否立项 typed-task producer 链（涉及新路由语义、入队与绑定流程、变更单）。
+
+## OQ-5 R19 人工依赖项与 C2 长尾（批次21 C5 完成后的剩余缺口）
+
+- 记录时间：2026-10-25T03:56:00+08:00（批次21 C5 收口）
+- **R19 人工侧未达成项**（工具与装配基础设施已就绪并测试覆盖，见 `reports/runs/batch21_r19_implementation/implementation_report.md`）：真实双人独立标注、分歧裁决、身份核验、冻结 manifest 签字、真实规模扩展（依赖 R04–R16 真实闭环）、镜像/索引泄漏审计——均需人工输入或资源窗，0 gold 如实保持；正式指标声明继续 not_run。
+- **C2 integration 长尾**（107 文件全部有真实 exit code 与数字，56 绿；证据 `reports/runs/batch21_integration_unlocked/`）：51 个非绿文件按类收敛为 (a) 钉定 db/端口拓扑残差——需按 fixture-cluster 预置库拓扑逐文件预置（r11/r15/r16/r18/t24 等，含 6 个 pin 歧义文件）；(b) 平台敏感断言（r07_source_io 37 例为 Windows 语义，宿主 6080 passed 为权威，跨平台统一属产品级工作）；(c) 宿主环境测试（compose/TLS 渲染 21 例，容器无 docker CLI，宿主已证绿）；(d) 真实业务失败待逐条甄别（r04/r05/r06/r07 局部，约 30 例，每个都有完整 traceback 在 *_pf.txt）。下一批建议按 (d)→(a) 顺序收敛；(b)(c) 维持宿主为权威环境。
+- **R21 评审待确认口径**：config_sha256 绑定整份配置（含 baseline_id）导致跨基线不同——r21_plan §5 C01 的"相同"字面预期按"资源字段跨基线一致 + 同基线复跑不变"实现（`reports/runs/batch21_r21_implementation/implementation_report.md` §5.1），需评审确认。
+- **C2 审计族前置条件（plan5 两轮定向重跑后精确化）**：`tests/security/test_r07_input_audit_security_pg.py` 与 `fix1_acl_pg` 的 `owned_audit_engine` fixture 要求 (1) drivername=`postgresql+psycopg`（已解决）(2) 端口=25432（已解决）(3) 一个迁移状态与 helper 自装约束不冲突的预置库——我方 provisioning 的"建库即迁移到 head"与 helper 的 `install=True`（对 0023 迁移已建约束的库再次 CREATE CONSTRAINT）冲突（`psycopg.errors.DuplicateObject`，证据 `reports/runs/batch21_integration_unlocked/test_r07_input_audit_security_pg_pf.txt`）。按同根因纪律停止迭代；正确路径是下批为该族预置"父时代状态库"（migration 到 0022 或 helper 期望的确切状态——需读 helper 安装逻辑确定）。r14_tools_fix1 的 `test_review_real_pg_query_time_is_bounded_not_only_lock_time` 为 (d) 类真实业务失败（19 passed/1 failed，traceback 在案）。
+- 最小所需输入：人工标注资源窗（R19）；下一批 C2 收敛工作包授权（无需新授权类型，纯离线+容器）；R21 口径评审意见。

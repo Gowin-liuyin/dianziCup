@@ -62,9 +62,7 @@ def test_default_consumer_registers_only_trusted_configured_revalidation(
     monkeypatch.setattr(runtime, "build_engine", lambda _: engine)
     monkeypatch.setattr(runtime, "build_content_storage", lambda _: store)
     monkeypatch.setattr(runtime, "build_enrichment_job_service", lambda *_: None)
-    monkeypatch.setattr(
-        default_graph_runtime, "build_projection_job_handlers", projection_handlers
-    )
+    monkeypatch.setattr(default_graph_runtime, "build_projection_job_handlers", projection_handlers)
     monkeypatch.setattr(runtime, "make_revalidation_job_handlers", revalidation_handlers)
     monkeypatch.setattr(runtime, "execute_job", execute)
     job_id = str(uuid4())

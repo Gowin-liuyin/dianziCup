@@ -19,8 +19,8 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 from sqlalchemy.schema import CreateSchema
-from tests.unit.test_r07_public_signals import cwe_document
 from tests.r06_source_worker_fixtures import source_response
+from tests.unit.test_r07_public_signals import cwe_document
 
 from ai_intel.api.actor_references import (
     ActorReference,

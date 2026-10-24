@@ -16,7 +16,7 @@ t06 安全扫描存在 54 处遗留未分类 finding（`progress/OPEN_QUESTIONS.
 
 54 条记录全部来自批次21 指令认可的既有证据链，不新增任何未验证值：
 
-- 范围：22 个路径——10 个 `frontend/src/` 测试文件（assessment/investigation/recommendation 系列）、12 个 `reports/runs/` 历史证据文件（recovery_gc_integrated_e310、r07 默认入口/input_audit 各轮 probes 与日志、r08/r11/r18 各轮 probes、`story_fixture_20261023/verify_story.py`）。
+- 范围：22 个路径——8 个 `frontend/src/` 测试文件（assessments×4、investigations×3、recommendations×1）与 14 个 `reports/runs/` 历史证据文件（recovery_gc_integrated_e310 rosters×3、r07 默认入口/input_audit 各轮 probes×4、r08 aggregates×1、r11 sbom resources×2、r18 api_key probes×2、`story_fixture_20261023/verify_story.py`×1、r11 review1 resource×1）。
 - 每条记录含 `fixture_origin`（source_commit/source_path/source_line/source_blob/source_sha256/data_mode=fixture）与 `review_ref`（前缀 reports/reviews/recovery/G-B-secret-fixture-classification.md，附批次20 总结与 OQ-3 决议引用），全部为 10-14 至 10-24 期间证据脚本与前端测试中的合成凭据字面量。
 - 推导字段（line、match_sha256、value_sha256）按 R20 原 82 行提案的同一约定由当前文件字节计算，生成器对每条验证 raw_sha256 与当前字节一致；line/match_sha256/value_sha256 推导口径已对原提案已知行核对一致（asset-client.test.ts 第 23 行样本三字段全等）。
 
@@ -40,5 +40,5 @@ t06 安全扫描存在 54 处遗留未分类 finding（`progress/OPEN_QUESTIONS.
 - `uv run python -m pytest tests/security/test_r20_secret_provenance.py tests/security/test_t06_authentication_and_scope.py tests/unit/test_t02_project_skeleton.py -q --no-cov`（结果落 `reports/runs/batch21_red_zero/c31_r20_t06_t02_rerun.txt`）。
 - 评审人复核点：generate_extension.py 复跑一致性（表须先回滚 136）、loader 对 190 条全解析、t06 转绿且其余 security 套件无新红。
 
-本次写作结束时间：2026-10-24T23:30:00+08:00
-最后更新时间：2026-10-24T23:30:00+08:00
+本次写作结束时间：2026-10-24T23:30:00+08:00（初稿；文档随提交 13a580e23=2026-10-24T23:35:11+08:00 入库，git 时间戳为权威）
+最后更新时间：2026-10-25T01:5x+08:00（R-A 审查修正：范围路径计数 10/12→8/14）

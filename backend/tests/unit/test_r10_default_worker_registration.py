@@ -32,9 +32,7 @@ def graph_settings(configured: bool) -> ApplicationSettings:
 
 
 @pytest.mark.parametrize("configured", [False, True])
-def test_default_graph_handlers_register_graph_types_without_real_neo4j(
-    monkeypatch, configured
-):
+def test_default_graph_handlers_register_graph_types_without_real_neo4j(monkeypatch, configured):
     from ai_intel.knowledge import default_graph_runtime
 
     settings = graph_settings(configured)
@@ -51,9 +49,7 @@ def test_default_graph_handlers_register_graph_types_without_real_neo4j(
         drivers.append((uri, auth, driver))
         return driver
 
-    monkeypatch.setattr(
-        default_graph_runtime, "build_projection_job_handlers", projection_handlers
-    )
+    monkeypatch.setattr(default_graph_runtime, "build_projection_job_handlers", projection_handlers)
     monkeypatch.setattr(default_graph_runtime.AsyncGraphDatabase, "driver", fake_driver)
 
     class EngineFixture:
@@ -102,9 +98,7 @@ def test_default_worker_consume_job_registers_graph_types(monkeypatch, tmp_path)
     monkeypatch.setattr(runtime, "build_engine", lambda _: EngineFixture())
     monkeypatch.setattr(runtime, "build_content_storage", lambda _: object())
     monkeypatch.setattr(runtime, "build_enrichment_job_service", lambda *_: None)
-    monkeypatch.setattr(
-        default_graph_runtime, "build_projection_job_handlers", projection_handlers
-    )
+    monkeypatch.setattr(default_graph_runtime, "build_projection_job_handlers", projection_handlers)
     monkeypatch.setattr(runtime, "execute_job", execute)
     job_id = str(uuid4())
     assert runtime.consume_job(job_id) == {"job_id": job_id, "outcome": "not_claimed"}

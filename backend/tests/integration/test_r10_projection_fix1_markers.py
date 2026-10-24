@@ -8,7 +8,6 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.engine import make_url
 from test_r10_neo4j_projection import apply, candidates
 from test_r10_neo4j_projection import neo4j_store as neo4j_store
-from tests.unit.test_r10_projection_batches import batch as synthetic_batch
 from test_r10_projection_pg import (
     PUBLIC,
     capture,
@@ -17,6 +16,7 @@ from test_r10_projection_pg import (
     published_fixture,
 )
 from test_r10_projection_pg import projection_engine as projection_engine
+from tests.unit.test_r10_projection_batches import batch as synthetic_batch
 
 from ai_intel.infrastructure.neo4j_projection import projection_key
 from ai_intel.knowledge.evidence_graph import RELATION_TYPES

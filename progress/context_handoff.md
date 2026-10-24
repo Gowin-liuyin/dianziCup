@@ -1,3 +1,7 @@
+## 当前权威续接与并行文件所有权 · 2026-10-25T04:3x+08:00（批次21 收口）
+
+批次21（零人工自主收敛，C0–C7）完成于 2026-10-25T04:3x+08:00，HEAD 见 `git log`（10 个 checkpoint，导入前 6c9bb455c）。各批一句话结论：**C1** 单容器回环冒烟真实通过（attempt7 smoke_exit=0；根因=str(URL) 密码掩码，已修；OQ-1 单容器路线闭环）；**C2** integration 逐文件真实执行（107 文件全有 exit+数字：56 绿 / 1103 passed / 74 failed / 511 errors；unlock_v2 组 6216 passed / 0 errors 证实 A2 解锁；51 非绿四类收敛入 OQ-5）；**C3** 历史红清零（三份 CR：R20 136→190 / codec -2 / head 0031；C3.4 全量 6080 passed / **0 failed**）；**C4** 三份独立审查（R-A/R-B/R-C）13 条 needs_changes 全部闭环，R06.unit 经书面建议+复跑证据改判 passed（整卡仍 needs_changes）；**C5** R10 默认图消费者（已审切片恢复+装配，171+5 绿）/ producer 盘点（/tasks 缺口入 OQ-4）/ R19 开发集装配（0 gold，10+69 绿）/ R21 评测骨架（19 绿，B0 对真实 R19 manifest 端到端绿）；**C6** 终局全量 **6253 passed / 0 failed / 83 设计内 blocked** + ruff/format/mypy 全 0 + 前端四门全 0（对照 batch20：5928/19 failed，failed 只减不增）。红余量：离线 0 failed；integration 长尾与 R19 人工项、R21 口径、/tasks producer 链见 `OPEN_QUESTIONS.md` OQ-4/OQ-5。未运行：6 小时采集、live、compose profile 宿主验证（OQ-1 宿主网络归用户）。下一批建议：C2 长尾按 OQ-5 顺序收敛 → R19 人工标注窗申请 → R21 口径评审 → /tasks 立项评审 → 资源窗获批后 R06 integration/live 与 G-C 阶段门。tsbuildinfo 保护 SHA 未变；全程 10 提交逐文件 add、无秘密/holdout 入库；本条目与全部证据索引见 `reports/tasks/Root-batch21-summary.md` 与 `reports/runs/batch21_timeline.md`。
+
 ## 当前权威续接与并行文件所有权 · 2026-10-17T01:44:56+08:00
 
 Root分支codex/full-delivery-recovery，实际HEAD 9726363e0d9b33467ba40a06a8bde9548b46bccf；origin本轮01:41:14工具读取仍授权URL。G-C仍in_progress/partial，最后核对远端G-B c229a7f43ec9684a4e2d2e7a2ccb9f6ebfbfbee7，无新合格阶段push。以下独立Ship只覆盖报告的切片，原T卡状态和整R卡验收不改绿。

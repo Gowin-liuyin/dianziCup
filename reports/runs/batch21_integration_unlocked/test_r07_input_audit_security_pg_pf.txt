@@ -1,0 +1,2619 @@
+run_id=r07_input_audit_20261016
+port=25432
+pin_ambiguity=False
+file=tests/security/test_r07_input_audit_security_pg.py
+EEEEEEEEEEEE                                                             [100%]
+==================================== ERRORS ====================================
+_ ERROR at setup of test_private_selection_is_absent_from_public_dto_but_authorized_internal_read_exists _
+self = <sqlalchemy.engine.base.Connection object at 0x7c28ee5abc50>
+dialect = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGDialect_psycopg object at 0x7c28ee5aa780>
+context = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGExecutionContext_psycopg object at 0x7c28ee6518e0>
+statement = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+parameters = [immutabledict({})]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ee43d910>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.DuplicateObject: constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: DuplicateObject
+
+The above exception was the direct cause of the following exception:
+
+isolated_test_database_url = '[redacted test connection]'
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x7c28ee78d120>
+
+    @pytest.fixture
+    def audit_engine(isolated_test_database_url, register_sensitive_failure_value) -> Iterator[Engine]:
+>       yield from owned_audit_engine(isolated_test_database_url, register_sensitive_failure_value)
+
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:95: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:84: in owned_audit_engine
+    install_audit_proposal(engine)
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:47: in install_audit_proposal
+    connection.exec_driver_sql(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1755: in exec_driver_sql
+    ret = self._execute_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ee43d910>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateObject) constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+E           [SQL: ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AND [redacted test credential fragment]dit_sha256 IS NULL) OR (jsonb_typeof([redacted test credential fragment]dit_payload)='object' AND octet_length([redacted test credential fragment]dit_payload::text)<=4194304 AND [redacted test credential fragment]dit_sha256 ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_sha256=encode(sha256(convert_to([redacted test credential fragment]dit_payload::text,'UTF8')),'hex') AND dimension IN ('atlas','versions','literature','poc') AND model_call_reserved_at IS NOT NULL AND model_call_completed_at IS NOT NULL AND jsonb_array_length(model_trace)=1 AND [redacted test credential fragment]dit_payload->>'audit_version'='r07-input-audit-1' AND [redacted test credential fragment]dit_payload->>'job_id'=job_id AND [redacted test credential fragment]dit_payload->>'workflow_id'=workflow_id AND [redacted test credential fragment]dit_payload->>'dimension'=dimension AND [redacted test credential fragment]dit_payload->>'input_fingerprint' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'execution_policy_sha256' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'model_version'=model_trace->0->>'requested_model' AND [redacted test credential fragment]dit_payload->>'provider'=model_trace->0->>'provider' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'prompt_version'=model_trace->0->>'prompt_version' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'schema_version'=model_trace->0->>'schema_version' AND jsonb_typeof([redacted test credential fragment]dit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: ProgrammingError
+_ ERROR at setup of test_current_scope_session_role_and_parent_acl_protect_private_selection[other_tenant] _
+self = <sqlalchemy.engine.base.Connection object at 0x7c28ee615970>
+dialect = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGDialect_psycopg object at 0x7c28ee648920>
+context = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGExecutionContext_psycopg object at 0x7c28ee6725a0>
+statement = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+parameters = [immutabledict({})]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ecdb0410>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.DuplicateObject: constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: DuplicateObject
+
+The above exception was the direct cause of the following exception:
+
+isolated_test_database_url = '[redacted test connection]'
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x7c28ed1fd9e0>
+
+    @pytest.fixture
+    def audit_engine(isolated_test_database_url, register_sensitive_failure_value) -> Iterator[Engine]:
+>       yield from owned_audit_engine(isolated_test_database_url, register_sensitive_failure_value)
+
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:95: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:84: in owned_audit_engine
+    install_audit_proposal(engine)
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:47: in install_audit_proposal
+    connection.exec_driver_sql(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1755: in exec_driver_sql
+    ret = self._execute_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ecdb0410>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateObject) constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+E           [SQL: ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AND [redacted test credential fragment]dit_sha256 IS NULL) OR (jsonb_typeof([redacted test credential fragment]dit_payload)='object' AND octet_length([redacted test credential fragment]dit_payload::text)<=4194304 AND [redacted test credential fragment]dit_sha256 ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_sha256=encode(sha256(convert_to([redacted test credential fragment]dit_payload::text,'UTF8')),'hex') AND dimension IN ('atlas','versions','literature','poc') AND model_call_reserved_at IS NOT NULL AND model_call_completed_at IS NOT NULL AND jsonb_array_length(model_trace)=1 AND [redacted test credential fragment]dit_payload->>'audit_version'='r07-input-audit-1' AND [redacted test credential fragment]dit_payload->>'job_id'=job_id AND [redacted test credential fragment]dit_payload->>'workflow_id'=workflow_id AND [redacted test credential fragment]dit_payload->>'dimension'=dimension AND [redacted test credential fragment]dit_payload->>'input_fingerprint' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'execution_policy_sha256' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'model_version'=model_trace->0->>'requested_model' AND [redacted test credential fragment]dit_payload->>'provider'=model_trace->0->>'provider' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'prompt_version'=model_trace->0->>'prompt_version' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'schema_version'=model_trace->0->>'schema_version' AND jsonb_typeof([redacted test credential fragment]dit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: ProgrammingError
+_ ERROR at setup of test_current_scope_session_role_and_parent_acl_protect_private_selection[same_tenant_viewer] _
+self = <sqlalchemy.engine.base.Connection object at 0x7c28ee623a70>
+dialect = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGDialect_psycopg object at 0x7c28ee622750>
+context = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGExecutionContext_psycopg object at 0x7c28ee6525a0>
+statement = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+parameters = [immutabledict({})]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ee43f650>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.DuplicateObject: constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: DuplicateObject
+
+The above exception was the direct cause of the following exception:
+
+isolated_test_database_url = '[redacted test connection]'
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x7c28ed109620>
+
+    @pytest.fixture
+    def audit_engine(isolated_test_database_url, register_sensitive_failure_value) -> Iterator[Engine]:
+>       yield from owned_audit_engine(isolated_test_database_url, register_sensitive_failure_value)
+
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:95: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:84: in owned_audit_engine
+    install_audit_proposal(engine)
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:47: in install_audit_proposal
+    connection.exec_driver_sql(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1755: in exec_driver_sql
+    ret = self._execute_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ee43f650>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateObject) constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+E           [SQL: ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AND [redacted test credential fragment]dit_sha256 IS NULL) OR (jsonb_typeof([redacted test credential fragment]dit_payload)='object' AND octet_length([redacted test credential fragment]dit_payload::text)<=4194304 AND [redacted test credential fragment]dit_sha256 ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_sha256=encode(sha256(convert_to([redacted test credential fragment]dit_payload::text,'UTF8')),'hex') AND dimension IN ('atlas','versions','literature','poc') AND model_call_reserved_at IS NOT NULL AND model_call_completed_at IS NOT NULL AND jsonb_array_length(model_trace)=1 AND [redacted test credential fragment]dit_payload->>'audit_version'='r07-input-audit-1' AND [redacted test credential fragment]dit_payload->>'job_id'=job_id AND [redacted test credential fragment]dit_payload->>'workflow_id'=workflow_id AND [redacted test credential fragment]dit_payload->>'dimension'=dimension AND [redacted test credential fragment]dit_payload->>'input_fingerprint' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'execution_policy_sha256' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'model_version'=model_trace->0->>'requested_model' AND [redacted test credential fragment]dit_payload->>'provider'=model_trace->0->>'provider' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'prompt_version'=model_trace->0->>'prompt_version' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'schema_version'=model_trace->0->>'schema_version' AND jsonb_typeof([redacted test credential fragment]dit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: ProgrammingError
+_ ERROR at setup of test_current_scope_session_role_and_parent_acl_protect_private_selection[revoked] _
+self = <sqlalchemy.engine.base.Connection object at 0x7c28ee4a2d50>
+dialect = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGDialect_psycopg object at 0x7c28ee4a1370>
+context = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGExecutionContext_psycopg object at 0x7c28ee4cd6d0>
+statement = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+parameters = [immutabledict({})]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ecdb2990>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.DuplicateObject: constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: DuplicateObject
+
+The above exception was the direct cause of the following exception:
+
+isolated_test_database_url = '[redacted test connection]'
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x7c28ec5f7600>
+
+    @pytest.fixture
+    def audit_engine(isolated_test_database_url, register_sensitive_failure_value) -> Iterator[Engine]:
+>       yield from owned_audit_engine(isolated_test_database_url, register_sensitive_failure_value)
+
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:95: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:84: in owned_audit_engine
+    install_audit_proposal(engine)
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:47: in install_audit_proposal
+    connection.exec_driver_sql(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1755: in exec_driver_sql
+    ret = self._execute_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ecdb2990>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateObject) constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+E           [SQL: ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AND [redacted test credential fragment]dit_sha256 IS NULL) OR (jsonb_typeof([redacted test credential fragment]dit_payload)='object' AND octet_length([redacted test credential fragment]dit_payload::text)<=4194304 AND [redacted test credential fragment]dit_sha256 ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_sha256=encode(sha256(convert_to([redacted test credential fragment]dit_payload::text,'UTF8')),'hex') AND dimension IN ('atlas','versions','literature','poc') AND model_call_reserved_at IS NOT NULL AND model_call_completed_at IS NOT NULL AND jsonb_array_length(model_trace)=1 AND [redacted test credential fragment]dit_payload->>'audit_version'='r07-input-audit-1' AND [redacted test credential fragment]dit_payload->>'job_id'=job_id AND [redacted test credential fragment]dit_payload->>'workflow_id'=workflow_id AND [redacted test credential fragment]dit_payload->>'dimension'=dimension AND [redacted test credential fragment]dit_payload->>'input_fingerprint' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'execution_policy_sha256' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'model_version'=model_trace->0->>'requested_model' AND [redacted test credential fragment]dit_payload->>'provider'=model_trace->0->>'provider' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'prompt_version'=model_trace->0->>'prompt_version' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'schema_version'=model_trace->0->>'schema_version' AND jsonb_typeof([redacted test credential fragment]dit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: ProgrammingError
+_ ERROR at setup of test_current_scope_session_role_and_parent_acl_protect_private_selection[changed_role] _
+self = <sqlalchemy.engine.base.Connection object at 0x7c28ee5024e0>
+dialect = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGDialect_psycopg object at 0x7c28ee51a5a0>
+context = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGExecutionContext_psycopg object at 0x7c28ee502750>
+statement = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+parameters = [immutabledict({})]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ecdb0350>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.DuplicateObject: constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: DuplicateObject
+
+The above exception was the direct cause of the following exception:
+
+isolated_test_database_url = '[redacted test connection]'
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x7c28ed107600>
+
+    @pytest.fixture
+    def audit_engine(isolated_test_database_url, register_sensitive_failure_value) -> Iterator[Engine]:
+>       yield from owned_audit_engine(isolated_test_database_url, register_sensitive_failure_value)
+
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:95: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:84: in owned_audit_engine
+    install_audit_proposal(engine)
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:47: in install_audit_proposal
+    connection.exec_driver_sql(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1755: in exec_driver_sql
+    ret = self._execute_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ecdb0350>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateObject) constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+E           [SQL: ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AND [redacted test credential fragment]dit_sha256 IS NULL) OR (jsonb_typeof([redacted test credential fragment]dit_payload)='object' AND octet_length([redacted test credential fragment]dit_payload::text)<=4194304 AND [redacted test credential fragment]dit_sha256 ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_sha256=encode(sha256(convert_to([redacted test credential fragment]dit_payload::text,'UTF8')),'hex') AND dimension IN ('atlas','versions','literature','poc') AND model_call_reserved_at IS NOT NULL AND model_call_completed_at IS NOT NULL AND jsonb_array_length(model_trace)=1 AND [redacted test credential fragment]dit_payload->>'audit_version'='r07-input-audit-1' AND [redacted test credential fragment]dit_payload->>'job_id'=job_id AND [redacted test credential fragment]dit_payload->>'workflow_id'=workflow_id AND [redacted test credential fragment]dit_payload->>'dimension'=dimension AND [redacted test credential fragment]dit_payload->>'input_fingerprint' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'execution_policy_sha256' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'model_version'=model_trace->0->>'requested_model' AND [redacted test credential fragment]dit_payload->>'provider'=model_trace->0->>'provider' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'prompt_version'=model_trace->0->>'prompt_version' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'schema_version'=model_trace->0->>'schema_version' AND jsonb_typeof([redacted test credential fragment]dit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: ProgrammingError
+_ ERROR at setup of test_current_scope_session_role_and_parent_acl_protect_private_selection[parent_acl] _
+self = <sqlalchemy.engine.base.Connection object at 0x7c28ee166720>
+dialect = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGDialect_psycopg object at 0x7c28ee165b50>
+context = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGExecutionContext_psycopg object at 0x7c28ee172030>
+statement = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+parameters = [immutabledict({})]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ecdb37d0>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.DuplicateObject: constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: DuplicateObject
+
+The above exception was the direct cause of the following exception:
+
+isolated_test_database_url = '[redacted test connection]'
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x7c28ec9a4c20>
+
+    @pytest.fixture
+    def audit_engine(isolated_test_database_url, register_sensitive_failure_value) -> Iterator[Engine]:
+>       yield from owned_audit_engine(isolated_test_database_url, register_sensitive_failure_value)
+
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:95: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:84: in owned_audit_engine
+    install_audit_proposal(engine)
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:47: in install_audit_proposal
+    connection.exec_driver_sql(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1755: in exec_driver_sql
+    ret = self._execute_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ecdb37d0>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateObject) constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+E           [SQL: ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AND [redacted test credential fragment]dit_sha256 IS NULL) OR (jsonb_typeof([redacted test credential fragment]dit_payload)='object' AND octet_length([redacted test credential fragment]dit_payload::text)<=4194304 AND [redacted test credential fragment]dit_sha256 ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_sha256=encode(sha256(convert_to([redacted test credential fragment]dit_payload::text,'UTF8')),'hex') AND dimension IN ('atlas','versions','literature','poc') AND model_call_reserved_at IS NOT NULL AND model_call_completed_at IS NOT NULL AND jsonb_array_length(model_trace)=1 AND [redacted test credential fragment]dit_payload->>'audit_version'='r07-input-audit-1' AND [redacted test credential fragment]dit_payload->>'job_id'=job_id AND [redacted test credential fragment]dit_payload->>'workflow_id'=workflow_id AND [redacted test credential fragment]dit_payload->>'dimension'=dimension AND [redacted test credential fragment]dit_payload->>'input_fingerprint' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'execution_policy_sha256' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'model_version'=model_trace->0->>'requested_model' AND [redacted test credential fragment]dit_payload->>'provider'=model_trace->0->>'provider' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'prompt_version'=model_trace->0->>'prompt_version' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'schema_version'=model_trace->0->>'schema_version' AND jsonb_typeof([redacted test credential fragment]dit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: ProgrammingError
+_ ERROR at setup of test_new_same_actor_session_can_read_history_without_rebinding_execution _
+self = <sqlalchemy.engine.base.Connection object at 0x7c28ee52efc0>
+dialect = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGDialect_psycopg object at 0x7c28ec9856a0>
+context = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGExecutionContext_psycopg object at 0x7c28ec92b350>
+statement = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+parameters = [immutabledict({})]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ec921250>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.DuplicateObject: constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: DuplicateObject
+
+The above exception was the direct cause of the following exception:
+
+isolated_test_database_url = '[redacted test connection]'
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x7c28ec9eae80>
+
+    @pytest.fixture
+    def audit_engine(isolated_test_database_url, register_sensitive_failure_value) -> Iterator[Engine]:
+>       yield from owned_audit_engine(isolated_test_database_url, register_sensitive_failure_value)
+
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:95: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:84: in owned_audit_engine
+    install_audit_proposal(engine)
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:47: in install_audit_proposal
+    connection.exec_driver_sql(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1755: in exec_driver_sql
+    ret = self._execute_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ec921250>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateObject) constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+E           [SQL: ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AND [redacted test credential fragment]dit_sha256 IS NULL) OR (jsonb_typeof([redacted test credential fragment]dit_payload)='object' AND octet_length([redacted test credential fragment]dit_payload::text)<=4194304 AND [redacted test credential fragment]dit_sha256 ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_sha256=encode(sha256(convert_to([redacted test credential fragment]dit_payload::text,'UTF8')),'hex') AND dimension IN ('atlas','versions','literature','poc') AND model_call_reserved_at IS NOT NULL AND model_call_completed_at IS NOT NULL AND jsonb_array_length(model_trace)=1 AND [redacted test credential fragment]dit_payload->>'audit_version'='r07-input-audit-1' AND [redacted test credential fragment]dit_payload->>'job_id'=job_id AND [redacted test credential fragment]dit_payload->>'workflow_id'=workflow_id AND [redacted test credential fragment]dit_payload->>'dimension'=dimension AND [redacted test credential fragment]dit_payload->>'input_fingerprint' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'execution_policy_sha256' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'model_version'=model_trace->0->>'requested_model' AND [redacted test credential fragment]dit_payload->>'provider'=model_trace->0->>'provider' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'prompt_version'=model_trace->0->>'prompt_version' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'schema_version'=model_trace->0->>'schema_version' AND jsonb_typeof([redacted test credential fragment]dit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: ProgrammingError
+_ ERROR at setup of test_corrupt_persisted_audit_is_rejected_even_if_database_constraints_are_fault_injected[hash] _
+self = <sqlalchemy.engine.base.Connection object at 0x7c28ee539f70>
+dialect = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGDialect_psycopg object at 0x7c28ebd11670>
+context = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGExecutionContext_psycopg object at 0x7c28ebd13680>
+statement = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+parameters = [immutabledict({})]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ec923950>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.DuplicateObject: constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: DuplicateObject
+
+The above exception was the direct cause of the following exception:
+
+isolated_test_database_url = '[redacted test connection]'
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x7c28ebdbdc60>
+
+    @pytest.fixture
+    def audit_engine(isolated_test_database_url, register_sensitive_failure_value) -> Iterator[Engine]:
+>       yield from owned_audit_engine(isolated_test_database_url, register_sensitive_failure_value)
+
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:95: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:84: in owned_audit_engine
+    install_audit_proposal(engine)
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:47: in install_audit_proposal
+    connection.exec_driver_sql(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1755: in exec_driver_sql
+    ret = self._execute_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ec923950>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateObject) constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+E           [SQL: ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AND [redacted test credential fragment]dit_sha256 IS NULL) OR (jsonb_typeof([redacted test credential fragment]dit_payload)='object' AND octet_length([redacted test credential fragment]dit_payload::text)<=4194304 AND [redacted test credential fragment]dit_sha256 ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_sha256=encode(sha256(convert_to([redacted test credential fragment]dit_payload::text,'UTF8')),'hex') AND dimension IN ('atlas','versions','literature','poc') AND model_call_reserved_at IS NOT NULL AND model_call_completed_at IS NOT NULL AND jsonb_array_length(model_trace)=1 AND [redacted test credential fragment]dit_payload->>'audit_version'='r07-input-audit-1' AND [redacted test credential fragment]dit_payload->>'job_id'=job_id AND [redacted test credential fragment]dit_payload->>'workflow_id'=workflow_id AND [redacted test credential fragment]dit_payload->>'dimension'=dimension AND [redacted test credential fragment]dit_payload->>'input_fingerprint' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'execution_policy_sha256' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'model_version'=model_trace->0->>'requested_model' AND [redacted test credential fragment]dit_payload->>'provider'=model_trace->0->>'provider' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'prompt_version'=model_trace->0->>'prompt_version' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'schema_version'=model_trace->0->>'schema_version' AND jsonb_typeof([redacted test credential fragment]dit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: ProgrammingError
+_ ERROR at setup of test_corrupt_persisted_audit_is_rejected_even_if_database_constraints_are_fault_injected[source_hash] _
+self = <sqlalchemy.engine.base.Connection object at 0x7c28ec15f920>
+dialect = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGDialect_psycopg object at 0x7c28ec1077a0>
+context = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGExecutionContext_psycopg object at 0x7c28ec1050a0>
+statement = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+parameters = [immutabledict({})]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ec920dd0>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.DuplicateObject: constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: DuplicateObject
+
+The above exception was the direct cause of the following exception:
+
+isolated_test_database_url = '[redacted test connection]'
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x7c28ec1e5940>
+
+    @pytest.fixture
+    def audit_engine(isolated_test_database_url, register_sensitive_failure_value) -> Iterator[Engine]:
+>       yield from owned_audit_engine(isolated_test_database_url, register_sensitive_failure_value)
+
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:95: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:84: in owned_audit_engine
+    install_audit_proposal(engine)
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:47: in install_audit_proposal
+    connection.exec_driver_sql(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1755: in exec_driver_sql
+    ret = self._execute_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ec920dd0>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateObject) constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+E           [SQL: ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AND [redacted test credential fragment]dit_sha256 IS NULL) OR (jsonb_typeof([redacted test credential fragment]dit_payload)='object' AND octet_length([redacted test credential fragment]dit_payload::text)<=4194304 AND [redacted test credential fragment]dit_sha256 ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_sha256=encode(sha256(convert_to([redacted test credential fragment]dit_payload::text,'UTF8')),'hex') AND dimension IN ('atlas','versions','literature','poc') AND model_call_reserved_at IS NOT NULL AND model_call_completed_at IS NOT NULL AND jsonb_array_length(model_trace)=1 AND [redacted test credential fragment]dit_payload->>'audit_version'='r07-input-audit-1' AND [redacted test credential fragment]dit_payload->>'job_id'=job_id AND [redacted test credential fragment]dit_payload->>'workflow_id'=workflow_id AND [redacted test credential fragment]dit_payload->>'dimension'=dimension AND [redacted test credential fragment]dit_payload->>'input_fingerprint' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'execution_policy_sha256' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'model_version'=model_trace->0->>'requested_model' AND [redacted test credential fragment]dit_payload->>'provider'=model_trace->0->>'provider' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'prompt_version'=model_trace->0->>'prompt_version' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'schema_version'=model_trace->0->>'schema_version' AND jsonb_typeof([redacted test credential fragment]dit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: ProgrammingError
+_ ERROR at setup of test_corrupt_persisted_audit_is_rejected_even_if_database_constraints_are_fault_injected[omission] _
+self = <sqlalchemy.engine.base.Connection object at 0x7c28ebdfa3c0>
+dialect = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGDialect_psycopg object at 0x7c28ec1f5880>
+context = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGExecutionContext_psycopg object at 0x7c28ec986a20>
+statement = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+parameters = [immutabledict({})]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ee43d310>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.DuplicateObject: constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: DuplicateObject
+
+The above exception was the direct cause of the following exception:
+
+isolated_test_database_url = '[redacted test connection]'
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x7c28ee3a0900>
+
+    @pytest.fixture
+    def audit_engine(isolated_test_database_url, register_sensitive_failure_value) -> Iterator[Engine]:
+>       yield from owned_audit_engine(isolated_test_database_url, register_sensitive_failure_value)
+
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:95: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:84: in owned_audit_engine
+    install_audit_proposal(engine)
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:47: in install_audit_proposal
+    connection.exec_driver_sql(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1755: in exec_driver_sql
+    ret = self._execute_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ee43d310>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateObject) constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+E           [SQL: ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AND [redacted test credential fragment]dit_sha256 IS NULL) OR (jsonb_typeof([redacted test credential fragment]dit_payload)='object' AND octet_length([redacted test credential fragment]dit_payload::text)<=4194304 AND [redacted test credential fragment]dit_sha256 ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_sha256=encode(sha256(convert_to([redacted test credential fragment]dit_payload::text,'UTF8')),'hex') AND dimension IN ('atlas','versions','literature','poc') AND model_call_reserved_at IS NOT NULL AND model_call_completed_at IS NOT NULL AND jsonb_array_length(model_trace)=1 AND [redacted test credential fragment]dit_payload->>'audit_version'='r07-input-audit-1' AND [redacted test credential fragment]dit_payload->>'job_id'=job_id AND [redacted test credential fragment]dit_payload->>'workflow_id'=workflow_id AND [redacted test credential fragment]dit_payload->>'dimension'=dimension AND [redacted test credential fragment]dit_payload->>'input_fingerprint' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'execution_policy_sha256' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'model_version'=model_trace->0->>'requested_model' AND [redacted test credential fragment]dit_payload->>'provider'=model_trace->0->>'provider' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'prompt_version'=model_trace->0->>'prompt_version' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'schema_version'=model_trace->0->>'schema_version' AND jsonb_typeof([redacted test credential fragment]dit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: ProgrammingError
+_ ERROR at setup of test_corrupt_persisted_audit_is_rejected_even_if_database_constraints_are_fault_injected[extra] _
+self = <sqlalchemy.engine.base.Connection object at 0x7c28ec9728a0>
+dialect = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGDialect_psycopg object at 0x7c28ee65b320>
+context = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGExecutionContext_psycopg object at 0x7c28ee52f260>
+statement = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+parameters = [immutabledict({})]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ee43fe90>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.DuplicateObject: constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: DuplicateObject
+
+The above exception was the direct cause of the following exception:
+
+isolated_test_database_url = '[redacted test connection]'
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x7c28ec9a6d40>
+
+    @pytest.fixture
+    def audit_engine(isolated_test_database_url, register_sensitive_failure_value) -> Iterator[Engine]:
+>       yield from owned_audit_engine(isolated_test_database_url, register_sensitive_failure_value)
+
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:95: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:84: in owned_audit_engine
+    install_audit_proposal(engine)
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:47: in install_audit_proposal
+    connection.exec_driver_sql(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1755: in exec_driver_sql
+    ret = self._execute_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ee43fe90>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateObject) constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+E           [SQL: ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AND [redacted test credential fragment]dit_sha256 IS NULL) OR (jsonb_typeof([redacted test credential fragment]dit_payload)='object' AND octet_length([redacted test credential fragment]dit_payload::text)<=4194304 AND [redacted test credential fragment]dit_sha256 ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_sha256=encode(sha256(convert_to([redacted test credential fragment]dit_payload::text,'UTF8')),'hex') AND dimension IN ('atlas','versions','literature','poc') AND model_call_reserved_at IS NOT NULL AND model_call_completed_at IS NOT NULL AND jsonb_array_length(model_trace)=1 AND [redacted test credential fragment]dit_payload->>'audit_version'='r07-input-audit-1' AND [redacted test credential fragment]dit_payload->>'job_id'=job_id AND [redacted test credential fragment]dit_payload->>'workflow_id'=workflow_id AND [redacted test credential fragment]dit_payload->>'dimension'=dimension AND [redacted test credential fragment]dit_payload->>'input_fingerprint' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'execution_policy_sha256' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'model_version'=model_trace->0->>'requested_model' AND [redacted test credential fragment]dit_payload->>'provider'=model_trace->0->>'provider' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'prompt_version'=model_trace->0->>'prompt_version' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'schema_version'=model_trace->0->>'schema_version' AND jsonb_typeof([redacted test credential fragment]dit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: ProgrammingError
+_ ERROR at setup of test_corrupt_persisted_audit_is_rejected_even_if_database_constraints_are_fault_injected[job_identity] _
+self = <sqlalchemy.engine.base.Connection object at 0x7c28ee64aa50>
+dialect = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGDialect_psycopg object at 0x7c28ee671670>
+context = <sqlalchemy.dialects.[redacted test credential fragment]ql.psycopg.PGExecutionContext_psycopg object at 0x7c28ec9284a0>
+statement = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+parameters = [immutabledict({})]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ee43e5d0>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.DuplicateObject: constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: DuplicateObject
+
+The above exception was the direct cause of the following exception:
+
+isolated_test_database_url = '[redacted test connection]'
+register_sensitive_failure_value = <function register_sensitive_failure_value.<locals>.register at 0x7c28ed1f5b20>
+
+    @pytest.fixture
+    def audit_engine(isolated_test_database_url, register_sensitive_failure_value) -> Iterator[Engine]:
+>       yield from owned_audit_engine(isolated_test_database_url, register_sensitive_failure_value)
+
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:95: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:84: in owned_audit_engine
+    install_audit_proposal(engine)
+tests/[redacted test credential fragment][redacted test credential fragment]helpers.py:47: in install_audit_proposal
+    connection.exec_driver_sql(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1755: in exec_driver_sql
+    ret = self._execute_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+/tmp/venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x7c28ee43e5d0>
+query = "ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AN...audit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)"
+params = immutabledict({})
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateObject) constraint "ck_enrichment_step[redacted test credential fragment]udit" for relation "enrichment_job_steps" already exists
+E           [SQL: ALTER TABLE enrichment_job_steps ADD CONSTRAINT ck_enrichment_step[redacted test credential fragment]udit CHECK (([redacted test credential fragment]dit_payload IS NULL AND [redacted test credential fragment]dit_sha256 IS NULL) OR (jsonb_typeof([redacted test credential fragment]dit_payload)='object' AND octet_length([redacted test credential fragment]dit_payload::text)<=4194304 AND [redacted test credential fragment]dit_sha256 ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_sha256=encode(sha256(convert_to([redacted test credential fragment]dit_payload::text,'UTF8')),'hex') AND dimension IN ('atlas','versions','literature','poc') AND model_call_reserved_at IS NOT NULL AND model_call_completed_at IS NOT NULL AND jsonb_array_length(model_trace)=1 AND [redacted test credential fragment]dit_payload->>'audit_version'='r07-input-audit-1' AND [redacted test credential fragment]dit_payload->>'job_id'=job_id AND [redacted test credential fragment]dit_payload->>'workflow_id'=workflow_id AND [redacted test credential fragment]dit_payload->>'dimension'=dimension AND [redacted test credential fragment]dit_payload->>'input_fingerprint' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'execution_policy_sha256' ~ '^[0-9a-f]{64}$' AND [redacted test credential fragment]dit_payload->>'model_version'=model_trace->0->>'requested_model' AND [redacted test credential fragment]dit_payload->>'provider'=model_trace->0->>'provider' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'prompt_version'=model_trace->0->>'prompt_version' AND [redacted test credential fragment]dit_payload->'model_input_versions'->>'schema_version'=model_trace->0->>'schema_version' AND jsonb_typeof([redacted test credential fragment]dit_payload->'input_selections')='array' AND jsonb_array_length([redacted test credential fragment]dit_payload->'input_selections')=1) IS TRUE)]
+E           (Background on this error at: https://sqlalche.me/e/21/f405)
+
+/tmp/venv/lib/python3.12/site-packages/psycopg/cursor.py:117: ProgrammingError
+=============================== warnings summary ===============================
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/nodeids: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/nodeids'
+    config.cache.set("cache/nodeids", sorted(self.cached_nodeids))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+ERROR tests/security/test_r07_input_audit_security_pg.py::test_private_selection_is_absent_from_public_dto_but_authorized_internal_read_exists
+ERROR tests/security/test_r07_input_audit_security_pg.py::test_current_scope_session_role_and_parent_acl_protect_private_selection[other_tenant]
+ERROR tests/security/test_r07_input_audit_security_pg.py::test_current_scope_session_role_and_parent_acl_protect_private_selection[same_tenant_viewer]
+ERROR tests/security/test_r07_input_audit_security_pg.py::test_current_scope_session_role_and_parent_acl_protect_private_selection[revoked]
+ERROR tests/security/test_r07_input_audit_security_pg.py::test_current_scope_session_role_and_parent_acl_protect_private_selection[changed_role]
+ERROR tests/security/test_r07_input_audit_security_pg.py::test_current_scope_session_role_and_parent_acl_protect_private_selection[parent_acl]
+ERROR tests/security/test_r07_input_audit_security_pg.py::test_new_same_actor_session_can_read_history_without_rebinding_execution
+ERROR tests/security/test_r07_input_audit_security_pg.py::test_corrupt_persisted_audit_is_rejected_even_if_database_constraints_are_fault_injected[hash]
+ERROR tests/security/test_r07_input_audit_security_pg.py::test_corrupt_persisted_audit_is_rejected_even_if_database_constraints_are_fault_injected[source_hash]
+ERROR tests/security/test_r07_input_audit_security_pg.py::test_corrupt_persisted_audit_is_rejected_even_if_database_constraints_are_fault_injected[omission]
+ERROR tests/security/test_r07_input_audit_security_pg.py::test_corrupt_persisted_audit_is_rejected_even_if_database_constraints_are_fault_injected[extra]
+ERROR tests/security/test_r07_input_audit_security_pg.py::test_corrupt_persisted_audit_is_rejected_even_if_database_constraints_are_fault_injected[job_identity]
+1 warning, 12 errors in 35.49s
+exit=1
