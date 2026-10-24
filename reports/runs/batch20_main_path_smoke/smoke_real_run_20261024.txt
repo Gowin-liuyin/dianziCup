@@ -1,0 +1,69 @@
+=== main-path smoke real run attempt2 2026-10-24T10:45:07+0800 project=dianzi-dev-smoke-20261024 ===
+ Container dianzi-dev-smoke-20261024-postgres-1 Starting 
+ Container dianzi-dev-smoke-20261024-redis-1 Starting 
+ Container dianzi-dev-smoke-20261024-postgres-1 Started 
+ Container dianzi-dev-smoke-20261024-redis-1 Started 
+ Container dianzi-dev-smoke-20261024-postgres-1 Waiting 
+ Container dianzi-dev-smoke-20261024-redis-1 Waiting 
+ Container dianzi-dev-smoke-20261024-postgres-1 Healthy 
+ Container dianzi-dev-smoke-20261024-redis-1 Healthy 
+compose_up_exit=0
+dianzi-dev-smoke-20261024-postgres-1 Up 10 seconds (healthy)
+dianzi-dev-smoke-20261024-redis-1 Up 10 seconds (healthy)
+--- smoke output ---
+smoke=main_path
+data_mode=fixture
+ERROR database unreachable: OperationalError
+smoke_result=config_error
+smoke_exit=2
+--- teardown ---
+ Container dianzi-dev-smoke-20261024-postgres-1 Removed 
+ Network dianzi-dev-smoke-20261024_private Removing 
+ Network dianzi-dev-smoke-20261024_private Removed 
+teardown_exit=0
+--- volumes left (preserved) ---
+dianzi-dev-smoke-20261024_postgres_data
+dianzi-dev-smoke-20261024_redis_data
+=== main-path smoke real run attempt3 2026-10-24T10:52:23+0800 ===
+环境偏差: docker desktop 29.2.0 对 127.0.0.1:25499 的发布静默失败(HostConfig有请求, NetworkSettings.Ports运行时为空, netstat无监听); 按脚本合同改用网桥IP 172.19.0.2:5432 直连, 数据库与口令仍为一次性生成。
+--- smoke output ---
+smoke=main_path
+data_mode=fixture
+ERROR database unreachable: OperationalError
+smoke_result=config_error
+smoke_exit=2
+teardown_exit=0
+dianzi-dev-smoke-20261024_postgres_data
+dianzi-dev-smoke-20261024_redis_data
+oneoff volumes removed
+=== main-path smoke real run attempt4 2026-10-24T11:03:13+0800 网内容器执行 ===
+环境偏差: 宿主到WSL2容器数据路径黑洞(SSLRequest无响应)且端口发布全端口静默失败; 在compose网络内以临时容器(python:3.12-bookworm, 仓库只读挂载)执行, DATABASE_URL经服务别名postgres:5432直连, 口令一次性生成, uvicorn子进程在容器内127.0.0.1:29411。
+pip_install_exit=1
+note: This error originates from a subprocess, and is likely not a problem with pip.
+OCI runtime exec failed: exec failed: Cwd must be an absolute path
+smoke_exit=128
+teardown_exit=0
+oneoff volumes removed
+=== main-path smoke real run attempt5 2026-10-24T11:04:27+0800 网内容器+uv锁定安装 ===
+uv_install_exit=1
+uv_sync_exit=127
+sh: 1: uv: not found
+skip
+sh: 1: /tmp/venv/bin/python: not found
+smoke_exit=127
+teardown_exit=0
+oneoff volumes removed
+=== main-path smoke real run attempt6 2026-10-24T11:05:27+0800 网内+双网(bridge出网/private连库)+uv锁定 ===
+uv_install_exit=0
+uv_sync_exit=0
+ + zstandard==0.25.0
+smoke=main_path
+data_mode=fixture
+smoke_result=config_error
+ERROR database unreachable: OperationalError
+smoke_exit=2
+teardown_exit=0
+oneoff volumes removed
+
+=== 结论（2026-10-24T11:3x+08:00）===
+6 次尝试（1 端口插值缺变量 / 2-3 发布静默失败转网桥 IP / 4-6 网内容器三连）。最终诊断：WSL2/Docker Desktop 虚拟交换机跨端数据面故障——宿主→容器与容器→容器数据黑洞（TCP 握手成功、SSLRequest 无响应、psycopg OperationalError），端口发布全端口静默失败；容器内 unix socket、健康检查、网桥出网（uv 锁定依赖安装成功）均正常。需用户重启 Docker Desktop / wsl --shutdown 或排查当日代理/安全软件。冒烟脚本本身验证充分：退出码合同 0/1/2、env-guard=2 实测、锁定依赖下真实运行至连接阶段。主路径流程以 10-23 story_fixture 证据为既有参照。宿主网络恢复后的执行命令形态见 OQ-1 与 attempt6 记录。

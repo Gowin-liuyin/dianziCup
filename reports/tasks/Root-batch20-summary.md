@@ -68,3 +68,15 @@
 4. 资源窗获批后重批 6 小时采集；此前不做任何 live 计数。
 
 本次写作结束时间：2026-10-24T02:33:00+08:00；本报告为有界收敛轮的证据索引，不是阶段验收或 push 声明。
+
+---
+
+## 续推轮补记（2026-10-24T11:3x+08:00，用户三项决议后）
+
+用户决议：Docker 已开；OQ-2/OQ-3 授权自决。执行结果：
+
+1. **OQ-2（r07 环境回归 16 红）——修复完成**。选定方案 (b)：`content_store.py` Windows 分支新增 `_content_read_child_python_paths()`（PYTHONPATH 条目不处理 .pth，故源码布局运行时追加 src 根；容器安装解析自真实 site-packages，零影响）。4 个受影响文件复测 **165 passed 全绿**。
+2. **OQ-3（t06 分类 54 处）——决议一次修正**。先按白名单机制完成 54 条分类（t06 曾 15 passed 转绿），随后发现分类表受 R20 冻结登记控制（total_records=136 冻结断言 + 提案证据束程序）。为不单方面打破变更单级控制，回退分类表至 136 条（R20 复测 158 passed 全绿），54 条记录作为待落地提案保存 `reports/runs/batch20_secret_classification_20261024/`。t06 恢复唯一历史红。
+3. **OQ-1（冒烟真实执行）——环境阻塞定案**。Docker daemon 恢复后 6 次尝试（含网内容器 + uv 锁定安装），最终诊断 WSL2/Docker Desktop 虚拟交换机跨端数据面故障（发布全端口静默失败 + 宿主/网内数据黑洞 + 网桥出网正常 + 容器内 unix socket 正常）。需用户重启 Docker Desktop/wsl --shutdown 或排查当日代理安全软件；证据链完整落盘。
+4. **第三次全量测量**：19 failed / 5928 passed / 1 xfailed / 42 errors（808s）——含 1 个 R20 红（后回退消解，由 t06 历史红等量回补）。最终余量 19 failed 全部为历史/变更单范围，新引入红为零。
+5. tsbuildinfo 保护：本轮无前端构建后改动；工作区最终仅剩 .zcode/ 会话目录与临时 coverage 文件未跟踪。

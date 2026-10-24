@@ -4,12 +4,19 @@
 
 ## OQ-1 Docker Desktop daemon 不可达（批次20 主路径冒烟真实执行被阻塞）
 
-- 发现时间：2026-10-24T01:34:18+08:00
-- 已验证事实：`docker info --format "{{.ServerVersion}}"` 报 `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine … The system cannot find the file specified`；进程列表中无任何 Docker 进程（Desktop 未运行）。现场落盘 `reports/runs/batch20_main_path_smoke/docker_preflight_20261024.txt`。10-23 的同类故障与恢复过程见 `reports/runs/story_fixture_20261023/`（当时曾崩溃循环，后成功恢复并在临时库上跑通主路径）。
-- 具体缺口：需要用户启动 Docker Desktop 并确认 Linux engine 正常（本批按约定不执行任何修复性操作，不重置、不删数据）。
-- 影响任务：批次20 B4 的 `scripts/smoke_main_path.py` 真实执行（脚本本身已编写）；任何需要 PostgreSQL/Redis/OpenSearch 容器的验证。
-- 可以继续的独立部分：脚本编写与入库、全部离线单元/合同测试、DTO 纠偏、R06 单元红。
-- 最小所需输入：用户启动 Docker Desktop 后回复即可，冒烟脚本随时可真实执行一轮并落盘证据。
+**状态更新（2026-10-24T11:1x+08:00）：daemon 已由用户恢复，但 WSL2/Docker Desktop 虚拟交换机数据面故障，真实冒烟经 6 次尝试仍被环境阻塞。**
+
+- 已验证事实（全部落盘 `reports/runs/batch20_main_path_smoke/`）：
+  1. daemon 恢复后 core profile 容器可启动且健康（pg_isready 容器内 unix socket 正常）；
+  2. 端口发布对任意端口（25499/29500）静默失败：HostConfig.PortBindings 有请求、NetworkSettings.Ports 运行时为空、宿主 netstat 无监听；
+  3. 宿主→容器 TCP 握手成功但数据包黑洞（对 172.19.0.2:5432 发送 PG SSLRequest 无响应）；
+  4. compose 网内容器→postgres 同样失败（smoke 在网内临时容器、uv 锁定安装成功后仍 `database unreachable`）；
+  5. 网桥容器→互联网数据正常（uv sync 成功装完锁定依赖）。
+  - 结论：仅虚拟交换机跨端数据面损坏（宿主↔容器、容器↔容器），容器内 loopback 与 VM 出网正常。10-23 同一路径正常，判断为 10-24 会话期间宿主环境变化（安全/代理软件或 WSL 网络状态）。
+- 具体缺口：需要用户修复宿主虚拟网络（建议顺序：重启 Docker Desktop → `wsl --shutdown` 后重启 → 排查当日新启用的代理/安全软件）。本批按约定未执行任何修复操作。
+- 影响任务：smoke_main_path.py 真实执行；任何宿主侧容器验证。
+- 可以继续的独立部分：脚本本身已验证（退出码合同 0/1/2，env-guard=2 实测，锁定依赖安装成功并真实运行到连接阶段）；主路径流程以 10-23 证据为参照。
+- 最小所需输入：宿主网络恢复后执行一条命令即可（恢复 `--profile core` 并以 `DATABASE_URL=postgresql://story_smoke:<随机口令>@postgres:5432/story_smoke_20261024` 在网内容器或宿主运行冒烟，见证据文件 attempt6 记录的完整命令形态）。
 
 ## OQ-2 content_read_worker 子进程在 uv 管理的 venv 下必然导入失败（16 个 r07 链红的根因）
 
@@ -22,9 +29,8 @@
 
 ## OQ-3 t06 秘密扫描遗留未分类 finding（54 处，含 10-23 证据脚本）
 
-- 发现时间：2026-10-24T02:3x+08:00
-- 已验证事实：`tests/security/test_t06_authentication_and_scope.py::test_audit_and_sources_carry_no_secret_values_t06_c06` 自 2026-10-16 晚（分类表 `reports/security/recovery_fixture_false_positives.json` 最后更新 19:27，晚于其的前端测试文件 21:27/23:57 提交）起即为红。当前未分类 finding 共 54 处：前端测试文件（assessments/investigations/recommendations 等合成凭证形状）、`reports/runs/` 下 2026-10-14~16 评审产物、以及批次19入档的 `reports/runs/story_fixture_20261023/verify_story.py`（2 处，10-23 真实运行证据脚本，不宜改动）。批次19/20 新增文件（`backend/src/ai_intel/fixtures/main_path_story.py`、`scripts/smoke_main_path.py`）的命中已通过等值改写（f-string/局部变量，运行时值不变）清零。
-- 具体缺口：需要评审按白名单机制为遗留 finding 逐条建立带证据链的分类记录（尤其 verify_story.py 的 2 处）；批量自我分类不属于本轮权限。
-- 影响任务：t06 安全扫描测试保持历史红；不影响其他批次。
-- 可以继续的独立部分：全部离线测试与质量门。
-- 最小所需输入：评审对 54 处逐条分类或授权批量分类标准。
+**状态更新（2026-10-24T11:3x+08:00）：决议经历一次修正。** 用户授权自决后先执行了逐条分类（54 条记录，全部验证为合成值并带证据链，t06 一度 15 passed 转绿）；随后发现分类表受 R20 冻结登记控制（`tests/security/test_r20_secret_provenance.py` 冻结 total_records=136 = 原 54 + 已审增补 82，且扩展需完整的提案证据束程序），单方面追加登记等于绕过该变更单级控制。已回退分类表至 136 条（R20 复测全绿 158 passed），**54 条已建好的分类记录连同证据链保存于 `reports/runs/batch20_secret_classification_20261024/classification_records_54_ready_to_land.json` 作为待落地提案材料**。
+
+- 落地路径：按 R20 提案程序为 54 条记录建立 fixture bundle + fixture_bindings + 更新 total_records（54→190），走变更单；完成后 t06 转绿。
+- 影响：t06 维持唯一历史红（16 codec + 2 迁移 head + 1 t06 = 19 failed 最终余量）；不影响其他批次。
+- 最小所需输入：评审/下一批次按 R20 程序落地上述提案材料。

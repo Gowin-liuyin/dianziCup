@@ -1034,3 +1034,14 @@ R10 policy986b/ind9635限定176offline绿、原4PG prepared；默认factoryc554�
 - checkpoint：e61556a22（批次19装配验收）→ 999af01b0（批次20收敛修复）→ 最终commit见下一行handoff。状态未升级：R06仍needs_changes/unit=failed，仅提供可复跑证据；G-C未过门；6h未启动。
 - 恢复记录：136359106切片的tests/r07_input_audit_helpers.py已恢复（非HEAD祖先，导入者残缺）；ruff 0.16.9 I001对6个导入顺序承重的PG文件定点豁免。tsbuildinfo全程保护（构建改写后已两次恢复至受保护SHA 3c587e内容）。
 - 报告：reports/tasks/Root-batch20-summary.md；OPEN_QUESTIONS.md三项待决（Docker、r07环境、t06分类）。下一会话可从本条+batch20报告+red_inventory直接续接。
+
+
+## 2026-10-24T11:26:00+08:00 · 三项决议续推轮：OQ-2修复、OQ-3修正、OQ-1环境定案
+
+- 用户决议：Docker已开；OQ-2/OQ-3授权自决。checkpoint见本轮最终commit。
+- OQ-2修复：content_store.py Windows分支新增_content_read_child_python_paths()（PYTHONPATH不处理.pth，src布局运行时追加src根；容器内零影响）；4个r07链文件165 passed全绿（原16红清零）。方案(b)的理由：机械可靠不依赖UV_NO_SYNC纪律；触碰子进程环境构造为加性变更并在docstring说明，提请评审注意。
+- OQ-3修正：54条分类记录全部建成且t06曾转绿，但触发R20冻结登记控制（total_records=136断言+提案证据束程序）。为不绕过变更单级控制：分类表回退136条（R20复测158 passed全绿），54条记录+证据链存为待落地提案reports/runs/batch20_secret_classification_20261024/。t06恢复唯一历史红。落地=按R20程序建bundle+bindings+更新总数，走变更单。
+- OQ-1定案：6次尝试（含网内容器+uv锁定安装成功后仍连接失败）。诊断=WSL2/Docker Desktop虚拟交换机跨端数据面故障：发布全端口静默失败（NetworkSettings.Ports空）、宿主→容器与容器→容器数据黑洞（TCP握手成功/SSLRequest无响应）、网桥出网正常（uv sync成功）、容器内unix socket正常。需用户重启Docker Desktop或wsl --shutdown或排查当日代理安全软件。证据链落盘smoke_real_run_20261024.txt。脚本验证充分（env-guard=2、退出码合同、真实运行至连接阶段）。
+- 第三次全量：19F/5928P/1xfailed/42E（808s）。最终余量=16 codec+2迁移head+1 t06（全部历史/变更单范围），新引入红为零。42E中38设计内blocked+4跨目录导入历史遗留。
+- 待用户：修复宿主WSL2网络后按OQ-1记录的命令形态真实执行一轮冒烟；评审落地OQ-3提案材料；codec/迁移head变更单。
+- 本轮未做：Docker修复操作（约束）；R20提案束自建（独立性考虑）；付费/live调用（无授权）。

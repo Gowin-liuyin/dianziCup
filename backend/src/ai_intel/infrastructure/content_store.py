@@ -172,6 +172,21 @@ def _require_fresh_request_pipe_capacity(stream: BufferedWriter, request_bytes: 
         raise ValueError("content_read_request_exceeds_fresh_pipe_capacity")
 
 
+def _content_read_child_python_paths() -> list[str]:
+    """Import paths for the Windows reader subprocess, in priority order.
+
+    PYTHONPATH entries bypass .pth processing, so an editable install leaves the
+    subprocess unable to import the package; the source layout root is appended
+    when this module runs from one. Container installs resolve through the real
+    site-packages entry and add nothing.
+    """
+    paths = [str(Path(sys.prefix) / "Lib" / "site-packages")]
+    source_root = Path(__file__).resolve().parents[2]
+    if source_root.name == "src" and (source_root / "ai_intel").is_dir():
+        paths.append(str(source_root))
+    return paths
+
+
 def _read_with_deadline(request: bytes, deadline_monotonic: float, byte_limit: int) -> bytes:
     """Run only the fixed object reader; reserve shutdown time and always reap its process.
 
@@ -199,10 +214,7 @@ def _read_with_deadline(request: bytes, deadline_monotonic: float, byte_limit: i
         if os.name == "nt":
             executable = str(Path(sys.base_prefix) / "python.exe")
             environment["PYTHONPATH"] = os.pathsep.join(
-                (
-                    str(Path(sys.prefix) / "Lib" / "site-packages"),
-                    environment.get("PYTHONPATH", ""),
-                )
+                (*_content_read_child_python_paths(), environment.get("PYTHONPATH", ""))
             )
         process = subprocess.Popen(
             [executable, "-m", "ai_intel.infrastructure._content_read_worker"],

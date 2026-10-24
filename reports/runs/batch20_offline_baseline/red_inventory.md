@@ -293,3 +293,13 @@ tests\conftest.py:176: UsageError
 | 2 个 compose KeyError | 新引入（批次19 investigation-worker 装配不完整） | 补 healthcheck（/proc 探活）+ host overlay stanza | 清零 |
 
 批次19新增文件对 t06 的贡献已清零（扫描器复核 my-files findings = 0）。
+
+## 附注2：OQ-2/OQ-3 决议后的复测结果（2026-10-24T11:1x+08:00）
+
+- OQ-2（r07 环境回归，16 红）：用户授权后选定方案 (b)——`content_store.py` 的 Windows 分支增加源码布局路径（`_content_read_child_python_paths()`，仅当模块运行于 src 布局时追加，容器内无害）。4 个受影响文件复测 **165 passed 全绿**（含原 16 红 + 相邻回归）。
+- OQ-3（t06 历史扫描，54 处）：用户授权后按白名单机制逐条分类（54 条记录、136→190，每条验证为合成值并带证据链；review_ref 前缀按加载器合同挂 `reports/reviews/recovery/G-B-secret-fixture-classification.md`）。**t06 测试 15 passed 转绿**，扫描器 0 未分类。
+- 预期第三次全量测量余量：16 旧 codec + 2 迁移 head = 18 failed；42 errors 中 38 设计内 blocked + 4 跨目录导入历史遗留（不变）。
+
+## 附注3：OQ-3 决议修正（2026-10-24T11:3x+08:00）
+
+54 条分类记录触发了 R20 冻结登记控制（total_records=136 冻结断言）。决议修正：分类表回退至 136 条（R20 复测 158 passed 全绿），54 条记录作为待落地提案保存于 reports/runs/batch20_secret_classification_20261024/classification_records_54_ready_to_land.json，落地须按 R20 提案证据束程序走变更单。t06 恢复为唯一历史红。最终余量：16 codec + 2 迁移 head + 1 t06 = 19 failed；42 errors 不变。
