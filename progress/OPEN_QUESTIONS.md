@@ -4,6 +4,13 @@
 
 ## OQ-1 Docker Desktop daemon 不可达（批次20 主路径冒烟真实执行被阻塞）
 
+**状态更新（2026-10-25T00:4x+08:00，批次21 C1）：主路径冒烟已通过"单容器回环"路线真实解决；宿主虚拟交换机故障本身仍未修复（用户侧事项）。**
+
+- 批次21 C1 按 OQ-1 实测事实（容器内 loopback 与出网正常）把 PostgreSQL16+pgvector 与被测系统放进同一容器（dianzi:batch21-smoke 镜像，python:3.12-bookworm + pgdg），全部流量走容器内 127.0.0.1：`scripts/dev_single_container.py` 编排，attempt7 真实退出码 0，六组断言全过（迁移/夹具/评估/幂等/健康），证据 `reports/runs/batch21_single_container_smoke/attempt7_run.txt`。
+- 过程中发现并修复冒烟脚本真实缺陷：SQLAlchemy 2.1.1 的 `str(URL)` 把密码渲染为 `"***"`，`smoke_main_path.py` 的字符串往返导致密码失效（与宿主无关，任何环境带真实 DATABASE_URL 首跑即触发；宿主侧离线复核 + 容器双探针诊断，6 次尝试定位根因、第 7 次验证修复，cap 偏差已记入 timeline）。
+- C2 integration 真实执行复用同一镜像与路线（`scripts/dev_integration_container.py`）。
+- 宿主侧修复（重启 Docker Desktop / wsl --shutdown / 排查代理）仍是用户事项；compose profile 的宿主→容器验证在宿主网络恢复前仍不可用，不计为软件缺陷。
+
 **状态更新（2026-10-24T11:1x+08:00）：daemon 已由用户恢复，但 WSL2/Docker Desktop 虚拟交换机数据面故障，真实冒烟经 6 次尝试仍被环境阻塞。**
 
 - 已验证事实（全部落盘 `reports/runs/batch20_main_path_smoke/`）：
@@ -34,3 +41,12 @@
 - 落地路径：按 R20 提案程序为 54 条记录建立 fixture bundle + fixture_bindings + 更新 total_records（54→190），走变更单；完成后 t06 转绿。
 - 影响：t06 维持唯一历史红（16 codec + 2 迁移 head + 1 t06 = 19 failed 最终余量）；不影响其他批次。
 - 最小所需输入：评审/下一批次按 R20 程序落地上述提案材料。
+
+## OQ-4 公开 /tasks 需要新 producer（批次21 C5.2 盘点结论，非纯接线缺口）
+
+- 发现时间：2026-10-25T01:1x+08:00（批次21 C5.2，盘点报告 `reports/tasks/Root-batch21-public-producer-inventory.md`）
+- 已验证事实：GET /tasks/{task_id} 背后 `public_extension_reads.py:801-805` 的 `get_task_result` 是恒 503 桩，且该桩语义被 `tests/integration/test_r18_public_read_producer_pg.py:250` 冻结测试钉住；按冻结契约已写好的真实读取 producer `PublicTaskBindingService.read_in_session`（`public_task_bindings.py:594`）在 src 中零装配零导入；写侧 `bind_in_session` 同样无生产调用方（/ask 为同步问答不入队 typed job）。端到端闭环需要新增"ask 受理入队 + typed job 绑定 + 发布"整条 producer 链，属于新功能开发而非接线缺口，且改 503→404 语义需变更单。
+- 影响任务：R18 公开任务读取面的端到端可用性。
+- 相邻发现：`public_risk_summary.py` 为同家族更彻底的未接模块（无路由、src 零导入），见盘点报告。
+- 可以继续的独立部分：其余公开面（/vulns /sources /ask）已证实完整接线，契约测试齐备。
+- 最小所需输入：评审决定是否立项 typed-task producer 链（涉及新路由语义、入队与绑定流程、变更单）。
