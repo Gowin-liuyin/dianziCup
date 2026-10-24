@@ -1,0 +1,120 @@
+.FF                                                                      [100%]
+================================== FAILURES ===================================
+__ test_default_graph_handlers_register_graph_types_without_real_neo4j[True] __
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000020BBF95C050>
+configured = True
+
+    @pytest.mark.parametrize("configured", [False, True])
+    def test_default_graph_handlers_register_graph_types_without_real_neo4j(
+        monkeypatch, configured
+    ):
+        from ai_intel.knowledge import default_graph_runtime
+    
+        settings = graph_settings(configured)
+    
+        @contextmanager
+        def projection_handlers(actual_engine, actual_settings):
+            assert actual_settings is settings
+            yield {PROJECTION_APPLY + "-sentinel": object()}
+    
+        drivers = []
+    
+        def fake_driver(uri, auth=None, **kwargs):
+            driver = MagicMock()
+            drivers.append((uri, auth, driver))
+            return driver
+    
+        monkeypatch.setattr(
+            default_graph_runtime, "build_projection_job_handlers", projection_handlers
+        )
+        monkeypatch.setattr(default_graph_runtime.AsyncGraphDatabase, "driver", fake_driver)
+    
+        class EngineFixture:
+            def dispose(self):
+                return None
+    
+>       with build_default_graph_job_handlers(EngineFixture(), settings) as handlers:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\test_r10_default_worker_registration.py:61: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\yinha\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+engine = <test_r10_default_worker_registration.test_default_graph_handlers_register_graph_types_without_real_neo4j.<locals>.EngineFixture object at 0x0000020BBF95C230>
+settings = ApplicationSettings(app_env='test', data_mode='fixture', database_url=None, redis_url=None, opensearch_url=None, opens...alse, enrichment_generation_enabled=False, enrichment_private_egress_granted=False, enrichment_aggregate_enabled=False)
+
+    @contextmanager
+    def build_default_graph_job_handlers(
+        engine: Engine, settings: ApplicationSettings
+    ) -> Iterator[dict[str, JobHandler | DetachedJobHandler]]:
+        """Driver construction has no network IO; only authorized graph apply initializes schema."""
+        with build_projection_job_handlers(engine, settings) as hybrid_handlers:
+            driver = None
+            try:
+                store = None
+                if settings.neo4j_uri is not None:
+                    require_synchronous_projection_context()
+                    if settings.neo4j_username is None or settings.neo4j_password is None:
+                        raise RuntimeError("graph settings violate execution contract")
+                    origin = urlsplit(settings.neo4j_uri)
+                    if origin.hostname is None:
+                        raise RuntimeError("graph settings violate execution contract")
+                    timeout = settings.dependency_timeout_seconds
+                    driver = AsyncGraphDatabase.driver(
+                        settings.neo4j_uri,
+                        auth=(settings.neo4j_username, settings.neo4j_password.get_secret_value()),
+                        max_connection_pool_size=2,
+                        connection_timeout=timeout,
+                        connection_write_timeout=timeout,
+                        connection_acquisition_timeout=timeout,
+                        liveness_check_timeout=timeout,
+                        max_transaction_retry_time=0.0,
+                        telemetry_disabled=True,
+                    )
+                    store = _SchemaInitializedProjectionStore(
+                        driver,
+                        timeout_seconds=timeout,
+                        dns_origin=(origin.hostname, origin.port or 7687),
+                    )
+                handlers: dict[str, JobHandler | DetachedJobHandler] = dict(hybrid_handlers)
+                if store is not None:
+                    handlers[KNOWLEDGE_CHANGE_JOB_TYPE] = _knowledge_change_handler(
+>                       engine, store, hybrid_handlers[KNOWLEDGE_CHANGE_JOB_TYPE]
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    )
+E                   KeyError: 'knowledge_change'
+
+src\ai_intel\knowledge\default_graph_runtime.py:227: KeyError
+____________ test_default_worker_consume_job_registers_graph_types ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000020BBF9FC470>
+tmp_path = WindowsPath('C:/Users/yinha/AppData/Local/Temp/pytest-of-yinha/pytest-1555/test_default_worker_consume_jo0')
+
+    def test_default_worker_consume_job_registers_graph_types(monkeypatch, tmp_path):
+        from ai_intel.knowledge import default_graph_runtime
+>       from ai_intel.workers import runtime
+
+tests\unit\test_r10_default_worker_registration.py:74: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\ai_intel\workers\runtime.py:107: in <module>
+    celery_app = build_celery_application()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def build_celery_application() -> Celery:
+        """缺PG/Redis配置立即失败；仅JSON任务、单队列、受控并发与超时。"""
+        settings = load_application_settings()
+        if settings.database_url is None or settings.redis_url is None:
+>           raise ConfigurationError("DATABASE_URL and REDIS_URL are required for workers")
+E           ai_intel.infrastructure.settings.ConfigurationError: DATABASE_URL and REDIS_URL are required for workers
+
+src\ai_intel\workers\runtime.py:39: ConfigurationError
+=========================== short test summary info ===========================
+FAILED tests/unit/test_r10_default_worker_registration.py::test_default_graph_handlers_register_graph_types_without_real_neo4j[True]
+FAILED tests/unit/test_r10_default_worker_registration.py::test_default_worker_consume_job_registers_graph_types
+2 failed, 1 passed in 1.40s
+exit=1

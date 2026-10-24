@@ -19,6 +19,7 @@ def test_default_consumer_registers_only_trusted_configured_revalidation(
     monkeypatch.setenv("DATABASE_URL", "postgresql://test_fixture@127.0.0.1/test_dianzi_unit")
     monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:26379/15")
     monkeypatch.setenv("RAW_CONTENT_DIRECTORY", str(tmp_path / "synthetic-raw"))
+    from ai_intel.knowledge import default_graph_runtime
     from ai_intel.workers import runtime
 
     settings = ApplicationSettings(
@@ -61,7 +62,9 @@ def test_default_consumer_registers_only_trusted_configured_revalidation(
     monkeypatch.setattr(runtime, "build_engine", lambda _: engine)
     monkeypatch.setattr(runtime, "build_content_storage", lambda _: store)
     monkeypatch.setattr(runtime, "build_enrichment_job_service", lambda *_: None)
-    monkeypatch.setattr(runtime, "build_projection_job_handlers", projection_handlers)
+    monkeypatch.setattr(
+        default_graph_runtime, "build_projection_job_handlers", projection_handlers
+    )
     monkeypatch.setattr(runtime, "make_revalidation_job_handlers", revalidation_handlers)
     monkeypatch.setattr(runtime, "execute_job", execute)
     job_id = str(uuid4())

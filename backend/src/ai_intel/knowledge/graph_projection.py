@@ -289,6 +289,9 @@ class GraphProjectionStore(Protocol):
     ) -> GraphCandidateSet: ...
 
 
+ProjectionBatchGuard = Callable[[Session, AccessScope, GraphProjectionBatch], None]
+
+
 def _canonical_bytes(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
 
@@ -515,37 +518,45 @@ def begin_reconciliation(
     namespace: str,
     generation_id: UUID,
     now: datetime,
+    *,
+    max_events: int | None = None,
 ) -> ReconciliationManifest:
     """Capture a complete event/old-slot manifest in one caller-owned RR transaction."""
     if session.connection().get_isolation_level() != "REPEATABLE READ":
         raise ValueError("manifest requires repeatable read")
+    if max_events is not None and (type(max_events) is not int or not 1 <= max_events <= 10000):
+        raise ValueError("manifest event budget outside bounds")
     partition = partition_for_scope(scope)
     epochs = _epochs(session, scope)
     existing = session.execute(_state_query(namespace, partition, generation_id, "partition"))
     row = existing.mappings().first()
     if row is not None:
         manifest = _body(ReconciliationManifest, row)
+        if max_events is not None and manifest.event_count > max_events:
+            raise ProjectionCapacityError("graph_reconciliation_event_budget_exhausted")
         _manifest_entries(session, manifest)
         if manifest.scope_epochs != epochs:
             raise ProjectionNotReady("graph_manifest_epoch_changed")
         return manifest
-    current: dict[str, int] = dict(
-        session.execute(
-            select(events.c.event_id, events.c.business_version).where(
-                _visible_events(scope),
-                events.c.status == "active",
-            )
-        ).all()
+    current_query = select(events.c.event_id, events.c.business_version).where(
+        _visible_events(scope), events.c.status == "active"
     )
-    old_ids: set[str] = set(
-        session.scalars(
-            select(graph_projection_state.c.event_id).where(
-                graph_projection_state.c.namespace == namespace,
-                graph_projection_state.c.partition_key == partition,
-                graph_projection_state.c.state_kind == "slot",
-            )
+    old_query = (
+        select(graph_projection_state.c.event_id)
+        .where(
+            graph_projection_state.c.namespace == namespace,
+            graph_projection_state.c.partition_key == partition,
+            graph_projection_state.c.state_kind == "slot",
         )
+        .distinct()
     )
+    if max_events is not None:
+        current_query = current_query.limit(max_events + 1)
+        old_query = old_query.limit(max_events + 1)
+    current: dict[str, int] = dict(session.execute(current_query).all())
+    old_ids: set[str] = set(session.scalars(old_query))
+    if max_events is not None and len(set(current) | old_ids) > max_events:
+        raise ProjectionCapacityError("graph_reconciliation_event_budget_exhausted")
     entries = tuple(
         ManifestEntry(event_id=UUID(event_id), business_version=current.get(event_id))
         for event_id in sorted(set(current) | old_ids)
@@ -590,6 +601,34 @@ def begin_reconciliation(
             page,
             now,
         )
+    return manifest
+
+
+def read_projection_scope_epochs(session: Session, scope: AccessScope) -> EpochMap:
+    """Read authoritative epochs using the existing graph scope validation."""
+    return _epochs(session, scope)
+
+
+def read_reconciliation_manifest(
+    session: Session,
+    scope: AccessScope,
+    namespace: str,
+    generation_id: UUID,
+) -> ReconciliationManifest:
+    """Return a verified manifest only while its entire scope epoch map is current."""
+    manifest = _body(
+        ReconciliationManifest,
+        _state_row(session, namespace, partition_for_scope(scope), generation_id, "partition"),
+    )
+    if (manifest.namespace, manifest.partition_key, manifest.generation_id) != (
+        namespace,
+        partition_for_scope(scope),
+        generation_id,
+    ):
+        raise ProjectionDigestConflict("graph_manifest_identity_disagrees")
+    _manifest_entries(session, manifest)
+    if manifest.status == "stale" or manifest.scope_epochs != _epochs(session, scope):
+        raise ProjectionNotReady("graph_manifest_epoch_changed")
     return manifest
 
 
@@ -834,9 +873,17 @@ def apply_projection_batch(
     batch_id: UUID,
     store: GraphProjectionStore,
     now: datetime,
+    *,
+    batch_guard: ProjectionBatchGuard | None = None,
 ) -> ProjectionReceipt:
-    """Neo4j commits first; caller PG rollback can only cause safe immutable replay."""
+    """Qualify the verified batch before IO; PG rollback permits immutable Neo4j replay.
+
+    Runtime callers supply their scope guard. Server-only restore callers may omit it
+    to retain explicit namespaces and historical/random generations.
+    """
     batch, digest = read_projection_batch(session, scope, batch_id)
+    if batch_guard is not None:
+        batch_guard(session, scope, batch)
     current_epochs = _epochs(session, scope, lock=True)
     header = _state_row(
         session, batch.namespace, batch.partition_key, batch.generation_id, "partition", lock=True
@@ -1069,8 +1116,10 @@ TaskScopeAuthorizer = Callable[[Session, JobExecutionContext], AccessScope]
 def build_graph_apply_handler(
     store: GraphProjectionStore,
     authorize: TaskScopeAuthorizer,
+    *,
+    batch_guard: ProjectionBatchGuard | None = None,
 ) -> JobHandler:
-    """Root-owned worker registration supplies the authenticated task scope provider."""
+    """Root registration supplies current task scope and mandatory runtime batch qualification."""
 
     class BatchRequest(ProjectionRecord):
         batch_id: UUID
@@ -1085,7 +1134,7 @@ def build_graph_apply_handler(
             if context.tenant_id != (scope.tenant_id if partition != "public" else None):
                 raise PermissionDeniedError("graph job scope denied")
             receipt = apply_projection_batch(
-                session, scope, request.batch_id, store, datetime.now(UTC)
+                session, scope, request.batch_id, store, datetime.now(UTC), batch_guard=batch_guard
             )
         except (PermissionDeniedError, CrossTenantAccessError):
             raise JobExecutionError("graph_projection_scope_denied", blocked=True) from None

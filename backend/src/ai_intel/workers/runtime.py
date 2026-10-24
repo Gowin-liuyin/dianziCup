@@ -19,6 +19,7 @@ from ai_intel.infrastructure.runtime_observations import record_runtime_observat
 from ai_intel.infrastructure.settings import ConfigurationError, load_application_settings
 from ai_intel.ingestion.source_jobs import SOURCE_JOB_TYPE, build_source_page_handler
 from ai_intel.ingestion.source_polling import enqueue_due_source_collections
+from ai_intel.knowledge.default_graph_runtime import build_default_graph_job_handlers
 from ai_intel.knowledge.models import job_runs
 from ai_intel.retrieval.runtime_policy import build_projection_job_handlers
 from ai_intel.revalidation.runtime_policy import make_revalidation_job_handlers
@@ -175,8 +176,8 @@ def consume_job(job_id: str) -> dict[str, str]:
                     settings.revalidation_cursor_signing_key,
                 )
             )
-        with build_projection_job_handlers(engine, settings) as projection_handlers:
-            handlers.update(projection_handlers)
+        with build_default_graph_job_handlers(engine, settings) as graph_handlers:
+            handlers.update(graph_handlers)
             outcome = execute_job(engine, job_id, "celery-" + uuid4().hex, handlers)
         return {"job_id": job_id, "outcome": outcome}
     except SQLAlchemyError:
