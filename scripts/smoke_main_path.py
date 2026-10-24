@@ -27,7 +27,7 @@ from uuid import uuid4
 
 import httpx
 from sqlalchemy import Table, create_engine, insert, text
-from sqlalchemy.engine import Connection, Engine, make_url
+from sqlalchemy.engine import URL, Connection, Engine, make_url
 from sqlalchemy.exc import SQLAlchemyError
 
 if TYPE_CHECKING:
@@ -128,11 +128,12 @@ def require_smoke_environment() -> tuple[str, str]:
     return database_url, analyst_password
 
 
-def normalize_database_url(database_url: str) -> str:
+def normalize_database_url(database_url: str) -> URL:
+    """Keep the parsed URL object: rendering it to a string masks the password."""
     url = make_url(database_url)
     if url.get_backend_name() != "postgresql":
         raise EnvironmentConfigurationError("DATABASE_URL must use PostgreSQL")
-    return str(url.set(drivername="postgresql+psycopg"))
+    return url.set(drivername="postgresql+psycopg")
 
 
 def redact_secret_text(value: str, database_url: str, analyst_password: str) -> str:
@@ -163,7 +164,7 @@ def build_child_environment(
     return environment
 
 
-def build_assertion_engine(normalized_url: str) -> Engine:
+def build_assertion_engine(normalized_url: URL) -> Engine:
     return create_engine(
         normalized_url,
         hide_parameters=True,
