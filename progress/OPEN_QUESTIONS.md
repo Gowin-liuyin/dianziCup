@@ -63,3 +63,11 @@
 - **R21 评审待确认口径**：config_sha256 绑定整份配置（含 baseline_id）导致跨基线不同——r21_plan §5 C01 的"相同"字面预期按"资源字段跨基线一致 + 同基线复跑不变"实现（`reports/runs/batch21_r21_implementation/implementation_report.md` §5.1），需评审确认。
 - **C2 审计族前置条件（plan5 两轮定向重跑后精确化）**：`tests/security/test_r07_input_audit_security_pg.py` 与 `fix1_acl_pg` 的 `owned_audit_engine` fixture 要求 (1) drivername=`postgresql+psycopg`（已解决）(2) 端口=25432（已解决）(3) 一个迁移状态与 helper 自装约束不冲突的预置库——我方 provisioning 的"建库即迁移到 head"与 helper 的 `install=True`（对 0023 迁移已建约束的库再次 CREATE CONSTRAINT）冲突（`psycopg.errors.DuplicateObject`，证据 `reports/runs/batch21_integration_unlocked/test_r07_input_audit_security_pg_pf.txt`）。按同根因纪律停止迭代；正确路径是下批为该族预置"父时代状态库"（migration 到 0022 或 helper 期望的确切状态——需读 helper 安装逻辑确定）。r14_tools_fix1 的 `test_review_real_pg_query_time_is_bounded_not_only_lock_time` 为 (d) 类真实业务失败（19 passed/1 failed，traceback 在案）。
 - 最小所需输入：人工标注资源窗（R19）；下一批 C2 收敛工作包授权（无需新授权类型，纯离线+容器）；R21 口径评审意见。
+
+## OQ-6 SourceEnricher UTF-8 输出预算触合同停止（批次22 目标2，按停止条件记录）
+
+- 记录时间：2026-10-25T04:50:00+08:00（调研报告 `reports/runs/batch22_source_enricher_research/research.md`，全程只读）
+- 已验证事实：(1) UTF-8 计量本身已存在且被冻结测试钉定为正确语义（`_output_json_bytes` 按 ensure_ascii=False 真实 UTF-8 计数，investigation/workflow_service.py:139-145，冻结测试 test_r14_source_report_output_budget.py:108-112）——"缺口"不在计量；(2) 唯一可新增的是行为级预算约束（trim-to-fit 裁剪），但其反面（大报告超预算→整体拒绝、receipts 清空、公开结果为空）是本区域冻结 oracle（unit :435-473 与 integration :285-308，B2/B2b/B3 × 1024 全策略钉死）；(3) 富化 receipt 输出经 WorkflowResult 直入公开 API DTO（graph_contracts.py:92-102 → investigation_routes.py:80,300）。
+- 三条实现路径（裁剪行为 / DTO 字符串字节上限 / 预算参数）全部触碰冻结断言或公共合同/阈值——按批次22 计划停止条件停该项。
+- 影响任务：富化输出预算行为约束；未来如需实现，走变更单（research.md §3 有最小变更单路径与约 20 条不可动冻结断言清单）。
+- 最小所需输入：评审决定是否立项该行为变更单。
