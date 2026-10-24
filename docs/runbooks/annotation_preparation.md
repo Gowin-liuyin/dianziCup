@@ -49,3 +49,26 @@ holdout 候选和任何带 annotations 的输入/输出必须仓外。holdout �
 原 T46-C01–C06 的工具行为由 `scripts/annotation/tests/test_prepare.py` 对显式 synthetic fixture 实测，含双填表→分歧→裁决→身份记录→CLI 外部导出。actual real/dev 包仅做本地来源/证据字段校验，仍 awaiting_human_label。测试里的 identity 和 label 不能计为真人或金标。
 
 frontend/e2e/live/manual、正式性能与准确率均 not_run。工具不调用付费模型、DB/API、来源网络或秘密存储。正式 R19/T46/T01 完成与 G-F 放行未发生；此准备包提交非作者独立 review。
+
+## 开发集装配（批次21 C5.3 新增）
+
+在已有候选准备工具之上，本仓库另有两条本地装配命令（不修改 prepare.py 与 candidate_case_v1）：
+
+```powershell
+$python = 'D:\dianzi\backend\.venv\Scripts\python.exe'
+# 1) 把 T01 合成 pilot 案例适配为 candidate_case_v1 种子 bundle（20 例，全部 synthetic/dev，独占新建）
+& $python scripts/annotation/build_synthetic_seed.py --input fixtures/synthetic/pilot_cases.json --output benchmarks/manifests/r19_synthetic_dev_seed_v1.json
+# 2) 合并 1 个 real bundle 与 20 例 synthetic 种子为 dev-set manifest（21 例，独占新建）
+& $python scripts/annotation/assemble_dev_set.py --bundle benchmarks/manifests/r19_public_dev_candidate_v1.json --bundle benchmarks/manifests/r19_synthetic_dev_seed_v1.json --dev-set-id r19_dev_set_assembly_v1 --output benchmarks/manifests/r19_dev_set_assembly_v1.json
+# 3) 两个产物都必须能被既有工具复检（exit 0）
+& $python scripts/annotation/prepare.py validate --input benchmarks/manifests/r19_synthetic_dev_seed_v1.json
+& $python scripts/annotation/prepare.py validate --input benchmarks/manifests/r19_dev_set_assembly_v1.json
+```
+
+实测命令在宿主以 `VIRTUAL_ENV=D:\dianzi\backend\.venv` 前缀下的 `uv run python -m unittest discover -s scripts/annotation/tests -p "test_dev_set_assembly.py" -v` 覆盖（10 例），证据在 `reports/runs/batch21_r19_implementation/`。
+
+0 gold 声明（多层一致，本节新增两层）：装配器拒绝任何 `label_status != awaiting_human_label` 的 case（LABEL_STATUS_NOT_AWAITING）；dev-set manifest 的 `summary.gold` 机读块恒为 `human_gold_count=0`、`gold_status=none_no_human_labels`、`formal_evaluation not_run/null`，并由 `benchmarks/schemas/dev_set_manifest_v1.json` 的 const 固定。`scale_statement` 是固定字符串：本 dev-set 为 awaiting_human_label 候选装配物，仅用于标注规则验证与人工准备，不是金标，不参与任何正式指标计算。
+
+种子溯源与降级说明：`build_synthetic_seed.py` 只读 `fixtures/synthetic/pilot_cases.json`；T01 旧值域 `data_kind`（revision/version_range 等）统一登记为 `synthetic`，原值写入 limitations 可追溯；每个候选在 limitations 指回原 case_id。pilot_cases 的 `expected_result`/`expected_basis` 是规则推导的待复核提案，绝不复制到任何候选字段或标签；`candidate_task` 只写场景任务并明确提案仅作复核参照。evidence span 取该案例 `input` 对象规范化 JSON 文本的前缀（≤240 字符，offset 从 0 起，json_pointer 指根），hash/offset 全部离线可验。许可按 unknown/unverified 登记，待人工核验。
+
+装配行为与边界：`assemble_dev_set.py` 逐 bundle 复用 `validate_candidates`（含 candidate_sha256 绑定），随后把全部 cases 合并再跑一次同规则校验，使跨 bundle 的重复 case_id（DUPLICATE_CASE）与家族/alias/document_id/URI 键域跨 split（FAMILY_SPLIT_LEAK）被拒绝；含 holdout split 的 bundle 直接拒绝（HOLDOUT_SPLIT_REFUSED），holdout 候选继续走 prepare.py 的仓外通道，永不进仓内 dev-set manifest。manifest 信封与 candidate_bundle 兼容（schema_version/prepared_at/cases/candidate_sha256/summary），装配元数据在 summary（dev_set_id、assembled_at、source_bundles 含逐 bundle path/hash/计数、counts 按 data_kind 与 split 分列、label_status_counts、gold、dev_set_sha256、scale_statement）；`dev_set_sha256` 只绑定 cases+counts+label_status_counts，同输入重复装配结果确定。输出独占新建（OUTPUT_EXISTS），`--scan-root` 可选复用 scan_leaks 对合并后内容复扫（当前装配物无 holdout，needle 集为空，属边界内检查而非镜像/索引审计）。schema 的 id/hash/time/source/evidence/candidate_case 定义在校验时从 candidate_case_v1.json 合并提供，公共合同文件未被复制或修改。真实双人标注、裁决、身份核验、真实 holdout 集与冻结签字仍未发生；装配物规模为 1 real + 20 synthetic 种子，不是完整开发集，也不是指标分母。

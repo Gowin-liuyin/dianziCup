@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dianzi:annotation-preparation:dev-set-manifest:v1",
+  "$ref": "#/$defs/dev_set_manifest",
+  "description": "R19 本地开发集装配格式（非公共合同）。信封 schema_version/prepared_at/cases/candidate_sha256/summary 与 candidate_case_v1.json 的 candidate_bundle 一致，使装配产物可通过 scripts/annotation/prepare.py validate 复检；装配元数据全部位于 summary。$defs 中的 id/hash/time/source/evidence/candidate_case 由 candidate_case_v1.json 在校验时合并提供（见装配器 validate_dev_set_manifest），本文件单独不完整。永不携带金标：gold.human_gold_count 恒为 0。",
+  "$defs": {
+    "dev_set_manifest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "prepared_at", "cases", "candidate_sha256", "summary"],
+      "properties": {
+        "schema_version": {"const": 1},
+        "prepared_at": {"$ref": "#/$defs/time"},
+        "cases": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/candidate_case"}},
+        "candidate_sha256": {"$ref": "#/$defs/hash"},
+        "summary": {"$ref": "#/$defs/dev_set_summary"}
+      }
+    },
+    "dev_set_summary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["dev_set_id", "assembled_at", "source_bundles", "counts", "label_status_counts", "gold", "dev_set_sha256", "scale_statement"],
+      "properties": {
+        "dev_set_id": {"$ref": "#/$defs/id"},
+        "assembled_at": {"$ref": "#/$defs/time"},
+        "source_bundles": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/source_bundle"}},
+        "counts": {"$ref": "#/$defs/dev_set_counts"},
+        "label_status_counts": {
+          "type": "object", "additionalProperties": false,
+          "required": ["awaiting_human_label"],
+          "properties": {"awaiting_human_label": {"type": "integer", "minimum": 1}}
+        },
+        "gold": {
+          "type": "object", "additionalProperties": false,
+          "required": ["human_gold_count", "gold_status", "formal_evaluation"],
+          "properties": {
+            "human_gold_count": {"const": 0},
+            "gold_status": {"const": "none_no_human_labels"},
+            "formal_evaluation": {
+              "type": "object", "additionalProperties": false,
+              "required": ["status", "numerator", "denominator"],
+              "properties": {
+                "status": {"const": "not_run"},
+                "numerator": {"type": "null"},
+                "denominator": {"type": "null"}
+              }
+            }
+          }
+        },
+        "dev_set_sha256": {"$ref": "#/$defs/hash"},
+        "scale_statement": {"const": "候选/种子规模声明：本 dev-set 为 awaiting_human_label 候选装配物，仅用于标注规则验证与人工准备，不是金标（human_gold_count=0），不参与任何正式指标计算。"}
+      }
+    },
+    "source_bundle": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "candidate_sha256", "case_count", "data_kind_counts"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "candidate_sha256": {"$ref": "#/$defs/hash"},
+        "case_count": {"type": "integer", "minimum": 1},
+        "data_kind_counts": {"$ref": "#/$defs/data_kind_counts"}
+      }
+    },
+    "dev_set_counts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["by_data_kind", "by_split"],
+      "properties": {
+        "by_data_kind": {"$ref": "#/$defs/data_kind_counts"},
+        "by_split": {
+          "type": "object", "additionalProperties": false,
+          "required": ["dev", "demo"],
+          "properties": {
+            "dev": {"type": "integer", "minimum": 0},
+            "demo": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    },
+    "data_kind_counts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["real", "synthetic", "redacted", "replay"],
+      "properties": {
+        "real": {"type": "integer", "minimum": 0},
+        "synthetic": {"type": "integer", "minimum": 0},
+        "redacted": {"type": "integer", "minimum": 0},
+        "replay": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}
