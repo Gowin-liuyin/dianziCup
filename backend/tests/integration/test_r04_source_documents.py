@@ -251,14 +251,22 @@ def test_a_b_a_creates_three_revisions_and_preserves_old_evidence(page_engine, t
         assert [row["is_current"] for row in revisions] == [False, False, True]
         assert revisions[1]["previous_revision_id"] == revisions[0]["revision_id"]
         assert revisions[2]["previous_revision_id"] == revisions[1]["revision_id"]
-        assert (
-            connection.scalar(
-                select(func.count())
-                .select_from(evidence)
-                .where(evidence.c.revision_id == first.revision_ids[0])
+        revision_1_locators = (
+            connection.execute(
+                select(evidence.c.locator).where(evidence.c.revision_id == first.revision_ids[0])
             )
-            == 2
+            .scalars()
+            .all()
         )
+        # 冻结时点后合同演化：source fact 附带 identifier qualifier 独立行，
+        # revision 1 = 2 条主事实 + 2 条 /ghsa_id qualifier（实测构成见
+        # reports/runs/batch23_decisions/）。
+        assert sorted(revision_1_locators) == [
+            "/description",
+            "/ghsa_id",
+            "/ghsa_id",
+            "/vulnerabilities/0/package/name",
+        ]
         assert (
             connection.scalar(
                 select(func.count())

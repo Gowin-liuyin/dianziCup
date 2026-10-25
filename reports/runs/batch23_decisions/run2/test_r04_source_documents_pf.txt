@@ -1,0 +1,64 @@
+run_id=r04_source_documents_20261015
+port=5432
+pin_ambiguity=False
+file=tests/integration/test_r04_source_documents.py
+.....F...................                                                [100%]
+=================================== FAILURES ===================================
+________ test_a_b_a_creates_three_revisions_and_preserves_old_evidence _________
+
+page_engine = Engine(postgresql+psycopg://test_dianzi_r04_source_documents_20261015:***@127.0.0.1:5432/test_dianzi_r04_source_docume...61015?options=-c+search_path%3Dtest_r04_source_documents_140cfd0aae4d4b0a9a50cc11b2a6eeb7+-c+statement_timeout%3D15000)
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-2/test_a_b_a_creates_three_revis0')
+
+    def test_a_b_a_creates_three_revisions_and_preserves_old_evidence(page_engine, tmp_path):
+        store = ContentStore(tmp_path)
+        first = persist(page_engine, store, vendor_response())
+        modified = vendor_record()
+        modified["description"] = "A distinct synthetic source revision with 中文🙂 conditions."
+        second = persist(page_engine, store, vendor_response(modified, NOW + timedelta(minutes=1)))
+        third = persist(page_engine, store, vendor_response(observed=NOW + timedelta(minutes=2)))
+        assert first.event_ids == second.event_ids == third.event_ids
+        assert len(set(first.revision_ids + second.revision_ids + third.revision_ids)) == 3
+        with page_engine.connect() as connection:
+            revisions = (
+                connection.execute(
+                    select(document_revisions).order_by(document_revisions.c.revision_number)
+                )
+                .mappings()
+                .all()
+            )
+            assert [row["revision_number"] for row in revisions] == [1, 2, 3]
+            assert revisions[0]["content_hash"] == revisions[2]["content_hash"]
+            assert [row["is_current"] for row in revisions] == [False, False, True]
+            assert revisions[1]["previous_revision_id"] == revisions[0]["revision_id"]
+            assert revisions[2]["previous_revision_id"] == revisions[1]["revision_id"]
+            revision_1_locators = (
+                connection.execute(
+                    select(evidence.c.locator).where(evidence.c.revision_id == first.revision_ids[0])
+                )
+                .scalars()
+                .all()
+            )
+            assert len(revision_1_locators) == 4, sorted(revision_1_locators)
+>           assert (
+                sum(1 for locator in revision_1_locators if locator.endswith("/cvssData/vectorString"))
+                == 1
+            ), sorted(revision_1_locators)
+E           AssertionError: ['/description', '/ghsa_id', '/ghsa_id', '/vulnerabilities/0/package/name']
+E           assert 0 == 1
+E            +  where 0 = sum(<generator object test_a_b_a_creates_three_revisions_and_preserves_old_evidence.<locals>.<genexpr> at 0x7b922e92b850>)
+
+tests/integration/test_r04_source_documents.py:262: AssertionError
+=============================== warnings summary ===============================
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/nodeids: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/nodeids'
+    config.cache.set("cache/nodeids", sorted(self.cached_nodeids))
+
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/lastfailed: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/lastfailed'
+    config.cache.set("cache/lastfailed", self.lastfailed)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/test_r04_source_documents.py::test_a_b_a_creates_three_revisions_and_preserves_old_evidence
+1 failed, 24 passed, 2 warnings in 62.90s (0:01:02)
+exit=1
