@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import re
+from collections.abc import Callable
 from datetime import datetime
 from uuid import UUID
 
@@ -14,7 +15,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
 from ai_intel.api.knowledge_contracts import DataMode, EnrichmentProjection
-from ai_intel.api.knowledge_read_service import KnowledgeReadService
+from ai_intel.api.knowledge_read_service import KnowledgeProjectionError, KnowledgeReadService
 from ai_intel.domain.access import READ_PUBLIC, AccessScope
 from ai_intel.domain.enrichment_values import (
     ArtifactReferenceValue,
@@ -119,6 +120,14 @@ def classify_revision_mode(metadata: object, configured: DataMode) -> DataMode:
     try:
         return homogeneous_revision_mode((metadata,), configured)
     except RevisionModeUnavailableError as error:
+        raise PublicReadUnavailable(str(error)) from error
+
+
+def public_knowledge_projection[T](project: Callable[..., T], *args: object) -> T:
+    """Stored knowledge failing public projection is a configuration state, not a fault."""
+    try:
+        return project(*args)
+    except KnowledgeProjectionError as error:
         raise PublicReadUnavailable(str(error)) from error
 
 
@@ -248,7 +257,7 @@ class PublicExtensionReadService:
             raise PublicReadUnavailable("advisory evidence is not configured")
         citations: list[JsonValue] = []
         for identifier in identifiers:
-            item = self.knowledge.read_evidence(UUID(identifier))
+            item = public_knowledge_projection(self.knowledge.read_evidence, UUID(identifier))
             if item.verified_at is None or item.source_uri is None:
                 raise PublicReadUnavailable("advisory evidence is not verified")
             locator = self.session.scalar(
@@ -272,7 +281,7 @@ class PublicExtensionReadService:
     ) -> tuple[dict[str, JsonValue], list[JsonValue]]:
         if not current:
             raise PublicReadUnavailable("current normalized intelligence is not configured")
-        detail = self.knowledge.event_detail(event_id)
+        detail = public_knowledge_projection(self.knowledge.event_detail, event_id)
         graph = self.graph.event_graph(event_id, 200, 400)
         graph_inputs = self.graph.read_inputs
         if graph_inputs is None:
@@ -580,7 +589,7 @@ class PublicExtensionReadService:
         cursor: str | None = None,
     ) -> dict[str, JsonValue]:
         validate_page_inputs(None, limit, cursor)
-        self.knowledge.event_detail(event_id)
+        public_knowledge_projection(self.knowledge.event_detail, event_id)
         current = self._current_rows((str(event_id),))
         vulnerability, limits = self._vulnerability(event_id, current)
         binding = self._binding(
@@ -601,7 +610,9 @@ class PublicExtensionReadService:
                 continue
             projected = next(
                 item
-                for item in self.knowledge.event_detail(event_id).revisions
+                for item in public_knowledge_projection(
+                    self.knowledge.event_detail, event_id
+                ).revisions
                 if str(item.revision_id) == row["revision_id"]
             )
             if projected.canonical_uri is None:

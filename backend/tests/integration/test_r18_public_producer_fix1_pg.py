@@ -47,6 +47,30 @@ for name in (
 ):
     globals()[name] = getattr(probe, name)
 
+# 冻结探针的 missing-mode 场景依赖无标注种子行；批次22 给共享 seeder
+# seed_source_document 默认 stamp data_mode 后，探针经其导入的引用也被波及。
+# 探针文件冻结不可改，这里把探针命名空间的种子引用换为"仅清空
+# source_metadata"的包装（其余列保持现行 seeder 输出——legacy=True 会连带
+# 改 parse_status/canonical_uri，破坏 fix1:147 的 dimension 用例，实测见
+# reports/runs/batch23_decisions/run2/）。
+from test_r04_knowledge_api_pg import (  # noqa: E402
+    seed_source_document as _shared_seed_source_document,
+)
+
+
+def _probe_seed_missing_mode(engine, **kwargs):
+    seeded = _shared_seed_source_document(engine, **kwargs)
+    with engine.begin() as connection:
+        connection.execute(
+            update(document_revisions)
+            .where(document_revisions.c.revision_id == seeded["revision_id"])
+            .values(source_metadata={})
+        )
+    return seeded
+
+
+probe.seed_source_document = _probe_seed_missing_mode
+
 pytestmark = pytest.mark.real_pg
 
 

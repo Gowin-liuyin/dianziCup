@@ -1,0 +1,273 @@
+run_id=r18_public_producer_fix2_20261016
+port=25432
+pin_ambiguity=False
+file=tests/integration/test_r18_public_producer_fix2_pg.py
+......FF..............................                                   [100%]
+=================================== FAILURES ===================================
+_ test_dimension_available_requires_its_own_current_semantic_support[reference_mismatch] _
+
+pg_engine = Engine(postgresql+psycopg://test_dianzi_r18_public_producer_fix2_20261016:***@127.0.0.1:25432/test_dianzi_r18_public_p...ns=-c+search_path%3Dtest_r18_fix2_75332bfe7d8b41278240542b025904e7+-c+statement_timeout%3D12000+-c+lock_timeout%3D4000)
+case = (<starlette.testclient.TestClient object at 0x7cf494356180>, SessionCredential(token=SecretStr('**********')), 'c87362c4-894f-459c-b341-d4479f3d58f5')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-1/test_dimension_available_requi5')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7cf494328290>
+mutation = 'reference_mismatch'
+
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "supported",
+            "missing_claim",
+            "wrong_dimension",
+            "wrong_owner",
+            "missing_assertion",
+            "reference_mismatch",
+            "old_revision",
+            "conflict",
+            "denied_claim",
+        ],
+    )
+    def test_dimension_available_requires_its_own_current_semantic_support(
+        pg_engine,
+        case,
+        tmp_path,
+        monkeypatch,
+        mutation,
+    ):
+        graph_tests = probe.graph_tests
+        monkeypatch.setattr(graph_tests, "FIXTURE_RAW_DIRECTORY", tmp_path / "source-originals")
+        event_id = uuid4()
+        submission = graph_tests.publish_fact(
+            pg_engine, tmp_path / "published", event_id, graph_tests.VERSION
+        )
+        graph_tests.publish_event(pg_engine, event_id, [submission])
+        claim_id = submission.record.claim_id.value
+        revision_id = submission.revision_id.value
+        source_id = submission.source_id.value
+        references = [item.evidence_id.value for item in submission.evidence_links]
+        with pg_engine.begin() as connection:
+            metadata = connection.scalar(
+                select(document_revisions.c.source_metadata).where(
+                    document_revisions.c.revision_id == revision_id
+                )
+            )
+            connection.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == revision_id)
+                .values(source_metadata={**metadata, "data_mode": "fixture"})
+            )
+            connection.execute(
+                update(claims)
+                .where(claims.c.claim_id == claim_id)
+                .values(freshness="current", observed_at=datetime.now(UTC))
+            )
+        if mutation in {"reference_mismatch", "old_revision"}:
+            other = probe.seed_source_document(pg_engine)
+            with pg_engine.begin() as connection:
+                connection.execute(
+                    update(document_revisions)
+                    .where(document_revisions.c.revision_id == other["revision_id"])
+                    .values(source_metadata={"data_mode": "fixture"})
+                )
+                connection.execute(
+                    insert(event_documents).values(
+                        event_id=str(event_id),
+                        revision_id=other["revision_id"],
+                        active=True,
+                        associated_at=datetime.now(UTC),
+                    )
+                )
+            if mutation == "reference_mismatch":
+                references = [other["evidence_id"]]
+        with pg_engine.begin() as connection:
+            if mutation == "wrong_owner":
+                connection.execute(
+                    update(claims).where(claims.c.claim_id == claim_id).values(subject=str(uuid4()))
+                )
+            if mutation == "missing_assertion":
+                connection.execute(
+                    claim_assertions.delete().where(claim_assertions.c.claim_id == claim_id)
+                )
+            if mutation == "old_revision":
+                connection.execute(
+                    update(document_revisions)
+                    .where(document_revisions.c.revision_id == revision_id)
+                    .values(is_current=False)
+                )
+            if mutation == "conflict":
+                connection.execute(
+                    update(claims).where(claims.c.claim_id == claim_id).values(claim_status="disputed")
+                )
+            if mutation == "denied_claim":
+                connection.execute(
+                    update(claims)
+                    .where(claims.c.claim_id == claim_id)
+                    .values(visibility="tenant", tenant_id="other-tenant")
+                )
+            version = connection.scalar(
+                select(events.c.business_version).where(events.c.event_id == str(event_id))
+            )
+            connection.execute(
+                insert(enrichment_results).values(
+                    result_id=str(uuid4()),
+                    event_id=str(event_id),
+                    dimension="poc" if mutation == "wrong_dimension" else "versions",
+                    status="available",
+                    claim_ids=[] if mutation == "missing_claim" else [claim_id],
+                    reference_ids=references,
+                    source_scope=[source_id],
+                    input_fingerprint="a" * 64,
+                    recorded_at=datetime.now(UTC),
+                    is_current=True,
+                    event_version=version,
+                    observed_at=datetime.now(UTC),
+                    freshness="current",
+                )
+            )
+        response = case[0].get("/api/v1/vulns/" + str(event_id))
+>       assert response.status_code == 200, response.text
+E       AssertionError: {"type":"urn:ai-intel:problem:not_configured","title":"not_configured","status":503,"detail":"public read could not be completed","instance":"/vulns/{event_id}","trace_id":"005a225c-a2ab-4374-b3eb-5e2fd9f1af9a","error":{"code":"not_configured","message":"public read could not be completed","retryable":false,"details":{}}}
+E       assert 503 == 200
+E        +  where 503 = <Response [503 Service Unavailable]>.status_code
+
+tests/integration/test_r18_public_producer_fix1_pg.py:210: AssertionError
+_ test_dimension_available_requires_its_own_current_semantic_support[old_revision] _
+
+pg_engine = Engine(postgresql+psycopg://test_dianzi_r18_public_producer_fix2_20261016:***@127.0.0.1:25432/test_dianzi_r18_public_p...ns=-c+search_path%3Dtest_r18_fix2_c84fe1eae7334fc6acdaa314ecffef8d+-c+statement_timeout%3D12000+-c+lock_timeout%3D4000)
+case = (<starlette.testclient.TestClient object at 0x7cf49477e3c0>, SessionCredential(token=SecretStr('**********')), 'df50aaff-84f9-4178-8196-d53989d55566')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-1/test_dimension_available_requi6')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7cf494694b60>
+mutation = 'old_revision'
+
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "supported",
+            "missing_claim",
+            "wrong_dimension",
+            "wrong_owner",
+            "missing_assertion",
+            "reference_mismatch",
+            "old_revision",
+            "conflict",
+            "denied_claim",
+        ],
+    )
+    def test_dimension_available_requires_its_own_current_semantic_support(
+        pg_engine,
+        case,
+        tmp_path,
+        monkeypatch,
+        mutation,
+    ):
+        graph_tests = probe.graph_tests
+        monkeypatch.setattr(graph_tests, "FIXTURE_RAW_DIRECTORY", tmp_path / "source-originals")
+        event_id = uuid4()
+        submission = graph_tests.publish_fact(
+            pg_engine, tmp_path / "published", event_id, graph_tests.VERSION
+        )
+        graph_tests.publish_event(pg_engine, event_id, [submission])
+        claim_id = submission.record.claim_id.value
+        revision_id = submission.revision_id.value
+        source_id = submission.source_id.value
+        references = [item.evidence_id.value for item in submission.evidence_links]
+        with pg_engine.begin() as connection:
+            metadata = connection.scalar(
+                select(document_revisions.c.source_metadata).where(
+                    document_revisions.c.revision_id == revision_id
+                )
+            )
+            connection.execute(
+                update(document_revisions)
+                .where(document_revisions.c.revision_id == revision_id)
+                .values(source_metadata={**metadata, "data_mode": "fixture"})
+            )
+            connection.execute(
+                update(claims)
+                .where(claims.c.claim_id == claim_id)
+                .values(freshness="current", observed_at=datetime.now(UTC))
+            )
+        if mutation in {"reference_mismatch", "old_revision"}:
+            other = probe.seed_source_document(pg_engine)
+            with pg_engine.begin() as connection:
+                connection.execute(
+                    update(document_revisions)
+                    .where(document_revisions.c.revision_id == other["revision_id"])
+                    .values(source_metadata={"data_mode": "fixture"})
+                )
+                connection.execute(
+                    insert(event_documents).values(
+                        event_id=str(event_id),
+                        revision_id=other["revision_id"],
+                        active=True,
+                        associated_at=datetime.now(UTC),
+                    )
+                )
+            if mutation == "reference_mismatch":
+                references = [other["evidence_id"]]
+        with pg_engine.begin() as connection:
+            if mutation == "wrong_owner":
+                connection.execute(
+                    update(claims).where(claims.c.claim_id == claim_id).values(subject=str(uuid4()))
+                )
+            if mutation == "missing_assertion":
+                connection.execute(
+                    claim_assertions.delete().where(claim_assertions.c.claim_id == claim_id)
+                )
+            if mutation == "old_revision":
+                connection.execute(
+                    update(document_revisions)
+                    .where(document_revisions.c.revision_id == revision_id)
+                    .values(is_current=False)
+                )
+            if mutation == "conflict":
+                connection.execute(
+                    update(claims).where(claims.c.claim_id == claim_id).values(claim_status="disputed")
+                )
+            if mutation == "denied_claim":
+                connection.execute(
+                    update(claims)
+                    .where(claims.c.claim_id == claim_id)
+                    .values(visibility="tenant", tenant_id="other-tenant")
+                )
+            version = connection.scalar(
+                select(events.c.business_version).where(events.c.event_id == str(event_id))
+            )
+            connection.execute(
+                insert(enrichment_results).values(
+                    result_id=str(uuid4()),
+                    event_id=str(event_id),
+                    dimension="poc" if mutation == "wrong_dimension" else "versions",
+                    status="available",
+                    claim_ids=[] if mutation == "missing_claim" else [claim_id],
+                    reference_ids=references,
+                    source_scope=[source_id],
+                    input_fingerprint="a" * 64,
+                    recorded_at=datetime.now(UTC),
+                    is_current=True,
+                    event_version=version,
+                    observed_at=datetime.now(UTC),
+                    freshness="current",
+                )
+            )
+        response = case[0].get("/api/v1/vulns/" + str(event_id))
+>       assert response.status_code == 200, response.text
+E       AssertionError: {"type":"urn:ai-intel:problem:not_configured","title":"not_configured","status":503,"detail":"public read could not be completed","instance":"/vulns/{event_id}","trace_id":"f7dea61e-03d8-4124-8b6f-13843cc18b42","error":{"code":"not_configured","message":"public read could not be completed","retryable":false,"details":{}}}
+E       assert 503 == 200
+E        +  where 503 = <Response [503 Service Unavailable]>.status_code
+
+tests/integration/test_r18_public_producer_fix1_pg.py:210: AssertionError
+=============================== warnings summary ===============================
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:475: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/nodeids: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/nodeids'
+    config.cache.set("cache/nodeids", sorted(self.cached_nodeids))
+
+../../tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429
+  /tmp/venv/lib/python3.12/site-packages/_pytest/cacheprovider.py:429: PytestCacheWarning: cache could not write path /repo/backend/.pytest_cache/v/cache/lastfailed: [Errno 30] Read-only file system: '/repo/backend/.pytest_cache/v/cache/lastfailed'
+    config.cache.set("cache/lastfailed", self.lastfailed)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/integration/test_r18_public_producer_fix2_pg.py::test_dimension_available_requires_its_own_current_semantic_support[reference_mismatch]
+FAILED tests/integration/test_r18_public_producer_fix2_pg.py::test_dimension_available_requires_its_own_current_semantic_support[old_revision]
+2 failed, 36 passed, 2 warnings in 119.27s (0:01:59)
+exit=1
