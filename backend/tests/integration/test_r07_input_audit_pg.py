@@ -1,6 +1,7 @@
 """Input selection and execution versions are durable PostgreSQL evidence, not reconstructed."""
 
 import json
+import os
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -191,10 +192,16 @@ def test_recorded_nvd_selection_budget_observation_keeps_all_dependencies(
         "fees": "unknown",
         "original_case_red": "not_closed",
     }
-    path = (
-        Path(__file__).resolve().parents[3]
-        / "reports/runs/recovery_r07_input_audit_20261016/nvd_current_selection_observation.json"
+    # 观察输出目录默认即冻结证据目录；重跑环境可用环境变量把"写"改指专属
+    # 目录（镜像 test_r06_source_excerpt_event_proof_pg 的读写分离模式）。
+    trace_dir = Path(
+        os.environ.get(
+            "R07_INPUT_AUDIT_TRACE_DIR",
+            str(Path(__file__).resolve().parents[3] / "reports/runs/recovery_r07_input_audit_20261016"),
+        )
     )
+    path = trace_dir / "nvd_current_selection_observation.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(json.dumps(observation, indent=2).encode())
     assert observation["full_roster_blocks"] > 50
     assert observation["actual_offline_codec_wire_calls"] == 3 and publication_outcome == "partial"

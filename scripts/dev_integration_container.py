@@ -133,6 +133,7 @@ def build_environment(run_id: str, port: int) -> dict[str, str]:
             "DIANZI_TEST_ISOLATION": "container",
             "COVERAGE_FILE": "/tmp/.coverage",
             "R06_PROOF_TRACE_DIR": "/out/r06_proof_trace",
+            "R07_INPUT_AUDIT_TRACE_DIR": "/out/r07_input_audit_trace",
         }
     )
     return environment
@@ -170,7 +171,7 @@ def run_invocation(
 
 
 def run_group_entry(group: dict) -> int:
-    environment = build_environment(group["run_id"], 5432)
+    environment = build_environment(group["run_id"], group.get("port", 5432))
     command = ["uv", "run", "--no-sync", "python", "-m", "pytest", *group["args"], "-q"]
     if not group.get("coverage", False):
         command.append("--no-cov")

@@ -79,7 +79,10 @@ def owned_audit_engine(
     )
     engine = create_engine(isolated, hide_parameters=True, connect_args={"connect_timeout": 5})
     try:
-        run_migrations(isolated.render_as_string(hide_password=False))
+        run_migrations(
+            isolated.render_as_string(hide_password=False),
+            target_revision="0022_sbom_sidecars",
+        )
         if install:
             install_audit_proposal(engine)
         yield engine
