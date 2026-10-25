@@ -194,12 +194,10 @@ def test_recorded_nvd_selection_budget_observation_keeps_all_dependencies(
     }
     # 观察输出目录默认即冻结证据目录；重跑环境可用环境变量把"写"改指专属
     # 目录（镜像 test_r06_source_excerpt_event_proof_pg 的读写分离模式）。
-    trace_dir = Path(
-        os.environ.get(
-            "R07_INPUT_AUDIT_TRACE_DIR",
-            str(Path(__file__).resolve().parents[3] / "reports/runs/recovery_r07_input_audit_20261016"),
-        )
+    default_trace_dir = Path(__file__).resolve().parents[3] / (
+        "reports/runs/recovery_r07_input_audit_20261016"
     )
+    trace_dir = Path(os.environ.get("R07_INPUT_AUDIT_TRACE_DIR", str(default_trace_dir)))
     path = trace_dir / "nvd_current_selection_observation.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(json.dumps(observation, indent=2).encode())

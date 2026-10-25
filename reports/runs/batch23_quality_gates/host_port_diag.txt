@@ -1,0 +1,51 @@
+ Network dianzi-dev-batch23smoke_private Creating 
+ Network dianzi-dev-batch23smoke_private Created 
+ Volume dianzi-dev-batch23smoke_postgres_data Creating 
+ Volume dianzi-dev-batch23smoke_postgres_data Created 
+ Volume dianzi-dev-batch23smoke_redis_data Creating 
+ Volume dianzi-dev-batch23smoke_redis_data Created 
+ Container dianzi-dev-batch23smoke-redis-1 Creating 
+ Container dianzi-dev-batch23smoke-postgres-1 Creating 
+ Container dianzi-dev-batch23smoke-redis-1 Created 
+ Container dianzi-dev-batch23smoke-postgres-1 Created 
+ Container dianzi-dev-batch23smoke-redis-1 Starting 
+ Container dianzi-dev-batch23smoke-postgres-1 Starting 
+ Container dianzi-dev-batch23smoke-postgres-1 Started 
+ Container dianzi-dev-batch23smoke-redis-1 Started 
+compose_up_exit=0
+=== docker port postgres ===
+=== inspect ports ===
+{"5432/tcp":[]}
+=== standalone probe container ===
+8000/tcp -> 127.0.0.1:25498
+{"8000/tcp":[{"HostIp":"127.0.0.1","HostPort":"25498"}]}
+tcp_25433_failed= ConnectionRefusedError
+tcp_25498=accepted
+=== netstat 2543x/2549x ===
+  TCP    127.0.0.1:63746        127.0.0.1:25498        TIME_WAIT       0
+ Container dianzi-dev-batch23smoke-redis-1 Stopping 
+ Container dianzi-dev-batch23smoke-postgres-1 Stopping 
+ Container dianzi-dev-batch23smoke-postgres-1 Stopped 
+ Container dianzi-dev-batch23smoke-postgres-1 Removing 
+ Container dianzi-dev-batch23smoke-postgres-1 Removed 
+ Container dianzi-dev-batch23smoke-redis-1 Stopped 
+ Container dianzi-dev-batch23smoke-redis-1 Removing 
+ Container dianzi-dev-batch23smoke-redis-1 Removed 
+ Network dianzi-dev-batch23smoke_private Removing 
+ Volume dianzi-dev-batch23smoke_redis_data Removing 
+ Volume dianzi-dev-batch23smoke_postgres_data Removing 
+ Volume dianzi-dev-batch23smoke_redis_data Removed 
+ Volume dianzi-dev-batch23smoke_postgres_data Removed 
+ Network dianzi-dev-batch23smoke_private Removed 
+teardown_exit=0
+
+=== batch23 结论（2026-10-25T10:3x+08:00，Root 记录） ===
+用户修复后宿主 Docker 部分恢复：hello-world exit=0；独立 docker run -p 的端口发布与
+宿主→容器数据面正常（HTTP 200 数据回传）。compose 路径端口发布仍静默失败：
+compose.yaml 请求 127.0.0.1:25433->5432，运行时 NetworkSettings.Ports 为
+{"5432/tcp":[]}、docker port 无输出、宿主 10061 拒绝——与批次20 记录的症状一致，
+但现仅限 compose 创建的容器（同刻同宿主独立 docker run 端口发布正常）。
+宿主 compose 冒烟因 DATABASE_URL 不可达退出 2（config_error），smoke 脚本与
+compose 栈本身工作正常（compose_up_exit=0、容器 Healthy、teardown 干净）。
+按授权不做宿主修复；归用户侧继续处理（建议核对 Docker Desktop/WSL 重启完整性与
+compose 版本兼容性）。smoke 在单容器路线（batch21 attempt7）持续可用。
