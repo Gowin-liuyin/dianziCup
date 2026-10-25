@@ -95,6 +95,13 @@ class FixtureGenerationWire:
 @pytest.fixture
 def question_api(vector_database, monkeypatch, tmp_path, register_sensitive_failure_value):
     """Use default app PG authentication and service assembly; patch only isolated IO edges."""
+    # legacy-0013 种子行按冻结字节装载（source_metadata 缺 data_mode）；v2 读合同
+    # fail-closed 拒读无标注行，本 fixture 以 fixture 标注补章后作答（裁决见
+    # progress/DECISIONS_pending.md 裁决① 与 CR-r05_legacy_seed_annotation_batch23）。
+    with vector_database.begin() as connection:
+        connection.execute(
+            update(document_revisions).values(source_metadata={"data_mode": "fixture"})
+        )
     wire = FixtureGenerationWire()
     monkeypatch.setattr(application_module, "build_engine", lambda settings: vector_database)
     monkeypatch.setattr(
